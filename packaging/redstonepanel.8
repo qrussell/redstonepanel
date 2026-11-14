@@ -1,4 +1,4 @@
-.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.0.0" "System Administration"
+.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.3.0" "System Administration"
 .SH NAME
 redstonepanel \- manage the RedstonePanel Minecraft server panel
 .SH SYNOPSIS
@@ -7,6 +7,9 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .B redstonepanel add-user
 .I NAME
 .RB [ \-\-role " admin|user" ]
+.br
+.B redstonepanel set-name
+.I NAME
 .br
 .B redstonepanel reset-security
 .SH DESCRIPTION
@@ -24,6 +27,11 @@ Show whether the service is running, its address, the HTTPS and sign\-in mode, a
 .BI "add-user " NAME " \fR[\fB\-\-role admin\fR|\fBuser\fR]"
 Create a panel account (default role: admin). The password is asked for interactively,
 or read from the first line of standard input when it is not a terminal.
+.TP
+.BI "set-name " NAME
+Set the name the panel shows in its sidebar, browser tab and sign\-in page, to tell several
+servers' panels apart (up to 40 characters; visible before signing in). An empty name
+(\fB""\fR) goes back to the server's host name. Takes effect without a restart.
 .TP
 .B reset-security
 Recovery: switch the panel back to plain HTTP on port 8080 with sign\-in required, and restart it.

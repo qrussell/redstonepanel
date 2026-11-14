@@ -30,7 +30,8 @@ app.mount("/static", StaticFiles(directory=os.path.join(panel_settings.APP_DIR, 
 #   2. A valid session cookie, or (if an admin enabled it) a request from a trusted LAN range,
 #      which gets the limited "user" role. Users and Panel Settings always need a signed-in admin.
 # ---------------------------------------------------------------------------
-PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/health"}
+# /api/panel-info only says which panel this is (shown on the sign-in page), nothing more
+PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/health", "/api/panel-info"}
 ADMIN_API = ("/api/users", "/api/settings")
 STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -58,6 +59,11 @@ async def access_control(request: Request, call_next):
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/api/panel-info")
+def panel_info():
+    """Which panel this is, so several servers' panels can be told apart (also before sign-in)."""
+    return {"name": panel_settings.display_name()}
 
 class LoginRequest(BaseModel):
     username: str
@@ -99,7 +105,8 @@ def _settings_view(request: Request):
     s = panel_settings.load()
     return {
         "settings": s,
-        "defaults": {"trusted_networks": panel_settings.DEFAULT_TRUSTED_NETWORKS},
+        "defaults": {"trusted_networks": panel_settings.DEFAULT_TRUSTED_NETWORKS,
+                     "panel_name": panel_settings.host_name()},
         "runtime": dict(panel_settings.RUNTIME),
         "managed_restart": panel_settings.RUNTIME.get("scheme") is not None,
         "self_signed": tls.cert_info(tls.CA_CRT) if os.path.exists(tls.META) else None,
@@ -141,12 +148,13 @@ def update_settings_api(request: Request, new: dict = Body(...)):
     panel_settings.save(s)
     me = request.state.user["username"]
     manager.write_log(f"[SETTINGS] {me} changed panel settings: HTTPS={s['https_mode']}, "
-                      f"ports {s['http_port']}/{s['https_port']}, sign-in={s['login_mode']}")
+                      f"ports {s['http_port']}/{s['https_port']}, sign-in={s['login_mode']}, "
+                      f"name={panel_settings.display_name(s)!r}")
     url = panel_settings.panel_url(s, request.headers.get("host"))
     if restart:
         manager.write_log(f"[SETTINGS] Restarting the panel; new address: {url}")
         _restart_soon()
-    return {"status": "success", "restart": restart, "url": url}
+    return {"status": "success", "restart": restart, "url": url, "name": panel_settings.display_name(s)}
 
 @app.get("/api/settings/ca.crt")
 def download_ca_api():
@@ -320,18 +328,21 @@ def export_server_api(server_name: str):
 
 @app.post("/api/servers/import")
 def import_server_api(file: UploadFile = File(...)):
-    # Never build a path from the uploaded file's name: it's chosen by the client
-    fd, tmp_path = tempfile.mkstemp(prefix="redstonepanel-import-", suffix=".zip")
+    # Never build a path from the uploaded file's name: it's chosen by the client.
+    # The archive type (.zip / .tar.gz / .tar) is detected from the contents, not the name.
+    from core import archive
+    fd, tmp_path = tempfile.mkstemp(prefix="redstonepanel-import-", suffix=".upload")
     try:
         with os.fdopen(fd, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        manager.import_server(tmp_path)
-    except manager.DependencyError as e:
+        name = manager.import_server(tmp_path)
+    except (manager.DependencyError, archive.ArchiveError) as e:
+        manager.write_log(f"[IMPORT] Refused: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-    return {"status": "success"}
+    return {"status": "success", "server": name}
 
 class TemplateUpdate(BaseModel):
     properties: dict

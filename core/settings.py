@@ -39,7 +39,10 @@ DEFAULTS = {
     "login_mode": "required",
     "trusted_networks": DEFAULT_TRUSTED_NETWORKS,
     "extra_hosts": [],
+    # Shown in the sidebar, browser tab and sign-in page to tell panels apart. "" = this host's name.
+    "panel_name": "",
 }
+PANEL_NAME_MAX = 40
 CONNECTION_KEYS = ("https_mode", "http_port", "https_port", "cert_file", "key_file")
 HOSTNAME_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*$")
 
@@ -133,7 +136,28 @@ def validate(new):
             raise SettingsError(f"'{raw}' is not a valid host name.")
         hosts.append(h)
     s["extra_hosts"] = hosts
+
+    s["panel_name"] = clean_panel_name(s["panel_name"])
     return s
+
+
+def clean_panel_name(name):
+    """Trimmed panel name ("" means: use the host name). Raises SettingsError if unusable."""
+    name = " ".join(str(name or "").split())          # collapse whitespace, drop newlines/tabs
+    if len(name) > PANEL_NAME_MAX:
+        raise SettingsError(f"The panel name can be at most {PANEL_NAME_MAX} characters.")
+    if any(ord(c) < 32 or ord(c) == 127 for c in name):
+        raise SettingsError("The panel name can't contain control characters.")
+    return name
+
+
+def host_name():
+    return socket.gethostname().split(".")[0]
+
+
+def display_name(s=None):
+    """The name to show for this panel: the admin's choice, or this server's host name."""
+    return (s or load())["panel_name"] or host_name()
 
 
 def _as_list(v):

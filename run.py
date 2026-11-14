@@ -6,6 +6,8 @@
     redstonepanel status              show the address, HTTPS/sign-in mode and panel users
     redstonepanel add-user NAME [--role admin|user]
                                       create a panel account (asks for the password)
+    redstonepanel set-name "NAME"     name shown in the panel to tell servers apart
+                                      ("" = use this server's host name)
     redstonepanel reset-security      recovery: plain HTTP on 8080, sign-in required, restart
 
 If HTTPS is on but its certificate can't be used or the HTTPS port is taken, the panel starts
@@ -79,6 +81,7 @@ def status():
     active = subprocess.run(["systemctl", "is-active", "redstonepanel.service"],
                             capture_output=True, text=True).stdout.strip() or "unknown"
     ip = (subprocess.run(["hostname", "-I"], capture_output=True, text=True).stdout.split() or ["localhost"])[0]
+    print(f"Name:      {settings.display_name(s)}" + ("" if s["panel_name"] else " (host name)"))
     print(f"Service:   {active}")
     print(f"Address:   {settings.panel_url(s, ip)}/")
     print(f"HTTPS:     {s['https_mode']}" + (f" (HTTP port {s['http_port']} redirects)" if s["https_mode"] != "off" else ""))
@@ -87,6 +90,20 @@ def status():
     users = auth.list_panel_users()
     print(f"Panel users: {', '.join(u['username'] + ' (' + u['role'] + (', disabled' if u['disabled'] else '') + ')' for u in users) or 'none'}")
     print(f"Data:      {settings.DATA_DIR}")
+
+
+def set_name(name):
+    """Takes effect immediately: the panel reads settings.json again when it changes."""
+    s = settings.load()
+    try:
+        s["panel_name"] = settings.clean_panel_name(name)
+    except settings.SettingsError as e:
+        sys.exit(str(e))
+    settings.save(s)
+    if s["panel_name"]:
+        print(f"Panel name set to: {s['panel_name']}")
+    else:
+        print(f"Panel name cleared; showing the host name: {settings.host_name()}")
 
 
 def add_user(args):
@@ -122,6 +139,8 @@ if __name__ == "__main__":
         status()
     elif cmd == "add-user":
         add_user(rest)
+    elif cmd == "set-name" and len(rest) == 1:
+        set_name(rest[0])
     elif cmd in ("-h", "--help", "help"):
         print(__doc__)
     else:

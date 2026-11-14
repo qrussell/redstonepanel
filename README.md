@@ -9,7 +9,8 @@ them from a browser:
 - a `server.properties` editor
 - player roles (operator, member and so on)
 - reusable server templates
-- export a server as a zip backup, and import it again
+- export a server as a zip backup, and import server backups (.zip, .tar.gz/.tgz or .tar; a
+  backup wrapped in a single folder is unpacked from inside it)
 - a panel activity log
 
 The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as an
@@ -76,7 +77,12 @@ mode, and the panel accounts. See `man redstonepanel` for details.
 
 ## Panel Settings
 
-Admins can change how the panel is reached under **Panel Settings**:
+**Panel name.** Running RedstonePanel on several servers? Each panel shows a name in the
+sidebar, the browser tab and on the sign-in page, so you can tell them apart. It defaults to
+the server's host name; change it under **Panel Settings** or with
+`sudo redstonepanel set-name "Basement Survival"`. The name is visible before signing in.
+
+Admins can also change how the panel is reached under **Panel Settings**:
 
 - **HTTP (default).** Plain HTTP on port 8080. Fine on a trusted home network; anyone who
   can watch the traffic can see passwords and session cookies.

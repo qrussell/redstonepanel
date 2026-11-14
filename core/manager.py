@@ -525,16 +525,31 @@ def export_server(server_name):
     shutil.make_archive(export_base, 'zip', d)
     return f"{export_base}.zip"
 
-def import_server(zip_path):
-    import zipfile
-    require_tools("unzip")
+def import_server(archive_path):
+    """Creates a new server from a .zip / .tar.gz / .tar backup. Raises archive.ArchiveError."""
+    from core import archive
+    staging, root = archive.unpack(archive_path, SERVERS_ROOT)
+    try:
+        return _import_unpacked(staging, root)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)   # gone already if it was renamed into place
 
-    # Detect Edition
-    edition = "java"
-    with zipfile.ZipFile(zip_path, 'r') as z:
-        if any("bedrock_server" in name for name in z.namelist()):
-            edition = "bedrock"
-            
+def _import_unpacked(staging, root):
+    from core import archive
+    if root != staging:
+        write_log(f"[IMPORT] Backup was wrapped in the folder '{os.path.basename(root)}'; using its contents.")
+
+    # Detect Edition from the files themselves
+    if os.path.isfile(os.path.join(root, "bedrock_server")):
+        edition = "bedrock"
+    elif os.path.isfile(os.path.join(root, "server.jar")) or os.path.isfile(os.path.join(root, "server.properties")):
+        edition = "java"
+    else:
+        raise archive.ArchiveError("This doesn't look like a Minecraft server backup: no bedrock_server, "
+                                   "server.jar or server.properties at its top level.")
+    if edition == "java" and not os.path.isfile(os.path.join(root, "server.jar")):
+        write_log("[WARNING] The backup has no server.jar; use Update on the new server to download one.")
+
     # Auto-allocate port to prevent collisions
     base_name = "minecraft-java" if edition == "java" else "minecraft-bedrock"
     base_port = 25565 if edition == "java" else 19132
@@ -567,11 +582,10 @@ def import_server(zip_path):
         current_port += step
 
     mc_dir = f"/opt/{svc_name}"
-    os.makedirs(mc_dir, exist_ok=True)
-    
-    # Extract, patch port, and configure
-    run_and_log(["unzip", "-o", "-q", zip_path, "-d", mc_dir])
-    
+    # The unpacked files become the server folder (a rename: same filesystem, no copying)
+    os.rename(root, mc_dir)
+    write_log(f"[IMPORT] Imported a {edition.capitalize()} server as {svc_name} (port {port}).")
+
     props = read_properties(mc_dir)
     props["server-port"] = str(port)
     if edition == "bedrock":
@@ -603,7 +617,7 @@ WorkingDirectory={mc_dir}
 {env_vars}
 ExecStart={exec_start}
 Restart=on-failure
-RestartSec=20 5
+RestartSec=20
 
 [Install]
 WantedBy=multi-user.target
@@ -614,8 +628,6 @@ WantedBy=multi-user.target
     run_and_log(["systemctl", "daemon-reload"])
     run_and_log(["systemctl", "enable", f"{svc_name}.service"])
     run_and_log(["systemctl", "start", f"{svc_name}.service"])
-    
-    os.remove(zip_path)
     return svc_name
     
 def deploy_server(edition, template_id=None):
@@ -716,7 +728,7 @@ WorkingDirectory={mc_dir}
 {env_vars}
 ExecStart={exec_start}
 Restart=on-failure
-RestartSec=20 5
+RestartSec=20
 
 [Install]
 WantedBy=multi-user.target

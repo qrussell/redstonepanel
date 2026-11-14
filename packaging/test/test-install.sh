@@ -54,6 +54,16 @@ echo 'Panel-test-pw-1' | redstonepanel add-user webadmin >/dev/null && ok "redst
 check "panel user signs in"               test "$(code -X POST $B/api/auth/login -H "$J" -H "$O" -d '{"username":"webadmin","password":"Panel-test-pw-1"}')" = 200
 redstonepanel status | sed 's/^/  /'
 check "users.json is 0600"                test "$(stat -c %a /var/lib/redstonepanel/users.json)" = 600
+
+# --- panel name: host name by default, public (sign-in page), settable by CLI and API
+check "panel name defaults to host name"  bash -c "curl -s $B/api/panel-info | grep -q '\"name\":\"$(hostname -s)\"'"
+redstonepanel set-name "Test Box 1" >/dev/null && ok "redstonepanel set-name" || bad "redstonepanel set-name"
+check "set-name shows without a restart"  bash -c "curl -s $B/api/panel-info | grep -q 'Test Box 1'"
+check "set-name rejects 41+ characters"   bash -c '! redstonepanel set-name "$(printf "x%.0s" $(seq 41))" 2>/dev/null'
+c=$(code -b $L -X PUT $B/api/settings -H "$J" -H "$O" -d '{"panel_name":"  Basement   Survival  ","login_mode":"required"}')
+[ "$c" = 200 ] && grep -q '"name":"Basement Survival"' /tmp/body && ok "rename via Panel Settings (spaces tidied)" || bad "rename via API ($c $(cat /tmp/body))"
+check "status shows the name"             bash -c 'redstonepanel status | grep -q "Name:      Basement Survival"'
+redstonepanel set-name "" >/dev/null && check "empty name -> host name again" bash -c "curl -s $B/api/panel-info | grep -q '\"name\":\"$(hostname -s)\"'"
 check "panel.log in /var/log"             test -s /var/log/redstonepanel/panel.log
 
 # --- missing Java gives a clear error instead of a broken deploy
@@ -61,6 +71,38 @@ if ! command -v java >/dev/null; then
     c=$(code -b $L -X POST $B/api/servers/deploy -H "$J" -H "$O" -d '{"edition":"java"}')
     [ "$c" = 400 ] && grep -q openjdk-25-jre-headless /tmp/body && ok "Java deploy without Java -> clear 400" || bad "Java deploy without Java ($c $(cat /tmp/body))"
 fi
+
+# --- import server backups: .tar.gz and .zip, each wrapped in a folder; hostile archives refused
+BK=/tmp/backups && mkdir -p $BK/bedrock-server_backup_20261110/worlds/w
+printf '#!/bin/sh\nexec sleep 600\n' > $BK/bedrock-server_backup_20261110/bedrock_server
+chmod +x $BK/bedrock-server_backup_20261110/bedrock_server
+echo "server-port=19132" > $BK/bedrock-server_backup_20261110/server.properties
+tar -C $BK -czf /tmp/bedrock-backup.tar.gz bedrock-server_backup_20261110
+c=$(code -b $L -X POST $B/api/servers/import -H "$O" -F "file=@/tmp/bedrock-backup.tar.gz")
+[ "$c" = 200 ] && grep -q '"server":"minecraft-bedrock"' /tmp/body && ok "import wrapped .tar.gz Bedrock backup" || bad "import .tar.gz ($c $(cat /tmp/body))"
+check "  files at the top of /opt/minecraft-bedrock" test -x /opt/minecraft-bedrock/bedrock_server
+check "  world kept"                       test -d /opt/minecraft-bedrock/worlds/w
+check "  owned by minecraft"               test "$(stat -c %U /opt/minecraft-bedrock/bedrock_server)" = minecraft
+check "  service starts"                   bash -c 'sleep 2; systemctl is-active --quiet minecraft-bedrock'
+check "  valid RestartSec in unit"         grep -qx "RestartSec=20" /etc/systemd/system/minecraft-bedrock.service
+python3 - <<'EOF'
+import zipfile
+with zipfile.ZipFile("/tmp/java-backup.zip", "w") as z:
+    z.writestr("MyJavaServer/server.jar", b"PK-not-really")
+    z.writestr("MyJavaServer/server.properties", "server-port=25565\nmotd=hi\n")
+    z.writestr("MyJavaServer/world/level.dat", b"x")
+    z.writestr("__MACOSX/MyJavaServer/._server.jar", b"junk")
+EOF
+c=$(code -b $L -X POST $B/api/servers/import -H "$O" -F "file=@/tmp/java-backup.zip")
+[ "$c" = 200 ] && grep -q '"server":"minecraft-java"' /tmp/body && ok "import wrapped .zip Java backup" || bad "import .zip ($c $(cat /tmp/body))"
+check "  files at the top of /opt/minecraft-java" test -f /opt/minecraft-java/server.jar -a -f /opt/minecraft-java/world/level.dat
+check "  no __MACOSX junk"                 test ! -e /opt/minecraft-java/__MACOSX
+mkdir -p $BK/evil && echo x > $BK/evil/f && tar -C $BK -czf /tmp/evil.tar.gz --transform 's#^evil/f#../../../etc/rp-evil#' evil/f
+c=$(code -b $L -X POST $B/api/servers/import -H "$O" -F "file=@/tmp/evil.tar.gz")
+[ "$c" = 400 ] && [ ! -e /etc/rp-evil ] && ok "archive with ../ paths refused, nothing written" || bad "evil archive ($c $(cat /tmp/body))"
+check "no unpack leftovers in /opt"        bash -c '! ls -d /opt/.redstonepanel-import-* 2>/dev/null'
+echo "not an archive" > /tmp/notes.txt
+check "non-archive upload refused (400)"   test "$(code -b $L -X POST $B/api/servers/import -H "$O" -F "file=@/tmp/notes.txt")" = 400
 
 # --- HTTPS switch from Panel Settings, restart by systemd
 c=$(code -b $L -X PUT $B/api/settings -H "$J" -H "$O" -d '{"https_mode":"self_signed","http_port":8080,"https_port":8443,"login_mode":"required"}')

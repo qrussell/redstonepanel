@@ -19,6 +19,7 @@ const ServerApp = {
     currentUser: null,
 
     async init() {
+        this.loadPanelName();   // public, so it shows even while the sign-in check runs
         // Who is signed in? (a 401 here redirects to the login page)
         const me = await fetch('/api/auth/me');
         if (!me.ok) return;
@@ -46,6 +47,26 @@ const ServerApp = {
         }
     },
     
+    // --- Which panel is this? (several servers may each run one) ---
+    panelName: '',
+
+    async loadPanelName() {
+        try {
+            const res = await fetch('/api/panel-info');
+            if (res.ok) this.showPanelName((await res.json()).name);
+        } catch (e) { /* the name is a convenience; the panel works without it */ }
+    },
+
+    showPanelName(name) {
+        this.panelName = name || '';
+        const el = document.getElementById('panel-name');
+        if (el) {
+            el.innerText = this.panelName;
+            el.title = this.panelName;
+        }
+        document.title = this.panelName ? `${this.panelName} · RedstonePanel` : 'RedstonePanel';
+    },
+
     // --- Theming & Preferences ---
     themeMode: localStorage.getItem('rp_themeMode') || 'dark',
     themeColor: localStorage.getItem('rp_themeColor') || 'diamond',
@@ -772,8 +793,9 @@ const ServerApp = {
             </div>
             <hr class="border-gray-700 my-4" />
             <div class="mb-6">
-                <label class="block text-sm text-gray-400 mb-1">Import Existing (.zip)</label>
-                <input type="file" id="import-file" accept=".zip" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white text-sm mb-2" />
+                <label class="block text-sm text-gray-400 mb-1">Import Existing (.zip, .tar.gz, .tar)</label>
+                <input type="file" id="import-file" accept=".zip,.tar.gz,.tgz,.tar,application/zip,application/gzip,application/x-tar" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white text-sm mb-2" />
+                <p class="text-xs text-gray-500 mb-2">A backup wrapped in a single folder is fine; its contents are used.</p>
                 <button onclick="ServerApp.executeImport()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-white font-bold transition">Upload & Import</button>
             </div>
             <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white transition">Cancel</button>
@@ -810,19 +832,25 @@ const ServerApp = {
 
     async executeImport() {
         const fileInput = document.getElementById('import-file');
-        if (!fileInput.files.length) return alert("Select a .zip file first.");
-        
+        if (!fileInput.files.length) return alert("Select a server backup (.zip, .tar.gz or .tar) first.");
+
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
 
         document.getElementById('modal-overlay').classList.add('hidden');
         this.toggleConsole(true);
-        
-        await fetch('/api/servers/import', {
+
+        const res = await fetch('/api/servers/import', {
             method: 'POST',
             body: formData
         });
-        
+        if (!res.ok) {
+            alert(`Import failed: ${await this.apiError(res)}`);
+        } else {
+            const data = await res.json();
+            if (data.server) alert(`Imported as ${data.server}.`);
+        }
+
         this.loadServers();
     },
     
@@ -1000,6 +1028,10 @@ const ServerApp = {
 			</div>
 			${d.runtime.https_error ? `<p class="text-sm p-2 mb-4 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200">⚠️ ${esc(d.runtime.https_error)}</p>` : ''}
 
+			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Panel name</h4>
+			<input id="set-panel-name" maxlength="40" value="${esc(s.panel_name)}" placeholder="${esc(d.defaults.panel_name)}" class="${field} mb-1">
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">Tells this server's panel apart from others: shown in the sidebar, the browser tab and on the sign-in page (visible before signing in). Leave empty to use the server's host name, <b>${esc(d.defaults.panel_name)}</b>.</p>
+
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
 			<div class="space-y-2 mb-3">
 				${radio('https_mode', 'off', s.https_mode, 'HTTP (simple)', 'Unencrypted. Fine on a home network you trust.')}
@@ -1071,6 +1103,7 @@ const ServerApp = {
 			login_mode: document.querySelector('input[name="login_mode"]:checked').value,
 			trusted_networks: lines('set-trusted-networks'),
 			extra_hosts: lines('set-extra-hosts'),
+			panel_name: val('set-panel-name'),
 		};
 		const err = document.getElementById('set-error');
 		const btn = document.getElementById('set-save');
@@ -1090,6 +1123,7 @@ const ServerApp = {
 			return;
 		}
 		const data = await res.json();
+		this.showPanelName(data.name);
 		if (!data.restart) {
 			this.closePanelSettings();
 			alert('Settings saved.');
