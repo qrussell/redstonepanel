@@ -1,3 +1,10 @@
+redstonepanel (1.1.0) noble; urgency=medium
+
+  * Fix the World & Maps tab in light mode: its label disappeared on hover
+    and it was styled differently from the other tabs.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 14 Nov 2026 07:09:02 +0000
+
 redstonepanel (1.0.0) noble; urgency=medium
 
   * Initial package release.
