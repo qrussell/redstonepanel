@@ -28,7 +28,7 @@ Replace `X` with the version you downloaded. `apt` pulls in the dependencies fro
 archive (`python3-fastapi`, `python3-uvicorn`, `python3-multipart`, PAM, `screen` and so on),
 then starts the `redstonepanel` service. Open **http://&lt;server&gt;:8080/** in a browser.
 
-Java is a *Recommends* (`openjdk-21-jre-headless`), so a normal install includes it. On a
+Java is a *Recommends* (`openjdk-25-jre-headless`), so a normal install includes it. On a
 host that will only run Bedrock servers you can leave it out:
 
 ```bash

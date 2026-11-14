@@ -149,7 +149,7 @@ const ServerApp = {
                         <span class="${dot}">●</span>
                         <div>
                             <div class="font-bold text-gray-900 dark:text-gray-200">${srv.name}</div>
-                            <div class="text-xs text-gray-500">${srv.edition} • Port ${srv.port}</div>
+                            <div class="text-xs text-gray-500">${srv.edition}${srv.version ? ' ' + this.escapeHtml(srv.version) : ''} • Port ${srv.port}</div>
                         </div>
                     </div>
                 `;
@@ -178,9 +178,24 @@ const ServerApp = {
         const rconBadge = document.getElementById('chat-rcon-port');
         if (rconBadge) rconBadge.innerText = srv.rcon_port;
         
+        // Minecraft version; for Java also whether the installed Java is new enough to run it
+        const esc = t => this.escapeHtml(String(t));
+        let versionNote = '';
+        if (srv.edition === 'Java' && srv.java_required) {
+            if (!srv.java_installed) {
+                versionNote = `<p class="text-xs text-red-500 mt-1">Needs Java ${esc(srv.java_required)}; Java isn't installed</p>`;
+            } else if (srv.java_installed < srv.java_required) {
+                versionNote = `<p class="text-xs text-red-500 mt-1">Needs Java ${esc(srv.java_required)}; installed: Java ${esc(srv.java_installed)}</p>`;
+            } else {
+                versionNote = `<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Java ${esc(srv.java_installed)} (needs ${esc(srv.java_required)}+)</p>`;
+            }
+        } else if (!srv.version && srv.edition === 'Bedrock') {
+            versionNote = `<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Shown after the server's next start</p>`;
+        }
         document.getElementById('overview-stats').innerHTML = `
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Status</p><p class="font-bold uppercase ${srv.status === 'online' ? 'text-green-500' : 'text-red-500'}">${srv.status}</p></div>
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Engine</p><p class="font-bold text-blue-600 dark:text-blue-400">${srv.edition}</p></div>
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Minecraft Version</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.version ? esc(srv.version) : 'Unknown'}</p>${versionNote}</div>
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Port (TCP/UDP)</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.port}</p></div>
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Max RAM</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.ram}</p></div>
         `;

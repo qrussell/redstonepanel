@@ -19,7 +19,7 @@ class DependencyError(RuntimeError):
     """A program the panel needs is not installed (message says which package provides it)."""
 
 # program -> Ubuntu package (the .deb depends on/recommends these)
-TOOL_PACKAGES = {"java": "openjdk-21-jre-headless", "screen": "screen", "unzip": "unzip",
+TOOL_PACKAGES = {"java": "openjdk-25-jre-headless", "screen": "screen", "unzip": "unzip",
                  "curl": "curl", "wget": "wget", "jq": "jq"}
 
 def require_tools(*tools):
@@ -244,6 +244,86 @@ def _free_rcon_port(server_dir, start=25575):
         port += 1
     return str(port)
 
+# ---------------------------------------------------------------------------
+# Minecraft / Java versions
+# ---------------------------------------------------------------------------
+_version_cache = {}          # path -> ((mtime, size), result)
+_java_cache = {"at": 0.0, "major": None}
+BEDROCK_VERSION_RE = re.compile(r"Version:? ([0-9]+(?:\.[0-9]+)+)")
+
+def _cached(path, compute):
+    """compute(path) re-run only when the file changes."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (st.st_mtime, st.st_size)
+    hit = _version_cache.get(path)
+    if hit and hit[0] == key:
+        return hit[1]
+    result = compute(path)
+    _version_cache[path] = (key, result)
+    return result
+
+def _java_jar_info(jar):
+    """Official server jars carry version.json: {"name": "26.3", "java_version": 25, ...}."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(jar) as z:
+            info = json.loads(z.read("version.json"))
+        return {"version": str(info.get("name") or info.get("id") or "") or None,
+                "java_required": int(info["java_version"]) if info.get("java_version") else None}
+    except Exception:
+        return None
+
+def _bedrock_log_version(log):
+    """BDS prints 'Version: 1.26.63.1' at every start; the last one is the running build."""
+    # grep (POSIX ERE, no Python-only syntax) finds the lines fast in a big log; Python extracts the number
+    r = subprocess.run(["grep", "-a", "-o", "-E", r"Version:? [0-9]+(\.[0-9]+)+", log], capture_output=True, text=True)
+    found = BEDROCK_VERSION_RE.findall(r.stdout)
+    return {"version": found[-1], "java_required": None} if found else None
+
+_journal_cache = {}          # service -> (checked_at, result)
+
+def _bedrock_journal_version(svc):
+    """Older installs run BDS in screen without a server.log; its startup lines may be in the journal."""
+    hit = _journal_cache.get(svc)
+    if hit and time.time() - hit[0] < 60:
+        return hit[1]
+    r = subprocess.run(["journalctl", "-u", f"{svc}.service", "--no-pager", "-o", "cat"], capture_output=True, text=True)
+    found = BEDROCK_VERSION_RE.findall(r.stdout)
+    result = {"version": found[-1], "java_required": None} if found else None
+    _journal_cache[svc] = (time.time(), result)
+    return result
+
+def server_version(d, is_java, svc=None):
+    empty = {"version": None, "java_required": None}
+    if is_java:
+        return _cached(os.path.join(d, "server.jar"), _java_jar_info) or empty
+    return (_cached(os.path.join(d, "server.log"), _bedrock_log_version)
+            or (svc and _bedrock_journal_version(svc)) or empty)
+
+def java_major():
+    """Major version of the default 'java' (e.g. 25), or None if Java isn't installed."""
+    now = time.time()
+    if now - _java_cache["at"] > 60:
+        major = None
+        if shutil.which("java"):
+            out = subprocess.run(["java", "-version"], capture_output=True, text=True).stderr
+            m = re.search(r'version "(\d+)(?:\.(\d+))?', out)
+            if m:
+                major = int(m.group(2)) if m.group(1) == "1" else int(m.group(1))   # "1.8" -> 8
+        _java_cache.update(at=now, major=major)
+    return _java_cache["major"]
+
+def warn_if_java_too_old(jar):
+    """After downloading a Java server jar: say so clearly if the installed Java can't run it."""
+    info = _java_jar_info(jar) or {}
+    need, have = info.get("java_required"), java_major()
+    if need and have and have < need:
+        write_log(f"[WARNING] Minecraft {info.get('version')} needs Java {need}, but the default Java is {have}. "
+                  f"Install it with: sudo apt install openjdk-{need}-jre-headless")
+
 def list_servers():
     servers = []
     res = subprocess.run(["find", "/etc/systemd/system/", "-maxdepth", "1", "-name", "minecraft*.service", "-printf", "%f\n"], capture_output=True, text=True)
@@ -254,9 +334,14 @@ def list_servers():
         d = get_server_dir(svc)
         props = read_properties(d)
         exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{svc}.service"], capture_output=True, text=True).stdout.strip()
-        
+        ver = server_version(d, "java" in exec_start, svc)
+
         servers.append({
             "name": svc,
+            # Minecraft version of the installed server, and (Java) the Java it needs vs. what's installed
+            "version": ver["version"],
+            "java_required": ver["java_required"],
+            "java_installed": java_major() if "java" in exec_start else None,
             "status": "online" if st == "active" else "offline",
             "directory": d,
             "port": props.get("server-port", "Unknown"),
@@ -379,6 +464,7 @@ def update_server_binary(server_name):
         SERVER_URL=$(curl -s "$VERSION_URL" | jq -r '.downloads.server.url')
         wget "$SERVER_URL" -O """ + d + "/server.jar"
         run_and_log(fetch_cmd, shell=True)
+        warn_if_java_too_old(f"{d}/server.jar")
     else:
         fetch_cmd = """
         SERVER_URL=$(curl -s https://net-secondary.web.minecraft-services.net/api/v1.0/download/links | jq -r '.result.links[] | select(.downloadType=="serverBedrockLinux") | .downloadUrl' 2>/dev/null)
@@ -586,7 +672,8 @@ def deploy_server(edition, template_id=None):
         SERVER_URL=$(curl -s "$VERSION_URL" | jq -r '.downloads.server.url')
         wget "$SERVER_URL" -O """ + mc_dir + "/server.jar"
         run_and_log(fetch_cmd, shell=True)
-        
+        warn_if_java_too_old(f"{mc_dir}/server.jar")
+
         with open(f"{mc_dir}/eula.txt", "w") as f:
             f.write("eula=true\n")
         

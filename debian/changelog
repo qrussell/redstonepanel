@@ -1,3 +1,15 @@
+redstonepanel (1.2.0) noble; urgency=medium
+
+  * Show the Minecraft version of each server in the sidebar and on the
+    Overview tab; for Java servers also show the Java version it needs and
+    warn when the installed Java is too old.
+  * Recommend openjdk-25-jre-headless instead of Java 21: current Minecraft
+    Java Edition releases need Java 25.
+  * Log a clear warning when a deployed or updated Java server needs a newer
+    Java than the one installed.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 14 Nov 2026 14:42:40 +0000
+
 redstonepanel (1.1.0) noble; urgency=medium
 
   * Fix the World & Maps tab in light mode: its label disappeared on hover
