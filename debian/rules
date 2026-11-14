@@ -1,0 +1,9 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+# debhelper 13 does not run dh_installsysusers by default: create the redstonepanel group
+# and the minecraft user from debian/redstonepanel.sysusers
+execute_after_dh_installtmpfiles:
+	dh_installsysusers

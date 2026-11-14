@@ -1,0 +1,4 @@
+# Members of this group may sign in to the panel with their Linux password (as are sudo members).
+g redstonepanel -
+# Owner of the game server processes and files (/opt/minecraft-*).
+u minecraft - "Minecraft game servers" /nonexistent /usr/sbin/nologin

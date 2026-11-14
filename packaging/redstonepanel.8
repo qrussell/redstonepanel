@@ -1,0 +1,51 @@
+.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.0.0" "System Administration"
+.SH NAME
+redstonepanel \- manage the RedstonePanel Minecraft server panel
+.SH SYNOPSIS
+.B redstonepanel status
+.br
+.B redstonepanel add-user
+.I NAME
+.RB [ \-\-role " admin|user" ]
+.br
+.B redstonepanel reset-security
+.SH DESCRIPTION
+RedstonePanel is a web panel that deploys and manages Minecraft Java Edition and
+Bedrock Dedicated Server instances as systemd services. The panel itself runs as the
+.B redstonepanel
+systemd service, by default at
+.IR http://<server>:8080/ .
+This command performs administrative tasks and must be run as root.
+.SH COMMANDS
+.TP
+.B status
+Show whether the service is running, its address, the HTTPS and sign\-in mode, and the panel accounts.
+.TP
+.BI "add-user " NAME " \fR[\fB\-\-role admin\fR|\fBuser\fR]"
+Create a panel account (default role: admin). The password is asked for interactively,
+or read from the first line of standard input when it is not a terminal.
+.TP
+.B reset-security
+Recovery: switch the panel back to plain HTTP on port 8080 with sign\-in required, and restart it.
+.SH SIGNING IN
+Linux accounts in the
+.B sudo
+or
+.B redstonepanel
+group can sign in with their Linux password (checked through PAM) and are panel admins.
+Panel accounts are created with
+.B add-user
+or by an admin in the panel.
+.SH FILES
+.TP
+.I /var/lib/redstonepanel/
+Panel state: users.json (scrypt password hashes), settings.json, secret.key, tls/, templates and chat history.
+.TP
+.I /var/log/redstonepanel/panel.log
+Activity log shown in the panel's console.
+.TP
+.I /opt/minecraft-*/
+Game servers. Removing or purging the package never deletes them.
+.SH SEE ALSO
+.BR systemctl (1),
+.BR journalctl (1)

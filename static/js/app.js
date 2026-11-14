@@ -1,0 +1,1234 @@
+// Any API call that comes back 401 (not signed in / session expired) sends the browser to the login page
+(() => {
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+        const res = await realFetch(...args);
+        const url = String(args[0] && args[0].url ? args[0].url : args[0]);
+        if (res.status === 401 && !url.includes('/api/auth/login')) {
+            window.location.replace('/static/login.html');
+        }
+        return res;
+    };
+})();
+
+const ServerApp = {
+    activeServer: null,
+    servers: [],
+	rconOutputs: [],
+    sortOrder: localStorage.getItem('serverSortOrder') || 'name-asc',
+    currentUser: null,
+
+    async init() {
+        // Who is signed in? (a 401 here redirects to the login page)
+        const me = await fetch('/api/auth/me');
+        if (!me.ok) return;
+        this.currentUser = await me.json();
+        this.renderCurrentUser();
+
+        this.applyTheme();
+        this.fetchTemplates();
+        const sortDropdown = document.getElementById('server-sort');
+        if (sortDropdown) sortDropdown.value = this.sortOrder;
+        
+        await this.loadServers();
+    },
+
+    async loadServers() {
+        const res = await fetch('/api/servers');
+        this.servers = await res.json();
+        
+        this.applySort(); 
+        this.renderSidebar();
+        
+        if (this.activeServer) {
+            const srv = this.servers.find(s => s.name === this.activeServer.name);
+            if (srv) this.openWorkspace(srv);
+        }
+    },
+    
+    // --- Theming & Preferences ---
+    themeMode: localStorage.getItem('rp_themeMode') || 'dark',
+    themeColor: localStorage.getItem('rp_themeColor') || 'diamond',
+
+    applyTheme() {
+        if (this.themeMode === 'dark') {
+            document.body.classList.add('dark');
+        } else {
+            document.body.classList.remove('dark');
+        }
+        
+        document.documentElement.setAttribute('data-theme', this.themeColor);
+    },
+
+    openSettingsModal() {
+        const modal = document.getElementById('modal-overlay');
+        document.getElementById('modal-content').innerHTML = `
+            <h3 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Panel Settings</h3>
+            
+            <div class="mb-4">
+                <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Color Mode</label>
+                <select id="setting-mode" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
+                    <option value="dark" ${this.themeMode === 'dark' ? 'selected' : ''}>Dark Mode</option>
+                    <option value="light" ${this.themeMode === 'light' ? 'selected' : ''}>Light Mode</option>
+                </select>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Accent Palette</label>
+                <select id="setting-color" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
+                    <option value="diamond" ${this.themeColor === 'diamond' ? 'selected' : ''}>Diamond Blue</option>
+                    <option value="redstone" ${this.themeColor === 'redstone' ? 'selected' : ''}>Redstone Red</option>
+                    <option value="emerald" ${this.themeColor === 'emerald' ? 'selected' : ''}>Emerald Green</option>
+                    <option value="amethyst" ${this.themeColor === 'amethyst' ? 'selected' : ''}>Amethyst Purple</option>
+                </select>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="px-4 py-2 bg-gray-300 dark:bg-gray-700 text-gray-900 dark:text-white rounded transition">Cancel</button>
+                <button onclick="ServerApp.saveSettings()" class="px-4 py-2 bg-theme hover-bg-theme text-white rounded transition">Save Settings</button>
+            </div>
+        `;
+        modal.classList.remove('hidden');
+    },
+
+    saveSettings() {
+        const mode = document.getElementById('setting-mode').value;
+        const color = document.getElementById('setting-color').value;
+        
+        this.themeMode = mode;
+        this.themeColor = color;
+        
+        localStorage.setItem('rp_themeMode', mode);
+        localStorage.setItem('rp_themeColor', color);
+        
+        this.applyTheme();
+        document.getElementById('modal-overlay').classList.add('hidden');
+    },
+
+    changeSortOrder(order) {
+        this.sortOrder = order;
+        localStorage.setItem('serverSortOrder', order); 
+        this.applySort();
+        this.renderSidebar();
+    },
+
+    applySort() {
+        this.servers.sort((a, b) => {
+            if (this.sortOrder === 'name-asc') {
+                return a.name.localeCompare(b.name);
+            } else if (this.sortOrder === 'name-desc') {
+                return b.name.localeCompare(a.name);
+            } else if (this.sortOrder === 'status-online') {
+                if (a.status === b.status) return a.name.localeCompare(b.name);
+                return a.status === 'online' ? -1 : 1;
+            }
+            return 0;
+        });
+    },
+
+    renderSidebar() {
+        const list = document.getElementById('server-list');
+        list.innerHTML = '';
+
+        const javaServers = this.servers.filter(s => s.edition === 'Java');
+        const bedrockServers = this.servers.filter(s => s.edition === 'Bedrock');
+        const otherServers = this.servers.filter(s => s.edition !== 'Java' && s.edition !== 'Bedrock');
+
+        const renderGroup = (title, serversGroup) => {
+            if (serversGroup.length === 0) return;
+            
+            list.innerHTML += `<div class="text-xs font-bold text-gray-500 uppercase tracking-wider mt-4 mb-1 px-3">${title}</div>`;
+            
+            serversGroup.forEach(srv => {
+                const dot = srv.status === 'online' ? 'text-green-500' : 'text-red-500';
+                const isActive = this.activeServer && this.activeServer.name === srv.name ? 'bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
+                
+                list.innerHTML += `
+                    <div onclick="ServerApp.openWorkspace(${JSON.stringify(srv).replace(/"/g, '&quot;')})" 
+                         class="p-3 rounded cursor-pointer transition flex items-center gap-3 ${isActive}">
+                        <span class="${dot}">●</span>
+                        <div>
+                            <div class="font-bold text-gray-900 dark:text-gray-200">${srv.name}</div>
+                            <div class="text-xs text-gray-500">${srv.edition} • Port ${srv.port}</div>
+                        </div>
+                    </div>
+                `;
+            });
+        };
+
+        renderGroup('Java Edition', javaServers);
+        renderGroup('Bedrock Edition', bedrockServers);
+        renderGroup('Unknown / Other', otherServers);
+    },
+
+    async openWorkspace(srv) {
+        this.activeServer = srv;
+		this.chatHistoryIndex = -1;
+		// Clear previous command outputs so they don't bleed into the new server tab
+		this.rconOutputs = [];
+        
+		document.getElementById('workspace').classList.remove('hidden');
+        this.renderSidebar();
+
+        document.getElementById('ws-title').innerText = srv.name;
+        document.getElementById('ws-subtitle').innerText = srv.directory;
+        document.getElementById('ws-status').innerText = srv.status === 'online' ? '🟢' : '🔴';
+        
+        // Populate the live chat RCON port badge
+        const rconBadge = document.getElementById('chat-rcon-port');
+        if (rconBadge) rconBadge.innerText = srv.rcon_port;
+        
+        document.getElementById('overview-stats').innerHTML = `
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Status</p><p class="font-bold uppercase ${srv.status === 'online' ? 'text-green-500' : 'text-red-500'}">${srv.status}</p></div>
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Engine</p><p class="font-bold text-blue-600 dark:text-blue-400">${srv.edition}</p></div>
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Port (TCP/UDP)</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.port}</p></div>
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Max RAM</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.ram}</p></div>
+        `;
+        
+        // A search typed for the previous server shouldn't hide this one's properties
+        const propSearch = document.getElementById('prop-search');
+        if (propSearch) propSearch.value = '';
+
+        this.switchTab('overview');
+        this.switchConfigSubTab('visual');
+    },
+
+	chatInterval: null,
+	chatHistory: {}, // Object mapping server names to arrays
+	chatHistoryIndex: -1,
+	
+    switchTab(tabId) {
+        // Safely iterate all possible tabs to prevent null errors if a tab doesn't exist
+        ['overview', 'properties', 'maintenance', 'chat', 'world'].forEach(t => {
+            const tab = document.getElementById(`tab-${t}`);
+            const btn = document.getElementById(`tab-btn-${t}`);
+            if (tab) tab.classList.add('hidden-tab');
+            if (btn) btn.classList.remove('tab-active');
+        });
+        
+        const activeTab = document.getElementById(`tab-${tabId}`);
+        const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+        if (activeTab) activeTab.classList.remove('hidden-tab');
+        if (activeBtn) activeBtn.classList.add('tab-active');
+        
+        // Clear chat polling if we navigate away
+        if (this.chatInterval) {
+            clearInterval(this.chatInterval);
+            this.chatInterval = null;
+        }
+        
+        if (tabId === 'properties') this.switchConfigSubTab('visual');
+        if (tabId === 'maintenance') this.refreshApplyTemplates();
+        if (tabId === 'world') this.loadWorldName();
+        if (tabId === 'chat') {
+            this.loadChat();
+            this.chatInterval = setInterval(() => this.loadChat(), 3000); // Poll every 3 seconds
+        }
+    },
+
+    async clearChat() {
+        if (!this.activeServer) return;
+        this.rconOutputs = [];
+        this.chatHistoryIndex = -1;
+        // Tell the backend, otherwise the next 3-second poll just repaints the old history
+        await fetch(`/api/servers/${this.activeServer.name}/chat/clear`, { method: 'POST' });
+        document.getElementById('chat-history').innerHTML = '<p class="text-gray-500 italic">Chat cleared...</p>';
+    },
+
+    escapeHtml(t) {
+        return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    },
+
+    async loadChat() {
+        if (!this.activeServer) return;
+        const serverName = this.activeServer.name;
+        const box = document.getElementById('chat-history');
+        let data;
+        try {
+            const res = await fetch(`/api/servers/${serverName}/chat`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            data = await res.json();
+        } catch (e) {
+            box.innerHTML = `<p class="text-red-500 italic">Could not load chat history (${this.escapeHtml(e.message)}).</p>`;
+            return;
+        }
+        // The user may have switched servers while this request was in flight
+        if (!this.activeServer || this.activeServer.name !== serverName) return;
+        
+        // Increased threshold to 50px to account for sub-pixel rendering and line-heights
+        const isScrolledToBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 50;
+        
+        if (!data.messages || data.messages.length === 0) {
+            box.innerHTML = '<p class="text-gray-500 italic">No recent messages...</p>';
+            return;
+        }
+        
+        // Player-typed text must be escaped before it goes into innerHTML
+        const esc = t => this.escapeHtml(t);
+        let htmlContent = data.messages.map(m => {
+            let colorClass = 'text-gray-800 dark:text-gray-300';
+            if (m.startsWith('[Server]')) colorClass = 'text-theme font-bold';
+            else if (m.startsWith('* ')) colorClass = 'text-gray-500 dark:text-gray-400 italic';
+            return `<div class="${colorClass}">${esc(m)}</div>`;
+        }).join('');
+        
+        // Append RCON command outputs at the bottom of the chat box
+        if (this.rconOutputs && this.rconOutputs.length > 0) {
+            htmlContent += this.rconOutputs.map(out => `<div class="text-blue-600 dark:text-blue-400 font-bold whitespace-pre-wrap mt-3 border-l-2 border-blue-500 pl-2">${esc(out)}</div>`).join('');
+        }
+        
+        box.innerHTML = htmlContent;
+        
+        // Wait for the browser to paint the new DOM nodes before reading the new scrollHeight
+        if (isScrolledToBottom) {
+            requestAnimationFrame(() => {
+                box.scrollTop = box.scrollHeight;
+            });
+        }
+    },
+
+    handleChatKey(event) {
+		const input = document.getElementById('chat-input');
+		if (!this.activeServer) return;
+		
+		const serverName = this.activeServer.name;
+		// Initialize the array for this server if it doesn't exist yet
+		if (!this.chatHistory[serverName]) this.chatHistory[serverName] = [];
+		
+		if (event.key === 'Enter') {
+			this.sendChat();
+		} else if (event.key === 'ArrowUp') {
+			event.preventDefault(); 
+			if (this.chatHistory[serverName].length > 0) {
+				this.chatHistoryIndex = Math.min(this.chatHistoryIndex + 1, this.chatHistory[serverName].length - 1);
+				input.value = this.chatHistory[serverName][this.chatHistoryIndex];
+			}
+		} else if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			if (this.chatHistoryIndex > 0) {
+				this.chatHistoryIndex -= 1;
+				input.value = this.chatHistory[serverName][this.chatHistoryIndex];
+			} else if (this.chatHistoryIndex === 0) {
+				this.chatHistoryIndex = -1;
+				input.value = '';
+			}
+		}
+	},
+
+    async sendChat() {
+		const input = document.getElementById('chat-input');
+		const msg = input.value.trim();
+		if (!msg || !this.activeServer) return;
+		
+		const serverName = this.activeServer.name;
+		if (!this.chatHistory[serverName]) this.chatHistory[serverName] = [];
+
+		// Save to history and reset index
+		if (this.chatHistory[serverName][0] !== msg) {
+			this.chatHistory[serverName].unshift(msg);
+			if (this.chatHistory[serverName].length > 50) this.chatHistory[serverName].pop();
+		}
+		this.chatHistoryIndex = -1;
+
+        // 1. Optimistic UI Update: Display the message instantly
+        const box = document.getElementById('chat-history');
+        if (box.innerHTML.includes('No recent messages') || box.innerHTML.includes('Loading chat')) {
+            box.innerHTML = '';
+        }
+
+        // Update this line inside sendChat()
+		// Match the format the history endpoint returns, so the line doesn't change on the next poll
+		const displayMsg = msg.startsWith('/') ? `<span class="text-blue-400">[Console]</span> ${this.escapeHtml(msg)}` : `[Server] ${this.escapeHtml(msg)}`;
+		box.innerHTML += `<div class="text-theme font-bold">${displayMsg}</div>`;
+        box.scrollTop = box.scrollHeight;
+        input.value = ''; 
+
+        // 2. Send the payload to the backend API
+        const res = await fetch(`/api/servers/${this.activeServer.name}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg })
+        });
+
+        let data;
+        try {
+            data = await res.json();
+        } catch (e) {
+            data = { status: 'error', message: `Send failed (HTTP ${res.status}).` };
+        }
+    
+		if (data.status === 'success' && data.response) {
+			// Use .includes() to catch the command even if a pfid is prepended
+			if (!data.response.includes('tellraw')) {
+				this.rconOutputs.push(`[Console Output]\n${data.response}`);
+				if (this.rconOutputs.length > 5) this.rconOutputs.shift();
+			}
+		} else if (data.status === 'info' || data.status === 'error') {
+			alert(data.message);
+		}
+
+		this.loadChat(); // Refresh instantly to paint the output to the screen
+    },
+
+    switchConfigSubTab(subId) {
+		['visual', 'raw', 'players', 'permissions'].forEach(t => {
+			document.getElementById(`config-${t}`).classList.add('hidden-tab');
+			document.getElementById(`subtab-${t}`).classList.remove('subtab-active');
+			document.getElementById(`subtab-${t}`).classList.add('text-gray-600', 'dark:text-gray-400');
+		});
+		document.getElementById(`config-${subId}`).classList.remove('hidden-tab');
+		document.getElementById(`subtab-${subId}`).classList.add('subtab-active');
+		document.getElementById(`subtab-${subId}`).classList.remove('text-gray-600', 'dark:text-gray-400');
+		
+		if (subId === 'visual') this.loadProperties(this.activeServer.name);
+		if (subId === 'raw') this.loadRawProperties();
+		if (subId === 'players') this.loadPlayers();
+		if (subId === 'permissions') {
+			// Dynamically change the editor title based on edition
+			const titleEl = document.getElementById('permissions-editor-title');
+			if (titleEl) {
+				titleEl.innerText = this.activeServer.edition === 'Java' ? 'ops.json Editor' : 'permissions.json Editor';
+			}
+			this.loadRawPermissions();
+		}
+	},
+
+    async loadRawPermissions() {
+        const res = await fetch(`/api/servers/${this.activeServer.name}/permissions/raw`);
+        const data = await res.json();
+        document.getElementById('permissions-editor').value = data.content;
+    },
+
+    async saveRawPermissions() {
+        const content = document.getElementById('permissions-editor').value;
+        await fetch(`/api/servers/${this.activeServer.name}/permissions/raw`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+        });
+        alert("Permissions file saved. Restart server to apply.");
+    },
+
+    async loadProperties(serverName) {
+        const res = await fetch(`/api/servers/${serverName}/properties`);
+        const props = await res.json();
+        const editor = document.getElementById('properties-editor');
+        editor.innerHTML = '';
+
+        const enums = {
+            'difficulty': ['peaceful', 'easy', 'normal', 'hard'],
+            'gamemode': ['survival', 'creative', 'adventure', 'spectator']
+        };
+
+        // Values go into HTML attributes, so quotes etc. must be escaped (e.g. a motd containing ")
+        const esc = t => this.escapeHtml(t);
+        let html = '';
+        for (const [key, value] of Object.entries(props)) {
+            let inputHtml = '';
+            const inputClasses = 'prop-input w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white';
+
+            if (value === 'true' || value === 'false') {
+                inputHtml = `<select data-key="${esc(key)}" class="${inputClasses}">
+                                <option value="true" ${value === 'true' ? 'selected' : ''}>True</option>
+                                <option value="false" ${value === 'false' ? 'selected' : ''}>False</option>
+                            </select>`;
+            } else if (enums[key]) {
+                const options = enums[key].map(opt => `<option value="${opt}" ${value === opt ? 'selected' : ''}>${opt}</option>`).join('');
+                inputHtml = `<select data-key="${esc(key)}" class="${inputClasses}">${options}</select>`;
+            } else if (!isNaN(value) && value !== '') {
+                inputHtml = `<input type="number" data-key="${esc(key)}" value="${esc(value)}" class="${inputClasses}">`;
+            } else {
+                inputHtml = `<input type="text" data-key="${esc(key)}" value="${esc(value)}" class="${inputClasses}">`;
+            }
+
+            html += `
+                <div class="prop-row bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 flex justify-between items-center gap-4 shadow-sm" data-key="${esc(key)}">
+                    <div class="flex-1"><label class="text-sm font-bold text-gray-700 dark:text-gray-300">${esc(key)}</label></div>
+                    <div class="w-1/2">${inputHtml}</div>
+                </div>`;
+        }
+        editor.innerHTML = html;
+        this.filterProperties();   // keep the current search applied after a reload or save
+    },
+
+    // Live filter for the Visual Editor. Matches the property name or its current value;
+    // several words must all match ("rcon port"). Hidden rows stay in the page, so Save still sends everything.
+    filterProperties() {
+        const search = document.getElementById('prop-search');
+        const rows = document.querySelectorAll('#properties-editor .prop-row');
+        const terms = (search ? search.value : '').toLowerCase().split(/\s+/).filter(Boolean);
+        let shown = 0;
+        rows.forEach(row => {
+            const input = row.querySelector('.prop-input');
+            const haystack = `${row.dataset.key} ${input ? input.value : ''}`.toLowerCase();
+            const match = terms.every(t => haystack.includes(t));
+            row.style.display = match ? '' : 'none';
+            if (match) shown++;
+        });
+        const count = document.getElementById('prop-search-count');
+        if (count) count.innerText = terms.length ? `${shown} of ${rows.length}` : `${rows.length} properties`;
+        const empty = document.getElementById('prop-search-empty');
+        if (empty) empty.classList.toggle('hidden', !(terms.length && rows.length && shown === 0));
+    },
+    
+    async saveProperties() {
+        const inputs = document.querySelectorAll('.prop-input');
+        const updatedProps = {};
+        inputs.forEach(input => updatedProps[input.getAttribute('data-key')] = input.value);
+        await fetch(`/api/servers/${this.activeServer.name}/properties`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ properties: updatedProps })
+        });
+        alert("Properties saved. Restart server to apply.");
+    },
+
+    async loadRawProperties() {
+        const res = await fetch(`/api/servers/${this.activeServer.name}/properties/raw`);
+        const data = await res.json();
+        document.getElementById('raw-editor').value = data.content;
+    },
+
+    async saveRawProperties() {
+        const content = document.getElementById('raw-editor').value;
+        await fetch(`/api/servers/${this.activeServer.name}/properties/raw`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+        });
+        alert("Raw file saved.");
+    },
+
+    // Consolidated list: players seen in the logs + everyone in ops.json / permissions.json
+    async loadPlayers() {
+		const serverName = this.activeServer.name;
+		const list = document.getElementById('player-list');
+		list.innerHTML = "<p class='text-gray-400'>Loading players...</p>";
+		let data;
+		try {
+			const res = await fetch(`/api/servers/${serverName}/players`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			data = await res.json();
+		} catch (e) {
+			list.innerHTML = `<p class='text-red-500'>Could not load players (${this.escapeHtml(e.message)}).</p>`;
+			return;
+		}
+		if (!this.activeServer || this.activeServer.name !== serverName) return;
+
+		const esc = t => this.escapeHtml(t);
+		const file = data.file || 'permissions file';
+		const help = document.getElementById('player-list-help');
+		if (help) help.innerText = `Players seen in the server logs, plus everyone with a role in ${file}.`;
+
+		if (!data.players || data.players.length === 0) {
+			list.innerHTML = `<p class='text-gray-400'>No players found in the logs or in ${esc(file)}.</p>`;
+			return;
+		}
+
+		const roles = data.roles || ['operator', 'member'];
+		const label = r => r.charAt(0).toUpperCase() + r.slice(1);
+		const badge = (text, cls, title) => `<span title="${esc(title)}" class="text-xs px-2 py-0.5 rounded border ${cls}">${esc(text)}</span>`;
+
+		list.innerHTML = data.players.map(p => {
+			const badges = [
+				p.in_log ? badge('seen in logs', 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400', 'This player appears in the server logs') : '',
+				p.in_file ? badge(`in ${file}`, 'border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300', `This player has an entry in ${file}`) : '',
+			].join(' ');
+			const options = roles.map(r => `<option value="${esc(r)}" ${p.role === r ? 'selected' : ''}>${esc(label(r))}</option>`).join('');
+			const idLine = p.id ? `<div class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">${esc(p.id)}</div>` : '';
+			// Without a name we can't write a proper entry, so the role can only be changed in the raw editor
+			const disabled = p.name_known ? '' : 'disabled title="Name unknown: edit this entry in Permissions (Raw)"';
+			return `
+			<div class="flex justify-between items-center gap-4 p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm">
+				<div class="min-w-0">
+					<div class="flex items-center gap-2 flex-wrap"><span class="font-bold text-gray-900 dark:text-white">${esc(p.name)}</span>${badges}</div>
+					${idLine}
+				</div>
+				<select data-player="${esc(p.name)}" data-player-id="${esc(p.id || '')}" data-prev="${esc(p.role)}" ${disabled}
+					onchange="ServerApp.setPlayerRole(this)" class="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 p-1 rounded text-sm text-gray-800 dark:text-gray-300">
+					${options}
+				</select>
+			</div>`;
+		}).join('');
+	},
+
+    async setPlayerRole(select) {
+        const player = select.dataset.player;
+        const role = select.value;
+        select.disabled = true;
+        let ok = false, detail = '';
+        try {
+            const res = await fetch(`/api/servers/${this.activeServer.name}/players/role`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player, role, player_id: select.dataset.playerId || null })
+            });
+            ok = res.ok;
+            if (!ok) {
+                detail = `HTTP ${res.status}`;
+                try { detail = (await res.json()).detail || detail; } catch (e) {}
+            }
+        } catch (e) {
+            detail = e.message;
+        }
+        if (!ok) {
+            select.value = select.dataset.prev;   // put the dropdown back to what is really in the file
+            select.disabled = false;
+            return alert(`Role not changed: ${detail}`);
+        }
+        alert(`${player} is now ${role}. Restart the server if required.`);
+        this.loadPlayers();   // refresh badges/IDs from the file
+    },
+
+    templates: [],
+    editingTemplateId: null,
+
+    async fetchTemplates() {
+        const res = await fetch('/api/templates');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        this.templates = await res.json();
+    },
+
+    // Templates only fit servers of the same edition ("Java" / "Bedrock")
+    templatesFor(edition) {
+        const ed = String(edition || '').toLowerCase();
+        return this.templates.filter(t => String(t.edition || '').toLowerCase() === ed);
+    },
+
+    templateOptionsHtml(edition, firstLabel) {
+        const esc = t => this.escapeHtml(String(t));
+        return `<option value="">${esc(firstLabel)}</option>` +
+            this.templatesFor(edition).map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+    },
+
+    // Fills the Maintenance tab's "Apply Template" dropdown for the open server
+    async refreshApplyTemplates() {
+        const select = document.getElementById('apply-temp-select');
+        if (!select || !this.activeServer) return;
+        const serverName = this.activeServer.name;
+        select.innerHTML = '<option value="">Loading...</option>';
+        try {
+            await this.fetchTemplates();
+        } catch (e) {
+            select.innerHTML = '<option value="">Could not load templates</option>';
+            return;
+        }
+        // The user may have switched servers while the request was in flight
+        if (!this.activeServer || this.activeServer.name !== serverName) return;
+
+        const edition = this.activeServer.edition;
+        const count = this.templatesFor(edition).length;
+        select.innerHTML = count
+            ? this.templateOptionsHtml(edition, `Select a ${edition} template...`)
+            : this.templateOptionsHtml(edition, `No ${edition} templates yet - save one first`);
+    },
+
+    async saveAsTemplate() {
+        const name = document.getElementById('save-temp-name').value.trim();
+        if (!name) return alert("Enter a template name.");
+        const res = await fetch(`/api/servers/${this.activeServer.name}/template/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        if (!res.ok) return alert(`Could not save template (HTTP ${res.status}).`);
+        alert("Template saved!");
+        document.getElementById('save-temp-name').value = '';
+        await this.refreshApplyTemplates();
+    },
+
+    async applyTemplate() {
+        const tempId = document.getElementById('apply-temp-select').value;
+        if (!tempId) return alert("Select a template.");
+        if (!confirm("This will overwrite existing properties and permissions (ports are preserved). Continue?")) return;
+
+        const res = await fetch(`/api/servers/${this.activeServer.name}/template/apply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ template_id: tempId })
+        });
+        if (!res.ok) {
+            let detail = `HTTP ${res.status}`;
+            try { detail = (await res.json()).detail || detail; } catch (e) {}
+            return alert(`Template not applied: ${detail}`);
+        }
+        alert("Template applied. Restart the server for changes to take effect.");
+        this.loadProperties(this.activeServer.name);
+    },
+
+    async openTemplateManager() {
+        await this.fetchTemplates();
+        document.getElementById('template-workspace').classList.remove('hidden');
+        this.renderTemplateSidebar();
+        document.getElementById('template-editor-main').classList.add('hidden');
+    },
+
+    renderTemplateSidebar() {
+        const aside = document.getElementById('template-list-aside');
+        aside.innerHTML = '<h3 class="font-bold text-gray-500 mb-2">Saved Templates</h3>';
+        
+        this.templates.forEach(t => {
+            const isActive = this.editingTemplateId === t.id ? 'bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
+            aside.innerHTML += `
+                <div onclick="ServerApp.openTemplateEditor('${t.id}')" class="p-3 mb-1 rounded cursor-pointer transition ${isActive}">
+                    <div class="font-bold text-gray-900 dark:text-gray-200">${t.name}</div>
+                    <div class="text-xs text-gray-500">${t.edition} Template</div>
+                </div>
+            `;
+        });
+    },
+
+    openTemplateEditor(id) {
+        this.editingTemplateId = id;
+        this.renderTemplateSidebar();
+        
+        const temp = this.templates.find(t => t.id === id);
+        if (!temp) return;
+        
+        document.getElementById('template-editor-main').classList.remove('hidden');
+        document.getElementById('editing-temp-title').innerText = `Edit Template: ${temp.name}`;
+        
+        // Build properties editor
+        const editor = document.getElementById('temp-properties-editor');
+        editor.innerHTML = '';
+        const inputClasses = 'temp-prop-input w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white';
+        
+        for (const [key, value] of Object.entries(temp.properties)) {
+            let inputHtml = `<input type="text" data-key="${key}" value="${value}" class="${inputClasses}">`;
+            editor.innerHTML += `
+                <div class="bg-white dark:bg-gray-800 p-3 rounded border border-gray-200 dark:border-gray-700 flex justify-between items-center gap-4 shadow-sm">
+                    <div class="flex-1"><label class="text-xs font-bold text-gray-700 dark:text-gray-300">${key}</label></div>
+                    <div class="w-1/2">${inputHtml}</div>
+                </div>`;
+        }
+        
+        // Build permissions editor
+        document.getElementById('temp-permissions-editor').value = temp.permissions;
+    },
+
+    async saveTemplateEdits() {
+        if (!this.editingTemplateId) return;
+        
+        const inputs = document.querySelectorAll('.temp-prop-input');
+        const updatedProps = {};
+        inputs.forEach(input => updatedProps[input.getAttribute('data-key')] = input.value);
+        const perms = document.getElementById('temp-permissions-editor').value;
+        
+        await fetch(`/api/templates/${this.editingTemplateId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ properties: updatedProps, permissions: perms })
+        });
+        alert("Template updated globally.");
+        await this.fetchTemplates();
+    },
+
+    async deleteTemplate() {
+        if (!this.editingTemplateId) return;
+        if (!confirm("Delete this template permanently?")) return;
+        await fetch(`/api/templates/${this.editingTemplateId}`, { method: 'DELETE' });
+        this.editingTemplateId = null;
+        this.openTemplateManager();
+    },
+
+    async openDeployModal() {
+        await this.fetchTemplates(); // Ensure templates are loaded for the dropdown
+        const modal = document.getElementById('modal-overlay');
+        
+        // Only templates for the chosen edition; the list follows the edition dropdown
+        const templateOptions = this.templateOptionsHtml('java', 'None (Standard Defaults)');
+
+        document.getElementById('modal-content').innerHTML = `
+            <h3 class="text-xl font-bold mb-4">Deploy or Import Server</h3>
+
+            <div class="mb-4">
+                <label class="block text-sm text-gray-400 mb-1">Engine Edition</label>
+                <select id="deploy-edition" onchange="document.getElementById('deploy-template').innerHTML = ServerApp.templateOptionsHtml(this.value, 'None (Standard Defaults)')" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                    <option value="java">Java Edition (Auto-Port)</option>
+                    <option value="bedrock">Bedrock Edition (Auto-Port)</option>
+                </select>
+                
+                <label class="block text-sm text-gray-400 mb-1">Base Template (Optional)</label>
+                <select id="deploy-template" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                    ${templateOptions}
+                </select>
+                
+                <button onclick="ServerApp.executeDeploy()" class="mt-2 w-full bg-green-600 hover:bg-green-700 py-2 rounded text-white font-bold transition">Deploy Fresh Server</button>
+            </div>
+            <hr class="border-gray-700 my-4" />
+            <div class="mb-6">
+                <label class="block text-sm text-gray-400 mb-1">Import Existing (.zip)</label>
+                <input type="file" id="import-file" accept=".zip" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white text-sm mb-2" />
+                <button onclick="ServerApp.executeImport()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-white font-bold transition">Upload & Import</button>
+            </div>
+            <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white transition">Cancel</button>
+        `;
+        modal.classList.remove('hidden');
+    },
+
+    async executeDeploy() {
+        const edition = document.getElementById('deploy-edition').value;
+        const tempId = document.getElementById('deploy-template').value;
+        document.getElementById('modal-overlay').classList.add('hidden');
+        
+        this.toggleConsole(true);
+        const payload = { edition: edition };
+        if (tempId) payload.template_id = tempId;
+
+        const res = await fetch('/api/servers/deploy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+            let detail = `HTTP ${res.status}`;
+            try { detail = (await res.json()).detail || detail; } catch (e) {}
+            alert(`Deploy failed: ${detail}`);
+        }
+        this.loadServers();
+    },
+
+    exportServer() {
+        if (!this.activeServer) return;
+        window.location.href = `/api/servers/${this.activeServer.name}/export`;
+    },
+
+    async executeImport() {
+        const fileInput = document.getElementById('import-file');
+        if (!fileInput.files.length) return alert("Select a .zip file first.");
+        
+        const formData = new FormData();
+        formData.append("file", fileInput.files[0]);
+
+        document.getElementById('modal-overlay').classList.add('hidden');
+        this.toggleConsole(true);
+        
+        await fetch('/api/servers/import', {
+            method: 'POST',
+            body: formData
+        });
+        
+        this.loadServers();
+    },
+    
+    logInterval: null,
+
+    toggleConsole(forceOpen = false) {
+        const dock = document.getElementById('console-dock');
+        if (forceOpen) {
+            dock.classList.remove('translate-y-full');
+            this.startLogPolling();
+        } else {
+            dock.classList.add('translate-y-full');
+            this.stopLogPolling();
+        }
+    },
+
+    startLogPolling() {
+        if (this.logInterval) return;
+        this.fetchLogs();
+        this.logInterval = setInterval(() => this.fetchLogs(), 1000);
+    },
+
+    stopLogPolling() {
+        clearInterval(this.logInterval);
+        this.logInterval = null;
+    },
+
+    async fetchLogs() {
+        try {
+            const res = await fetch('/api/logs');
+            const data = await res.json();
+            const out = document.getElementById('console-output');
+            
+            const isScrolledToBottom = out.scrollHeight - out.clientHeight <= out.scrollTop + 10;
+            out.innerText = data.content;
+            if (isScrolledToBottom) {
+                out.scrollTop = out.scrollHeight;
+            }
+        } catch (e) {
+            console.error("Log fetch failed");
+        }
+    },
+
+    async sendPower(action) {
+        if (!this.activeServer) return;
+        this.toggleConsole(true);
+        await fetch(`/api/servers/${this.activeServer.name}/action`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action })
+        });
+        this.loadServers();
+    },
+
+    async updateServer() {
+        if(confirm(`Update ${this.activeServer.name} to the latest version? Server will restart.`)) {
+            this.toggleConsole(true);
+            await fetch(`/api/servers/${this.activeServer.name}/update`, { method: 'POST' });
+            this.loadServers();
+        }
+    },
+
+    async uninstallServer(keepWorld) {
+        if(confirm(`WARNING: ${keepWorld ? 'Uninstall' : 'Completely purge'} ${this.activeServer.name}?`)) {
+            this.toggleConsole(true);
+            await fetch(`/api/servers/${this.activeServer.name}?keep_world=${keepWorld}`, { method: 'DELETE' });
+            this.activeServer = null;
+            document.getElementById('workspace').classList.add('hidden');
+            this.loadServers();
+        }
+    },
+	// Add inside your ServerApp object:
+
+	exportWorld() {
+		if (!this.activeServer) return;
+		// Direct browser navigation forces the browser to download the payload as a file
+		window.location.href = `/api/servers/${this.activeServer.name}/worlds/export`;
+	},
+
+	currentWorldName: null,
+
+	// Shows the active world (level-name in server.properties) above the rename box
+	async loadWorldName() {
+		const label = document.getElementById('current-world-name');
+		if (!label || !this.activeServer) return;
+		const serverName = this.activeServer.name;
+		this.currentWorldName = null;
+		label.innerText = 'Loading...';
+		try {
+			const res = await fetch(`/api/servers/${serverName}/properties`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const props = await res.json();
+			if (!this.activeServer || this.activeServer.name !== serverName) return;
+			// The server falls back to "world" when level-name is not set
+			this.currentWorldName = props['level-name'] || 'world';
+			label.innerText = this.currentWorldName;
+		} catch (e) {
+			label.innerText = 'Unknown (could not read server.properties)';
+		}
+	},
+
+	async renameWorld() {
+		const newNameInput = document.getElementById('new-world-name');
+		const newName = newNameInput.value.trim();
+
+		if (!newName) return alert("Please enter a new world name.");
+		if (newName === this.currentWorldName) return alert("That is already the current world name.");
+
+		const from = this.currentWorldName ? `from '${this.currentWorldName}' ` : '';
+		if(confirm(`Are you sure you want to rename the world ${from}to '${newName}'? The server will temporarily stop.`)) {
+			this.toggleConsole(true);
+			const res = await fetch(`/api/servers/${this.activeServer.name}/worlds/rename`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ new_name: newName })
+			});
+			if (!res.ok) {
+				let detail = `HTTP ${res.status}`;
+				try { detail = (await res.json()).detail || detail; } catch (e) {}
+				return alert(`World not renamed: ${detail}`);
+			}
+			newNameInput.value = '';
+			alert("World renamed successfully.");
+			this.loadWorldName();
+			this.loadServers();
+		}
+	},
+
+	// --- Signed-in user, sign out, panel user management ---
+	renderCurrentUser() {
+		const u = this.currentUser;
+		if (!u) return;
+		const trusted = u.source === 'trusted';   // on a trusted LAN, not signed in
+		document.getElementById('current-user-name').innerText = trusted ? 'Local network' : u.username;
+		document.getElementById('current-user-detail').innerText = trusted
+			? 'Not signed in · user'
+			: `${u.source === 'linux' ? 'Linux account' : 'Panel account'} · ${u.role}`;
+		const signOut = document.getElementById('btn-sign-out');
+		signOut.innerText = trusted ? 'Sign in' : 'Sign out';
+		signOut.onclick = trusted ? () => window.location.assign('/static/login.html') : () => this.logout();
+		document.getElementById('btn-manage-users').classList.toggle('hidden', u.role !== 'admin');
+		document.getElementById('btn-panel-settings').classList.toggle('hidden', u.role !== 'admin');
+		document.getElementById('btn-change-password').classList.toggle('hidden', u.source !== 'panel');
+		const banner = document.getElementById('https-error-banner');
+		banner.innerText = u.https_error ? `⚠️ ${u.https_error} Check Panel Settings.` : '';
+		banner.classList.toggle('hidden', !u.https_error);
+	},
+
+	// --- Panel Settings: connection (HTTP/HTTPS) and sign-in (admins only) ---
+	async openPanelSettings() {
+		const overlay = document.getElementById('settings-overlay');
+		const box = document.getElementById('settings-content');
+		box.innerHTML = '<p class="text-gray-500">Loading settings...</p>';
+		overlay.classList.remove('hidden');
+		const res = await fetch('/api/settings');
+		if (!res.ok) { box.innerHTML = `<p class="text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = await res.json();
+		const s = d.settings, esc = t => this.escapeHtml(t);
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const radio = (name, value, current, title, desc) => `
+			<label class="flex gap-3 p-3 rounded border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900">
+				<input type="radio" name="${name}" value="${value}" ${current === value ? 'checked' : ''} onchange="ServerApp.updateSettingsForm()" class="mt-1">
+				<span><span class="font-bold text-gray-900 dark:text-white">${title}</span><br><span class="text-xs text-gray-500 dark:text-gray-400">${desc}</span></span>
+			</label>`;
+		const now = d.runtime.scheme ? `${d.runtime.scheme.toUpperCase()} on port ${d.runtime.port}` : 'unknown (not started by run.py)';
+		const ss = d.self_signed;
+
+		box.innerHTML = `
+			<div class="flex justify-between items-start mb-4">
+				<div>
+					<h3 class="text-xl font-bold text-gray-900 dark:text-white">Panel Settings</h3>
+					<p class="text-xs text-gray-500 dark:text-gray-400">Currently serving: <b>${esc(now)}</b></p>
+				</div>
+				<button onclick="ServerApp.closePanelSettings()" class="text-gray-500 hover:text-gray-900 dark:hover:text-white text-xl leading-none">✕</button>
+			</div>
+			${d.runtime.https_error ? `<p class="text-sm p-2 mb-4 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200">⚠️ ${esc(d.runtime.https_error)}</p>` : ''}
+
+			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
+			<div class="space-y-2 mb-3">
+				${radio('https_mode', 'off', s.https_mode, 'HTTP (simple)', 'Unencrypted. Fine on a home network you trust.')}
+				${radio('https_mode', 'self_signed', s.https_mode, 'HTTPS with a self-signed certificate', 'Encrypted. Browsers warn unless each device imports the panel\'s CA certificate.')}
+				${radio('https_mode', 'custom', s.https_mode, 'HTTPS with my own certificate', 'For a real domain name, e.g. a Let\'s Encrypt certificate from certbot.')}
+			</div>
+			<div class="grid grid-cols-2 gap-3 mb-3">
+				<label class="text-xs text-gray-500 dark:text-gray-400">HTTP port<input id="set-http-port" type="number" min="1" max="65535" value="${esc(s.http_port)}" class="${field} mt-1"></label>
+				<label class="text-xs text-gray-500 dark:text-gray-400" id="set-https-port-wrap">HTTPS port<input id="set-https-port" type="number" min="1" max="65535" value="${esc(s.https_port)}" class="${field} mt-1"></label>
+			</div>
+			<p id="set-redirect-note" class="text-xs text-gray-500 dark:text-gray-400 mb-3">While HTTPS is on, the HTTP port only redirects to HTTPS.</p>
+			<div id="set-custom-cert" class="grid grid-cols-1 gap-2 mb-3">
+				<label class="text-xs text-gray-500 dark:text-gray-400">Certificate file (full chain, PEM)<input id="set-cert-file" value="${esc(s.cert_file)}" placeholder="/etc/letsencrypt/live/example.com/fullchain.pem" class="${field} mt-1 font-mono"></label>
+				<label class="text-xs text-gray-500 dark:text-gray-400">Private key file (PEM)<input id="set-key-file" value="${esc(s.key_file)}" placeholder="/etc/letsencrypt/live/example.com/privkey.pem" class="${field} mt-1 font-mono"></label>
+			</div>
+			<div id="set-self-signed-info" class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+				${ss ? `CA certificate: expires ${esc(ss.expires || '?')} · SHA-256 <span class="font-mono break-all">${esc(ss.sha256 || '?')}</span> · <a href="/api/settings/ca.crt" class="underline text-theme">Download to import on your devices</a>`
+				     : 'A certificate is created automatically when you save.'}
+			</div>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">Publishing the panel on the internet? Put a reverse proxy (e.g. Caddy or nginx with a real domain) in front of it instead of forwarding the panel's port directly.</p>
+
+			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Sign-in</h4>
+			<div class="space-y-2 mb-3">
+				${radio('login_mode', 'required', s.login_mode, 'Always required (recommended)', 'Everyone signs in with a Linux or panel account.')}
+				${radio('login_mode', 'trusted_networks', s.login_mode, 'Not required on the local network', 'Devices on the networks below can manage servers without signing in. Users and these settings still need an admin sign-in.')}
+			</div>
+			<div id="set-trusted" class="mb-3">
+				<label class="text-xs text-gray-500 dark:text-gray-400">Trusted networks (private ranges only, one per line)
+					<textarea id="set-trusted-networks" rows="4" class="${field} mt-1 font-mono">${esc(s.trusted_networks.join('\n'))}</textarea></label>
+				<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Your address right now: <b>${esc(d.your_ip || '?')}</b>. Default: all private ranges (${esc(d.defaults.trusted_networks.join(', '))}).</p>
+				<label class="text-xs text-gray-500 dark:text-gray-400 block mt-3">Extra host names for this server (optional, one per line)
+					<textarea id="set-extra-hosts" rows="2" placeholder="minecraft.lan" class="${field} mt-1 font-mono">${esc(s.extra_hosts.join('\n'))}</textarea></label>
+				<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Without signing in, the panel only answers to its own IP addresses and host name. Add any other local name you use to reach it.</p>
+				<p class="text-xs text-yellow-700 dark:text-yellow-300 mt-2">⚠️ Don't use this if the panel sits behind a reverse proxy on the same network: everyone coming through the proxy would look local. (Requests carrying proxy headers are never trusted.)</p>
+			</div>
+
+			<p id="set-error" class="hidden text-sm text-red-500 mb-3"></p>
+			<div class="flex gap-2">
+				<button onclick="ServerApp.closePanelSettings()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>
+				<button id="set-save" onclick="ServerApp.savePanelSettings()" class="flex-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Save</button>
+			</div>`;
+		this.updateSettingsForm();
+	},
+
+	// Show only the fields that apply to the chosen options
+	updateSettingsForm() {
+		const mode = (document.querySelector('input[name="https_mode"]:checked') || {}).value;
+		const login = (document.querySelector('input[name="login_mode"]:checked') || {}).value;
+		document.getElementById('set-https-port-wrap').classList.toggle('hidden', mode === 'off');
+		document.getElementById('set-redirect-note').classList.toggle('hidden', mode === 'off');
+		document.getElementById('set-custom-cert').classList.toggle('hidden', mode !== 'custom');
+		document.getElementById('set-self-signed-info').classList.toggle('hidden', mode !== 'self_signed');
+		document.getElementById('set-trusted').classList.toggle('hidden', login !== 'trusted_networks');
+	},
+
+	closePanelSettings() {
+		document.getElementById('settings-overlay').classList.add('hidden');
+	},
+
+	async savePanelSettings() {
+		const val = id => document.getElementById(id).value;
+		const lines = id => val(id).split(/[\s,]+/).map(x => x.trim()).filter(Boolean);
+		const body = {
+			https_mode: document.querySelector('input[name="https_mode"]:checked').value,
+			http_port: Number(val('set-http-port')),
+			https_port: Number(val('set-https-port')),
+			cert_file: val('set-cert-file'),
+			key_file: val('set-key-file'),
+			login_mode: document.querySelector('input[name="login_mode"]:checked').value,
+			trusted_networks: lines('set-trusted-networks'),
+			extra_hosts: lines('set-extra-hosts'),
+		};
+		const err = document.getElementById('set-error');
+		const btn = document.getElementById('set-save');
+		err.classList.add('hidden');
+		btn.disabled = true;
+		btn.innerText = 'Saving...';
+		const res = await fetch('/api/settings', {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body)
+		});
+		if (!res.ok) {
+			err.innerText = await this.apiError(res);
+			err.classList.remove('hidden');
+			btn.disabled = false;
+			btn.innerText = 'Save';
+			return;
+		}
+		const data = await res.json();
+		if (!data.restart) {
+			this.closePanelSettings();
+			alert('Settings saved.');
+			return;
+		}
+		// The panel restarts on its new address; give it a moment, then go there
+		const target = `${data.url}/static/index.html`;
+		document.getElementById('settings-content').innerHTML = `
+			<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Restarting the panel...</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-2">New address: <a class="underline text-theme font-mono" href="${this.escapeHtml(target)}">${this.escapeHtml(data.url)}</a></p>
+			<p class="text-sm text-gray-500 dark:text-gray-400">You'll be taken there in a few seconds${body.https_mode === 'self_signed' ? '. Your browser will warn about the self-signed certificate; that is expected' : ''}. Sign in again if asked.</p>`;
+		setTimeout(() => window.location.assign(target), 4000);
+	},
+
+	async logout() {
+		await fetch('/api/auth/logout', { method: 'POST' });
+		window.location.replace('/static/login.html');
+	},
+
+	async apiError(res) {
+		let detail = `HTTP ${res.status}`;
+		try { detail = (await res.json()).detail || detail; } catch (e) {}
+		return detail;
+	},
+
+	closeModal() {
+		document.getElementById('modal-overlay').classList.add('hidden');
+	},
+
+	openChangePasswordModal() {
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white mb-3';
+		document.getElementById('modal-content').innerHTML = `
+			<h3 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Change Password</h3>
+			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Current password</label>
+			<input type="password" id="pw-current" autocomplete="current-password" class="${field}">
+			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">New password (8+ characters)</label>
+			<input type="password" id="pw-new" autocomplete="new-password" class="${field}">
+			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Repeat new password</label>
+			<input type="password" id="pw-new2" autocomplete="new-password" class="${field}">
+			<p id="pw-error" class="hidden text-sm text-red-500 mb-3"></p>
+			<div class="flex gap-2">
+				<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>
+				<button onclick="ServerApp.changeOwnPassword()" class="flex-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Change</button>
+			</div>`;
+		document.getElementById('modal-overlay').classList.remove('hidden');
+	},
+
+	async changeOwnPassword() {
+		const err = document.getElementById('pw-error');
+		const show = msg => { err.innerText = msg; err.classList.remove('hidden'); };
+		const current = document.getElementById('pw-current').value;
+		const next = document.getElementById('pw-new').value;
+		if (next !== document.getElementById('pw-new2').value) return show('The new passwords do not match.');
+		const res = await fetch('/api/auth/password', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ current_password: current, new_password: next })
+		});
+		if (!res.ok) return show(await this.apiError(res));
+		this.closeModal();
+		alert('Password changed. Other signed-in sessions for this account were signed out.');
+	},
+
+	async openUsersModal() {
+		const content = document.getElementById('modal-content');
+		content.innerHTML = '<p class="text-gray-500">Loading users...</p>';
+		document.getElementById('modal-overlay').classList.remove('hidden');
+		const res = await fetch('/api/users');
+		if (!res.ok) { content.innerHTML = `<p class="text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const data = await res.json();
+		const esc = t => this.escapeHtml(t);
+		const me = this.currentUser || {};
+		const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const when = ts => ts ? new Date(ts * 1000).toLocaleString() : 'never';
+
+		const rows = data.users.length ? data.users.map(u => {
+			const self = me.source === 'panel' && me.username === u.username;
+			return `
+			<div class="p-3 border border-gray-200 dark:border-gray-700 rounded mb-2 ${u.disabled ? 'opacity-60' : ''}">
+				<div class="flex items-center justify-between gap-2">
+					<div class="min-w-0">
+						<span class="font-bold text-gray-900 dark:text-white">${esc(u.username)}</span>
+						${u.disabled ? '<span class="text-xs ml-1 px-2 py-0.5 rounded border border-red-400 text-red-500">disabled</span>' : ''}
+						${self ? '<span class="text-xs ml-1 text-gray-500">(you)</span>' : ''}
+						<div class="text-xs text-gray-500 dark:text-gray-400">Last sign-in: ${esc(when(u.last_login))}</div>
+					</div>
+					<select data-user="${esc(u.username)}" onchange="ServerApp.updateUser(this.dataset.user, {role: this.value})" ${self ? 'disabled title="You can\'t change your own role"' : ''} class="${field}">
+						<option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+						<option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
+					</select>
+				</div>
+				<div class="flex gap-2 mt-2 text-xs">
+					<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserPassword(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset password</button>
+					${self ? '' : `<button data-user="${esc(u.username)}" onclick="ServerApp.updateUser(this.dataset.user, {disabled: ${!u.disabled}})" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">${u.disabled ? 'Enable' : 'Disable'}</button>
+					<button data-user="${esc(u.username)}" onclick="ServerApp.deleteUser(this.dataset.user)" class="px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white">Delete</button>`}
+				</div>
+			</div>`;
+		}).join('') : '<p class="text-sm text-gray-500 dark:text-gray-400 mb-2">No panel users yet.</p>';
+
+		content.innerHTML = `
+			<h3 class="text-xl font-bold mb-1 text-gray-900 dark:text-white">Panel Users</h3>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here.</p>
+			<div class="max-h-72 overflow-y-auto mb-4">${rows}</div>
+			<div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+				<p class="text-sm font-bold mb-2 text-gray-900 dark:text-white">Add user</p>
+				<input id="new-user-name" placeholder="Username" autocomplete="off" autocapitalize="none" class="w-full mb-2 ${field}">
+				<input id="new-user-pass" type="password" placeholder="Password (8+ characters)" autocomplete="new-password" class="w-full mb-2 ${field}">
+				<select id="new-user-role" class="w-full mb-2 ${field}">
+					<option value="user">User: manage servers</option>
+					<option value="admin">Admin: manage servers and panel users</option>
+				</select>
+				<p id="new-user-error" class="hidden text-sm text-red-500 mb-2"></p>
+				<button onclick="ServerApp.createUser()" class="w-full bg-theme hover-bg-theme text-white py-2 rounded font-bold">Add User</button>
+			</div>
+			<button onclick="ServerApp.closeModal()" class="mt-3 w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Close</button>`;
+	},
+
+	async createUser() {
+		const err = document.getElementById('new-user-error');
+		const res = await fetch('/api/users', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				username: document.getElementById('new-user-name').value,
+				password: document.getElementById('new-user-pass').value,
+				role: document.getElementById('new-user-role').value
+			})
+		});
+		if (!res.ok) { err.innerText = await this.apiError(res); err.classList.remove('hidden'); return; }
+		this.openUsersModal();
+	},
+
+	async updateUser(username, changes) {
+		const res = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(changes)
+		});
+		if (!res.ok) alert(`Not changed: ${await this.apiError(res)}`);
+		this.openUsersModal();
+	},
+
+	async resetUserPassword(username) {
+		const pw = prompt(`New password for ${username} (8+ characters). They will be signed out everywhere.`);
+		if (pw === null) return;
+		await this.updateUser(username, { password: pw });
+	},
+
+	async deleteUser(username) {
+		if (!confirm(`Delete panel user '${username}'? They will be signed out immediately.`)) return;
+		const res = await fetch(`/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+		if (!res.ok) alert(`Not deleted: ${await this.apiError(res)}`);
+		this.openUsersModal();
+	},
+};
+
+window.onload = () => ServerApp.init();

@@ -1,0 +1,41 @@
+Source: redstonepanel
+Section: admin
+Priority: optional
+Maintainer: Quentin Russell <quentin.russell@cielocloud.org>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/qrussell/redstonepanel
+Vcs-Browser: https://github.com/qrussell/redstonepanel
+Vcs-Git: https://github.com/qrussell/redstonepanel.git
+
+Package: redstonepanel
+Architecture: all
+Depends: ${misc:Depends},
+         python3 (>= 3.12),
+         python3-fastapi (>= 0.101),
+         python3-starlette (>= 0.31),
+         python3-uvicorn (>= 0.27),
+         python3-python-multipart | python3-multipart (<< 1.0),
+         libpam0g,
+         openssl,
+         curl,
+         wget,
+         jq,
+         unzip,
+         screen,
+         sudo
+Recommends: openjdk-21-jre-headless,
+            ufw
+Description: web panel to install and manage Minecraft servers
+ RedstonePanel deploys and manages Minecraft Java Edition and Bedrock Dedicated
+ Server instances as systemd services on this host: start/stop, updates, live
+ chat and console commands, a server.properties editor, player roles,
+ reusable templates, world export and backups.
+ .
+ Sign in with a Linux account in the sudo or redstonepanel group, or with
+ panel accounts managed in the panel. HTTPS and optional sign-in on the local
+ network can be enabled by an admin in Panel Settings.
+ .
+ Java Edition servers need a Java runtime (recommended:
+ openjdk-21-jre-headless); Bedrock-only hosts can skip it.

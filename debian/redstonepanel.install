@@ -1,0 +1,8 @@
+main.py usr/share/redstonepanel/
+run.py usr/share/redstonepanel/
+https_redirect.py usr/share/redstonepanel/
+core/__init__.py core/auth.py core/manager.py core/models.py core/rcon.py core/settings.py core/tls.py usr/share/redstonepanel/core/
+static/index.html static/login.html usr/share/redstonepanel/static/
+static/css/tailwind.css usr/share/redstonepanel/static/css/
+static/js/app.js usr/share/redstonepanel/static/js/
+packaging/redstonepanel usr/sbin/

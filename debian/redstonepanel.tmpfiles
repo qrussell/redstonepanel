@@ -1,0 +1,3 @@
+# Panel state: users.json (password hashes), settings, session key, TLS keys, templates, chat.
+d /var/lib/redstonepanel 0700 root root -
+d /var/log/redstonepanel 0750 root adm -

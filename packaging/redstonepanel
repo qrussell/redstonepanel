@@ -1,0 +1,10 @@
+#!/bin/sh
+# RedstonePanel admin command. The web panel itself runs as the redstonepanel systemd service.
+if [ $# -eq 0 ]; then
+    exec /usr/bin/python3 /usr/share/redstonepanel/run.py --help
+fi
+if [ "$(id -u)" != 0 ]; then
+    echo "Run with sudo: sudo redstonepanel $*" >&2
+    exit 1
+fi
+PYTHONDONTWRITEBYTECODE=1 exec /usr/bin/python3 /usr/share/redstonepanel/run.py "$@"

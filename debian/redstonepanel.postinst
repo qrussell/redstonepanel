@@ -1,0 +1,25 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+# First install only: say where the panel is and how to get in
+if [ "$1" = "configure" ] && [ -z "$2" ]; then
+    IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    if systemctl is-active --quiet redstonepanel.service 2>/dev/null; then
+        STATE="is running:"
+    else
+        STATE="is installed (start it with: sudo systemctl start redstonepanel):"
+    fi
+    cat <<EOF
+
+RedstonePanel $STATE http://${IP:-<this-server>}:8080/
+
+Sign in with a Linux account in the 'sudo' or 'redstonepanel' group, or create a
+panel account:   sudo redstonepanel add-user NAME
+Status:          sudo redstonepanel status
+
+EOF
+fi
+
+exit 0

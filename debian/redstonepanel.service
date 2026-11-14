@@ -1,0 +1,16 @@
+[Unit]
+Description=RedstonePanel - Minecraft server management panel
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Runs as root: it manages systemd units, firewall rules and the 'minecraft' user.
+ExecStart=/usr/bin/python3 /usr/share/redstonepanel/run.py
+Environment=PYTHONDONTWRITEBYTECODE=1
+# Panel Settings changes restart the panel by exiting; systemd brings it back.
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

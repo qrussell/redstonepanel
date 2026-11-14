@@ -1,0 +1,83 @@
+# Builds the .deb, runs the install tests on Ubuntu 24.04 and 25.04, and attaches the
+# .deb to a GitHub Release. Runs on version tags (e.g. v1.0.0) and can be run by hand.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches debian/changelog
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(head -1 debian/changelog | sed -E 's/.*\(([^)]+)\).*/\1/')
+          [ "${GITHUB_REF_NAME#v}" = "$version" ] || { echo "::error::tag $GITHUB_REF_NAME does not match debian/changelog version $version"; exit 1; }
+      - name: Build .deb in ubuntu:24.04
+        run: |
+          mkdir -p dist
+          docker run --rm -v "$PWD:/src:ro" -v "$PWD/dist:/out" ubuntu:24.04 bash /src/packaging/build-deb.sh | tee build.log
+          # lintian runs inside the build; fail on errors or warnings
+          if grep -E '^[EW]: ' build.log; then echo "::error::lintian reported problems"; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: dist/*.deb
+          if-no-files-found: error
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ['24.04', '25.04']
+        flags: ['', '--no-install-recommends']
+    name: test ${{ matrix.release }} ${{ matrix.flags }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+          path: dist
+      - name: Start systemd container
+        run: |
+          docker build -q --build-arg REL=${{ matrix.release }} -t rp-systemd:${{ matrix.release }} packaging/test
+          docker run -d --privileged \
+            --name rp-test -v "$PWD/dist:/dist:ro" -v "$PWD/packaging/test:/t:ro" rp-systemd:${{ matrix.release }}
+          for _ in $(seq 1 30); do
+            state=$(docker exec rp-test systemctl is-system-running 2>/dev/null || true)
+            case "$state" in running|degraded) break ;; esac
+            sleep 1
+          done
+          echo "systemd state: $state"
+      - name: Install test
+        run: docker exec rp-test bash /t/test-install.sh ${{ matrix.flags }}
+      - name: Service log on failure
+        if: failure()
+        run: docker exec rp-test journalctl -u redstonepanel --no-pager -n 200 || true
+
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+          path: dist
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.deb \
+            --repo "$GITHUB_REPOSITORY" --title "RedstonePanel ${GITHUB_REF_NAME#v}" --generate-notes

@@ -1,0 +1,19 @@
+# Runtime state and secrets: never commit
+data/
+tls/
+*.key
+secret.key
+users.json
+/redstonepanel-ca.crt
+
+# Build output
+dist/
+__pycache__/
+*.pyc
+venv/
+.venv/
+.backups/
+node_modules/
+
+# Stale copy of the UI (static/index.html is the real one)
+/index.html
