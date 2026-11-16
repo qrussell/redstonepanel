@@ -16,6 +16,14 @@ class RconError(RuntimeError):
     pass
 
 
+class RconAuthError(RconError):
+    """The server rejected the password."""
+
+
+class RconRefused(RconError):
+    """Nothing listens on the RCON port (RCON is off, or the server is down)."""
+
+
 def _send(sock, req_id, kind, body):
     payload = struct.pack("<ii", req_id, kind) + body.encode("utf-8") + b"\x00\x00"
     sock.sendall(struct.pack("<i", len(payload)) + payload)
@@ -47,7 +55,7 @@ def command(host, port, password, cmd, timeout=5.0):
             _send(sock, 1, LOGIN, password)
             req_id, _, _ = _recv(sock)
             if req_id == -1:
-                raise RconError("wrong RCON password")
+                raise RconAuthError("wrong RCON password")
             _send(sock, 2, COMMAND, cmd)
             # Long outputs arrive in several packets; a second, empty "marker" command tells us
             # when the real answer is complete (the server answers in order).
@@ -60,5 +68,7 @@ def command(host, port, password, cmd, timeout=5.0):
                 elif req_id == 3:
                     break
             return COLOR_RE.sub("", "".join(parts))
+    except ConnectionRefusedError as e:
+        raise RconRefused(str(e)) from e
     except (OSError, struct.error) as e:
         raise RconError(str(e)) from e

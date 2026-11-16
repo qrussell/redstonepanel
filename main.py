@@ -385,10 +385,13 @@ def get_server_chat(server_name: str):
 
 @app.post("/api/servers/{server_name}/chat")
 def send_server_chat(server_name: str, payload: ChatMessage):
-    status = manager.send_chat_message(server_name, payload.message)
-    
+    try:
+        status = manager.send_chat_message(server_name, payload.message)
+    except manager.ChatError as e:
+        return {"status": "error", "message": str(e)}
+
     if status == "restarting":
-        return {"status": "info", "message": "RCON was not set up (or its port clashed with another server), so the panel configured it. The server is restarting; send your message again in a moment."}
+        return {"status": "info", "message": "RCON was not set up (or was turned off, or its port clashed with another server), so the panel configured it. The server is restarting; send your message again in a moment."}
     elif status == "error":
         return {"status": "error", "message": "Failed to connect to RCON."}
         

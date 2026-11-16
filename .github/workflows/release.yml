@@ -20,6 +20,8 @@ jobs:
         run: |
           version=$(head -1 debian/changelog | sed -E 's/.*\(([^)]+)\).*/\1/')
           [ "${GITHUB_REF_NAME#v}" = "$version" ] || { echo "::error::tag $GITHUB_REF_NAME does not match debian/changelog version $version"; exit 1; }
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
       - name: Build .deb in ubuntu:24.04
         run: |
           mkdir -p dist
