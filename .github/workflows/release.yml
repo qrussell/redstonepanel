@@ -1,5 +1,7 @@
 # Builds the .deb, runs the install tests on Ubuntu 24.04 and 25.04, and attaches the
-# .deb to a GitHub Release. Runs on version tags (e.g. v1.0.0) and can be run by hand.
+# .deb to a GitHub Release whose description is release-notes/<tag>.md (GitHub's
+# generated notes if that file is missing). Runs on version tags (e.g. v1.0.0) and can
+# be run by hand.
 name: release
 
 on:
@@ -73,6 +75,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: release-notes
       - uses: actions/download-artifact@v4
         with:
           name: deb
@@ -81,8 +86,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Use release-notes/<tag>.md when present, else GitHub's generated notes
+          if [ -f "release-notes/$GITHUB_REF_NAME.md" ]; then
+            NOTES=(--notes-file "release-notes/$GITHUB_REF_NAME.md")
+          else
+            echo "::warning::No release-notes/$GITHUB_REF_NAME.md; using GitHub's generated notes."
+            NOTES=(--generate-notes)
+          fi
           gh release create "$GITHUB_REF_NAME" dist/*.deb \
-            --repo "$GITHUB_REPOSITORY" --title "RedstonePanel ${GITHUB_REF_NAME#v}" --generate-notes
+            --repo "$GITHUB_REPOSITORY" --title "RedstonePanel ${GITHUB_REF_NAME#v}" "${NOTES[@]}"
       # qrussell-repo (apt) lists this project in its sources.json and picks up new
       # releases on its own within 4 hours. With a QRUSSELL_REPO_DISPATCH_TOKEN secret
       # (fine-grained token, qrussell/qrussell-repo, Contents: read and write) it

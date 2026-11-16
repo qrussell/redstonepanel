@@ -34,6 +34,8 @@ version:
     - VERSION=$(head -1 debian/changelog | sed -E 's/.*\(([^)]+)\).*/\1/')
     - grep -q "\"redstonepanel $VERSION\"" packaging/redstonepanel.8 || { echo "packaging/redstonepanel.8 is not at $VERSION"; exit 1; }
     - if [ -n "$CI_COMMIT_TAG" ] && [ "$CI_COMMIT_TAG" != "v$VERSION" ]; then echo "tag $CI_COMMIT_TAG != v$VERSION"; exit 1; fi
+    # The GitHub release uses release-notes/v<version>.md as its description
+    - if [ ! -s "release-notes/v$VERSION.md" ]; then echo "WARNING - no release-notes/v$VERSION.md; the GitHub release would get generated notes only"; fi
     - echo "version $VERSION"
 
 package:

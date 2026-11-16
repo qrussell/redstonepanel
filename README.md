@@ -197,10 +197,19 @@ packaging/build-css.sh
 
 ### Releases
 
-Pushing a tag such as `v1.0.1` runs `.github/workflows/release.yml`. It builds the .deb,
-runs the install tests on Ubuntu 24.04 and 25.04 (with and without recommends), and
-attaches the .deb to a GitHub Release. The tag must match the version in
-`debian/changelog`, so add a changelog entry first (`dch -v 1.0.1`).
+Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which mirrors
+`main` and tags to GitHub, where releases are built. To release version 1.0.1:
+
+1. On a branch, add a `debian/changelog` entry (`dch -v 1.0.1`), update the version in
+   `packaging/redstonepanel.8`, and write the release description in
+   `release-notes/v1.0.1.md`. Merge it through a merge request.
+2. Tag `main` as `v1.0.1` and push the tag to GitLab.
+
+The tag reaching GitHub runs `.github/workflows/release.yml`. It builds the .deb, runs
+the install tests on Ubuntu 24.04 and 25.04 (with and without recommends), and publishes
+a GitHub Release with the .deb, using `release-notes/<tag>.md` as its description (or
+GitHub's generated notes if the file is missing). The tag must match the version in
+`debian/changelog`. The qrussell-repo apt repository picks up the release within 4 hours.
 
 ## License
 
