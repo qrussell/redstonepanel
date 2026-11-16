@@ -1,3 +1,18 @@
+redstonepanel (1.3.1) noble; urgency=medium
+
+  * Fix Java live chat failing with "not connected" when the RCON password
+    contains symbols such as : = # ! or \, or spaces. Minecraft saves
+    server.properties in Java's escaped format; the panel now reads and
+    writes it the same way, so it uses the password the server uses.
+    It also agrees with Minecraft on trailing spaces and continued lines,
+    which could leave RCON switched off while the panel thought it was on;
+    the panel now turns it back on and restarts the server.
+  * Saving properties only rewrites the settings that changed.
+  * Clearer chat errors: a rejected password or RCON not running now says
+    to restart the server (needed after changing rcon.password).
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Mon, 16 Nov 2026 21:04:35 +0000
+
 redstonepanel (1.3.0) noble; urgency=medium
 
   * Name each panel to tell several servers apart: the name shows in the

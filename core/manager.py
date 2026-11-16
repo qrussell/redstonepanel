@@ -11,7 +11,7 @@ import time
 
 import tempfile
 from core.settings import DATA_DIR, LOG_FILE
-from core import rcon
+from core import properties, rcon
 
 TEMPLATE_FILE = os.path.join(DATA_DIR, "templates.json")
 
@@ -152,37 +152,28 @@ def get_server_dir(svc_name):
         d = res.stdout.strip()
     return d if d else f"/opt/{svc_name}"
 
+def _java_properties(dir_path):
+    """Java Edition escapes server.properties like java.util.Properties; Bedrock doesn't."""
+    return not os.path.exists(os.path.join(dir_path, "bedrock_server"))
+
+def _read_text(path):
+    if not os.path.exists(path):
+        return ""
+    # surrogateescape: bytes that aren't UTF-8 are written back exactly as they were
+    with open(path, "r", encoding="utf-8", errors="surrogateescape", newline="") as f:
+        return f.read()
+
 def read_properties(dir_path):
-    props = {}
-    prop_file = os.path.join(dir_path, "server.properties")
-    if os.path.exists(prop_file):
-        with open(prop_file, "r") as f:
-            for line in f:
-                if "=" in line and not line.startswith("#"):
-                    k, v = line.split("=", 1)
-                    props[k.strip()] = v.strip()
-    return props
+    """The settings as the game server sees them (Java escapes decoded)."""
+    content = _read_text(os.path.join(dir_path, "server.properties"))
+    return properties.parse(content, java=_java_properties(dir_path))
 
 def write_properties(dir_path, new_props):
+    """Changes the given keys, escaped the way the game server expects; other lines stay as they are."""
     prop_file = os.path.join(dir_path, "server.properties")
-    lines = []
-    if os.path.exists(prop_file):
-        with open(prop_file, "r") as f:
-            lines = f.readlines()
-            
-    with open(prop_file, "w") as f:
-        for line in lines:
-            if "=" in line and not line.startswith("#"):
-                k = line.split("=", 1)[0].strip()
-                if k in new_props:
-                    f.write(f"{k}={new_props[k]}\n")
-                    del new_props[k]
-                else:
-                    f.write(line)
-            else:
-                f.write(line)
-        for k, v in new_props.items():
-            f.write(f"{k}={v}\n")
+    content = properties.update(_read_text(prop_file), new_props, java=_java_properties(dir_path))
+    with open(prop_file, "w", encoding="utf-8", errors="surrogateescape", newline="\n") as f:
+        f.write(content)
 
 def read_raw_properties(dir_path):
     prop_file = os.path.join(dir_path, "server.properties")
@@ -1099,6 +1090,9 @@ def get_chat_debug(server_name):
     dbg["whoami"] = subprocess.run(["id"], capture_output=True, text=True).stdout.strip()
     return dbg
 
+class ChatError(RuntimeError):
+    """A chat message or command couldn't be delivered; the message says why and what to do."""
+
 def send_chat_message(server_name, message):
     """Java: RCON.  Bedrock: stuff the command into the server's screen session."""
     d = get_server_dir(server_name)
@@ -1139,7 +1133,14 @@ def send_chat_message(server_name, message):
             output = rcon.command("127.0.0.1", int(rcon_port), rcon_pass, command)
         except rcon.RconError as e:
             write_log(f"[ERROR] RCON to {server_name} failed: {e}")
-            return "error"
+            if isinstance(e, rcon.RconAuthError):
+                raise ChatError("The server rejected the RCON password. If rcon.password was changed "
+                                "while the server was running, restart the server so it uses the new one.")
+            if isinstance(e, rcon.RconRefused):
+                raise ChatError(f"RCON isn't answering on port {rcon_port}. If the server is still "
+                                "starting, try again in a moment; otherwise restart it so it picks up "
+                                "its RCON settings from server.properties.")
+            raise ChatError(f"Failed to connect to RCON: {e}")
         if not is_command:
             _record_sent(server_name, message)
         return ANSI_RE.sub('', output).strip()

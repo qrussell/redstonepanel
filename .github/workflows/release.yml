@@ -20,6 +20,8 @@ jobs:
         run: |
           version=$(head -1 debian/changelog | sed -E 's/.*\(([^)]+)\).*/\1/')
           [ "${GITHUB_REF_NAME#v}" = "$version" ] || { echo "::error::tag $GITHUB_REF_NAME does not match debian/changelog version $version"; exit 1; }
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
       - name: Build .deb in ubuntu:24.04
         run: |
           mkdir -p dist
@@ -81,3 +83,20 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" dist/*.deb \
             --repo "$GITHUB_REPOSITORY" --title "RedstonePanel ${GITHUB_REF_NAME#v}" --generate-notes
+      # qrussell-repo (apt) lists this project in its sources.json and picks up new
+      # releases on its own within 4 hours. With a QRUSSELL_REPO_DISPATCH_TOKEN secret
+      # (fine-grained token, qrussell/qrussell-repo, Contents: read and write) it
+      # publishes right away instead.
+      - name: Ask qrussell-repo to publish now (optional)
+        env:
+          TOKEN: ${{ secrets.QRUSSELL_REPO_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "No QRUSSELL_REPO_DISPATCH_TOKEN secret: qrussell-repo publishes this release within 4 hours."
+            exit 0
+          fi
+          curl -fsS -X POST https://api.github.com/repos/qrussell/qrussell-repo/dispatches \
+            -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
+            -d "{\"event_type\":\"release-published\",\"client_payload\":{\"repo\":\"$GITHUB_REPOSITORY\",\"tag\":\"$GITHUB_REF_NAME\"}}" \
+            && echo "qrussell-repo publish started." \
+            || echo "::warning::Could not start qrussell-repo's publish; it will pick the release up within 4 hours."
