@@ -33,6 +33,7 @@ import uuid
 from core import auth, tls
 from core import settings as panel_settings
 from core.settings import DATA_DIR
+from core.version import panel_version
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
@@ -159,22 +160,6 @@ def public_node(n):
     """A node record without its token."""
     return {k: n.get(k) for k in ("id", "name", "url", "platform", "version", "cluster_api",
                                   "cert_expires", "added", "added_by", "last_ok", "sans")}
-
-
-def panel_version():
-    """The installed package version (or 'unknown' when run from a checkout)."""
-    global _version
-    if _version is None:
-        try:
-            r = subprocess.run(["dpkg-query", "-W", "-f=${Version}", "redstonepanel"],
-                               capture_output=True, text=True, timeout=5)
-            _version = r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else "unknown"
-        except (OSError, subprocess.SubprocessError):
-            _version = "unknown"
-    return _version
-
-
-_version = None
 
 
 # ---------------------------------------------------------------------------
