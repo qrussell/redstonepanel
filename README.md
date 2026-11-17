@@ -131,6 +131,10 @@ its game servers keep running if the master is down.
 4. Download the cluster CA from **Panel Settings → Cluster** and import it on your devices once,
    so browsers trust every panel in the cluster.
 
+The master and its nodes connect to each other on the HTTPS port (8443 by default). If a
+firewall such as ufw is active, allow that port between them, for example
+`sudo ufw allow from 192.168.1.0/24 to any port 8443 proto tcp`.
+
 What the master can do on a node is limited: list its game servers, start/stop/restart them, and
 renew its certificate. It can't see or change the node's users or settings, or delete servers.
 Cluster certificates only cover private addresses (10.x, 172.16–31.x, 192.168.x, 100.64–127.x)
