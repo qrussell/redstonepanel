@@ -11,7 +11,7 @@ import time
 
 import tempfile
 from core.settings import DATA_DIR, LOG_FILE
-from core import properties, rcon
+from core import properties, rcon, proxies, bedrock_net
 
 TEMPLATE_FILE = os.path.join(DATA_DIR, "templates.json")
 
@@ -274,6 +274,24 @@ def _bedrock_log_version(log):
     found = BEDROCK_VERSION_RE.findall(r.stdout)
     return {"version": found[-1], "java_required": None} if found else None
 
+_start_cache = {}            # server.log path -> ((mtime, size), status)
+
+def bedrock_start_status(d):
+    """What BDS logged at its last start (see bedrock_net.last_start_status); None without a server.log."""
+    log = os.path.join(d, "server.log")
+    try:
+        st = os.stat(log)
+    except OSError:
+        return None
+    key = (st.st_mtime, st.st_size)
+    hit = _start_cache.get(log)
+    if hit and hit[0] == key:
+        return hit[1]
+    r = subprocess.run(["grep", "-a", "-E", bedrock_net.GREP_PATTERN, log], capture_output=True, text=True)
+    status = bedrock_net.last_start_status(r.stdout.splitlines())
+    _start_cache[log] = (key, status)
+    return status
+
 _journal_cache = {}          # service -> (checked_at, result)
 
 def _bedrock_journal_version(svc):
@@ -319,13 +337,23 @@ def list_servers():
     servers = []
     res = subprocess.run(["find", "/etc/systemd/system/", "-maxdepth", "1", "-name", "minecraft*.service", "-printf", "%f\n"], capture_output=True, text=True)
     services = [s.replace(".service", "") for s in res.stdout.splitlines() if s]
-    
+    phantoms = None              # looked up once, only if there's a Bedrock server
+
     for svc in services:
         st = subprocess.run(["systemctl", "is-active", svc], capture_output=True, text=True).stdout.strip()
         d = get_server_dir(svc)
         props = read_properties(d)
         exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{svc}.service"], capture_output=True, text=True).stdout.strip()
         ver = server_version(d, "java" in exec_start, svc)
+        is_bedrock = "java" not in exec_start and "bedrock" in exec_start
+        proxy_list = []
+        transport = (props.get("transport") or "").lower() or None if is_bedrock else None
+        udp_ports = props.get("server-udp-ports", "")
+        start = bedrock_start_status(d) if is_bedrock else None
+        if is_bedrock:
+            if phantoms is None:
+                phantoms = proxies.find_phantoms()
+            proxy_list = proxies.proxies_for_server(phantoms, props.get("server-port", "19132"))
 
         servers.append({
             "name": svc,
@@ -340,7 +368,19 @@ def list_servers():
             "rcon_port": props.get("rcon.port", "Not Configured") if "java" in exec_start else "Not used (Bedrock)",
             "edition": "Java" if "java" in exec_start else "Bedrock" if "bedrock" in exec_start else "Unknown",
             "ram": re.search(r'-Xmx([^ ]+)', exec_start).group(1) if "java" in exec_start and re.search(r'-Xmx([^ ]+)', exec_start) else "N/A",
-            "motd": props.get("motd", props.get("server-name", "Minecraft Server"))
+            "motd": props.get("motd", props.get("server-name", "Minecraft Server")),
+            # Bedrock network transport. NetherNet: TCP server-port for signaling + UDP server-udp-ports for gameplay
+            "transport": transport,
+            "udp_ports": udp_ports if is_bedrock else None,
+            # public-address form (IP:public:local) stopped the signaling listener on 1.26.63.1
+            "udp_ports_address": bedrock_net.udp_ports_have_address(udp_ports) if is_bedrock else False,
+            "udp_ports_plain": bedrock_net.plain_udp_ports(udp_ports) if is_bedrock else None,
+            "transport_rejected": bool(start and start["transport_rejected"]),
+            # NetherNet only: finished starting but never logged "Accepting clients on ..." (players can't connect)
+            "signaling_closed": bool(is_bedrock and transport == "nethernet" and st == "active"
+                                     and start and start["started"] and not start["accepting"]),
+            # Phantom proxies on this machine that point at this server or hold its port
+            "proxies": proxy_list,
         })
     return servers
 
