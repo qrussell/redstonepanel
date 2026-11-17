@@ -113,6 +113,38 @@ sudo redstonepanel reset-security
 ```
 
 It switches the panel back to plain HTTP on port 8080 with sign-in required, and restarts it.
+On a cluster member, run `sudo redstonepanel cluster-https` afterwards to rejoin the cluster's HTTPS.
+
+## Clusters: several servers from one panel
+
+Running RedstonePanel on several servers? Make one panel the **master** of a cluster and add
+the others as **nodes**. The master's **🌐 Cluster** page then lists every node's game servers
+and can start, stop and restart them. Every node keeps its own dashboard for its own servers, and
+its game servers keep running if the master is down.
+
+1. On the master: **Panel Settings → Cluster → Create cluster**
+   (or `sudo redstonepanel cluster create "Home"`). The panel restarts on HTTPS (port 8443).
+2. Still on the master: **Make a join code** (or `sudo redstonepanel cluster join-code`). Codes
+   work once and expire after an hour.
+3. On each new node, paste the code into **Panel Settings → Cluster → Join**, or run
+   `sudo redstonepanel join 'rpjoin1:...'`.
+4. Download the cluster CA from **Panel Settings → Cluster** and import it on your devices once,
+   so browsers trust every panel in the cluster.
+
+What the master can do on a node is limited: list its game servers, start/stop/restart them, and
+renew its certificate. It can't see or change the node's users or settings, or delete servers.
+Cluster certificates only cover private addresses (10.x, 172.16–31.x, 192.168.x, 100.64–127.x)
+and local names (`.lan`, `.local`, `.home.arpa`, `.internal`), so the CA you import can't be
+used to impersonate other websites. Panels using their own certificate (e.g. certbot) can't
+join a cluster yet.
+
+**If the master is lost:** download an encrypted backup from **Panel Settings → Cluster →
+Backup** (or `sudo redstonepanel cluster backup FILE`) after adding or removing nodes, and keep
+it off the master. `sudo redstonepanel cluster promote FILE` on any other panel makes that panel
+the master. Nodes accept it straight away and refuse the old master from then on.
+
+`sudo redstonepanel leave` takes a node out of the cluster (remove it on the master too). The
+design is in [docs/design/fleet.md](docs/design/fleet.md).
 
 ## Exposing the panel to the internet
 

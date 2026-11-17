@@ -25,6 +25,8 @@ python:
   stage: check
   script:
     - python -m py_compile main.py run.py https_redirect.py core/*.py tests/*.py
+    # fastapi lets tests/test_cluster.py check every API route against the node-token allowlist
+    - pip install --quiet --disable-pip-version-check fastapi python-multipart
     - python -m unittest discover -s tests -v
 
 version:
