@@ -193,6 +193,7 @@ const ServerApp = {
 		// Clear previous command outputs so they don't bleed into the new server tab
 		this.rconOutputs = [];
         
+		this.closeCluster();
 		document.getElementById('workspace').classList.remove('hidden');
         this.renderSidebar();
 
@@ -1056,6 +1057,13 @@ const ServerApp = {
 		const banner = document.getElementById('https-error-banner');
 		banner.innerText = u.https_error ? `⚠️ ${u.https_error} Check Panel Settings.` : '';
 		banner.classList.toggle('hidden', !u.https_error);
+		// Clusters: a master gets the Cluster page (signed-in users only); a node shows who manages it
+		const c = u.cluster || { role: 'standalone' };
+		document.getElementById('btn-cluster').classList.toggle('hidden', c.role !== 'master' || trusted);
+		const badge = document.getElementById('cluster-badge');
+		badge.innerText = c.role === 'node' ? `Node of ${c.name} · managed by ${c.master_name}`
+			: c.role === 'master' ? `Master of cluster ${c.name}` : '';
+		badge.classList.toggle('hidden', c.role === 'standalone');
 	},
 
 	// --- Panel Settings: connection (HTTP/HTTPS) and sign-in (admins only) ---
@@ -1091,11 +1099,16 @@ const ServerApp = {
 			<input id="set-panel-name" maxlength="40" value="${esc(s.panel_name)}" placeholder="${esc(d.defaults.panel_name)}" class="${field} mb-1">
 			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">Tells this server's panel apart from others: shown in the sidebar, the browser tab and on the sign-in page (visible before signing in). Leave empty to use the server's host name, <b>${esc(d.defaults.panel_name)}</b>.</p>
 
+			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
+			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
 			<div class="space-y-2 mb-3">
-				${radio('https_mode', 'off', s.https_mode, 'HTTP (simple)', 'Unencrypted. Fine on a home network you trust.')}
+				${s.https_mode === 'cluster'
+					? radio('https_mode', 'cluster', s.https_mode, 'HTTPS from the cluster', 'This panel is in a cluster, so its certificate comes from the cluster and its HTTPS settings are fixed. Leave the cluster to change them.')
+					: `${radio('https_mode', 'off', s.https_mode, 'HTTP (simple)', 'Unencrypted. Fine on a home network you trust.')}
 				${radio('https_mode', 'self_signed', s.https_mode, 'HTTPS with a self-signed certificate', 'Encrypted. Browsers warn unless each device imports the panel\'s CA certificate.')}
-				${radio('https_mode', 'custom', s.https_mode, 'HTTPS with my own certificate', 'For a real domain name, e.g. a Let\'s Encrypt certificate from certbot.')}
+				${radio('https_mode', 'custom', s.https_mode, 'HTTPS with my own certificate', 'For a real domain name, e.g. a Let\'s Encrypt certificate from certbot.')}`}
 			</div>
 			<div class="grid grid-cols-2 gap-3 mb-3">
 				<label class="text-xs text-gray-500 dark:text-gray-400">HTTP port<input id="set-http-port" type="number" min="1" max="65535" value="${esc(s.http_port)}" class="${field} mt-1"></label>
@@ -1133,6 +1146,8 @@ const ServerApp = {
 				<button id="set-save" onclick="ServerApp.savePanelSettings()" class="flex-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Save</button>
 			</div>`;
 		this.updateSettingsForm();
+		document.getElementById('set-https-port').disabled = s.https_mode === 'cluster';
+		this.loadClusterSettings();
 	},
 
 	// Show only the fields that apply to the chosen options
@@ -1188,13 +1203,306 @@ const ServerApp = {
 			alert('Settings saved.');
 			return;
 		}
-		// The panel restarts on its new address; give it a moment, then go there
-		const target = `${data.url}/static/index.html`;
+		this.showRestarting(data.url, body.https_mode === 'self_signed'
+			? 'Your browser will warn about the self-signed certificate; that is expected.' : '');
+	},
+
+	// The panel restarts on its new address; give it a moment, then go there
+	showRestarting(url, note) {
+		const target = `${url}/static/index.html`;
+		document.getElementById('settings-overlay').classList.remove('hidden');
 		document.getElementById('settings-content').innerHTML = `
 			<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Restarting the panel...</h3>
-			<p class="text-sm text-gray-600 dark:text-gray-300 mb-2">New address: <a class="underline text-theme font-mono" href="${this.escapeHtml(target)}">${this.escapeHtml(data.url)}</a></p>
-			<p class="text-sm text-gray-500 dark:text-gray-400">You'll be taken there in a few seconds${body.https_mode === 'self_signed' ? '. Your browser will warn about the self-signed certificate; that is expected' : ''}. Sign in again if asked.</p>`;
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-2">New address: <a class="underline text-theme font-mono" href="${this.escapeHtml(target)}">${this.escapeHtml(url)}</a></p>
+			<p class="text-sm text-gray-500 dark:text-gray-400">You'll be taken there in a few seconds. ${this.escapeHtml(note || '')} Sign in again if asked.</p>`;
 		setTimeout(() => window.location.assign(target), 4000);
+	},
+
+	// --- Cluster page (master): every panel's servers, with start/stop/restart ---
+	clusterTimer: null,
+	clusterData: null,
+	clusterStates: {
+		unreachable: "Can't reach this panel. Is it running and on the network?",
+		rejected: 'This panel no longer accepts this master: it left the cluster, or another panel was promoted to master.',
+		cert_error: 'Certificate problem. Renew its certificate in Panel Settings > Cluster.',
+		too_old: 'Update RedstonePanel on this server.',
+		error: 'Something went wrong talking to this panel.',
+	},
+
+	openCluster() {
+		this.activeServer = null;
+		this.renderSidebar();
+		document.getElementById('workspace').classList.add('hidden');
+		document.getElementById('cluster-view').classList.remove('hidden');
+		this.loadCluster();
+		clearInterval(this.clusterTimer);
+		this.clusterTimer = setInterval(() => { if (!document.hidden) this.loadCluster(); }, 15000);
+	},
+
+	closeCluster() {
+		clearInterval(this.clusterTimer);
+		this.clusterTimer = null;
+		document.getElementById('cluster-view').classList.add('hidden');
+	},
+
+	async loadCluster() {
+		const box = document.getElementById('cluster-nodes');
+		const res = await fetch('/api/cluster/overview');
+		if (!res.ok) {
+			box.innerHTML = `<p class="text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`;
+			return;
+		}
+		this.clusterData = await res.json();
+		this.renderCluster();
+	},
+
+	// A value for an inline onclick="...(here)" handler: JSON, then HTML-escaped
+	jsArg(v) {
+		return this.escapeHtml(JSON.stringify(String(v)));
+	},
+
+	renderCluster() {
+		const d = this.clusterData, esc = t => this.escapeHtml(t);
+		const all = d.nodes.flatMap(n => n.servers || []);
+		document.getElementById('cluster-title').innerText = `Cluster: ${d.cluster}`;
+		document.getElementById('cluster-subtitle').innerText =
+			`${d.nodes.length} panel${d.nodes.length === 1 ? '' : 's'} · ${all.filter(s => s.status === 'online').length} of ${all.length} servers online · refreshes every 15 seconds`;
+		const btn = 'px-3 py-1 rounded text-xs font-bold text-white transition';
+		document.getElementById('cluster-nodes').innerHTML = d.nodes.map(n => {
+			const ok = n.state === 'ok';
+			const rows = (n.servers || []).map(s => `
+				<div class="flex items-center justify-between gap-3 p-3 border-t border-gray-200 dark:border-gray-700">
+					<div class="flex items-center gap-3 min-w-0">
+						<span class="${s.status === 'online' ? 'text-green-500' : 'text-red-500'}">●</span>
+						<div class="min-w-0">
+							<div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(s.name)}</div>
+							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}</div>
+						</div>
+					</div>
+					<div class="flex gap-2">
+						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'start', this)" class="${btn} bg-green-600 hover:bg-green-700">Start</button>
+						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'restart', this)" class="${btn} bg-theme hover-bg-theme">Restart</button>
+						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'stop', this)" class="${btn} bg-red-600 hover:bg-red-700">Stop</button>
+					</div>
+				</div>`).join('');
+			return `
+				<div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow">
+					<div class="flex items-center justify-between gap-3 p-4">
+						<div class="min-w-0">
+							<h3 class="font-bold text-lg text-gray-900 dark:text-white truncate">
+								<span class="${ok ? 'text-green-500' : 'text-yellow-500'}">●</span> ${esc(n.name)}
+								${n.local ? '<span class="text-xs font-normal text-gray-500 dark:text-gray-400">(this panel, the master)</span>' : ''}
+							</h3>
+							${n.local ? '' : `<p class="text-xs text-gray-500 dark:text-gray-400 font-mono">${esc(n.url)} · RedstonePanel ${esc(n.version || '?')}</p>`}
+						</div>
+						${n.local ? '' : `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-sm underline text-theme whitespace-nowrap">Open dashboard ↗</a>`}
+					</div>
+					${ok ? '' : `<p class="mx-4 mb-3 text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200">⚠️ ${esc(this.clusterStates[n.state] || n.state)}${n.error ? ` <span class="text-xs">(${esc(n.error)})</span>` : ''}</p>`}
+					${rows || (ok ? '<p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">No Minecraft servers on this panel yet.</p>' : '')}
+				</div>`;
+		}).join('');
+	},
+
+	async clusterPower(nodeId, server, action, button) {
+		if (action === 'stop' && !confirm(`Stop ${server}? Players on it will be disconnected.`)) return;
+		button.disabled = true;
+		const res = await fetch(`/api/cluster/nodes/${encodeURIComponent(nodeId)}/servers/${encodeURIComponent(server)}/action`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action })
+		});
+		if (!res.ok) alert(await this.apiError(res));
+		setTimeout(() => this.loadCluster(), 1500);
+	},
+
+	// --- Panel Settings > Cluster (admins) ---
+	fmtTime(t) {
+		return t ? new Date(t * 1000).toLocaleString() : 'never';
+	},
+
+	async loadClusterSettings() {
+		const box = document.getElementById('set-cluster');
+		if (!box) return;
+		const res = await fetch('/api/settings/cluster');
+		if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = this.clusterSettings = await res.json();
+		const esc = t => this.escapeHtml(t);
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const small = 'text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-3 py-1.5 rounded font-bold transition';
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const caLine = d.ca ? `<p class="${note} mb-3">Cluster CA: SHA-256 <span class="font-mono break-all">${esc(d.ca.sha256 || '?')}</span> · <a href="/api/cluster/ca.crt" class="underline text-theme">Download</a> and import it on your devices once to trust every panel in the cluster. This panel's certificate expires ${esc(this.fmtTime(d.cert_expires))}.</p>` : '';
+
+		if (d.role === 'standalone') {
+			box.innerHTML = `
+				<p class="${note} mb-3">A cluster lets one panel (the master) see and control the game servers of other RedstonePanels (its nodes). Cluster panels use HTTPS with certificates from the master, and restart when you create or join one.</p>
+				<div class="grid grid-cols-2 gap-3">
+					<div class="p-3 rounded border border-gray-200 dark:border-gray-700">
+						<p class="font-bold text-sm text-gray-900 dark:text-white mb-2">Make this panel a master</p>
+						<input id="cl-name" maxlength="40" placeholder="Cluster name, e.g. Home" class="${field} mb-2">
+						<button onclick="ServerApp.createCluster()" class="${small}">Create cluster</button>
+					</div>
+					<div class="p-3 rounded border border-gray-200 dark:border-gray-700">
+						<p class="font-bold text-sm text-gray-900 dark:text-white mb-2">Join a cluster</p>
+						<textarea id="cl-code" rows="2" placeholder="rpjoin1:... (from the master: Add node)" class="${field} mb-2 font-mono"></textarea>
+						<button onclick="ServerApp.joinCluster()" class="${small}">Join</button>
+					</div>
+				</div>
+				<p id="cl-error" class="hidden text-sm text-red-500 mt-2"></p>`;
+			return;
+		}
+
+		if (d.role === 'node') {
+			box.innerHTML = `
+				<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">This panel is a <b>node</b> of cluster <b>${esc(d.name)}</b>. Its master, <b>${esc(d.master_name)}</b> (<span class="font-mono">${esc(d.master_url)}</span>), can see and start, stop or restart its game servers. It can't change this panel's users or settings.</p>
+				<p class="${note} mb-2">Last contact from the master: ${esc(this.fmtTime(d.last_used))}${d.last_ip ? ' from ' + esc(d.last_ip) : ''}.</p>
+				${caLine}
+				<button onclick="ServerApp.leaveCluster(false)" class="${small}">Leave cluster</button>
+				<p id="cl-error" class="hidden text-sm text-red-500 mt-2"></p>`;
+			return;
+		}
+
+		// master
+		const nodeRows = d.nodes.map(n => `
+			<div class="flex items-center justify-between gap-2 p-2 border-t border-gray-200 dark:border-gray-700">
+				<div class="min-w-0">
+					<p class="text-sm font-bold text-gray-900 dark:text-white truncate">${esc(n.name)} <span class="font-normal font-mono text-xs text-gray-500">${esc(n.url)}</span></p>
+					<p class="${note}">RedstonePanel ${esc(n.version || '?')} · certificate expires ${esc(this.fmtTime(n.cert_expires))} · last answered ${esc(this.fmtTime(n.last_ok))}</p>
+				</div>
+				<div class="flex gap-2">
+					<button onclick="ServerApp.renewNodeCert(${this.jsArg(n.id)}, this)" class="${small}">Renew cert</button>
+					<button onclick="ServerApp.removeNode(${this.jsArg(n.id)}, ${this.jsArg(n.name)})" class="${small}">Remove</button>
+				</div>
+			</div>`).join('');
+		const joins = d.joins.map(j => `
+			<p class="${note}">Join code ${esc(j.id)}… made by ${esc(j.created_by)}, valid until ${esc(this.fmtTime(j.expires))} · <a href="#" onclick="ServerApp.cancelJoin(${this.jsArg(j.id)}); return false;" class="underline">cancel</a></p>`).join('');
+		box.innerHTML = `
+			<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">This panel is the <b>master</b> of cluster <b>${esc(d.name)}</b>. Signed-in users manage every node's servers from the <b>🌐 Cluster</b> page.</p>
+			${caLine}
+			<div class="rounded border border-gray-200 dark:border-gray-700 mb-3">
+				<p class="p-2 text-sm font-bold text-gray-900 dark:text-white">Nodes (${d.nodes.length})</p>
+				${nodeRows || `<p class="p-2 border-t border-gray-200 dark:border-gray-700 ${note}">No nodes yet.</p>`}
+			</div>
+			<div class="p-3 rounded border border-gray-200 dark:border-gray-700 mb-3">
+				<p class="font-bold text-sm text-gray-900 dark:text-white mb-2">Add a node</p>
+				<label class="${note}">Address nodes use to reach this master
+					<input id="cl-join-url" value="${esc(d.join_url)}" class="${field} mt-1 mb-2 font-mono"></label>
+				<button onclick="ServerApp.makeJoinCode()" class="${small}">Make a join code</button>
+				<div id="cl-join-out" class="hidden mt-3"></div>
+				${joins ? `<div class="mt-2">${joins}</div>` : ''}
+			</div>
+			<div class="p-3 rounded border border-gray-200 dark:border-gray-700 mb-3">
+				<p class="font-bold text-sm text-gray-900 dark:text-white mb-1">Backup</p>
+				<p class="${note} mb-2">Everything needed to make another panel the master if this one is lost: the cluster CA, the nodes and their tokens, panel accounts and templates. Encrypted with your passphrase. Download a new one after adding or removing nodes, and keep it off this server.</p>
+				<div class="flex gap-2">
+					<input id="cl-pass" type="password" autocomplete="new-password" placeholder="Passphrase (10+ characters)" class="${field}">
+					<button onclick="ServerApp.downloadClusterBackup()" class="${small} whitespace-nowrap">Download backup</button>
+				</div>
+			</div>
+			<div class="flex gap-2">
+				<button onclick="ServerApp.renewNodeCert('local', this)" class="${small}">Renew this master's certificate</button>
+				${d.nodes.length ? '' : `<button onclick="ServerApp.leaveCluster(true)" class="${small}">Dissolve cluster</button>`}
+			</div>
+			<p id="cl-error" class="hidden text-sm text-red-500 mt-2"></p>`;
+	},
+
+	clusterError(msg) {
+		const el = document.getElementById('cl-error');
+		if (!el) return alert(msg);
+		el.innerText = msg;
+		el.classList.toggle('hidden', !msg);
+	},
+
+	async clusterPost(url, body, method = 'POST') {
+		const res = await fetch(url, {
+			method,
+			headers: { 'Content-Type': 'application/json' },
+			body: body === undefined ? undefined : JSON.stringify(body)
+		});
+		if (!res.ok) { this.clusterError(await this.apiError(res)); return null; }
+		return res.json();
+	},
+
+	async createCluster() {
+		const name = document.getElementById('cl-name').value.trim();
+		if (!name) return this.clusterError('Give the cluster a name.');
+		if (!confirm(`Create cluster "${name}" with this panel as its master? The panel restarts on HTTPS.`)) return;
+		const data = await this.clusterPost('/api/settings/cluster', { name });
+		if (data) this.showRestarting(data.url, 'Your browser will warn about the certificate until you import the cluster CA from Panel Settings.');
+	},
+
+	async joinCluster() {
+		const code = document.getElementById('cl-code').value.trim();
+		if (!code) return this.clusterError('Paste the join code from the master.');
+		if (!confirm('Join this cluster? Its master will be able to see and control this panel\'s game servers. The panel restarts on HTTPS.')) return;
+		this.clusterError('Joining...');
+		const data = await this.clusterPost('/api/settings/cluster/join', { code });
+		if (data) this.showRestarting(data.url, 'Your browser will warn about the certificate until you import the cluster CA.');
+	},
+
+	async leaveCluster(dissolve) {
+		if (!confirm(dissolve ? 'Dissolve the cluster? This panel goes back to standalone with self-signed HTTPS.'
+			: 'Leave the cluster? The master loses access to this panel\'s servers, and this panel goes back to self-signed HTTPS. Remove it on the master too.')) return;
+		const data = await this.clusterPost('/api/settings/cluster/leave', {});
+		if (data) this.showRestarting(data.url, '');
+	},
+
+	async makeJoinCode() {
+		const url = document.getElementById('cl-join-url').value.trim();
+		const j = await this.clusterPost('/api/settings/cluster/joins', { url });
+		if (!j) return;
+		const esc = t => this.escapeHtml(t);
+		const out = document.getElementById('cl-join-out');
+		out.innerHTML = `
+			<p class="text-xs text-yellow-700 dark:text-yellow-300 mb-1">Shown only once. Works once, until ${esc(this.fmtTime(j.expires))}. Anyone with it can add a server to this cluster, so treat it like a password.</p>
+			<p class="text-xs text-gray-500 dark:text-gray-400">On the new server (with RedstonePanel installed), run:</p>
+			<textarea readonly rows="3" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white mb-1">${esc(j.command)}</textarea>
+			<p class="text-xs text-gray-500 dark:text-gray-400">or paste just the code into that panel's Panel Settings > Cluster > Join:</p>
+			<textarea readonly rows="3" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white">${esc(j.code)}</textarea>`;
+		out.classList.remove('hidden');
+	},
+
+	async cancelJoin(id) {
+		const res = await fetch(`/api/settings/cluster/joins/${encodeURIComponent(id)}`, { method: 'DELETE' });
+		if (!res.ok) return this.clusterError(await this.apiError(res));
+		this.loadClusterSettings();
+	},
+
+	async removeNode(id, name) {
+		if (!confirm(`Remove ${name} from the cluster? It goes back to being a standalone panel (if it can be reached).`)) return;
+		const res = await fetch(`/api/settings/cluster/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+		if (!res.ok) return this.clusterError(await this.apiError(res));
+		const d = await res.json();
+		if (!d.node_confirmed) alert(`${name} was removed here, but couldn't be told (${d.problem}). Run "sudo redstonepanel leave" on it.`);
+		this.loadClusterSettings();
+	},
+
+	async renewNodeCert(id, button) {
+		if (id === 'local' && !confirm('Renew this master\'s certificate? The panel restarts.')) return;
+		button.disabled = true;
+		const data = await this.clusterPost(`/api/settings/cluster/nodes/${encodeURIComponent(id)}/renew`);
+		button.disabled = false;
+		if (!data) return;
+		if (data.restart) return this.showRestarting(data.url, '');
+		this.loadClusterSettings();
+	},
+
+	async downloadClusterBackup() {
+		const passphrase = document.getElementById('cl-pass').value;
+		const res = await fetch('/api/settings/cluster/backup', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ passphrase })
+		});
+		if (!res.ok) return this.clusterError(await this.apiError(res));
+		const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+		const a = document.createElement('a');
+		a.href = URL.createObjectURL(await res.blob());
+		a.download = name ? name[1] : 'redstonepanel-cluster.rpbackup';
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+		document.getElementById('cl-pass').value = '';
+		this.clusterError('');
 	},
 
 	async logout() {

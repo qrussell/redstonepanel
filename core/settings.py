@@ -2,7 +2,9 @@
 
 Defaults keep things simple: plain HTTP on 8080 and sign-in required.
 Advanced options (admin only, Panel Settings):
-  * https_mode: "off" | "self_signed" | "custom"   (custom = admin-supplied cert/key, e.g. certbot)
+  * https_mode: "off" | "self_signed" | "custom" | "cluster"
+      (custom = admin-supplied cert/key, e.g. certbot; cluster = issued by the cluster's CA,
+       set only by creating or joining a cluster, see core/cluster.py)
   * login_mode: "required" | "trusted_networks"   (no sign-in from private LAN ranges)
 """
 import ipaddress
@@ -92,7 +94,7 @@ def validate(new):
     s = dict(DEFAULTS)
     s.update({k: v for k, v in new.items() if k in DEFAULTS})
 
-    if s["https_mode"] not in ("off", "self_signed", "custom"):
+    if s["https_mode"] not in ("off", "self_signed", "custom", "cluster"):
         raise SettingsError("Unknown HTTPS mode.")
     for key in ("http_port", "https_port"):
         try:

@@ -12,6 +12,20 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .I NAME
 .br
 .B redstonepanel reset-security
+.br
+.B redstonepanel cluster
+.RB { create
+.IR NAME | status | join-code
+.RI [ URL ]| backup
+.IR FILE | promote
+.IR FILE }
+.br
+.B redstonepanel join
+.I CODE
+.br
+.B redstonepanel leave
+.br
+.B redstonepanel cluster-https
 .SH DESCRIPTION
 RedstonePanel is a web panel that deploys and manages Minecraft Java Edition and
 Bedrock Dedicated Server instances as systemd services. The panel itself runs as the
@@ -35,6 +49,44 @@ servers' panels apart (up to 40 characters; visible before signing in). An empty
 .TP
 .B reset-security
 Recovery: switch the panel back to plain HTTP on port 8080 with sign\-in required, and restart it.
+On a cluster member this cuts the panel off from the cluster until
+.B cluster-https
+is run.
+.SH CLUSTER COMMANDS
+A cluster lets one panel, the master, see and start, stop or restart the game servers of
+other RedstonePanels, its nodes. The master runs a small certificate authority and issues
+every member's HTTPS certificate; certificates only cover private addresses and local names
+(.lan, .local, .home.arpa, .internal). A node accepts the master's token only for listing and
+controlling game servers: never users, settings or deleting servers.
+.TP
+.BI "cluster create " NAME
+Make this panel the master of a new cluster, switch it to cluster HTTPS and restart it.
+.TP
+.B cluster status
+Show this panel's role and, on a master, its nodes and pending join codes.
+.TP
+.BI "cluster join-code " "R[PURLR]"
+On the master: print a single\-use join code, valid for one hour, and the command to run on
+the new node. URL is the address nodes use to reach the master (default: its first private address).
+.TP
+.BI "join " CODE
+Join the cluster in a join code, switch to cluster HTTPS and restart.
+.TP
+.B leave
+On a node: leave the cluster and go back to self\-signed HTTPS (remove the node on the master too).
+On a master with no nodes: dissolve the cluster.
+.TP
+.BI "cluster backup " FILE
+On the master: write the cluster's state (CA, nodes and their tokens, panel accounts, templates)
+to FILE, encrypted with a passphrase that is asked for (or read from standard input).
+.TP
+.BI "cluster promote " FILE
+Make this panel the master from a backup, replacing its panel accounts and templates. Nodes
+accept the new master at once and refuse the old one from then on.
+.TP
+.B cluster-https
+Turn cluster HTTPS back on after
+.BR reset-security .
 .SH SIGNING IN
 Linux accounts in the
 .B sudo
@@ -47,7 +99,10 @@ or by an admin in the panel.
 .SH FILES
 .TP
 .I /var/lib/redstonepanel/
-Panel state: users.json (scrypt password hashes), settings.json, secret.key, tls/, templates and chat history.
+Panel state: users.json (scrypt password hashes), settings.json, secret.key, tls/, cluster/, templates and chat history.
+.TP
+.I /var/lib/redstonepanel/cluster/
+Cluster state (mode 0700): role, the cluster CA and this panel's certificate; on a master also the nodes and their tokens.
 .TP
 .I /var/log/redstonepanel/panel.log
 Activity log shown in the panel's console.
