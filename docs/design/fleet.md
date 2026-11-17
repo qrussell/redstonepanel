@@ -1,6 +1,6 @@
 # Design: RedstonePanel clusters (one master, many nodes)
 
-Status: draft v2 · Target: 1.5.0 (phase 1) · Author: Quentin Russell
+Status: v2 · Phase 1 shipped in 1.5.0; phases 2+ are proposals · Author: Quentin Russell
 
 v2 replaces the hub/member draft. The two ideas there that survive: a panel that controls other
 panels through tokens, and an allowlist that limits what a token can do. New in v2: one
