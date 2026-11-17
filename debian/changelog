@@ -1,3 +1,19 @@
+redstonepanel (1.5.0) noble; urgency=medium
+
+  * Clusters: make one panel the master and add other panels as nodes with
+    single-use join codes. The master's Cluster page lists every node's game
+    servers and can start, stop and restart them. A cluster CA issues each
+    member's HTTPS certificate, limited to private addresses and local names.
+    Node tokens only reach game-server listing and control, never users or
+    settings. Encrypted backup and promote recover from a lost master.
+  * New commands: cluster create/status/join-code/backup/promote, join,
+    leave and cluster-https.
+  * The header shows the panel's version, also returned by /api/auth/me.
+  * The server action endpoint only accepts start, stop and restart for the
+    panel's own minecraft* units.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 17 Nov 2026 18:57:09 +0000
+
 redstonepanel (1.4.0) noble; urgency=medium
 
   * Bedrock: show why players can't connect. The overview warns when the
