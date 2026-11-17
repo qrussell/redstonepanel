@@ -25,6 +25,11 @@ const ServerApp = {
         if (!me.ok) return;
         this.currentUser = await me.json();
         this.renderCurrentUser();
+        const ver = document.getElementById('panel-version');
+        if (ver && this.currentUser.panel_version) {
+            ver.innerText = 'v' + this.currentUser.panel_version;
+            ver.title = `RedstonePanel ${this.currentUser.panel_version}`;
+        }
 
         this.applyTheme();
         this.fetchTemplates();

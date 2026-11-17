@@ -8,6 +8,7 @@ from typing import Optional
 import core.manager as manager
 import core.auth as auth
 import core.settings as panel_settings
+from core.version import panel_version
 from starlette.background import BackgroundTask
 import os
 import shutil
@@ -16,7 +17,7 @@ import subprocess
 import tempfile
 import threading
 
-app = FastAPI(title="RedstonePanel API", version="4.0.0")
+app = FastAPI(title="RedstonePanel API", version=panel_version())
 
 class RawPropertiesUpdate(BaseModel):
     content: str
@@ -90,6 +91,8 @@ def logout_api(response: Response):
 @app.get("/api/auth/me")
 def me_api(request: Request):
     user = dict(request.state.user)
+    # The release this panel runs; signed-in users only (the sign-in page doesn't advertise it)
+    user["panel_version"] = panel_version()
     # Admins get told when HTTPS was requested but the panel had to fall back to HTTP
     if user["role"] == "admin":
         user["https_error"] = panel_settings.RUNTIME.get("https_error")
