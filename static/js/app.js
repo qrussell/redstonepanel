@@ -169,7 +169,7 @@ const ServerApp = {
                          class="p-3 rounded cursor-pointer transition flex items-center gap-3 ${isActive}">
                         <span class="${dot}">●</span>
                         <div>
-                            <div class="font-bold text-gray-900 dark:text-gray-200">${srv.name}</div>
+                            <div class="font-bold text-gray-900 dark:text-gray-200">${srv.name}${this.hasProxyProblem(srv) || this.hasConnectProblem(srv) ? ' <span class="text-yellow-600" title="Players may not be able to connect: see Overview">⚠</span>' : ''}</div>
                             <div class="text-xs text-gray-500">${srv.edition}${srv.version ? ' ' + this.escapeHtml(srv.version) : ''} • Port ${srv.port}</div>
                         </div>
                     </div>
@@ -220,13 +220,67 @@ const ServerApp = {
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Port (TCP/UDP)</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.port}</p></div>
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Max RAM</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.ram}</p></div>
         `;
-        
+        document.getElementById('overview-notes').innerHTML = this.serverNotes(srv);
+
         // A search typed for the previous server shouldn't hide this one's properties
         const propSearch = document.getElementById('prop-search');
         if (propSearch) propSearch.value = '';
 
         this.switchTab('overview');
         this.switchConfigSubTab('visual');
+    },
+
+    // A running Phantom proxy with a problem: worth a marker in the sidebar
+    hasProxyProblem(srv) {
+        return (srv.proxies || []).some(p => p.active === 'active' && p.problems && p.problems.length);
+    },
+
+    // Online but players can't connect: worth a marker in the sidebar too
+    hasConnectProblem(srv) {
+        return srv.status === 'online' && !!(srv.transport_rejected || srv.signaling_closed);
+    },
+
+    // Overview notes: how Bedrock players can join, and Phantom proxies the panel didn't create
+    serverNotes(srv) {
+        const esc = t => this.escapeHtml(String(t));
+        const warn = 'p-3 rounded border border-yellow-300 bg-yellow-50 text-yellow-800 text-sm';
+        const info = 'p-3 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm';
+        const notes = [];
+        if (srv.edition === 'Bedrock' && srv.transport_rejected) {
+            notes.push(`<div class="${warn}"><b>Players can't connect:</b> at its last start this server said it doesn't support ` +
+                `transport=${esc(srv.transport || '(not set)')}. This release only accepts NetherNet: set transport=nethernet in Properties and restart.</div>`);
+        } else if (srv.edition === 'Bedrock' && srv.signaling_closed) {
+            const cause = srv.udp_ports_address
+                ? ` The likely cause is server-udp-ports=${esc(srv.udp_ports)}: with a public address in front, this release ` +
+                  `doesn't open the port. Use server-udp-ports=${esc(srv.udp_ports_plain)} instead and restart.`
+                : '';
+            notes.push(`<div class="${warn}"><b>Players can't connect:</b> the server started but isn't accepting clients ` +
+                `on TCP port ${esc(srv.port)} (no "Accepting clients" line in its log since the last start).${cause}</div>`);
+        } else if (srv.edition === 'Bedrock' && srv.transport === 'nethernet' && srv.udp_ports_address) {
+            notes.push(`<div class="${warn}"><b>server-udp-ports=${esc(srv.udp_ports)}:</b> on Bedrock 1.26.63.1 the form with a public address ` +
+                `stops the server from accepting clients on TCP port ${esc(srv.port)}. ` +
+                `Use server-udp-ports=${esc(srv.udp_ports_plain)} instead and restart.</div>`);
+        } else if (srv.edition === 'Bedrock' && srv.transport === 'nethernet') {
+            const udp = srv.udp_ports
+                ? `gameplay uses UDP ${esc(srv.udp_ports)}`
+                : 'gameplay uses random UDP ports (set server-udp-ports to a fixed port to make forwarding possible)';
+            notes.push(`<div class="${info}"><b>NetherNet:</b> players connect to TCP port ${esc(srv.port)} (signaling); ${udp}. ` +
+                `For players outside your network, forward both through your router.</div>`);
+        }
+        (srv.proxies || []).forEach(p => {
+            const running = p.active === 'active';
+            const state = `${running ? 'running' : 'stopped'}, ${p.enabled === 'enabled' ? 'starts at boot' : 'doesn\'t start at boot'}`;
+            const problems = (p.problems || []).map(x => `<li>${esc(x)}</li>`).join('');
+            const head = `<b>Phantom proxy ${esc(p.unit)}</b> (${esc(state)}): forwards to ${esc(p.target || '?')}, listens on UDP ${esc((p.listens || []).join(', '))}.`;
+            if (running && problems) {
+                notes.push(`<div class="${warn}">${head}<ul class="list-disc ml-5 mt-1 space-y-1">${problems}</ul>` +
+                    `<p class="mt-1">Stop it with: <span class="font-mono">sudo systemctl disable --now ${esc(p.unit)}</span></p></div>`);
+            } else {
+                const note = problems ? ' Not a problem while it stays stopped.' : '';
+                notes.push(`<div class="${info}">${head}${note}</div>`);
+            }
+        });
+        return notes.join('');
     },
 
 	chatInterval: null,
