@@ -1,3 +1,17 @@
+redstonepanel (1.4.0) noble; urgency=medium
+
+  * Bedrock: show why players can't connect. The overview warns when the
+    server rejected its transport (1.26.x accepts only NetherNet), when a
+    NetherNet server started without accepting clients on its TCP port,
+    and when server-udp-ports has a public address in front, which stops
+    that listener on 1.26.63.1. The sidebar marks affected servers.
+  * Detect Phantom proxies installed as services next to a Bedrock server,
+    whatever their unit name, and flag the two ways they break it: holding
+    UDP 19132 and forwarding to their own port ("Server offline").
+  * NetherNet servers show their TCP signaling port and UDP gameplay ports.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 17 Nov 2026 05:03:49 +0000
+
 redstonepanel (1.3.1) noble; urgency=medium
 
   * Fix Java live chat failing with "not connected" when the RCON password
