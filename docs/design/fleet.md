@@ -75,8 +75,8 @@ Master: **Panel Settings → Cluster → Create cluster** (admin), or `sudo reds
 2. Issues the master its own certificate from the cluster CA, with this host's names and
    addresses (`settings.own_hosts()`) as SANs.
 3. Switches the master to the new `https_mode: "cluster"` and restarts (the existing
-   `_restart_soon()` path). A master that already uses a **custom** certificate (e.g. certbot)
-   keeps it for browsers (§6).
+   `_restart_soon()` path). A panel that uses a **custom** certificate (e.g. certbot) can't
+   create or join a cluster in phase 1 (§6).
 4. Records `{"role": "master", "cluster_id": "<uuid>", "name": "Home", "epoch": 1}`.
 
 Browsers trust the whole cluster once the cluster CA is installed (Panel Settings offers
@@ -123,9 +123,14 @@ On a host that already runs RedstonePanel, an admin can instead paste the code i
    `{cluster_id, name, epoch, cert}`.
 6. The node saves its certificate, sets `https_mode: "cluster"`, records
    `{"role": "node", "cluster_id", "master_name", "epoch"}` and restarts.
-7. The master connects back to the node's address (the source IP of the join request, or one
-   the admin edits later) and calls `GET /api/cluster/hello` to confirm. The node shows as
-   **ready**.
+7. The master records the node's address as the source IP of the join request (an admin can
+   edit it later). Phase 1 doesn't call back right away: the Cluster page shows the node as
+   **ok** once it answers there.
+
+The master's address in a join code is the one the admin's browser used if the master's
+certificate covers it, otherwise the master's first private IP. Single-label host names like
+`basement` are never in cluster certificates (see §6), so the node can always check the master's
+certificate including its host name.
 
 The join secret only works during step 4. After that, everything goes master → node.
 
@@ -152,10 +157,20 @@ The join secret only works during step 4. After that, everything goes master →
   `POST /api/cluster/cert/csr` on the node (which returns a fresh CSR), signs it, and calls
   `PUT /api/cluster/cert`. The node swaps the files and restarts. Phase 1 does this from a
   **Renew** button on the master. Phase 2 does it automatically.
-- **Custom certificates (certbot):** a node or master that uses `https_mode: "custom"` keeps that
-  certificate for browsers *and* for cluster traffic. Its node record gets
-  `verify: "system"`, and the master checks it with `ssl.create_default_context()` instead of the
-  cluster CA. Running a second TLS port only for the cluster isn't worth it.
+- **Name constraints:** the cluster CA can only vouch for private IPv4 addresses (10/8,
+  172.16/12, 192.168/16, 100.64/10 for Tailscale-style addresses) and names under `.lan`,
+  `.local`, `.home.arpa` and `.internal`. Importing it into a browser therefore can't be used to
+  impersonate a public website, even if the master's CA key is stolen. The same lists decide which
+  of a host's names go into its certificate, and a node must reach the master from a private address.
+  A node on a public address needs the custom-certificate support below.
+- **Clock differences:** certificates start at the moment they are signed (OpenSSL 3.0 on
+  Ubuntu 24.04 can't backdate them), so the panel's own checks verify 10 minutes ahead to
+  tolerate a signer whose clock runs a little fast.
+- **Custom certificates (certbot), phase 2:** in phase 1 a panel with `https_mode: "custom"`
+  can't create or join a cluster. The plan: such a panel keeps its certificate for browsers *and*
+  for cluster traffic, its node record gets `verify: "system"`, and the master checks it with
+  `ssl.create_default_context()` instead of the cluster CA. A second TLS port only for the cluster
+  isn't worth it.
 - **Cluster traffic never uses plain HTTP.** Joining always turns HTTPS on.
 
 ## 7. Node tokens and the allowlist (node side)
@@ -383,12 +398,18 @@ The Docker image covers Windows users in the meantime.
 
 ## 13. Phases
 
-**Phase 1 (1.5.0): a cluster you can see and switch on and off**
-- Roles, `https_mode: "cluster"`, cluster CA, join codes, `redstonepanel join` and `leave`
+**Phase 1 (1.5.0): a cluster you can see and switch on and off** (implemented: `core/cluster.py`,
+`core/cluster_client.py`, tests in `tests/test_cluster.py` and `packaging/test/test-cluster.sh`)
+- Roles, `https_mode: "cluster"`, cluster CA with name constraints, join codes,
+  `redstonepanel join` and `leave`
 - Node tokens, middleware allowlist, epoch, `/api/cluster/hello`
 - Cluster page with start/stop/restart, Panel Settings → Cluster
-- Manual certificate renewal, encrypted backup download
-- CLI: `cluster create | status | backup | promote`, `join`, `leave`, `cluster-https`
+- Manual certificate renewal, encrypted backup download, dissolving an empty cluster
+- CLI: `cluster create | status | join-code | backup | promote`, `join`, `leave`, `cluster-https`
+- Not in phase 1: custom (certbot) certificates in a cluster, nodes on public addresses,
+  nightly backups, the master's "Add node" install one-liner (waits on a qrussell-repo setup script)
+- Also fixed on the way: `POST /api/servers/{name}/action` only accepts start/stop/restart for the
+  panel's own `minecraft*` units. Before, any signed-in user could pass any systemctl verb and unit.
 
 **Phase 2: manage everything from the master**
 - `api()` helper in `app.js`, plus a proxy `/api/cluster/nodes/{id}/proxy/{path}` limited to

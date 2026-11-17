@@ -529,7 +529,19 @@ def update_server_binary(server_name):
     run_and_log(["chown", "-R", "minecraft:minecraft", d])
     run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
 
+class ServerError(ValueError):
+    """A request about a server that can't be done (message is safe to show)."""
+
+POWER_ACTIONS = ("start", "stop", "restart")
+SERVICE_NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.@-]*$")
+
 def control_server(server_name, action):
+    # Only start/stop/restart, and only the panel's own game server units: never another service
+    if action not in POWER_ACTIONS:
+        raise ServerError(f"Unknown action '{action}'.")
+    if not SERVICE_NAME_RE.match(server_name or "") or \
+            not os.path.isfile(f"/etc/systemd/system/{server_name}.service"):
+        raise ServerError(f"No Minecraft server called '{server_name}' on this panel.")
     run_and_log(["sudo", "systemctl", action, f"{server_name}.service"])
 
 def remove_server(server_name, keep_world):

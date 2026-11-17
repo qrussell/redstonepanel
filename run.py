@@ -10,6 +10,16 @@
                                       ("" = use this server's host name)
     redstonepanel reset-security      recovery: plain HTTP on 8080, sign-in required, restart
 
+  Clusters (one master panel controls the game servers of other panels, its nodes):
+    redstonepanel cluster create "NAME"   make this panel a cluster master
+    redstonepanel cluster status          role, nodes, certificates
+    redstonepanel cluster join-code [URL] make a single-use join code for a new node (master)
+    redstonepanel join 'CODE'             join the cluster in a join code (from the master)
+    redstonepanel leave                   node: leave the cluster; master: dissolve an empty one
+    redstonepanel cluster backup FILE     master: encrypted backup of the cluster (asks a passphrase)
+    redstonepanel cluster promote FILE    make this panel the master from a backup
+    redstonepanel cluster-https           turn cluster HTTPS back on after reset-security
+
 If HTTPS is on but its certificate can't be used or the HTTPS port is taken, the panel starts
 on plain HTTP instead and shows admins a warning, so a bad setting never locks you out.
 """
@@ -45,6 +55,12 @@ def main():
             if s["https_mode"] == "self_signed":
                 from core import tls
                 cert, key = tls.ensure_self_signed()
+            elif s["https_mode"] == "cluster":
+                from core import cluster, tls
+                cert, key = cluster.serving_cert()
+                problem = tls.check_pair(cert, key)
+                if problem:
+                    raise RuntimeError(problem)
             else:
                 cert, key = s["cert_file"], s["key_file"]
                 from core import tls
@@ -89,6 +105,10 @@ def status():
     print(f"Linux:     members of {' or '.join(auth.ALLOWED_LINUX_GROUPS)} can sign in")
     users = auth.list_panel_users()
     print(f"Panel users: {', '.join(u['username'] + ' (' + u['role'] + (', disabled' if u['disabled'] else '') + ')' for u in users) or 'none'}")
+    from core import cluster
+    st = cluster.state()
+    print(f"Cluster:   {st['role']}" + (f" of '{st.get('name') or st.get('cluster_name')}'" if st["role"] != "standalone" else "")
+          + (" (details: redstonepanel cluster status)" if st["role"] != "standalone" else ""))
     print(f"Data:      {settings.DATA_DIR}")
 
 
@@ -129,6 +149,145 @@ def add_user(args):
     print(f"Created panel user '{args[0].strip().lower()}' ({role}).")
 
 
+def _restart_service(what):
+    """The panel only picks up HTTPS changes when it restarts."""
+    if os.geteuid() == 0 and os.path.exists("/run/systemd/system"):
+        import subprocess
+        r = subprocess.run(["systemctl", "restart", "redstonepanel.service"])
+        if r.returncode == 0:
+            print(f"Restarted redstonepanel {what}.")
+            return
+    print("Restart the panel to apply it: sudo systemctl restart redstonepanel")
+
+
+def _log(msg):
+    from core import manager
+    manager.write_log(f"[CLUSTER] {msg}")
+
+
+def _actor():
+    return f"{os.environ.get('SUDO_USER') or 'root'} (command line)"
+
+
+def _passphrase(confirm):
+    import getpass
+    if not sys.stdin.isatty():
+        return sys.stdin.readline().rstrip("\n")
+    p = getpass.getpass("Backup passphrase: ")
+    if confirm and p != getpass.getpass("Repeat passphrase: "):
+        sys.exit("Passphrases do not match.")
+    return p
+
+
+def _when(t):
+    import time
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(t)) if t else "never"
+
+
+def cluster_cmd(args):
+    from core import cluster
+    try:
+        if args[:1] == ["create"] and len(args) == 2:
+            st = cluster.create_cluster(args[1], _actor())
+            _log(f"{_actor()} created cluster '{st['name']}'; this panel is its master.")
+            print(f"Created cluster '{st['name']}'. This panel is its master and now uses cluster HTTPS.")
+            print("Add nodes with: sudo redstonepanel cluster join-code")
+            _restart_service("with cluster HTTPS")
+        elif args == ["status"]:
+            st = cluster.state()
+            print(f"Role:      {st['role']}")
+            if st["role"] == "standalone":
+                return
+            print(f"Cluster:   {st.get('name') or st.get('cluster_name')} (epoch {st.get('epoch')})")
+            print(f"CA:        {cluster.ca_fingerprint(cluster.read_ca())}")
+            print(f"This cert: expires {_when(cluster.cert_expires(cluster.node_crt()))}")
+            if st["role"] == "node":
+                print(f"Master:    {st.get('master_name')} ({st.get('master_url')})")
+                print(f"Last contact from the master: {_when(st.get('last_used'))}"
+                      + (f" from {st['last_ip']}" if st.get("last_ip") else ""))
+            else:
+                nodes = cluster.load_nodes()
+                print(f"Nodes:     {len(nodes)}")
+                for n in nodes:
+                    print(f"  {n['id']}  {n['name']:<24} {n['url']:<30} cert expires {_when(n.get('cert_expires'))}, "
+                          f"last answer {_when(n.get('last_ok'))}")
+                for j in cluster.list_joins():
+                    print(f"  pending join code {j['id']} (expires {_when(j['expires'])})")
+        elif args[:1] == ["join-code"] and len(args) <= 2:
+            url = args[1] if len(args) == 2 else cluster.default_join_url(None)
+            j = cluster.create_join(_actor(), url)
+            _log(f"{_actor()} made a join code ({j['id']}), valid for one hour.")
+            print(f"Join code (single use, valid until {_when(j['expires'])}). Keep it secret.\n")
+            print(j["code"] + "\n")
+            print("On the new server (Ubuntu with RedstonePanel installed), run:\n")
+            print("  " + j["command"])
+        elif args[:1] == ["backup"] and len(args) == 2:
+            data = cluster.make_backup(_passphrase(confirm=True), _actor())
+            fd = os.open(args[1], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+            _log(f"{_actor()} wrote an encrypted cluster backup to {args[1]}.")
+            print(f"Wrote {args[1]} ({len(data)} bytes). Store it somewhere other than this server, and keep")
+            print("the passphrase safe: the backup holds the keys that control every node.")
+        elif args[:1] == ["promote"] and len(args) == 2:
+            with open(args[1], "rb") as f:
+                data = f.read()
+            if sys.stdin.isatty():
+                print("This makes this panel the cluster's master. Its panel accounts and templates are")
+                print("replaced by the backup's. The old master is locked out once nodes hear from this one.")
+                if input("Continue? [y/N] ").strip().lower() != "y":
+                    sys.exit("Cancelled.")
+            st = cluster.promote(data, _passphrase(confirm=False), _actor())
+            _log(f"{_actor()} promoted this panel to master of '{st['name']}' (epoch {st['epoch']}).")
+            print(f"This panel is now the master of '{st['name']}' (epoch {st['epoch']}).")
+            print("Point your bookmarks (or DNS name) at this server.")
+            _restart_service("as the cluster master")
+        else:
+            sys.exit(__doc__)
+    except cluster.ClusterError as e:
+        sys.exit(str(e))
+
+
+def join_cmd(code):
+    from core import cluster, cluster_client
+    try:
+        st = cluster.join(code, _actor(), cluster_client)
+    except cluster.ClusterError as e:
+        sys.exit(str(e))
+    _log(f"{_actor()} joined this panel to cluster '{st['cluster_name']}' (master: {st['master_name']}).")
+    print(f"Joined cluster '{st['cluster_name']}'. Its master, {st['master_name']}, can now see and control")
+    print("this panel's game servers. This panel now uses cluster HTTPS.")
+    _restart_service("with cluster HTTPS")
+
+
+def leave_cmd():
+    from core import cluster
+    try:
+        if cluster.role() == "master":
+            cluster.dissolve(_actor())
+            _log(f"{_actor()} dissolved the cluster.")
+            print("Cluster dissolved. This panel is standalone again (self-signed HTTPS).")
+        else:
+            cluster.leave()
+            _log(f"{_actor()} left the cluster.")
+            print("Left the cluster. This panel is standalone again (self-signed HTTPS).")
+            print("Remove it on the master too, so the master stops listing it.")
+    except cluster.ClusterError as e:
+        sys.exit(str(e))
+    _restart_service("as a standalone panel")
+
+
+def cluster_https():
+    from core import cluster
+    if cluster.role() == "standalone":
+        sys.exit("This panel isn't in a cluster.")
+    s = settings.load()
+    s["https_mode"] = "cluster"
+    settings.save(s)
+    print("Cluster HTTPS is on again.")
+    _restart_service("with cluster HTTPS")
+
+
 if __name__ == "__main__":
     cmd, rest = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else (None, [])
     if cmd is None:
@@ -141,6 +300,14 @@ if __name__ == "__main__":
         add_user(rest)
     elif cmd == "set-name" and len(rest) == 1:
         set_name(rest[0])
+    elif cmd == "cluster":
+        cluster_cmd(rest)
+    elif cmd == "join" and len(rest) == 1:
+        join_cmd(rest[0])
+    elif cmd == "leave" and not rest:
+        leave_cmd()
+    elif cmd == "cluster-https" and not rest:
+        cluster_https()
     elif cmd in ("-h", "--help", "help"):
         print(__doc__)
     else:

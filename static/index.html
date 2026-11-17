@@ -47,8 +47,12 @@
             <h1 class="text-xl font-bold text-red-500 dark:text-red-500">RedstonePanel</h1>
             <!-- Which server this panel runs on (Panel Settings > Panel name; default: host name) -->
             <p id="panel-name" class="text-sm font-bold text-gray-700 dark:text-gray-300 truncate mt-1"></p>
+            <!-- On a cluster node: which cluster and master manage it -->
+            <p id="cluster-badge" class="hidden text-xs text-gray-500 dark:text-gray-400 truncate mt-1"></p>
             <p id="https-error-banner" class="hidden mt-2 text-xs p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700"></p>
             <button onclick="ServerApp.openDeployModal()" class="mt-4 w-full bg-theme hover-bg-theme text-white py-2 rounded text-sm font-bold transition mb-2">➕ New Server</button>
+            <!-- On a cluster master: every node's servers on one page -->
+            <button id="btn-cluster" onclick="ServerApp.openCluster()" class="hidden w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">🌐 Cluster</button>
             <div class="flex gap-2 mb-4">
                 <button onclick="ServerApp.toggleConsole(true)" class="flex-1 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition">🖥️ Console</button>
                 <button onclick="ServerApp.openTemplateManager()" class="flex-1 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition">📋 Templates</button>
@@ -252,6 +256,18 @@
 				</div>
 			</div>
         </div>
+    </main>
+
+    <!-- Cluster (master only): the servers of every panel in the cluster -->
+    <main class="flex-1 flex flex-col h-full bg-gray-50 dark:bg-gray-900 hidden" id="cluster-view">
+        <header class="p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
+            <div>
+                <h2 id="cluster-title" class="text-2xl font-bold text-gray-900 dark:text-white">Cluster</h2>
+                <p id="cluster-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mt-1">Loading...</p>
+            </div>
+            <button onclick="ServerApp.loadCluster()" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white px-4 py-2 rounded font-bold transition">↻ Refresh</button>
+        </header>
+        <div class="flex-1 overflow-y-auto p-6 space-y-4" id="cluster-nodes"></div>
     </main>
 
     <!-- Panel Settings (admins): wider than the normal modal -->
