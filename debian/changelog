@@ -1,3 +1,19 @@
+redstonepanel (1.6.0) noble; urgency=medium
+
+  * Restore removed servers. Servers uninstalled with "Keep World" are
+    listed under New Server > Removed servers (and by `redstonepanel
+    removed`); restoring writes a new systemd unit under the same name,
+    keeps the old port unless another server took it, downloads the server
+    binary only if it is missing, then enables and starts it. Also
+    `redstonepanel restore NAME`.
+  * "Uninstall (Keep World)" now keeps the server binary too, so a restore
+    runs the same game version, and remembers the server's heap size.
+  * Admins can permanently delete a removed server's files.
+  * Uninstall refuses names that aren't the panel's own servers.
+  * Parallel deploys and imports can no longer pick the same server name.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Wed, 18 Nov 2026 04:11:12 +0000
+
 redstonepanel (1.5.0) noble; urgency=medium
 
   * Clusters: make one panel the master and add other panels as nodes with
