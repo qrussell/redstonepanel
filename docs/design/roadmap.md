@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.7.0 · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.8.0 · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,11 +20,11 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.7.0)
+## What already exists (1.8.0)
 
 Java and Bedrock servers as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, restoring removed servers, scheduled backups with restore, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
@@ -52,7 +52,7 @@ Testing the release candidate on a real host found that Bedrock 1.26 keeps its w
 `worlds/level` and panel-made servers have no `level-name`; worth remembering for anything
 else that looks for a Bedrock world.
 
-### 1.8: know what's happening *(built, not yet released)*
+### 1.8.0: know what's happening *(Nov 2026)*
 
 3. **Discord (and generic) webhook notifications.** Started, stopped, crashed, scheduled
    restart, backup done or failed. Done with a systemd drop-in shipped in the package

@@ -1,3 +1,21 @@
+redstonepanel (1.8.0) noble; urgency=medium
+
+  * Notifications: a Discord or JSON webhook for crashed, started and
+    stopped servers, scheduled restarts and finished or failed backups
+    (Panel Settings > Notifications). Server events come from a systemd
+    drop-in for every minecraft-*.service, so crashes are reported while
+    the panel is stopped. New command: redstonepanel notify-test.
+  * Scheduled restarts with in-game warnings (Maintenance tab), as
+    redstonepanel-restart@<server>.timer. New command: redstonepanel
+    restart-server NAME.
+  * The console colours lines by kind.
+  * Fixed: a crashed Bedrock server was never restarted (screen exits 0
+    when the game dies). It now starts again after 20 seconds.
+  * Fixed: a stopped Java server (exit 143) showed as failed.
+  * Fixed: dark mode's white workspace and unreadable New Server title.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Wed, 18 Nov 2026 06:33:34 +0000
+
 redstonepanel (1.7.0) noble; urgency=medium
 
   * Scheduled backups. Each server's Backups tab sets a schedule (hourly,
