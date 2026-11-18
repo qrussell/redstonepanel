@@ -9,6 +9,8 @@
     redstonepanel set-name "NAME"     name shown in the panel to tell servers apart
                                       ("" = use this server's host name)
     redstonepanel reset-security      recovery: plain HTTP on 8080, sign-in required, restart
+    redstonepanel removed             list game servers uninstalled with "Keep World"
+    redstonepanel restore NAME        give a removed server a systemd service again and start it
 
   Clusters (one master panel controls the game servers of other panels, its nodes):
     redstonepanel cluster create "NAME"   make this panel a cluster master
@@ -288,6 +290,30 @@ def cluster_https():
     _restart_service("with cluster HTTPS")
 
 
+def removed_cmd():
+    from core import manager
+    servers = manager.list_removed_servers()
+    if not servers:
+        print("No removed servers.")
+        return
+    for s in servers:
+        note = "" if s["can_restore"] else "  (can't tell Java from Bedrock)"
+        if s["can_restore"] and not s["has_binary"]:
+            note = "  (no server binary: restore downloads the latest)"
+        print(f"{s['name']:<28} {s['edition']:<8} port {s['port'] or '?':<6} {s['directory']}{note}")
+    print("\nRestore one with: sudo redstonepanel restore NAME")
+
+
+def restore_cmd(name):
+    from core import manager
+    try:
+        r = manager.restore_server(name)
+    except (manager.ServerError, manager.DependencyError) as e:
+        sys.exit(str(e))
+    print(f"Restored {r['name']} on port {r['port']}"
+          + (f" (port {r['old_port']} is used by another server)" if r["old_port"] else "") + ".")
+
+
 if __name__ == "__main__":
     cmd, rest = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else (None, [])
     if cmd is None:
@@ -298,6 +324,10 @@ if __name__ == "__main__":
         status()
     elif cmd == "add-user":
         add_user(rest)
+    elif cmd == "removed" and not rest:
+        removed_cmd()
+    elif cmd == "restore" and len(rest) == 1:
+        restore_cmd(rest[0])
     elif cmd == "set-name" and len(rest) == 1:
         set_name(rest[0])
     elif cmd == "cluster":

@@ -338,7 +338,35 @@ def control_server(server_name: str, req: ServerActionRequest):
 
 @app.delete("/api/servers/{server_name}")
 def uninstall_server(server_name: str, keep_world: bool = True):
-    manager.remove_server(server_name, keep_world)
+    try:
+        manager.remove_server(server_name, keep_world)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "success"}
+
+# Removed servers: folders in /opt whose systemd unit is gone (uninstalled with "Keep World")
+@app.get("/api/servers/removed")
+def list_removed_servers():
+    return manager.list_removed_servers()
+
+@app.post("/api/servers/removed/{server_name}/restore")
+def restore_server(server_name: str):
+    try:
+        result = manager.restore_server(server_name)
+    except (manager.ServerError, manager.DependencyError) as e:
+        manager.write_log(f"[RESTORE] Refused: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "success", **result}
+
+@app.delete("/api/servers/removed/{server_name}")
+def delete_removed_server(request: Request, server_name: str):
+    # Can't be undone: admins only
+    if request.state.user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can delete a removed server's files.")
+    try:
+        manager.delete_removed_server(server_name)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
     
 @app.get("/api/logs")
