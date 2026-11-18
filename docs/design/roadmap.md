@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.9.0 · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.10.0 · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,12 +20,12 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.9.0)
+## What already exists (1.10.0)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, a file manager, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
@@ -97,14 +97,21 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    - Not done: switching an existing server between loaders, and installing plugins or mods
      (see Later).
 
-### 1.10: edit files
+### 1.10.0: edit files *(Nov 2026)*
 
-7. **File manager.** Browse, edit text files, upload, download, delete.
-   - Every path goes through `realpath` and must stay inside the server's folder; symlinks
-     pointing outside are refused.
-   - Writes happen as the `minecraft` user, with size limits.
-   - Admin-only to begin with (see per-server permissions below).
-   - Text editing only; binary files are download/upload.
+7. **File manager.** A **Files** tab (admins only): browse, edit UTF-8 text up to 1 MB,
+   upload (512 MB), download, rename, new folder, delete.
+   - Rather than `realpath` and a prefix check, which a symlink swapped in between check and
+     use defeats, every path is opened one component at a time from the server folder with
+     `openat(O_NOFOLLOW)`. Every symlink is refused, not only those pointing outside; the
+     list shows them and their targets. Files with other hard links, FIFOs and devices aren't
+     opened. Folder deletes use `shutil.rmtree(dir_fd=)`.
+   - The panel writes as root but through those directory fds, then `fchown`s new files to
+     the folder's owner (`minecraft`); replacing a file keeps its mode. Writes are atomic
+     (temp file + rename).
+   - Saving checks the file's mtime against when it was opened, so a change the game made
+     meanwhile isn't overwritten silently.
+   - Each change is logged with the admin's name.
 
 ### 2.0: run it for other people
 

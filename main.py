@@ -1,11 +1,13 @@
 from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.concurrency import run_in_threadpool
 from core.models import ServerDeployRequest, ServerActionRequest, ServerPropertiesUpdate, ServerUpdateRequest
 from pydantic import BaseModel
 from typing import Optional
 import core.manager as manager
+import core.files as files
+import urllib.parse
 import core.javaservers as javaservers
 import core.backups as backups
 import core.notify as notify
@@ -480,6 +482,86 @@ def test_notifications():
     ok, err = notify.send_test()
     if not ok:
         raise HTTPException(status_code=400, detail=err)
+    return {"status": "success"}
+
+# File manager (admins only): everything goes through core/files.py, which never follows symlinks
+class TextFile(BaseModel):
+    path: str
+    content: str
+    modified: Optional[int] = None      # mtime the editor loaded; None for a new file
+
+class FilePath(BaseModel):
+    path: str
+
+class FileRename(BaseModel):
+    path: str
+    name: str
+
+def _files_call(request: Request, fn, *args, **kw):
+    _require_admin(request, "use the file manager")
+    try:
+        return fn(*args, **kw)
+    except files.FileError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=400, detail=f"{e.strerror or e}")
+
+@app.get("/api/servers/{server_name}/files")
+def list_files(request: Request, server_name: str, path: str = ""):
+    return _files_call(request, files.list_dir, server_name, path)
+
+@app.get("/api/servers/{server_name}/files/text")
+def read_text_file(request: Request, server_name: str, path: str):
+    return _files_call(request, files.read_text, server_name, path)
+
+@app.put("/api/servers/{server_name}/files/text")
+def write_text_file(request: Request, server_name: str, req: TextFile):
+    return _files_call(request, files.write_text, server_name, req.path, req.content, req.modified,
+                       actor=request.state.user["username"])
+
+@app.get("/api/servers/{server_name}/files/download")
+def download_file(request: Request, server_name: str, path: str):
+    fd, size, name = _files_call(request, files.open_for_download, server_name, path)
+    def stream():
+        try:
+            while True:
+                chunk = os.read(fd, 1 << 16)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            os.close(fd)
+    quoted = urllib.parse.quote(name, safe="")
+    return StreamingResponse(stream(), media_type="application/octet-stream", headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quoted}", "Content-Length": str(size)})
+
+@app.post("/api/servers/{server_name}/files/upload")
+def upload_file(request: Request, server_name: str, path: str = "", overwrite: bool = False,
+                file: UploadFile = File(...)):
+    def chunks():
+        while True:
+            chunk = file.file.read(1 << 20)
+            if not chunk:
+                break
+            yield chunk
+    return _files_call(request, files.upload, server_name, path, os.path.basename(file.filename or ""),
+                       chunks(), overwrite, actor=request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/files/mkdir")
+def make_folder(request: Request, server_name: str, req: FilePath):
+    _files_call(request, files.make_dir, server_name, req.path, actor=request.state.user["username"])
+    return {"status": "success"}
+
+@app.post("/api/servers/{server_name}/files/rename")
+def rename_file(request: Request, server_name: str, req: FileRename):
+    _files_call(request, files.rename, server_name, req.path, req.name, actor=request.state.user["username"])
+    return {"status": "success"}
+
+@app.delete("/api/servers/{server_name}/files")
+def delete_file(request: Request, server_name: str, path: str):
+    _files_call(request, files.delete, server_name, path, actor=request.state.user["username"])
     return {"status": "success"}
 
 # Removed servers: folders in /opt whose systemd unit is gone (uninstalled with "Keep World")

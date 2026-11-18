@@ -9,6 +9,8 @@ them from a browser:
   version you choose, each run with the Java it needs
 - live chat and console commands (over RCON)
 - a `server.properties` editor
+- a file manager for each server's folder (admins): browse, edit text files such as plugin
+  configs, upload plugins and mods, download, rename and delete
 - player roles (operator, member and so on)
 - reusable server templates
 - export a server as a zip backup, and import server backups (.zip, .tar.gz/.tgz or .tar; a
