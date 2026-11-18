@@ -118,6 +118,7 @@
 			<button onclick="ServerApp.switchTab('maintenance')" id="tab-btn-maintenance" class="py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Maintenance</button>
 			<button onclick="ServerApp.switchTab('backups')" id="tab-btn-backups" class="py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Backups</button>
 			<button onclick="ServerApp.switchTab('world')" id="tab-btn-world" class="py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">World &amp; Maps</button>
+			<button onclick="ServerApp.switchTab('files')" id="tab-btn-files" class="admin-only py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Files</button>
 		</div>
 
         <div class="flex-1 overflow-y-auto p-6 relative">
@@ -256,6 +257,10 @@
 			<!-- BACKUPS TAB (filled by ServerApp.renderBackups) -->
 			<div id="tab-backups" class="hidden-tab space-y-6">
 				<div id="backups-content"><p class="text-sm text-gray-500">Loading…</p></div>
+			</div>
+			<!-- FILES TAB (admins; filled by ServerApp.renderFiles / openFileEditor) -->
+			<div id="tab-files" class="hidden-tab space-y-4">
+				<div id="files-content"><p class="text-sm text-gray-500">Loading…</p></div>
 			</div>
 			<!-- WORLD TAB -->
 			<div id="tab-world" class="hidden-tab space-y-6">

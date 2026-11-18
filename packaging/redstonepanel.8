@@ -1,4 +1,4 @@
-.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.9.0" "System Administration"
+.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.10.0" "System Administration"
 .SH NAME
 redstonepanel \- manage the RedstonePanel Minecraft server panel
 .SH SYNOPSIS
@@ -166,7 +166,9 @@ Cluster state (mode 0700): role, the cluster CA and this panel's certificate; on
 Activity log shown in the panel's console.
 .TP
 .I /opt/minecraft-*/
-Game servers. Removing or purging the package never deletes them.
+Game servers. Removing or purging the package never deletes them. Admins can browse and edit
+them in the panel's Files tab, which never follows symlinks and gives new files to the
+folder's owner.
 .TP
 .I /opt/minecraft-*/.redstonepanel-server.json
 A Java server's type (vanilla, paper or fabric), Minecraft version, build and the Java it

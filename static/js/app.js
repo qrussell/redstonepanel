@@ -292,7 +292,10 @@ const ServerApp = {
 	
     switchTab(tabId) {
         // Safely iterate all possible tabs to prevent null errors if a tab doesn't exist
-        ['overview', 'properties', 'maintenance', 'backups', 'chat', 'world'].forEach(t => {
+        if (this.fileEditor && this.fileEditor.dirty && tabId !== 'files'
+            && !confirm('Discard your unsaved changes to ' + this.fileEditor.path + '?')) return;
+        if (tabId !== 'files') this.fileEditor = null;
+        ['overview', 'properties', 'maintenance', 'backups', 'chat', 'world', 'files'].forEach(t => {
             const tab = document.getElementById(`tab-${t}`);
             const btn = document.getElementById(`tab-btn-${t}`);
             if (tab) tab.classList.add('hidden-tab');
@@ -314,6 +317,7 @@ const ServerApp = {
         if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
+        if (tabId === 'files') this.loadFiles(this.filesServer === this.activeServer.name ? this.filesPath : '');
         if (tabId === 'chat') {
             this.loadChat();
             this.chatInterval = setInterval(() => this.loadChat(), 3000); // Poll every 3 seconds
@@ -1010,6 +1014,208 @@ const ServerApp = {
         this.renderBackups();
     },
 
+    // --- Files tab (admins): browse, edit text, upload, download, rename, delete ---
+    filesPath: '',
+    filesServer: null,
+    filesData: null,
+    fileEditor: null,     // {path, modified, dirty}
+
+    filesUrl(suffix, params) {
+        const q = new URLSearchParams(params || {}).toString();
+        return `/api/servers/${encodeURIComponent(this.activeServer.name)}/files${suffix}${q ? '?' + q : ''}`;
+    },
+
+    joinPath(...parts) {
+        return parts.filter(p => p).join('/');
+    },
+
+    async loadFiles(path) {
+        const box = document.getElementById('files-content');
+        if (!this.activeServer || !box) return;
+        this.fileEditor = null;
+        const res = await fetch(this.filesUrl('', { path: path || '' }));
+        if (!res.ok) {
+            const msg = await this.apiError(res);
+            if (path) return this.loadFiles('');           // the folder went away: back to the top
+            box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(msg)}</p>`;
+            return;
+        }
+        this.filesData = await res.json();
+        this.filesPath = this.filesData.path;
+        this.filesServer = this.activeServer.name;
+        this.renderFiles();
+    },
+
+    renderFiles() {
+        const d = this.filesData;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const attr = t => esc(t).replace(/'/g, '&#39;');
+        const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
+        const btn = 'px-3 py-1.5 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+        const small = 'px-2 py-1 rounded text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+
+        const parts = d.path ? d.path.split('/') : [];
+        let crumbs = `<button onclick="ServerApp.loadFiles('')" class="text-theme hover:underline">${esc(this.activeServer.name)}</button>`;
+        parts.forEach((p, i) => {
+            const to = parts.slice(0, i + 1).join('/');
+            crumbs += ` <span class="text-gray-400">/</span> <button onclick="ServerApp.loadFiles('${attr(to)}')" class="text-theme hover:underline">${esc(p)}</button>`;
+        });
+
+        const rows = d.entries.map(e => {
+            const full = this.joinPath(d.path, e.name);
+            const icon = { dir: '📁', file: '📄', link: '🔗', other: '❔' }[e.type];
+            let name;
+            if (e.type === 'dir') name = `<button onclick="ServerApp.loadFiles('${attr(full)}')" class="text-theme hover:underline text-left">${esc(e.name)}</button>`;
+            else if (e.editable) name = `<button onclick="ServerApp.openFileEditor('${attr(full)}')" class="hover:underline text-left text-gray-900 dark:text-gray-200">${esc(e.name)}</button>`;
+            else name = `<span class="text-gray-900 dark:text-gray-200">${esc(e.name)}</span>`;
+            if (e.type === 'link') name += ` <span class="text-xs text-gray-500">→ ${esc(e.target || '?')} (not followed)</span>`;
+            const actions = [
+                e.editable ? `<button onclick="ServerApp.openFileEditor('${attr(full)}')" class="${small}">Edit</button>` : '',
+                e.type === 'file' ? `<a href="${this.filesUrl('/download', { path: full })}" class="${small}">Download</a>` : '',
+                e.type !== 'other' ? `<button onclick="ServerApp.renameFile('${attr(full)}')" class="${small}">Rename</button>` : '',
+                `<button onclick="ServerApp.deleteFile('${attr(full)}', '${e.type}')" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white">Delete</button>`,
+            ].join(' ');
+            return `<tr class="border-t border-gray-200 dark:border-gray-700">
+                <td class="py-1.5 pl-3 pr-2 w-6">${icon}</td>
+                <td class="py-1.5 pr-3 break-all">${name}</td>
+                <td class="py-1.5 pr-3 text-right whitespace-nowrap text-gray-500 dark:text-gray-400">${e.size === null ? '' : esc(this.formatSize(e.size))}</td>
+                <td class="py-1.5 pr-3 whitespace-nowrap text-gray-500 dark:text-gray-400">${esc(new Date(e.modified * 1000).toLocaleString())}</td>
+                <td class="py-1.5 pr-3 text-right whitespace-nowrap">${actions}</td>
+            </tr>`;
+        }).join('');
+
+        document.getElementById('files-content').innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div class="text-sm font-mono break-all">${crumbs}</div>
+                <div class="flex flex-wrap gap-2">
+                    ${d.path ? `<button onclick="ServerApp.loadFiles('${attr(parts.slice(0, -1).join('/'))}')" class="${btn}">⬆ Up</button>` : ''}
+                    <button onclick="ServerApp.newFolder()" class="${btn}">New folder</button>
+                    <button onclick="ServerApp.newTextFile()" class="${btn}">New file</button>
+                    <button onclick="document.getElementById('files-upload').click()" class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white">Upload</button>
+                    <input type="file" id="files-upload" multiple class="hidden" onchange="ServerApp.uploadFiles(this.files)">
+                </div>
+            </div>
+            <p id="files-status" class="text-xs text-gray-500 dark:text-gray-400 mb-2"></p>
+            <div class="${card} overflow-x-auto">
+                <table class="w-full text-sm">
+                    <tbody>${rows || '<tr><td class="p-3 text-gray-500">This folder is empty.</td></tr>'}</tbody>
+                </table>
+            </div>
+            ${d.truncated ? '<p class="text-xs text-yellow-600 mt-2">Only the first 5000 entries are shown.</p>' : ''}
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Text files up to ${esc(this.formatSize(d.max_text))} can be edited here; anything else, download and upload. Symlinks are listed but never followed. Most changes apply when the server restarts.</p>`;
+    },
+
+    async openFileEditor(path, isNew) {
+        let data = { path, content: '', modified: null };
+        if (!isNew) {
+            const res = await fetch(this.filesUrl('/text', { path }));
+            if (!res.ok) return alert(`Can't open ${path}: ${await this.apiError(res)}`);
+            data = await res.json();
+        }
+        this.fileEditor = { path, modified: data.modified, dirty: false };
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        document.getElementById('files-content').innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div class="text-sm font-mono break-all text-gray-900 dark:text-gray-200">${esc(this.activeServer.name)}/${esc(path)}${isNew ? ' <span class="text-xs text-gray-500">(new)</span>' : ''}</div>
+                <div class="flex gap-2">
+                    <span id="file-editor-status" class="text-xs text-gray-500 dark:text-gray-400 self-center"></span>
+                    <button onclick="ServerApp.saveFileEditor()" class="px-3 py-1.5 rounded text-sm bg-green-600 hover:bg-green-700 text-white">Save</button>
+                    <button onclick="ServerApp.closeFileEditor()" class="px-3 py-1.5 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Close</button>
+                </div>
+            </div>
+            <textarea id="file-editor" spellcheck="false" class="w-full min-h-[400px] font-mono text-sm bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-3 text-gray-900 dark:text-gray-200 outline-none" style="height: 65vh; tab-size: 4;"></textarea>`;
+        const ta = document.getElementById('file-editor');
+        ta.value = data.content;
+        ta.addEventListener('input', () => {
+            this.fileEditor.dirty = true;
+            document.getElementById('file-editor-status').innerText = 'Unsaved changes';
+        });
+        ta.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); this.saveFileEditor(); }
+        });
+        ta.focus();
+    },
+
+    async saveFileEditor() {
+        const ed = this.fileEditor;
+        if (!ed) return;
+        const res = await fetch(this.filesUrl('/text'), {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: ed.path, content: document.getElementById('file-editor').value, modified: ed.modified })
+        });
+        if (!res.ok) return alert(`Couldn't save: ${await this.apiError(res)}`);
+        const r = await res.json();
+        ed.modified = r.modified;
+        ed.dirty = false;
+        document.getElementById('file-editor-status').innerText = `Saved ${new Date().toLocaleTimeString()}`;
+    },
+
+    closeFileEditor() {
+        if (this.fileEditor && this.fileEditor.dirty && !confirm('Discard your unsaved changes?')) return;
+        this.loadFiles(this.filesPath);
+    },
+
+    async newFolder() {
+        const name = prompt('New folder name:');
+        if (!name) return;
+        const res = await fetch(this.filesUrl('/mkdir'), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: this.joinPath(this.filesPath, name) })
+        });
+        if (!res.ok) alert(`Couldn't create the folder: ${await this.apiError(res)}`);
+        this.loadFiles(this.filesPath);
+    },
+
+    newTextFile() {
+        const name = prompt('New file name (for example config.yml):');
+        if (!name) return;
+        if (name.includes('/')) return alert('Choose a name without slashes.');
+        if (this.filesData.entries.some(e => e.name === name)) return alert(`'${name}' already exists.`);
+        this.openFileEditor(this.joinPath(this.filesPath, name), true);
+    },
+
+    async renameFile(path) {
+        const old = path.split('/').pop();
+        const name = prompt(`Rename '${old}' to:`, old);
+        if (!name || name === old) return;
+        const res = await fetch(this.filesUrl('/rename'), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path, name })
+        });
+        if (!res.ok) alert(`Couldn't rename: ${await this.apiError(res)}`);
+        this.loadFiles(this.filesPath);
+    },
+
+    async deleteFile(path, type) {
+        const what = type === 'dir' ? `the folder '${path}' and everything in it` : `'${path}'`;
+        if (!confirm(`Permanently delete ${what}? This can't be undone.`)) return;
+        const res = await fetch(this.filesUrl('', { path }), { method: 'DELETE' });
+        if (!res.ok) alert(`Couldn't delete: ${await this.apiError(res)}`);
+        this.loadFiles(this.filesPath);
+    },
+
+    async uploadFiles(fileList) {
+        const status = document.getElementById('files-status');
+        const folder = this.filesPath;
+        for (const f of Array.from(fileList)) {
+            if (this.filesData && f.size > this.filesData.max_upload) {
+                alert(`${f.name} is larger than ${this.formatSize(this.filesData.max_upload)}; it can't be uploaded here.`);
+                continue;
+            }
+            status.innerText = `Uploading ${f.name} (${this.formatSize(f.size)})…`;
+            const send = async overwrite => {
+                const form = new FormData();
+                form.append('file', f, f.name);
+                return fetch(this.filesUrl('/upload', { path: folder, overwrite }), { method: 'POST', body: form });
+            };
+            let res = await send(false);
+            if (res.status === 409 && confirm(`'${f.name}' already exists here. Replace it?`)) res = await send(true);
+            if (!res.ok && res.status !== 409) alert(`Couldn't upload ${f.name}: ${await this.apiError(res)}`);
+        }
+        status.innerText = '';
+        this.loadFiles(folder);
+    },
+
     renderBackups() {
         const info = this.backupInfo;
         const esc = t => this.escapeHtml(String(t ?? ''));
@@ -1369,7 +1575,7 @@ const ServerApp = {
             [/\[WARNING\]|\bWARN(ING)?\b/i, 'text-yellow-300'],
             [/^\s*\[SYSTEM\] Executing:/, 'text-gray-500'],
             [/\[(BACKUP|RESTART|RESTORE|NOTIFY)\]/, 'text-sky-300'],
-            [/\[(AUTH|SETTINGS|CLUSTER|USERS?)\]/, 'text-purple-300'],
+            [/\[(AUTH|SETTINGS|CLUSTER|USERS?|FILES)\]/, 'text-purple-300'],
             [/\bINFO\b|\bDone\b|\bSaved\b|\bsuccess/i, 'text-green-300'],
         ];
         return text.split('\n').map(line => {

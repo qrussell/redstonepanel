@@ -1,3 +1,13 @@
+redstonepanel (1.10.0) noble; urgency=medium
+
+  * File manager (admins): each server's Files tab browses its folder,
+    edits text files, uploads, downloads, renames, creates folders and
+    deletes. Paths are opened one folder at a time without following
+    symlinks, so nothing outside the server folder can be reached, and new
+    files belong to the folder's owner.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Wed, 18 Nov 2026 17:35:55 +0000
+
 redstonepanel (1.9.0) noble; urgency=medium
 
   * Java servers can be Paper or Fabric as well as vanilla, on a chosen
