@@ -18,6 +18,9 @@ them from a browser:
   (**Backups** tab, or `sudo redstonepanel backup NAME`)
 - a panel activity log
 
+**New here?** The [user guide](docs/guide/README.md) walks through setting it up and every
+feature, with screenshots.
+
 The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as an
 `Architecture: all` Debian package for **Ubuntu 24.04 and 25.04**.
 
