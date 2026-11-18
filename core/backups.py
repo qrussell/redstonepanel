@@ -130,8 +130,8 @@ def _skipped(rel):
         return True
     return any(rel == p or rel.startswith(p) for p in SKIP_PACK_PREFIXES)
 
-def _add_tree(tar, d, skip_dir=None):
-    """Adds the server folder to tar, minus _skipped() paths and skip_dir (relative)."""
+def _add_tree(tar, d, skip_dirs=()):
+    """Adds the server folder to tar, minus _skipped() paths and skip_dirs (relative)."""
     for root, dirs, files in os.walk(d):
         rel_root = os.path.relpath(root, d).replace(os.sep, "/")
         rel_root = "" if rel_root == "." else rel_root
@@ -139,7 +139,7 @@ def _add_tree(tar, d, skip_dir=None):
         for name in sorted(dirs):
             rel = f"{rel_root}/{name}" if rel_root else name
             full = os.path.join(root, name)
-            if _skipped(rel) or rel == skip_dir:
+            if _skipped(rel) or rel in skip_dirs:
                 continue
             if os.path.islink(full):
                 tar.add(full, arcname=rel, recursive=False)   # the link itself, never its target
@@ -344,15 +344,17 @@ def _backup_running_java(server, d, tar):
     return True
 
 def _backup_running_bedrock(server, d, tar):
-    world = manager.read_properties(d).get("level-name", "Bedrock level")
     files = _bedrock_hold(server, d)
     try:
         if files is None:
             manager.write_log(f"[WARNING] {server} didn't answer 'save query' through screen; copying its files live.")
             _add_tree(tar, d)
             return False
-        # The world comes only from the held list; everything else from the folder as usual
-        _add_tree(tar, d, skip_dir=f"worlds/{world}")
+        # The world comes only from the held list; everything else from the folder as usual.
+        # The world folder is taken from that list, not level-name: without a level-name line,
+        # Bedrock 1.26 names the folder "level".
+        held = {f"worlds/{p.split('/', 1)[0]}" for p, _ in files}
+        _add_tree(tar, d, skip_dirs=held)
         _add_held_files(tar, d, files)
         return True
     finally:
@@ -381,10 +383,17 @@ def _archive_world(tar, edition):
     if "server.properties" in names:
         text = tar.extractfile("server.properties").read().decode("utf-8", errors="replace")
         level = properties.parse(text, java=(edition == "java")).get("level-name")
-    level = level or ("world" if edition == "java" else "Bedrock level")
     if edition == "java":
+        level = level or "world"
         candidates = [level, f"{level}_nether", f"{level}_the_end"]
     else:
+        # Bedrock's folder for a missing level-name has changed between releases ("Bedrock level",
+        # now "level"), so when level-name doesn't name a folder in the backup, use the backup's
+        # only world folder.
+        folders = sorted({n.split("/")[1] for n in names if n.startswith("worlds/") and n.count("/") >= 2})
+        if (not level or level not in folders) and len(folders) == 1:
+            level = folders[0]
+        level = level or "Bedrock level"
         candidates = [f"worlds/{level}"]
     present = [c for c in candidates if any(n == c or n.startswith(c + "/") for n in names)]
     return level, present
@@ -559,6 +568,7 @@ def overview(server):
         "schedule": get_schedule(server),
         "frequencies": {k: v[0] for k, v in FREQUENCIES.items()},
         "next_run": next_run(server),
+        "timezone": time.strftime("%Z"),
         "last": read_status(server),
         "backups": backups,
         "total_size": sum(b["size"] for b in backups),

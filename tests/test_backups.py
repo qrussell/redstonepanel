@@ -129,6 +129,53 @@ class Backups(unittest.TestCase):
         self.assertEqual(screen, ["save resume"])
         self.assertTrue(info["consistent"])
 
+    def bedrock_without_level_name(self):
+        """What the panel's deploy makes on Bedrock 1.26: no level-name line, world in worlds/level."""
+        self.edition = "bedrock"
+        d = os.path.join(self.servers, "minecraft-bedrock-2")
+        write(os.path.join(d, "server.properties"), "server-port=19134\nserver-portv6=19135\n")
+        write(os.path.join(d, "bedrock_server"), "bin")
+        write(os.path.join(d, "worlds", "level", "db", "000003.log"), "B" * 200)
+        write(os.path.join(d, "worlds", "level", "db", "CURRENT"), "MANIFEST-000002\n")
+        write(os.path.join(d, "worlds", "level", "level.dat"), "old-world")
+        write(os.path.join(self.units, "minecraft-bedrock-2.service"), "")
+        return d
+
+    def test_running_bedrock_without_level_name(self):
+        d = self.bedrock_without_level_name()
+        self.running = True
+        held = [("level/db/000003.log", 156), ("level/db/CURRENT", 16), ("level/level.dat", 9)]
+        with mock.patch.object(B, "_bedrock_hold", lambda s, d: held), \
+             mock.patch.object(B, "_screen", lambda s, cmd: True):
+            info = B.run_backup("minecraft-bedrock-2", "manual")
+        with tarfile.open(self.backup_file("minecraft-bedrock-2", info)) as t:
+            names = t.getnames()
+            self.assertEqual(len(t.extractfile("worlds/level/db/000003.log").read()), 156)
+        # Each world file once: the live copy of the folder is left out
+        world = [n for n in names if n.startswith("worlds/level/")]
+        self.assertEqual(sorted(world), ["worlds/level/db/000003.log", "worlds/level/db/CURRENT",
+                                         "worlds/level/level.dat"])
+
+        # And it restores
+        write(os.path.join(d, "worlds", "level", "level.dat"), "griefed")
+        self.running = False
+        result = B.restore_backup("minecraft-bedrock-2", info["file"])
+        self.assertEqual(result["restored"], ["worlds/level"])
+        with open(os.path.join(d, "worlds", "level", "level.dat")) as f:
+            self.assertEqual(f.read(), "old-world")
+        self.assertEqual(M.read_properties(d).get("level-name"), "level")
+
+    def test_bedrock_file_list_from_a_real_server(self):
+        # server.log of a 1.26.63.1 server made by the panel (no level-name line)
+        log = ("[2026-11-18 04:53:12:092 INFO] Saving...\n"
+               "[2026-11-18 04:53:12:092 ERROR] A previous save has not been completed.\n"
+               "save query\n"
+               "[2026-11-18 04:53:16:613 INFO] Data saved. Files are now ready to be copied.\n"
+               "level/db/MANIFEST-000002:50, level/db/CURRENT:16, level/db/000003.log:156, "
+               "level/level.dat:3031, level/level.dat_old:3031, level/levelname.txt:5\n")
+        self.assertEqual(B.parse_bedrock_file_list(log)[0], ("level/db/MANIFEST-000002", 50))
+        self.assertEqual(len(B.parse_bedrock_file_list(log)), 6)
+
     def test_bedrock_file_list_parsing(self):
         log = ("[2026-11-18 04:00:00:000 INFO] A previous save has not been completed.\n"
                "[2026-11-18 04:00:01:000 INFO] Data saved. Files are now ready to be copied.\n"

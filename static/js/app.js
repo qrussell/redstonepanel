@@ -933,11 +933,11 @@ const ServerApp = {
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                     <select id="backup-frequency" class="${field}">${freqOptions}</select>
-                    <input type="time" id="backup-time" value="${esc(s.time)}" class="${field}" title="Time of day (this machine's time zone)">
+                    <input type="time" id="backup-time" value="${esc(s.time)}" class="${field}" title="Time of day on the server${info.timezone ? ` (${esc(info.timezone)})` : ''}">
                     <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">Keep
                         <input type="number" id="backup-keep" min="1" max="365" value="${esc(s.keep)}" class="${field} w-20"></label>
                 </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Runs as a systemd timer, so backups happen even while the panel is stopped. Only scheduled backups are pruned to the number kept; manual ones stay until you delete them.</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">The time is the server's clock${info.timezone ? ` (${esc(info.timezone)})` : ''}, not your browser's. Runs as a systemd timer, so backups happen even while the panel is stopped. Only scheduled backups are pruned to the number kept; manual ones stay until you delete them.</p>
                 ${info.next_run && s.enabled ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Next backup: ${esc(info.next_run)}</p>` : ''}
                 ${last}
                 <div class="flex gap-2 mt-3">
