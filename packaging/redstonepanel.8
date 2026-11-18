@@ -18,6 +18,9 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .B redstonepanel restore
 .I NAME
 .br
+.B redstonepanel backup
+.I NAME
+.br
 .B redstonepanel cluster
 .RB { create
 .IR NAME | status | join-code
@@ -67,6 +70,14 @@ that no systemd service uses.
 Restore a removed server: write a new systemd service for it under the same name, keep its
 port unless another server now uses it, download the server binary only if it is missing,
 then enable and start it.
+.TP
+.BI "backup " NAME
+Back up a game server now, into
+.IR /var/backups/redstonepanel/NAME/ .
+A running Java server stops writing to disk during the copy (over RCON), a running Bedrock
+server through \fBsave hold\fR. Backups taken this way are never pruned. Each server's backup
+timer, \fBredstonepanel-backup@\fINAME\fB.timer\fR, runs the same command for scheduled
+backups, which keep only the number set in the panel's Backups tab.
 .SH CLUSTER COMMANDS
 A cluster lets one panel, the master, see and start, stop or restart the game servers of
 other RedstonePanels, its nodes. The master runs a small certificate authority and issues
@@ -124,6 +135,10 @@ Activity log shown in the panel's console.
 .TP
 .I /opt/minecraft-*/
 Game servers. Removing or purging the package never deletes them.
+.TP
+.I /var/backups/redstonepanel/
+Backups, one folder per server (mode 0700). Kept when a server is uninstalled or the package
+is purged. Schedules are in /var/lib/redstonepanel/backups.json.
 .SH SEE ALSO
 .BR systemctl (1),
 .BR journalctl (1)

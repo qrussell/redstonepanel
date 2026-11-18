@@ -296,7 +296,7 @@ const ServerApp = {
 	
     switchTab(tabId) {
         // Safely iterate all possible tabs to prevent null errors if a tab doesn't exist
-        ['overview', 'properties', 'maintenance', 'chat', 'world'].forEach(t => {
+        ['overview', 'properties', 'maintenance', 'backups', 'chat', 'world'].forEach(t => {
             const tab = document.getElementById(`tab-${t}`);
             const btn = document.getElementById(`tab-btn-${t}`);
             if (tab) tab.classList.add('hidden-tab');
@@ -317,6 +317,7 @@ const ServerApp = {
         if (tabId === 'properties') this.switchConfigSubTab('visual');
         if (tabId === 'maintenance') this.refreshApplyTemplates();
         if (tabId === 'world') this.loadWorldName();
+        if (tabId === 'backups') this.loadBackups();
         if (tabId === 'chat') {
             this.loadChat();
             this.chatInterval = setInterval(() => this.loadChat(), 3000); // Poll every 3 seconds
@@ -864,6 +865,143 @@ const ServerApp = {
             <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white transition">Cancel</button>
         `;
         modal.classList.remove('hidden');
+    },
+
+    // --- Backups tab: schedule, list, back up now, download, restore, delete ---
+    backupInfo: null,
+
+    formatSize(bytes) {
+        if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+        if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+        return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+    },
+
+    async loadBackups() {
+        if (!this.activeServer) return;
+        const name = this.activeServer.name;
+        const res = await fetch(`/api/servers/${encodeURIComponent(name)}/backups`);
+        if (!this.activeServer || this.activeServer.name !== name) return;   // switched server meanwhile
+        const box = document.getElementById('backups-content');
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        this.backupInfo = await res.json();
+        this.renderBackups();
+    },
+
+    renderBackups() {
+        const info = this.backupInfo;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const s = info.schedule;
+        const isAdmin = this.currentUser && this.currentUser.role === 'admin';
+        const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 shadow-sm';
+        const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+        const freqOptions = Object.entries(info.frequencies)
+            .map(([id, label]) => `<option value="${esc(id)}" ${id === s.frequency ? 'selected' : ''}>${esc(label)}</option>`).join('');
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore' };
+
+        let last = '';
+        if (info.last) {
+            const when = new Date(info.last.at * 1000).toLocaleString();
+            last = info.last.ok
+                ? `<p class="text-xs text-gray-500 dark:text-gray-400">Last backup: ${esc(when)}${info.last.consistent === false
+                    ? ' <span class="text-yellow-600 dark:text-yellow-500">(copied while the server was writing: see the console)</span>' : ''}</p>`
+                : `<p class="text-xs text-red-500">Last backup failed (${esc(when)}): ${esc(info.last.error)}</p>`;
+        }
+        const javaNoRcon = this.activeServer.edition === 'Java' && !/^\d+$/.test(String(this.activeServer.rcon_port || ''));
+
+        const rows = info.backups.map(b => `
+            <tr class="border-t border-gray-200 dark:border-gray-700">
+                <td class="py-2 pr-3 whitespace-nowrap">${esc(new Date(b.created * 1000).toLocaleString())}</td>
+                <td class="py-2 pr-3">${esc(kindLabel[b.kind] || b.kind)}</td>
+                <td class="py-2 pr-3 text-right whitespace-nowrap">${esc(this.formatSize(b.size))}</td>
+                <td class="py-2 text-right whitespace-nowrap">
+                    <a href="/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(b.file)}" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white" title="Download">⬇</a>
+                    ${isAdmin ? `<button onclick="ServerApp.restoreBackup('${esc(b.file)}')" class="px-2 py-1 rounded bg-yellow-600 hover:bg-yellow-700 text-white" title="Restore this world">Restore</button>
+                    <button onclick="ServerApp.deleteBackup('${esc(b.file)}')" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-red-700 hover:text-white text-gray-900 dark:text-white" title="Delete">🗑</button>` : ''}
+                </td>
+            </tr>`).join('');
+
+        document.getElementById('backups-content').innerHTML = `
+            <div class="${card} max-w-xl">
+                <div class="flex items-center justify-between mb-3">
+                    <p class="text-sm font-bold text-gray-900 dark:text-white">Schedule</p>
+                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <input type="checkbox" id="backup-enabled" ${s.enabled ? 'checked' : ''}> Automatic backups
+                    </label>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                    <select id="backup-frequency" class="${field}">${freqOptions}</select>
+                    <input type="time" id="backup-time" value="${esc(s.time)}" class="${field}" title="Time of day (this machine's time zone)">
+                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">Keep
+                        <input type="number" id="backup-keep" min="1" max="365" value="${esc(s.keep)}" class="${field} w-20"></label>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Runs as a systemd timer, so backups happen even while the panel is stopped. Only scheduled backups are pruned to the number kept; manual ones stay until you delete them.</p>
+                ${info.next_run && s.enabled ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Next backup: ${esc(info.next_run)}</p>` : ''}
+                ${last}
+                <div class="flex gap-2 mt-3">
+                    <button onclick="ServerApp.saveBackupSchedule(this)" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold text-sm">Save schedule</button>
+                    <button onclick="ServerApp.backupNow(this)" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-4 py-2 rounded font-bold text-sm">Back up now</button>
+                </div>
+                ${javaNoRcon ? `<p class="text-xs text-yellow-600 dark:text-yellow-500 mt-3">RCON isn't set up for this server, so backups taken while it runs copy files it may be writing. Open the Live Chat tab once to set RCON up.</p>` : ''}
+            </div>
+            <div class="${card}">
+                <div class="flex items-center justify-between mb-2">
+                    <p class="text-sm font-bold text-gray-900 dark:text-white">Backups</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400" title="${esc(info.directory)}">${info.backups.length} · ${esc(this.formatSize(info.total_size))} in ${esc(info.directory)}</p>
+                </div>
+                ${info.backups.length ? `
+                <div class="overflow-x-auto"><table class="w-full text-sm text-gray-700 dark:text-gray-300">
+                    <thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pb-1">Taken</th><th class="pb-1">Type</th><th class="pb-1 text-right">Size</th><th></th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table></div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Restore replaces the current world with the backup's. The server is stopped while that happens, and the world it replaces is saved first as a "Before restore" backup.</p>`
+                : `<p class="text-sm text-gray-500 dark:text-gray-400">No backups yet.</p>`}
+            </div>`;
+    },
+
+    async saveBackupSchedule(button) {
+        const body = {
+            enabled: document.getElementById('backup-enabled').checked,
+            frequency: document.getElementById('backup-frequency').value,
+            time: document.getElementById('backup-time').value,
+            keep: parseInt(document.getElementById('backup-keep').value, 10) || 0,
+        };
+        button.disabled = true;
+        const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/schedule`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        button.disabled = false;
+        if (!res.ok) return alert(`Couldn't save the schedule: ${await this.apiError(res)}`);
+        this.loadBackups();
+    },
+
+    async backupNow(button) {
+        button.disabled = true;
+        button.innerText = 'Backing up…';
+        this.toggleConsole(true);
+        const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups`, { method: 'POST' });
+        if (!res.ok) alert(`Backup failed: ${await this.apiError(res)}`);
+        this.loadBackups();
+    },
+
+    async restoreBackup(file) {
+        const b = this.backupInfo.backups.find(x => x.file === file);
+        const when = b ? new Date(b.created * 1000).toLocaleString() : file;
+        if (!confirm(`Replace ${this.activeServer.name}'s world with the backup from ${when}?\n\nThe server stops while this happens. The current world is saved first as a "Before restore" backup.`)) return;
+        this.toggleConsole(true);
+        const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(file)}/restore`, { method: 'POST' });
+        if (!res.ok) alert(`Restore failed: ${await this.apiError(res)}`);
+        else alert('World restored.');
+        this.loadBackups();
+    },
+
+    async deleteBackup(file) {
+        if (!confirm(`Delete the backup ${file}? This can't be undone.`)) return;
+        const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(file)}`, { method: 'DELETE' });
+        if (!res.ok) alert(`Delete failed: ${await this.apiError(res)}`);
+        this.loadBackups();
     },
 
     // --- Removed servers: uninstalled with "Keep World", files still in /opt ---

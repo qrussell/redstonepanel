@@ -41,7 +41,7 @@ version as before.
 
 ### 1.7: don't lose worlds
 
-1. **Scheduled backups with retention.** The single most valuable missing feature.
+1. **Scheduled backups with retention.** *(in progress)* The single most valuable missing feature.
    - A `redstonepanel-backup@<server>.timer` / `.service` pair per server, written by the panel.
      Backups run even when the panel is down.
    - Consistent copies: Java `save-off` → `save-all flush` (RCON) → archive → `save-on`;

@@ -6,6 +6,7 @@ from core.models import ServerDeployRequest, ServerActionRequest, ServerProperti
 from pydantic import BaseModel
 from typing import Optional
 import core.manager as manager
+import core.backups as backups
 import core.auth as auth
 import core.settings as panel_settings
 from core.version import panel_version
@@ -342,6 +343,57 @@ def uninstall_server(server_name: str, keep_world: bool = True):
         manager.remove_server(server_name, keep_world)
     except manager.ServerError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "success"}
+
+# Backups: /var/backups/redstonepanel/<server>/, scheduled by a systemd timer per server
+class BackupSchedule(BaseModel):
+    enabled: bool
+    frequency: str
+    time: str
+    keep: int
+
+def _backup_call(fn, *args):
+    try:
+        return fn(*args)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except backups.BackupError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+def _require_admin(request: Request, what: str):
+    if request.state.user["role"] != "admin":
+        raise HTTPException(status_code=403, detail=f"Only admins can {what}.")
+
+@app.get("/api/servers/{server_name}/backups")
+def get_backups(server_name: str):
+    _backup_call(manager._check_server, server_name)
+    return _backup_call(backups.overview, server_name)
+
+@app.put("/api/servers/{server_name}/backups/schedule")
+def set_backup_schedule(server_name: str, req: BackupSchedule):
+    _backup_call(manager._check_server, server_name)
+    return _backup_call(backups.set_schedule, server_name, req.enabled, req.frequency, req.time, req.keep)
+
+@app.post("/api/servers/{server_name}/backups")
+def backup_now(server_name: str):
+    _backup_call(manager._check_server, server_name)
+    return _backup_call(backups.run_backup, server_name, "manual")
+
+@app.get("/api/servers/{server_name}/backups/{filename}")
+def download_backup(server_name: str, filename: str):
+    path = _backup_call(backups.backup_path, server_name, filename)
+    return FileResponse(path, filename=filename, media_type="application/gzip")
+
+@app.post("/api/servers/{server_name}/backups/{filename}/restore")
+def restore_backup(request: Request, server_name: str, filename: str):
+    _require_admin(request, "restore a backup")
+    _backup_call(manager._check_server, server_name)
+    return _backup_call(backups.restore_backup, server_name, filename)
+
+@app.delete("/api/servers/{server_name}/backups/{filename}")
+def delete_backup(request: Request, server_name: str, filename: str):
+    _require_admin(request, "delete a backup")
+    _backup_call(backups.delete_backup, server_name, filename)
     return {"status": "success"}
 
 # Removed servers: folders in /opt whose systemd unit is gone (uninstalled with "Keep World")
