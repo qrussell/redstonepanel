@@ -411,6 +411,11 @@ The Docker image covers Windows users in the meantime.
 - Also fixed on the way: `POST /api/servers/{name}/action` only accepts start/stop/restart for the
   panel's own `minecraft*` units. Before, any signed-in user could pass any systemctl verb and unit.
 
+**Host numbers on the cluster page (roadmap 1.11)**
+- Each node card shows the node's CPU, memory, disk, version and servers online, from one more
+  read-only route on the allowlist, `GET /api/host`. It reveals nothing a node's own signed-in
+  users can't see and changes nothing.
+
 **Phase 2: manage everything from the master**
 - `api()` helper in `app.js`, plus a proxy `/api/cluster/nodes/{id}/proxy/{path}` limited to
   the phase-2 allowlist

@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.10.0 · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.10.0 and the 1.11 dashboard · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -113,16 +113,66 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
      meanwhile isn't overwritten silently.
    - Each change is logged with the admin's name.
 
+### 1.11: host dashboard
+
+8. **A dashboard where the empty screen is.** With no server selected, the right side of
+   the panel is blank. Fill it with the state of the machine and everything the panel relies
+   on, so "is anything wrong?" has an answer without opening each server or SSHing in.
+
+   Why here: it's read-only (low risk), every admin sees it on every visit, and it builds the
+   sampler that 2.0's resource graphs need, so it takes most of the work out of item 9
+   rather than adding to the plan. It comes before 2.0 because per-server permissions and API
+   tokens change who can see what; a dashboard that already exists only needs a filter then.
+
+   **What it shows** (refreshed every 5–10 s while the page is visible):
+   - **Needs attention**, first and only when something is wrong: disk over 90 % (or under
+     5 GB free), memory or swap nearly full, a failed `minecraft-*` or `redstonepanel-*`
+     unit, a server crash-looping, the last backup of a server failed, a Java server whose
+     Java isn't installed, a certificate expiring within 14 days, a cluster node that hasn't
+     answered, a newer RedstonePanel in apt. Each links to where it's fixed.
+   - **Host:** name, Ubuntu release, kernel, uptime, time zone, IP addresses, the panel's
+     version and whether an update is waiting (`apt-cache policy redstonepanel`, read
+     without running `apt update`).
+   - **CPU:** model, cores, load average, use in % (from two `/proc/stat` samples).
+   - **Memory:** used, available and swap (`/proc/meminfo`).
+   - **Disk:** the file systems holding `/opt` (servers), `/var/backups/redstonepanel`
+     and `/var/lib/redstonepanel`, with free space (`statvfs`). Per server: folder size and
+     backups size. Folder sizes are walked in the background and cached (every 10 min), never
+     during a request.
+   - **Network:** receive and send rate per interface (`/proc/net/dev`).
+   - **Game servers:** one row each: state, uptime, CPU %, memory (from the unit's cgroup:
+     `CPUUsageNSec`, `MemoryCurrent`, `ActiveEnterTimestamp`), players online where RCON
+     allows, next backup and next restart. Clicking a row opens the server.
+   - **Supporting services:** `redstonepanel.service` (state, uptime, memory), the backup
+     and restart timers (next run, last result), Phantom proxies, `ufw` (on, and whether each
+     game port is open), installed Java runtimes and which servers use each, `screen`,
+     HTTPS mode and certificate expiry, notifications (configured or not, last send error),
+     cluster role and certificate expiry.
+   - **Cluster (on a master):** a card per node with the same summary: reachable or last
+     seen, version, CPU, memory, disk, servers online. Needs one more read-only route on the
+     node allowlist (`GET /api/host`); it fits the cluster rule that a master can see and
+     run game servers but never change a node's settings.
+
+   **How:** `core/host.py` reads `/proc`, `statvfs` and `systemctl show`; no `psutil`, no
+   database, no new dependency. One `GET /api/host` for signed-in users. Trusted-LAN visitors
+   get the same view minus IP addresses and versions. The CPU and network samples are kept
+   in memory between requests; that sampler becomes 2.0's ring buffer. Lay it out for phones
+   too (see the mobile pass in Groundwork).
+
+   **Size:** about a week. The background folder-size walk and the per-node cards are the
+   fiddly parts.
+
 ### 2.0: run it for other people
 
-8. **Resource graphs.** CPU and memory per server from the unit's cgroup
-   (`systemctl show -p CPUUsageNSec,MemoryCurrent`), disk use of the server folder, player
-   count over RCON/query. Sampled every 30–60 s into a small on-disk ring buffer per server;
-   24-hour charts. No `psutil`, no database.
-9. **Per-server permissions.** Today a `user` can do everything to every server. Add
+9. **Resource graphs.** History for the live numbers 1.11 shows: CPU and memory per server
+   from the unit's cgroup, host CPU, memory and disk, player count over RCON/query. 1.11's
+   sampler writes every 30–60 s into a small on-disk ring buffer per server and for the host;
+   24-hour charts on the dashboard and each server's Overview. No `psutil`, no database.
+10. **Per-server permissions.** Today a `user` can do everything to every server. Add
     per-server grants (view, console/chat, power, files, settings) for `user` accounts. Admins
-    stay admins (they're effectively root anyway).
-10. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
+    stay admins (they're effectively root anyway). The dashboard then lists only the servers
+    a user may view.
+11. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes, shown once, revocable.
 
