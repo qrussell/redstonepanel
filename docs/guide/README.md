@@ -98,16 +98,29 @@ Click **➕ New Server**.
 **Deploy a fresh server**
 
 1. Choose **Java Edition** or **Bedrock Edition**.
-2. Optionally pick a **Base Template** (see [Templates](#12-templates)) to start from saved
+2. For Java, choose the **Server Type** and **Minecraft Version**:
+   - **Vanilla (Mojang)**: the official server.
+   - **Paper (plugins)**: a faster server that runs Bukkit/Paper plugins. Put plugin `.jar`
+     files in the server's `plugins` folder.
+   - **Fabric (mods)**: runs Fabric mods. Put mod `.jar` files in the server's `mods`
+     folder; players need the same mods.
+   - **Newest** is the default. Pick an older version to match your players' clients or your
+     plugins and mods.
+   - The line under the lists says which Java that version needs and which installed Java
+     will run it. If none is new enough, it names the package to install first
+     (`sudo apt install openjdk-21-jre-headless`, for example).
+3. Optionally pick a **Base Template** (see [Templates](#12-templates)) to start from saved
    settings.
-3. Click **Deploy Fresh Server**.
+4. Click **Deploy Fresh Server**.
 
 The panel then:
 
 - names the server (`minecraft-java`, then `minecraft-java-2`, and so on) and picks a free
   port (Java from 25565, Bedrock from 19132);
-- downloads the latest official release from Mojang (Java `server.jar`) or Minecraft
-  (Bedrock Dedicated Server);
+- downloads the server: Mojang's `server.jar`, the newest stable Paper build, or Fabric's
+  server launcher for the chosen version (always saved as `server.jar`), or the latest
+  Bedrock Dedicated Server. Vanilla and Paper downloads are checked against their published
+  checksums;
 - accepts the Minecraft EULA for you (`eula=true`), so by deploying a server you agree to it;
 - creates a systemd service that runs as the `minecraft` user and restarts the server if it
   crashes;
@@ -200,9 +213,14 @@ Changing a role takes effect at the next restart.
   Restart afterwards.
 - **Export Server → Download .zip**: the whole server folder as a zip, to move it to another
   machine. Import it there with **➕ New Server → Import**.
-- **Update Server → Check & Update**: stops the server, downloads the latest official release,
-  and starts it again. Your world, settings, ports, operators and allowlist are kept. Take a
-  backup first: a Java world opened by a newer version can't go back to an older one.
+- **Update Server → Check & Update**: for Java, choose **Newest** or a Minecraft version (the
+  server keeps its type: a Paper server gets the newest Paper build of that version). Older
+  versions than the server's own aren't offered, because a world can't go back. The new jar is
+  downloaded before the server is stopped, so a failed download changes nothing. Then it stops
+  the server, installs the download and starts it again. Your world, settings, ports,
+  operators and allowlist are kept. Take a backup first: a Java world opened by a newer
+  version can't go back to an older one. Bedrock servers always update to the newest release.
+
 Uninstalling and purging need an **admin**; other accounts, and visitors on a trusted local
 network, don't see these two sections.
 

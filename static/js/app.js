@@ -311,7 +311,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab('visual');
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'chat') {
@@ -838,10 +838,30 @@ const ServerApp = {
 
             <div class="mb-4">
                 <label class="block text-sm text-gray-400 mb-1">Engine Edition</label>
-                <select id="deploy-edition" onchange="document.getElementById('deploy-template').innerHTML = ServerApp.templateOptionsHtml(this.value, 'None (Standard Defaults)')" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                <select id="deploy-edition" onchange="ServerApp.onDeployEditionChange(this.value)" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
                     <option value="java">Java Edition (Auto-Port)</option>
                     <option value="bedrock">Bedrock Edition (Auto-Port)</option>
                 </select>
+
+                <div id="deploy-java-options">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Server Type</label>
+                            <select id="deploy-loader" onchange="ServerApp.loadDeployVersions()" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                                <option value="vanilla">Vanilla (Mojang)</option>
+                                <option value="paper">Paper (plugins)</option>
+                                <option value="fabric">Fabric (mods)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Minecraft Version</label>
+                            <select id="deploy-version" onchange="ServerApp.showJavaRequirement(this.value || this.dataset.newest, 'deploy-java-note')" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                                <option value="">Loading…</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p id="deploy-java-note" class="text-xs text-gray-400 mb-2"></p>
+                </div>
                 
                 <label class="block text-sm text-gray-400 mb-1">Base Template (Optional)</label>
                 <select id="deploy-template" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
@@ -861,6 +881,110 @@ const ServerApp = {
             <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white transition">Cancel</button>
         `;
         modal.classList.remove('hidden');
+        this.loadDeployVersions();
+    },
+
+    onDeployEditionChange(edition) {
+        document.getElementById('deploy-template').innerHTML = this.templateOptionsHtml(edition, 'None (Standard Defaults)');
+        document.getElementById('deploy-java-options').classList.toggle('hidden', edition !== 'java');
+    },
+
+    // --- Java server software: loader, Minecraft version, and the Java it needs ---
+    javaVersions: {},
+
+    async fetchJavaVersions(loader) {
+        if (this.javaVersions[loader]) return this.javaVersions[loader];
+        const res = await fetch(`/api/java/versions?loader=${encodeURIComponent(loader)}`);
+        if (!res.ok) throw new Error(await this.apiError(res));
+        const versions = (await res.json()).versions;
+        this.javaVersions[loader] = versions;
+        return versions;
+    },
+
+    async loadDeployVersions() {
+        const loader = document.getElementById('deploy-loader').value;
+        const select = document.getElementById('deploy-version');
+        const note = document.getElementById('deploy-java-note');
+        select.innerHTML = '<option value="">Loading…</option>';
+        note.innerText = '';
+        try {
+            const versions = await this.fetchJavaVersions(loader);
+            if (document.getElementById('deploy-loader').value !== loader) return;   // changed meanwhile
+            const esc = t => this.escapeHtml(String(t));
+            select.dataset.newest = versions[0] || '';
+            select.innerHTML = `<option value="">Newest (${esc(versions[0] || '?')})</option>`
+                + versions.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+            if (versions[0]) this.showJavaRequirement(versions[0], 'deploy-java-note');
+        } catch (e) {
+            select.innerHTML = '<option value="">Newest</option>';
+            note.className = 'text-xs text-red-400 mb-2';
+            note.innerText = `Couldn't list versions: ${e.message}`;
+        }
+    },
+
+    // "Needs Java 21 (installed)" or which package to install
+    async showJavaRequirement(version, noteId) {
+        const note = document.getElementById(noteId);
+        if (!note || !version) return;
+        note.dataset.version = version;
+        const res = await fetch(`/api/java/requirement?version=${encodeURIComponent(version)}`);
+        if (note.dataset.version !== version) return;
+        if (!res.ok) { note.innerText = ''; return; }
+        const r = await res.json();
+        const base = noteId === 'deploy-java-note' ? 'text-xs mb-2 ' : 'text-xs mt-1 ';
+        if (r.java_used === null) {
+            note.className = base + 'text-red-400';
+            note.innerText = `Minecraft ${r.minecraft} needs Java ${r.java_required}, which isn't installed. `
+                + `Install it first: sudo apt install ${r.package}`;
+        } else {
+            note.className = base + 'text-gray-400';
+            note.innerText = `Minecraft ${r.minecraft} needs Java ${r.java_required}; it will run on Java ${r.java_used}`
+                + (r.java_used !== r.java_required ? ` (Java ${r.java_required} isn't installed; a newer one usually works).` : '.');
+        }
+    },
+
+    // Maintenance tab: Java servers can pick the Minecraft version to update to (never older)
+    async loadUpdateOptions() {
+        const srv = this.activeServer;
+        const text = document.getElementById('update-text');
+        const select = document.getElementById('update-version');
+        const note = document.getElementById('update-java-note');
+        if (!srv || !text) return;
+        note.innerText = '';
+        if (srv.edition !== 'Java') {
+            select.classList.add('hidden');
+            text.innerText = 'Download the newest Bedrock Dedicated Server release.';
+            return;
+        }
+        const loader = srv.loader || 'vanilla';
+        const kind = { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[loader] || loader;
+        text.innerText = srv.minecraft
+            ? `Runs ${kind} ${srv.minecraft}. Download the newest build, or move to a newer Minecraft version (worlds can't go back).`
+            : `Download the newest ${kind} server.`;
+        select.classList.remove('hidden');
+        select.innerHTML = '<option value="">Loading…</option>';
+        try {
+            const versions = await this.fetchJavaVersions(loader);
+            if (!this.activeServer || this.activeServer.name !== srv.name) return;
+            const key = v => v.split('.').map(Number);
+            const newerOrSame = v => {
+                if (!srv.minecraft) return true;
+                const a = key(v), b = key(srv.minecraft);
+                for (let i = 0; i < Math.max(a.length, b.length); i++) {
+                    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+                }
+                return true;
+            };
+            const esc = t => this.escapeHtml(String(t));
+            const allowed = versions.filter(newerOrSame);
+            select.innerHTML = `<option value="">Newest (${esc(versions[0] || '?')})</option>`
+                + allowed.map(v => `<option value="${esc(v)}" ${v === srv.minecraft ? 'selected' : ''}>${esc(v)}${v === srv.minecraft ? ' (current)' : ''}</option>`).join('');
+            select.onchange = () => this.showJavaRequirement(select.value || versions[0], 'update-java-note');
+            this.showJavaRequirement(select.value || versions[0], 'update-java-note');
+        } catch (e) {
+            select.innerHTML = '<option value="">Newest</option>';
+            note.innerText = `Couldn't list versions: ${e.message}`;
+        }
     },
 
     // --- Backups tab: schedule, list, back up now, download, restore, delete ---
@@ -1146,11 +1270,15 @@ const ServerApp = {
     async executeDeploy() {
         const edition = document.getElementById('deploy-edition').value;
         const tempId = document.getElementById('deploy-template').value;
-        document.getElementById('modal-overlay').classList.add('hidden');
-        
-        this.toggleConsole(true);
         const payload = { edition: edition };
         if (tempId) payload.template_id = tempId;
+        if (edition === 'java') {
+            payload.loader = document.getElementById('deploy-loader').value;
+            const version = document.getElementById('deploy-version').value;
+            if (version) payload.version = version;
+        }
+        document.getElementById('modal-overlay').classList.add('hidden');
+        this.toggleConsole(true);
 
         const res = await fetch('/api/servers/deploy', {
             method: 'POST',
@@ -1262,11 +1390,18 @@ const ServerApp = {
     },
 
     async updateServer() {
-        if(confirm(`Update ${this.activeServer.name} to the latest version? Server will restart.`)) {
-            this.toggleConsole(true);
-            await fetch(`/api/servers/${this.activeServer.name}/update`, { method: 'POST' });
-            this.loadServers();
-        }
+        const select = document.getElementById('update-version');
+        const version = this.activeServer.edition === 'Java' && select ? select.value : '';
+        const target = version ? `Minecraft ${version}` : 'the newest version';
+        if (!confirm(`Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.`)) return;
+        this.toggleConsole(true);
+        const res = await fetch(`/api/servers/${this.activeServer.name}/update`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(version ? { version } : {})
+        });
+        if (!res.ok) alert(`Update failed: ${await this.apiError(res)}`);
+        await this.loadServers();
+        this.loadUpdateOptions();
     },
 
     async uninstallServer(keepWorld) {

@@ -2,10 +2,11 @@ from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Request, Res
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.concurrency import run_in_threadpool
-from core.models import ServerDeployRequest, ServerActionRequest, ServerPropertiesUpdate
+from core.models import ServerDeployRequest, ServerActionRequest, ServerPropertiesUpdate, ServerUpdateRequest
 from pydantic import BaseModel
 from typing import Optional
 import core.manager as manager
+import core.javaservers as javaservers
 import core.backups as backups
 import core.notify as notify
 import core.restarts as restarts
@@ -324,12 +325,30 @@ def set_player_role(server_name: str, player: str = Body(...), role: str = Body(
     return {"status": "success", "message": f"Set {player} to {role}."}
 
 @app.post("/api/servers/{server_name}/update")
-def update_server(server_name: str):
+def update_server(server_name: str, req: Optional[ServerUpdateRequest] = None):
     try:
-        manager.update_server_binary(server_name)
-    except manager.DependencyError as e:
+        manager.update_server_binary(server_name, req.version if req else None)
+    except (manager.DependencyError, manager.ServerError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
+
+# Java server software: which Minecraft versions each loader offers, and the Java one needs
+@app.get("/api/java/versions")
+def java_versions(loader: str = "vanilla"):
+    try:
+        versions = javaservers.list_versions(loader)
+    except javaservers.JavaServerError as e:
+        raise HTTPException(status_code=502 if "reach" in str(e) or "HTTP" in str(e) else 400, detail=str(e))
+    return {"loader": loader, "versions": versions[:150], "loaders": javaservers.LOADERS}
+
+@app.get("/api/java/requirement")
+def java_requirement(version: str):
+    if not javaservers.RELEASE_RE.match(version or ""):
+        raise HTTPException(status_code=400, detail="Choose a Minecraft release such as 1.21.4.")
+    try:
+        return javaservers.requirement(version)
+    except javaservers.JavaServerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/servers/{server_name}/action")
 def control_server(server_name: str, req: ServerActionRequest):
@@ -498,8 +517,8 @@ def get_logs():
 def deploy_server(req: ServerDeployRequest):
     # This executes the native python deployment and logs output to the web console
     try:
-        manager.deploy_server(req.edition, req.template_id)
-    except (manager.TemplateError, manager.DependencyError) as e:
+        manager.deploy_server(req.edition, req.template_id, req.loader, req.version)
+    except (manager.TemplateError, manager.DependencyError, manager.ServerError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
 

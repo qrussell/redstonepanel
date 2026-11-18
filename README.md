@@ -5,6 +5,8 @@ Edition and Bedrock Dedicated Server instances as systemd services and lets you 
 them from a browser:
 
 - create, start, stop and update servers
+- Java servers as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft
+  version you choose, each run with the Java it needs
 - live chat and console commands (over RCON)
 - a `server.properties` editor
 - player roles (operator, member and so on)
@@ -90,6 +92,19 @@ sudo apt install --no-install-recommends redstonepanel
 ```
 
 (or `--no-install-recommends ./redstonepanel_X_all.deb` for a downloaded file).
+
+Java 25 runs Minecraft 26.1 and newer. Older Minecraft versions want older Java: 1.20.5 to
+1.21.11 need Java 21, 1.18 to 1.20.4 need Java 17, 1.17 Java 16 (Ubuntu's Java 17 runs it) and
+older versions Java 8. The panel uses the Java each version asks
+for when it's installed, else the closest newer one, and tells you which package to install
+when none is new enough, for example:
+
+```bash
+sudo apt install openjdk-21-jre-headless
+```
+
+Several Java versions can be installed side by side; each server's systemd unit names the one
+it runs (`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`).
 
 `ufw` is also recommended. When it is installed, the panel opens each game server's port
 in it.

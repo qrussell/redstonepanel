@@ -12,7 +12,7 @@ import threading
 
 import tempfile
 from core.settings import DATA_DIR, LOG_FILE
-from core import properties, rcon, proxies, bedrock_net
+from core import properties, rcon, proxies, bedrock_net, javaservers
 
 TEMPLATE_FILE = os.path.join(DATA_DIR, "templates.json")
 
@@ -306,10 +306,21 @@ def _bedrock_journal_version(svc):
     _journal_cache[svc] = (time.time(), result)
     return result
 
+def _java_server_info(jar):
+    """Loader, Minecraft version and needed Java of a Java server folder (cached on its jar)."""
+    info = javaservers.read_info(os.path.dirname(jar))
+    jar_info = _java_jar_info(jar) or {}
+    if not info.get("minecraft") and jar_info.get("version"):
+        info = {"loader": "vanilla", "minecraft": jar_info["version"]}
+    return {"version": javaservers.describe(info) or jar_info.get("version"),
+            "loader": info.get("loader"),
+            "minecraft": info.get("minecraft"),
+            "java_required": info.get("java_required") or jar_info.get("java_required")}
+
 def server_version(d, is_java, svc=None):
-    empty = {"version": None, "java_required": None}
+    empty = {"version": None, "java_required": None, "loader": None, "minecraft": None}
     if is_java:
-        return _cached(os.path.join(d, "server.jar"), _java_jar_info) or empty
+        return _cached(os.path.join(d, "server.jar"), _java_server_info) or empty
     return (_cached(os.path.join(d, "server.log"), _bedrock_log_version)
             or (svc and _bedrock_journal_version(svc)) or empty)
 
@@ -325,14 +336,6 @@ def java_major():
                 major = int(m.group(2)) if m.group(1) == "1" else int(m.group(1))   # "1.8" -> 8
         _java_cache.update(at=now, major=major)
     return _java_cache["major"]
-
-def warn_if_java_too_old(jar):
-    """After downloading a Java server jar: say so clearly if the installed Java can't run it."""
-    info = _java_jar_info(jar) or {}
-    need, have = info.get("java_required"), java_major()
-    if need and have and have < need:
-        write_log(f"[WARNING] Minecraft {info.get('version')} needs Java {need}, but the default Java is {have}. "
-                  f"Install it with: sudo apt install openjdk-{need}-jre-headless")
 
 def list_servers():
     servers = []
@@ -361,7 +364,9 @@ def list_servers():
             # Minecraft version of the installed server, and (Java) the Java it needs vs. what's installed
             "version": ver["version"],
             "java_required": ver["java_required"],
-            "java_installed": java_major() if "java" in exec_start else None,
+            "java_installed": unit_java_major(exec_start) if "java" in exec_start else None,
+            "loader": ver.get("loader"),
+            "minecraft": ver.get("minecraft"),
             "status": "online" if st == "active" else "offline",
             "directory": d,
             "port": props.get("server-port", "Unknown"),
@@ -482,28 +487,93 @@ def get_recent_players(server_name):
 
 BEDROCK_KEEP_FILES = ("server.properties", "permissions.json", "allowlist.json", "whitelist.json")
 
-def update_server_binary(server_name):
-    d = get_server_dir(server_name)
-    exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"], capture_output=True, text=True).stdout.strip()
-    require_tools("curl", "wget", "jq", *([] if "java" in exec_start else ["unzip"]))
+def _unit_exec_start(server_name):
+    return subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
+                          capture_output=True, text=True).stdout.strip()
 
-    run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
-    if "java" in exec_start:
-        _fetch_java_jar(d)
+def unit_java(exec_start):
+    """The java binary a Java unit runs (from systemctl's ExecStart, or the unit line)."""
+    m = re.search(r"path=(\S+)", exec_start) or re.match(r"\s*(\S+)", exec_start)
+    return m.group(1) if m else None
+
+def unit_java_major(exec_start):
+    path = unit_java(exec_start)
+    if path and os.path.realpath(path).startswith(javaservers.JVM_ROOT + "/") and not path.startswith("/usr/bin/"):
+        return javaservers.java_major_of(path)
+    return java_major()                      # /usr/bin/java: the system default
+
+def unit_heap(exec_start):
+    heap = {}
+    for key in ("xms", "xmx"):
+        m = re.search(rf"-X{key[1:]}(\S+)", exec_start)
+        if m and HEAP_RE.match(m.group(1)):
+            heap[key] = m.group(1)
+    return heap
+
+def update_server_binary(server_name, version=None):
+    """Downloads the server software again. A Java server gets the chosen Minecraft version
+    (default: the newest) of the loader it already uses, and its unit the Java that needs."""
+    _check_server(server_name)
+    d = get_server_dir(server_name)
+    exec_start = _unit_exec_start(server_name)
+    is_java = "java" in exec_start
+    if not is_java:
+        if version:
+            raise ServerError("Bedrock servers always update to the newest release.")
+        require_tools("curl", "wget", "jq", "unzip")
+
+    if is_java:
+        current = javaservers.read_info(d)
+        loader = current.get("loader") or "vanilla"
+        staging = tempfile.mkdtemp(prefix=".redstonepanel-update-", dir=d)
+        try:
+            # Download next to the server first, so a failed download leaves it untouched
+            info, java = _install_java(staging, loader, version, current)
+            run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
+            os.replace(os.path.join(staging, "server.jar"), os.path.join(d, "server.jar"))
+            os.replace(os.path.join(staging, javaservers.INFO_FILE), os.path.join(d, javaservers.INFO_FILE))
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+        if os.path.realpath(unit_java(exec_start) or "") != os.path.realpath(java):
+            _write_unit(server_name, d, "java", java=java, **unit_heap(exec_start))
+        write_log(f"[UPDATE] {server_name} now runs {javaservers.describe(info)} with {java}.")
     else:
+        run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
         _fetch_bedrock(d)
     run_and_log(["chown", "-R", "minecraft:minecraft", d])
     run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
 
-def _fetch_java_jar(d):
-    """Downloads the latest release's server.jar into d."""
-    fetch_cmd = """
-    VERSION=$(curl -s https://piston-meta.mojang.com/mc/game/version_manifest_v2.json | jq -r '.latest.release')
-    VERSION_URL=$(curl -s https://piston-meta.mojang.com/mc/game/version_manifest_v2.json | jq -r ".versions[] | select(.id == \\\"$VERSION\\\") | .url")
-    SERVER_URL=$(curl -s "$VERSION_URL" | jq -r '.downloads.server.url')
-    wget "$SERVER_URL" -O """ + d + "/server.jar"
-    run_and_log(fetch_cmd, shell=True)
-    warn_if_java_too_old(f"{d}/server.jar")
+def _install_java(d, loader="vanilla", version=None, current=None):
+    """Downloads a Java server's jar into d. Returns (info, java path)."""
+    write_log(f"[SYSTEM] Downloading {javaservers.LOADERS.get(loader, loader)} {version or '(newest)'} ...")
+    try:
+        info, java = javaservers.install(d, loader, version, current)
+    except javaservers.MissingJavaError as e:
+        write_log(f"[WARNING] {e}")
+        raise DependencyError(str(e))
+    except javaservers.JavaServerError as e:
+        write_log(f"[WARNING] {e}")
+        raise ServerError(str(e))
+    write_log(f"[SYSTEM] Downloaded {javaservers.describe(info)}"
+              + (f" (build {info['build']})" if info.get("build") else "")
+              + f"; it needs Java {info['java_required']}, using {java}.")
+    return info, java
+
+def java_for_folder(d):
+    """The java to run an existing Java server folder with (import, restore)."""
+    info = javaservers.read_info(d)
+    need = info.get("java_required") or (_java_jar_info(os.path.join(d, "server.jar")) or {}).get("java_required")
+    if not need and info.get("minecraft"):
+        try:
+            need = javaservers.mojang_version(info["minecraft"])["java_required"]
+        except javaservers.JavaServerError:
+            need = None
+    if not need:
+        return "/usr/bin/java"
+    try:
+        return javaservers.choose_java(need, info.get("minecraft"))
+    except javaservers.MissingJavaError as e:
+        raise DependencyError(str(e))
 
 def _fetch_bedrock(d):
     """Downloads the latest Bedrock Dedicated Server and unpacks it into d."""
@@ -536,13 +606,13 @@ def _fetch_bedrock(d):
         os.remove(f"{d}/bedrock-server.zip")
     run_and_log(["chmod", "+x", f"{d}/bedrock_server"])
 
-def _write_unit(svc_name, mc_dir, edition, xms="1G", xmx="2G"):
+def _write_unit(svc_name, mc_dir, edition, xms="1G", xmx="2G", java="/usr/bin/java"):
     """Writes the game server's systemd unit and reloads systemd (doesn't enable or start it)."""
     if edition == "bedrock":
         exec_start = f"/usr/bin/screen -c {mc_dir}/screenrc -L -Logfile {mc_dir}/server.log -DmS {svc_name} ./bedrock_server"
         env_vars = "Environment=\"LD_LIBRARY_PATH=.\""
     else:
-        exec_start = f"/usr/bin/java -Xms{xms} -Xmx{xmx} -jar server.jar nogui"
+        exec_start = f"{java} -Xms{xms} -Xmx{xmx} -jar server.jar nogui"
         env_vars = ""
     svc_content = f"""[Unit]
 Description=Minecraft Server ({svc_name})
@@ -650,10 +720,7 @@ def remove_server(server_name, keep_world):
         if os.path.isdir(d):
             info = {"edition": "java" if "java" in exec_start else "bedrock" if "bedrock" in exec_start else None,
                     "removed_at": int(time.time())}
-            for key in ("xms", "xmx"):
-                m = re.search(rf"-X{key[1:]}(\S+)", exec_start)
-                if m and HEAP_RE.match(m.group(1)):
-                    info[key] = m.group(1)
+            info.update(unit_heap(exec_start))
             try:
                 with open(os.path.join(d, REMOVED_INFO), "w") as f:
                     json.dump(info, f)
@@ -790,18 +857,18 @@ def restore_server(name):
         _busy.add(name)
     try:
         write_log(f"[RESTORE] Restoring {name} from {d}.")
-        if edition == "java":
-            require_tools("java", *([] if match["has_binary"] else ["curl", "wget", "jq"]))
-        else:
+        if edition != "java":                     # Java itself is checked below, per Minecraft version
             require_tools("screen", *([] if match["has_binary"] else ["curl", "wget", "jq", "unzip"]))
         downloaded = False
         if not match["has_binary"]:
             write_log(f"[RESTORE] {name} has no server binary; downloading the latest {edition.capitalize()} release.")
             if edition == "java":
-                _fetch_java_jar(d)
+                current = javaservers.read_info(d)
+                _install_java(d, current.get("loader") or "vanilla", None, current)
             else:
                 _fetch_bedrock(d)
             downloaded = True
+        java = java_for_folder(d) if edition == "java" else None
 
         if edition == "java":
             eula = os.path.join(d, "eula.txt")
@@ -821,7 +888,7 @@ def restore_server(name):
         open_firewall(port, "tcp" if edition == "java" else "udp")
         ensure_minecraft_user(d)
         run_and_log(["chown", "-R", "minecraft:minecraft", d])
-        _write_unit(name, d, edition, **heap)
+        _write_unit(name, d, edition, **heap, **({"java": java} if java else {}))
         run_and_log(["systemctl", "enable", f"{name}.service"])
         run_and_log(["systemctl", "start", f"{name}.service"])
         try:
@@ -896,27 +963,42 @@ def _import_unpacked(staging, root):
             props["server-portv6"] = str(port + 1)
         write_properties(mc_dir, props)
 
+        java = None
         if edition == "bedrock":
             run_and_log(["chmod", "+x", f"{mc_dir}/bedrock_server"])
             write_screenrc(mc_dir)
+        else:
+            try:
+                java = java_for_folder(mc_dir)
+            except DependencyError as e:
+                write_log(f"[WARNING] {e} The server was imported, but won't start until it is.")
+                java = "/usr/bin/java"
 
         open_firewall(port, proto)
         ensure_minecraft_user(mc_dir)
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
-        _write_unit(svc_name, mc_dir, edition)
+        _write_unit(svc_name, mc_dir, edition, **({"java": java} if java else {}))
         run_and_log(["systemctl", "enable", f"{svc_name}.service"])
         run_and_log(["systemctl", "start", f"{svc_name}.service"])
         return svc_name
     finally:
         _release_name(svc_name)
 
-def deploy_server(edition, template_id=None):
+def deploy_server(edition, template_id=None, loader="vanilla", version=None):
+    """A new server. Java: loader is vanilla, paper or fabric and version a Minecraft release
+    (default: the newest the loader offers)."""
     edition = edition.lower()
     if edition not in ("java", "bedrock"):
         raise TemplateError(f"Unknown edition '{edition}'.")
+    loader = (loader or "vanilla").lower()
+    if edition == "java" and loader not in javaservers.LOADERS:
+        raise ServerError(f"Unknown server type '{loader}'.")
+    if edition == "bedrock" and (loader != "vanilla" or version):
+        raise ServerError("Bedrock servers are always the newest official release.")
     if template_id:
         get_checked_template(template_id, edition)   # fail before downloading anything
-    require_tools("curl", "wget", "jq", *(["java"] if edition == "java" else ["unzip", "screen"]))
+    if edition == "bedrock":
+        require_tools("curl", "wget", "jq", "unzip", "screen")
     proto = "tcp" if edition == "java" else "udp"
 
     svc_name, port = _reserve_name(edition)       # auto-allocated name and port
@@ -929,8 +1011,13 @@ def deploy_server(edition, template_id=None):
         os.makedirs(mc_dir, exist_ok=True)
 
         # Download & Extract Binary
+        java = None
         if edition == "java":
-            _fetch_java_jar(mc_dir)
+            try:
+                _, java = _install_java(mc_dir, loader, version)
+            except (DependencyError, ServerError):
+                shutil.rmtree(mc_dir, ignore_errors=True)    # nothing useful in it yet
+                raise
             with open(f"{mc_dir}/eula.txt", "w") as f:
                 f.write("eula=true\n")
             with open(f"{mc_dir}/server.properties", "w") as f:
@@ -942,7 +1029,7 @@ def deploy_server(edition, template_id=None):
             write_screenrc(mc_dir)
 
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
-        _write_unit(svc_name, mc_dir, edition)
+        _write_unit(svc_name, mc_dir, edition, **({"java": java} if java else {}))
         if template_id:
             # After daemon-reload, so systemd already knows the new unit's working directory
             apply_template_to_server(svc_name, template_id, edition=edition)

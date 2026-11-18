@@ -1,4 +1,4 @@
-.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.8.1" "System Administration"
+.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.9.0" "System Administration"
 .SH NAME
 redstonepanel \- manage the RedstonePanel Minecraft server panel
 .SH SYNOPSIS
@@ -41,7 +41,10 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .B redstonepanel cluster-https
 .SH DESCRIPTION
 RedstonePanel is a web panel that deploys and manages Minecraft Java Edition and
-Bedrock Dedicated Server instances as systemd services. The panel itself runs as the
+Bedrock Dedicated Server instances as systemd services. Java servers can be vanilla, Paper
+or Fabric, on a chosen Minecraft version, and each unit runs the Java from
+.I /usr/lib/jvm
+that the version needs. The panel itself runs as the
 .B redstonepanel
 systemd service, by default at
 .IR http://<server>:8080/ .
@@ -164,6 +167,10 @@ Activity log shown in the panel's console.
 .TP
 .I /opt/minecraft-*/
 Game servers. Removing or purging the package never deletes them.
+.TP
+.I /opt/minecraft-*/.redstonepanel-server.json
+A Java server's type (vanilla, paper or fabric), Minecraft version, build and the Java it
+needs, written at every download.
 .TP
 .I /var/backups/redstonepanel/
 Backups, one folder per server (mode 0700). Kept when a server is uninstalled or the package

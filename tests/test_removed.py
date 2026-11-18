@@ -37,7 +37,7 @@ class RemovedServers(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         self.written_units = {}
-        def write_unit(name, d, edition, xms="1G", xmx="2G"):
+        def write_unit(name, d, edition, xms="1G", xmx="2G", java="/usr/bin/java"):
             self.written_units[name] = (d, edition, xms, xmx)
             open(M._unit_path(name), "w").close()
         p = mock.patch.object(M, "_write_unit", write_unit)
@@ -139,9 +139,10 @@ class RemovedServers(unittest.TestCase):
 
     def test_restore_downloads_a_missing_binary(self):
         self.server("minecraft-java-2", {"eula.txt": "eula=true"}, {"server-port": 25570})
-        with mock.patch.object(M, "_fetch_java_jar") as fetch:
+        with mock.patch.object(M, "_install_java", return_value=({}, "/usr/bin/java")) as fetch:
             r = M.restore_server("minecraft-java-2")
         fetch.assert_called_once()
+        self.assertEqual(fetch.call_args[0][1], "vanilla")
         self.assertTrue(r["downloaded"])
 
     def test_restore_refuses_unknown_names(self):
