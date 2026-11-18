@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.11.0 · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.11.0 and the 1.12–1.13 mod plans · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -120,7 +120,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    on, so "is anything wrong?" has an answer without opening each server or SSHing in.
 
    Why here: it's read-only (low risk), every admin sees it on every visit, and it builds the
-   sampler that 2.0's resource graphs need, so it takes most of the work out of item 9
+   sampler that 2.0's resource graphs need, so it takes most of the work out of item 11
    rather than adding to the plan. It comes before 2.0 because per-server permissions and API
    tokens change who can see what; a dashboard that already exists only needs a filter then.
 
@@ -170,17 +170,90 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    short `auto-restart` pause. Not done: the last notification error (the panel doesn't keep
    one yet), and the sidebar itself still isn't laid out for phones.
 
+### 1.12: drop in mods and plugins
+
+9. **Drag and drop, and the installed list.** Getting a mod onto a server today means the
+   Files tab, the right folder, Upload, Restart. Make it one drop, and show what's installed.
+
+   Why here: asked for after 1.11, it's what people running Paper or Fabric do every week,
+   and it's small because 1.10 already does the dangerous part (writing into a server folder
+   without following symlinks, owned by `minecraft`). It comes before the Modrinth browser
+   (item 10) because the browser installs into the same list.
+
+   - **Drag and drop** onto the Files tab uploads into the folder you're in: several files at
+     once, a progress bar per file, the existing "replace?" question, the 512 MB limit.
+   - **Jars go to the right place.** A dropped `.jar` is opened as a zip (stdlib `zipfile`,
+     metadata only, never run) and sorted: `fabric.mod.json` → `mods/` on Fabric;
+     `plugin.yml` / `paper-plugin.yml` → `plugins/` on Paper. A jar that can't work there is
+     refused with the reason: a Forge/NeoForge mod (`META-INF/mods.toml`) anywhere, a mod on
+     Paper, a plugin on Fabric, anything on vanilla. Dropping onto a server's **Mods** or
+     **Plugins** list does the same.
+   - **Installed list** (a **Mods** or **Plugins** section, admins): name, version, author and
+     the Minecraft versions each jar declares, read from the same metadata and cached by
+     mtime. A jar declaring a different Minecraft version than the server's is marked. Fabric
+     mods whose required dependencies (`depends`, e.g. `fabric-api`) aren't installed are
+     marked too. **Disable** renames to `.jar.disabled` (the loaders skip it); **Enable**
+     renames back; **Remove** deletes. Each says to restart.
+   - **Bedrock add-ons.** A dropped `.mcpack` or `.mcaddon` is unpacked (same checks as
+     import: no absolute paths, no `..`, size and file-count limits) into
+     `behavior_packs/` or `resource_packs/` by its `manifest.json` module type, and added to
+     the active world's `world_behavior_packs.json` / `world_resource_packs.json`.
+
+   **How:** `core/mods.py` for reading jar and pack metadata and placing files; all writes go
+   through `core/files.py`. Admin-only, logged as `[MODS] alex installed …`. The browser
+   upload uses `XMLHttpRequest` for progress; the endpoint is the existing streaming upload.
+
+   **Size:** about 3 days. The Bedrock world-pack JSON is the fiddly part.
+
+### 1.13: Modrinth and Hangar browser
+
+10. **Find and install mods and plugins from the panel.** Search, install, update, with the
+    right build picked for the server.
+
+    Why here: it replaces "download on your PC, then upload" for most people, and builds on
+    1.12's installed list. Modrinth (Fabric mods, Paper plugins) and Hangar (Paper plugins)
+    have open APIs without keys. Not CurseForge: its API needs a key, and some authors block
+    third-party downloads, so a CurseForge button would often fail.
+
+    - **Search** filtered to the server: Modrinth `/v2/search` with facets for the loader
+      (`fabric`, or `paper`/`spigot`/`bukkit`), the server's Minecraft version and the project
+      type; Hangar `/api/v1/projects` with platform `PAPER` and the version. Results show
+      downloads, last update and a link to the project page.
+    - **Install** picks the newest release build that matches loader and Minecraft version,
+      downloads it from the API's file URL, checks the hash the API gives (Modrinth `sha512`,
+      Hangar `sha256`), and installs required dependencies the same way (e.g. Fabric API).
+    - **Updates.** The source of each installed jar (project and version id) is kept in
+      `.redstonepanel-mods.json` in the server folder, so the list can show **Update
+      available** and offer **Update all**. Jars added by hand are matched by hash through
+      Modrinth's `version_files` lookup where possible.
+    - **Before a Minecraft update** (Maintenance → Update, from 1.9), list the installed mods
+      and plugins that have no build for the target version yet, so nobody updates into a
+      server that won't start.
+    - **Safety.** Admins only. Downloads only from `cdn.modrinth.com` and Hangar's CDN over
+      HTTPS, with the upload size limit, written through `core/files.py`. Installing or
+      updating several at once takes a pre-change backup first (a new backup kind), so it can
+      be undone from the Backups tab. Everything is logged.
+
+    **How:** `core/modrinth.py` and `core/hangar.py`, stdlib `urllib` with the panel's
+    User-Agent and the 10-minute JSON cache from `javaservers`; no new dependency.
+
+    **Size:** one to two weeks. Dependency resolution and matching hand-added jars are the
+    fiddly parts.
+
+    Next after this (in Later): Modrinth modpacks (`.mrpack`), which reuse this downloader.
+
 ### 2.0: run it for other people
 
-9. **Resource graphs.** History for the live numbers 1.11 shows: CPU and memory per server
-   from the unit's cgroup, host CPU, memory and disk, player count over RCON/query. 1.11's
-   sampler writes every 30–60 s into a small on-disk ring buffer per server and for the host;
-   24-hour charts on the dashboard and each server's Overview. No `psutil`, no database.
-10. **Per-server permissions.** Today a `user` can do everything to every server. Add
-    per-server grants (view, console/chat, power, files, settings) for `user` accounts. Admins
+11. **Resource graphs.** History for the live numbers 1.11 shows: CPU and memory per server
+    from the unit's cgroup, host CPU, memory and disk, player count over RCON/query. 1.11's
+    sampler writes every 30–60 s into a small on-disk ring buffer per server and for the host;
+    24-hour charts on the dashboard and each server's Overview. No `psutil`, no database.
+12. **Per-server permissions.** Today a `user` can do everything to every server. Add
+    per-server grants (view, console/chat, power, files, mods & plugins, settings) for `user`
+    accounts. Admins
     stay admins (they're effectively root anyway). The dashboard then lists only the servers
     a user may view.
-11. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
+13. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes, shown once, revocable.
 
@@ -202,9 +275,8 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
 - Backup retention by age ("keep 30 days") as well as by count, and copying backups off the
   machine (rsync/S3).
 - Forge and NeoForge (installer jar, `run.sh`, `user_jvm_args.txt`).
-- Modrinth modpacks (`.mrpack`). Not CurseForge: it needs an API key and some packs can't be
-  downloaded automatically.
-- Plugin/mod install from Modrinth (and Hangar for Paper plugins).
+- Modrinth modpacks (`.mrpack`), on top of 1.13's downloader. Not CurseForge: it needs an API
+  key and some packs can't be downloaded automatically.
 - **Move a server to another node** (export + import through the cluster), and clusters
   phase 2 (see [fleet.md](fleet.md)).
 - Velocity proxy support, for people running a network across nodes.
