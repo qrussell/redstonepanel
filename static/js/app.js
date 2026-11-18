@@ -43,9 +43,10 @@ const ServerApp = {
         const res = await fetch('/api/servers');
         this.servers = await res.json();
         
-        this.applySort(); 
+        this.applySort();
         this.renderSidebar();
-        
+        this.loadRemovedServers();
+
         if (this.activeServer) {
             const srv = this.servers.find(s => s.name === this.activeServer.name);
             if (srv) this.openWorkspace(srv);
@@ -829,6 +830,7 @@ const ServerApp = {
 
     async openDeployModal() {
         await this.fetchTemplates(); // Ensure templates are loaded for the dropdown
+        this.loadRemovedServers();   // fills the "Removed servers" section when it arrives
         const modal = document.getElementById('modal-overlay');
         
         // Only templates for the chosen edition; the list follows the edition dropdown
@@ -858,9 +860,97 @@ const ServerApp = {
                 <p class="text-xs text-gray-500 mb-2">A backup wrapped in a single folder is fine; its contents are used.</p>
                 <button onclick="ServerApp.executeImport()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-white font-bold transition">Upload & Import</button>
             </div>
+            <div id="removed-servers" class="mb-6">${this.removedServersHtml()}</div>
             <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white transition">Cancel</button>
         `;
         modal.classList.remove('hidden');
+    },
+
+    // --- Removed servers: uninstalled with "Keep World", files still in /opt ---
+    removedServers: [],
+
+    async loadRemovedServers() {
+        try {
+            const res = await fetch('/api/servers/removed');
+            this.removedServers = res.ok ? await res.json() : [];
+        } catch (e) {
+            this.removedServers = [];
+        }
+        const hint = document.getElementById('removed-hint');
+        if (hint) {
+            const n = this.removedServers.length;
+            hint.classList.toggle('hidden', n === 0);
+            hint.innerHTML = n === 0 ? '' : `
+                <button onclick="ServerApp.openDeployModal()" class="w-full text-left text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 underline">
+                    ♻️ ${n} removed server${n === 1 ? '' : 's'}: restore</button>`;
+        }
+        const box = document.getElementById('removed-servers');
+        if (box) box.innerHTML = this.removedServersHtml();
+        return this.removedServers;
+    },
+
+    removedServersHtml() {
+        if (!this.removedServers.length) return '';
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const isAdmin = this.currentUser && this.currentUser.role === 'admin';
+        const rows = this.removedServers.map(s => {
+            const details = [s.edition, s.port ? `port ${esc(s.port)}` : '', s.world ? `world “${esc(s.world)}”` : '']
+                .filter(Boolean).join(' • ');
+            let note = '';
+            if (!s.can_restore) {
+                note = `<p class="text-xs text-yellow-500 mt-1">Can't tell whether this is a Java or Bedrock server, so it can't be restored here.</p>`;
+            } else if (!s.has_binary) {
+                note = `<p class="text-xs text-yellow-500 mt-1">The server binary is missing; the latest ${esc(s.edition)} release will be downloaded.${s.edition === 'Java' ? ' A world from an older version is upgraded and can\'t go back, so export it first.' : ''}</p>`;
+            }
+            const when = s.removed_at ? ` • removed ${new Date(s.removed_at * 1000).toLocaleDateString()}` : '';
+            return `
+                <div class="border border-gray-700 rounded p-2 mb-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                            <div class="font-bold text-white truncate">${esc(s.name)}</div>
+                            <div class="text-xs text-gray-400 truncate" title="${esc(s.directory)}">${details}${when}</div>
+                        </div>
+                        <div class="flex gap-1 shrink-0">
+                            <button onclick="ServerApp.restoreRemoved('${esc(s.name)}', this)" ${s.can_restore ? '' : 'disabled'}
+                                class="px-3 py-1 rounded text-sm font-bold text-white ${s.can_restore ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 cursor-not-allowed'}">Restore</button>
+                            ${isAdmin ? `<button onclick="ServerApp.deleteRemoved('${esc(s.name)}')" title="Delete its files permanently"
+                                class="px-2 py-1 rounded text-sm bg-gray-700 hover:bg-red-700 text-white">🗑</button>` : ''}
+                        </div>
+                    </div>
+                    ${note}
+                </div>`;
+        }).join('');
+        return `
+            <hr class="border-gray-700 my-4" />
+            <label class="block text-sm text-gray-400 mb-1">Removed servers</label>
+            <p class="text-xs text-gray-500 mb-2">Uninstalled with "Keep World". Their files are still on this machine; restoring gives them a new service under the same name.</p>
+            ${rows}`;
+    },
+
+    async restoreRemoved(name, button) {
+        const srv = this.removedServers.find(s => s.name === name);
+        if (!srv) return;
+        if (!srv.has_binary && !confirm(`${name} has no server binary. Download the latest ${srv.edition} release and restore it?`)) return;
+        if (button) { button.disabled = true; button.innerText = 'Restoring…'; }
+        this.toggleConsole(true);
+        const res = await fetch(`/api/servers/removed/${encodeURIComponent(name)}/restore`, { method: 'POST' });
+        if (!res.ok) {
+            alert(`Restore failed: ${await this.apiError(res)}`);
+        } else {
+            const data = await res.json();
+            this.closeModal();
+            alert(data.old_port
+                ? `Restored ${name}. Its old port ${data.old_port} is used by another server, so it now uses port ${data.port}.`
+                : `Restored ${name} on port ${data.port}.`);
+        }
+        await this.loadServers();
+    },
+
+    async deleteRemoved(name) {
+        if (!confirm(`Permanently delete ${name} and all its worlds from this machine? This can't be undone.`)) return;
+        const res = await fetch(`/api/servers/removed/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        if (!res.ok) alert(`Delete failed: ${await this.apiError(res)}`);
+        await this.loadRemovedServers();
     },
 
     async executeDeploy() {
@@ -976,7 +1066,8 @@ const ServerApp = {
     async uninstallServer(keepWorld) {
         if(confirm(`WARNING: ${keepWorld ? 'Uninstall' : 'Completely purge'} ${this.activeServer.name}?`)) {
             this.toggleConsole(true);
-            await fetch(`/api/servers/${this.activeServer.name}?keep_world=${keepWorld}`, { method: 'DELETE' });
+            const res = await fetch(`/api/servers/${this.activeServer.name}?keep_world=${keepWorld}`, { method: 'DELETE' });
+            if (!res.ok) return alert(`Uninstall failed: ${await this.apiError(res)}`);
             this.activeServer = null;
             document.getElementById('workspace').classList.add('hidden');
             this.loadServers();

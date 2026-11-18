@@ -11,6 +11,9 @@ them from a browser:
 - reusable server templates
 - export a server as a zip backup, and import server backups (.zip, .tar.gz/.tgz or .tar; a
   backup wrapped in a single folder is unpacked from inside it)
+- restore servers you uninstalled with **Keep World** (➕ New Server → Removed servers, or
+  `sudo redstonepanel restore NAME`): their files stay in `/opt`, and restoring gives them a
+  new systemd service under the same name, on their old port if it's still free
 - a panel activity log
 
 The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as an

@@ -13,6 +13,11 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .br
 .B redstonepanel reset-security
 .br
+.B redstonepanel removed
+.br
+.B redstonepanel restore
+.I NAME
+.br
 .B redstonepanel cluster
 .RB { create
 .IR NAME | status | join-code
@@ -52,6 +57,16 @@ Recovery: switch the panel back to plain HTTP on port 8080 with sign\-in require
 On a cluster member this cuts the panel off from the cluster until
 .B cluster-https
 is run.
+.TP
+.B removed
+List game servers that were uninstalled with \fBKeep World\fR: folders in
+.I /opt/minecraft-*
+that no systemd service uses.
+.TP
+.BI "restore " NAME
+Restore a removed server: write a new systemd service for it under the same name, keep its
+port unless another server now uses it, download the server binary only if it is missing,
+then enable and start it.
 .SH CLUSTER COMMANDS
 A cluster lets one panel, the master, see and start, stop or restart the game servers of
 other RedstonePanels, its nodes. The master runs a small certificate authority and issues

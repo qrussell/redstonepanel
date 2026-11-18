@@ -8,6 +8,7 @@ import urllib.parse
 import uuid
 import secrets
 import time
+import threading
 
 import tempfile
 from core.settings import DATA_DIR, LOG_FILE
@@ -487,47 +488,81 @@ def update_server_binary(server_name):
     require_tools("curl", "wget", "jq", *([] if "java" in exec_start else ["unzip"]))
 
     run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
-    
     if "java" in exec_start:
-        fetch_cmd = """
-        VERSION=$(curl -s https://piston-meta.mojang.com/mc/game/version_manifest_v2.json | jq -r '.latest.release')
-        VERSION_URL=$(curl -s https://piston-meta.mojang.com/mc/game/version_manifest_v2.json | jq -r ".versions[] | select(.id == \\\"$VERSION\\\") | .url")
-        SERVER_URL=$(curl -s "$VERSION_URL" | jq -r '.downloads.server.url')
-        wget "$SERVER_URL" -O """ + d + "/server.jar"
-        run_and_log(fetch_cmd, shell=True)
-        warn_if_java_too_old(f"{d}/server.jar")
+        _fetch_java_jar(d)
     else:
-        fetch_cmd = """
-        SERVER_URL=$(curl -s https://net-secondary.web.minecraft-services.net/api/v1.0/download/links | jq -r '.result.links[] | select(.downloadType=="serverBedrockLinux") | .downloadUrl' 2>/dev/null)
-        if [ -z "$SERVER_URL" ] || [ "$SERVER_URL" == "null" ]; then
-            SERVER_URL=$(curl -s -H "User-Agent: Mozilla/4.0" https://www.minecraft.net/en-us/download/server/bedrock | grep -o 'https://[^"]*/bin-linux/bedrock-server-[^"]*\\.zip' | head -n 1)
-        fi
-        wget "$SERVER_URL" -O """ + d + "/bedrock-server.zip"
-        
-        run_and_log(fetch_cmd, shell=True)
-
-        # The official zip ships default copies of these files; unzip -o would overwrite
-        # the server's ports, operators and allowlist. Keep ours and put them back.
-        saved = {}
-        for name in BEDROCK_KEEP_FILES:
-            p = os.path.join(d, name)
-            if os.path.exists(p):
-                with open(p, "rb") as f:
-                    saved[name] = f.read()
-        try:
-            run_and_log(["unzip", "-o", "-q", f"{d}/bedrock-server.zip", "-d", d])
-        finally:
-            for name, data in saved.items():
-                with open(os.path.join(d, name), "wb") as f:
-                    f.write(data)
-            if saved:
-                write_log(f"[SYSTEM] Kept existing {', '.join(saved)}.")
-        if os.path.exists(f"{d}/bedrock-server.zip"):
-            os.remove(f"{d}/bedrock-server.zip")
-        run_and_log(["chmod", "+x", f"{d}/bedrock_server"])
-
+        _fetch_bedrock(d)
     run_and_log(["chown", "-R", "minecraft:minecraft", d])
     run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
+
+def _fetch_java_jar(d):
+    """Downloads the latest release's server.jar into d."""
+    fetch_cmd = """
+    VERSION=$(curl -s https://piston-meta.mojang.com/mc/game/version_manifest_v2.json | jq -r '.latest.release')
+    VERSION_URL=$(curl -s https://piston-meta.mojang.com/mc/game/version_manifest_v2.json | jq -r ".versions[] | select(.id == \\\"$VERSION\\\") | .url")
+    SERVER_URL=$(curl -s "$VERSION_URL" | jq -r '.downloads.server.url')
+    wget "$SERVER_URL" -O """ + d + "/server.jar"
+    run_and_log(fetch_cmd, shell=True)
+    warn_if_java_too_old(f"{d}/server.jar")
+
+def _fetch_bedrock(d):
+    """Downloads the latest Bedrock Dedicated Server and unpacks it into d."""
+    fetch_cmd = """
+    SERVER_URL=$(curl -s https://net-secondary.web.minecraft-services.net/api/v1.0/download/links | jq -r '.result.links[] | select(.downloadType=="serverBedrockLinux") | .downloadUrl' 2>/dev/null)
+    if [ -z "$SERVER_URL" ] || [ "$SERVER_URL" == "null" ]; then
+        SERVER_URL=$(curl -s -H "User-Agent: Mozilla/4.0" https://www.minecraft.net/en-us/download/server/bedrock | grep -o 'https://[^"]*/bin-linux/bedrock-server-[^"]*\\.zip' | head -n 1)
+    fi
+    wget "$SERVER_URL" -O """ + d + "/bedrock-server.zip"
+    
+    run_and_log(fetch_cmd, shell=True)
+
+    # The official zip ships default copies of these files; unzip -o would overwrite
+    # the server's ports, operators and allowlist. Keep ours and put them back.
+    saved = {}
+    for name in BEDROCK_KEEP_FILES:
+        p = os.path.join(d, name)
+        if os.path.exists(p):
+            with open(p, "rb") as f:
+                saved[name] = f.read()
+    try:
+        run_and_log(["unzip", "-o", "-q", f"{d}/bedrock-server.zip", "-d", d])
+    finally:
+        for name, data in saved.items():
+            with open(os.path.join(d, name), "wb") as f:
+                f.write(data)
+        if saved:
+            write_log(f"[SYSTEM] Kept existing {', '.join(saved)}.")
+    if os.path.exists(f"{d}/bedrock-server.zip"):
+        os.remove(f"{d}/bedrock-server.zip")
+    run_and_log(["chmod", "+x", f"{d}/bedrock_server"])
+
+def _write_unit(svc_name, mc_dir, edition, xms="1G", xmx="2G"):
+    """Writes the game server's systemd unit and reloads systemd (doesn't enable or start it)."""
+    if edition == "bedrock":
+        exec_start = f"/usr/bin/screen -c {mc_dir}/screenrc -L -Logfile {mc_dir}/server.log -DmS {svc_name} ./bedrock_server"
+        env_vars = "Environment=\"LD_LIBRARY_PATH=.\""
+    else:
+        exec_start = f"/usr/bin/java -Xms{xms} -Xmx{xmx} -jar server.jar nogui"
+        env_vars = ""
+    svc_content = f"""[Unit]
+Description=Minecraft Server ({svc_name})
+After=network.target
+
+[Service]
+User=minecraft
+Group=minecraft
+WorkingDirectory={mc_dir}
+{env_vars}
+ExecStart={exec_start}
+Restart=on-failure
+RestartSec=20
+
+[Install]
+WantedBy=multi-user.target
+"""
+    with open(f"/etc/systemd/system/{svc_name}.service", "w") as f:
+        f.write(svc_content)
+    run_and_log(["systemctl", "daemon-reload"])
 
 class ServerError(ValueError):
     """A request about a server that can't be done (message is safe to show)."""
@@ -544,23 +579,267 @@ def control_server(server_name, action):
         raise ServerError(f"No Minecraft server called '{server_name}' on this panel.")
     run_and_log(["sudo", "systemctl", action, f"{server_name}.service"])
 
+def _unit_path(server_name):
+    return f"/etc/systemd/system/{server_name}.service"
+
+def _check_server(server_name):
+    if not SERVICE_NAME_RE.match(server_name or "") or not os.path.isfile(_unit_path(server_name)):
+        raise ServerError(f"No Minecraft server called '{server_name}' on this panel.")
+
+# ---------------------------------------------------------------------------
+# REMOVED SERVERS: "Uninstall (Keep World)" deletes only the systemd unit. The folder in
+# /opt stays, and can be restored: a new unit, the same name, a free port.
+# ---------------------------------------------------------------------------
+# Written into the folder on uninstall. The folder belongs to the minecraft user, so this
+# file is never trusted: only an edition and validated heap sizes are read from it.
+REMOVED_INFO = ".redstonepanel-removed.json"
+HEAP_RE = re.compile(r"^[0-9]{1,6}[KkMmGg]$")
+
+# Names being deployed, imported or restored right now: their folders exist before their
+# units do, so they must not be listed as removed or picked again.
+_busy = set()
+_busy_lock = threading.Lock()
+
+def _reserve_name(edition):
+    """Picks the next free minecraft-<edition>[-N] name and game port, and holds the name until
+    _release_name(), so parallel deploys/imports can't take the same one."""
+    base_name = "minecraft-java" if edition == "java" else "minecraft-bedrock"
+    port = 25565 if edition == "java" else 19132
+    step = 1 if edition == "java" else 2
+    counter, suffix = 1, ""
+    with _busy_lock:
+        while True:
+            name = f"{base_name}{suffix}"
+            taken = (name in _busy or os.path.exists(os.path.join(SERVERS_ROOT, name))
+                     or os.path.exists(_unit_path(name)))
+            if not taken:
+                # Check every port other servers claim (RCON included), and Bedrock's IPv6 port too
+                needed = {port, port + 1} if edition == "bedrock" else {port}
+                taken = bool(needed & _used_ports())
+            if not taken:
+                _busy.add(name)
+                return name, port
+            counter += 1
+            suffix = f"-{counter}"
+            port += step
+
+def _release_name(name):
+    with _busy_lock:
+        _busy.discard(name)
+
 def remove_server(server_name, keep_world):
+    """Stops the server and deletes its systemd unit, so it leaves the panel.
+    keep_world=True keeps the whole folder (server binary included), so it can be restored
+    later; keep_world=False deletes the folder too."""
+    _check_server(server_name)
     d = get_server_dir(server_name)
+    exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
+                                capture_output=True, text=True).stdout.strip()
     run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
     run_and_log(["sudo", "systemctl", "disable", f"{server_name}.service"])
-    
-    if os.path.exists(f"/etc/systemd/system/{server_name}.service"):
-        os.remove(f"/etc/systemd/system/{server_name}.service")
+
+    if os.path.exists(_unit_path(server_name)):
+        os.remove(_unit_path(server_name))
     run_and_log(["sudo", "systemctl", "daemon-reload"])
-    
+
     if keep_world:
-        for f in ["server.jar", "bedrock_server"]:
-            p = os.path.join(d, f)
-            if os.path.exists(p): 
-                run_and_log(["rm", "-f", p])
+        if os.path.isdir(d):
+            info = {"edition": "java" if "java" in exec_start else "bedrock" if "bedrock" in exec_start else None,
+                    "removed_at": int(time.time())}
+            for key in ("xms", "xmx"):
+                m = re.search(rf"-X{key[1:]}(\S+)", exec_start)
+                if m and HEAP_RE.match(m.group(1)):
+                    info[key] = m.group(1)
+            try:
+                with open(os.path.join(d, REMOVED_INFO), "w") as f:
+                    json.dump(info, f)
+            except OSError:
+                pass          # only a hint for restoring; the folder alone is enough
+        write_log(f"[REMOVE] Removed {server_name} from the panel. Its files stay in {d}; "
+                  f"restore it from New Server > Removed servers.")
     elif os.path.exists(d) and d.startswith("/opt/"):
         run_and_log(["rm", "-rf", d])
-        
+        write_log(f"[REMOVE] Removed {server_name} and deleted {d}.")
+
+def _read_removed_info(d):
+    try:
+        with open(os.path.join(d, REMOVED_INFO)) as f:
+            info = json.load(f)
+        return info if isinstance(info, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def _unit_dirs():
+    """The folder of every minecraft*.service unit, including ones written by hand."""
+    dirs = set()
+    unit_dir = "/etc/systemd/system"
+    if not os.path.isdir(unit_dir):
+        return dirs
+    for f in os.listdir(unit_dir):
+        if not (f.startswith("minecraft") and f.endswith(".service")):
+            continue
+        try:
+            with open(os.path.join(unit_dir, f)) as fh:
+                for line in fh:
+                    if line.startswith("WorkingDirectory="):
+                        dirs.add(os.path.realpath(line.split("=", 1)[1].strip()))
+        except OSError:
+            pass
+    return dirs
+
+def _removed_edition(d, name, info):
+    """'java', 'bedrock' or None, from the files first and the folder's name last."""
+    if os.path.isfile(os.path.join(d, "bedrock_server")):
+        return "bedrock"
+    if os.path.isfile(os.path.join(d, "server.jar")):
+        return "java"
+    if info.get("edition") in ("java", "bedrock"):
+        return info["edition"]
+    if name.startswith("minecraft-bedrock"):
+        return "bedrock"
+    if name.startswith("minecraft-java"):
+        return "java"
+    if os.path.isdir(os.path.join(d, "worlds")):
+        return "bedrock"
+    if os.path.isfile(os.path.join(d, "eula.txt")):
+        return "java"
+    return None
+
+def list_removed_servers():
+    """Server folders in /opt that no systemd unit uses: servers uninstalled with
+    'Keep World', or whose unit was deleted some other way."""
+    if not os.path.isdir(SERVERS_ROOT):
+        return []
+    in_use = _unit_dirs()
+    with _busy_lock:
+        busy = set(_busy)
+    removed = []
+    for name in sorted(os.listdir(SERVERS_ROOT)):
+        d = os.path.join(SERVERS_ROOT, name)
+        if (not name.startswith("minecraft-") or not SERVICE_NAME_RE.match(name)
+                or os.path.islink(d) or not os.path.isdir(d)):
+            continue
+        if name in busy or os.path.exists(_unit_path(name)) or os.path.realpath(d) in in_use:
+            continue
+        info = _read_removed_info(d)
+        edition = _removed_edition(d, name, info)
+        props = read_properties(d)
+        binary = "bedrock_server" if edition == "bedrock" else "server.jar"
+        removed_at = info.get("removed_at")
+        removed.append({
+            "name": name,
+            "directory": d,
+            "edition": {"java": "Java", "bedrock": "Bedrock"}.get(edition, "Unknown"),
+            "port": props.get("server-port", ""),
+            "motd": props.get("motd", props.get("server-name", "")),
+            "world": props.get("level-name", ""),
+            "has_binary": bool(edition) and os.path.isfile(os.path.join(d, binary)),
+            "removed_at": removed_at if isinstance(removed_at, int) else None,
+            "can_restore": edition is not None,
+        })
+    return removed
+
+def _restore_ports(d, edition):
+    """Keeps the server's own port unless another server took it meanwhile; then picks the
+    next free one. Returns (game port, old port if it changed else None)."""
+    props = read_properties(d)
+    used = _used_ports(exclude_dir=d)
+    base = 25565 if edition == "java" else 19132
+    step = 1 if edition == "java" else 2
+    need = (lambda p: {p, p + 1}) if edition == "bedrock" else (lambda p: {p})
+    old = str(props.get("server-port", "")).strip()
+    port = int(old) if old.isdigit() else base
+    if need(port) & used:
+        port = base
+        while need(port) & used:
+            port += step
+    changes = {}
+    if str(port) != old:
+        changes["server-port"] = str(port)
+        if edition == "bedrock":
+            changes["server-portv6"] = str(port + 1)
+        if str(props.get("query.port", "")).strip() in ("", old):
+            changes["query.port"] = str(port)
+    if changes:
+        write_properties(d, changes)
+    if edition == "java":
+        rcon_port = str(props.get("rcon.port", "")).strip()
+        if rcon_port.isdigit() and int(rcon_port) in used | {port}:
+            write_properties(d, {"rcon.port": _free_rcon_port(d)})
+            write_log(f"[RESTORE] RCON port {rcon_port} is used by another server; moved it.")
+    return port, (old if str(port) != old else None)
+
+def restore_server(name):
+    """Brings a removed server back: downloads the server binary only if it's missing, keeps
+    its port unless it's taken, writes a new systemd unit, then enables and starts it."""
+    match = next((s for s in list_removed_servers() if s["name"] == name), None)
+    if not match:
+        raise ServerError(f"There's no removed server called '{name}'.")
+    if not match["can_restore"]:
+        raise ServerError(f"Can't tell whether {name} is a Java or a Bedrock server: it has no server.jar, "
+                          f"bedrock_server, eula.txt or worlds folder.")
+    edition = match["edition"].lower()
+    d = match["directory"]
+    with _busy_lock:
+        if name in _busy:
+            raise ServerError(f"{name} is already being restored.")
+        _busy.add(name)
+    try:
+        write_log(f"[RESTORE] Restoring {name} from {d}.")
+        if edition == "java":
+            require_tools("java", *([] if match["has_binary"] else ["curl", "wget", "jq"]))
+        else:
+            require_tools("screen", *([] if match["has_binary"] else ["curl", "wget", "jq", "unzip"]))
+        downloaded = False
+        if not match["has_binary"]:
+            write_log(f"[RESTORE] {name} has no server binary; downloading the latest {edition.capitalize()} release.")
+            if edition == "java":
+                _fetch_java_jar(d)
+            else:
+                _fetch_bedrock(d)
+            downloaded = True
+
+        if edition == "java":
+            eula = os.path.join(d, "eula.txt")
+            if not os.path.exists(eula):
+                with open(eula, "w") as f:
+                    f.write("eula=true\n")
+        else:
+            write_screenrc(d)
+
+        port, old_port = _restore_ports(d, edition)
+        if old_port:
+            write_log(f"[RESTORE] Port {old_port} is used by another server; {name} now uses port {port}.")
+
+        info = _read_removed_info(d)
+        heap = {k: info[k] for k in ("xms", "xmx") if isinstance(info.get(k), str) and HEAP_RE.match(info[k])}
+
+        open_firewall(port, "tcp" if edition == "java" else "udp")
+        ensure_minecraft_user(d)
+        run_and_log(["chown", "-R", "minecraft:minecraft", d])
+        _write_unit(name, d, edition, **heap)
+        run_and_log(["systemctl", "enable", f"{name}.service"])
+        run_and_log(["systemctl", "start", f"{name}.service"])
+        try:
+            os.remove(os.path.join(d, REMOVED_INFO))
+        except OSError:
+            pass
+        write_log(f"[RESTORE] Restored {name} (port {port}).")
+        return {"name": name, "port": port, "old_port": old_port, "downloaded": downloaded}
+    finally:
+        _release_name(name)
+
+def delete_removed_server(name):
+    """Permanently deletes a removed server's folder."""
+    match = next((s for s in list_removed_servers() if s["name"] == name), None)
+    if not match:
+        raise ServerError(f"There's no removed server called '{name}'.")
+    d = os.path.realpath(match["directory"])
+    if os.path.dirname(d) != os.path.realpath(SERVERS_ROOT):
+        raise ServerError(f"{name} isn't a folder in {SERVERS_ROOT}.")
+    run_and_log(["rm", "-rf", d])
+    write_log(f"[REMOVE] Deleted the files of removed server {name} ({d}).")
+
 def export_server(server_name):
     """Zips the server folder into a fresh temp dir (the caller deletes the dir after sending)."""
     d = get_server_dir(server_name)
@@ -593,86 +872,37 @@ def _import_unpacked(staging, root):
     if edition == "java" and not os.path.isfile(os.path.join(root, "server.jar")):
         write_log("[WARNING] The backup has no server.jar; use Update on the new server to download one.")
 
-    # Auto-allocate port to prevent collisions
-    base_name = "minecraft-java" if edition == "java" else "minecraft-bedrock"
-    base_port = 25565 if edition == "java" else 19132
-    step = 1 if edition == "java" else 2
     proto = "tcp" if edition == "java" else "udp"
-    
-    current_port = base_port
-    counter = 1
-    suffix = ""
-    svc_name = ""
-    port = 0
-    
-    while True:
-        c_name = f"{base_name}{suffix}"
-        c_dir = f"/opt/{c_name}"
-        port_used = os.path.exists(c_dir) or os.path.exists(f"/etc/systemd/system/{c_name}.service")
-        
-        if not port_used:
-            # Check every port other servers claim (RCON included), and Bedrock's IPv6 port too
-            needed = {current_port, current_port + 1} if edition == "bedrock" else {current_port}
-            port_used = bool(needed & _used_ports())
-                        
-        if not port_used:
-            svc_name = c_name
-            port = current_port
-            break
-            
-        counter += 1
-        suffix = f"-{counter}"
-        current_port += step
+    svc_name, port = _reserve_name(edition)       # auto-allocated name and port
+    try:
+        mc_dir = os.path.join(SERVERS_ROOT, svc_name)
+        # The unpacked files become the server folder (a rename: same filesystem, no copying)
+        os.rename(root, mc_dir)
+        # A backup of a removed server may still carry the removal note
+        if os.path.exists(os.path.join(mc_dir, REMOVED_INFO)):
+            os.remove(os.path.join(mc_dir, REMOVED_INFO))
+        write_log(f"[IMPORT] Imported a {edition.capitalize()} server as {svc_name} (port {port}).")
 
-    mc_dir = f"/opt/{svc_name}"
-    # The unpacked files become the server folder (a rename: same filesystem, no copying)
-    os.rename(root, mc_dir)
-    write_log(f"[IMPORT] Imported a {edition.capitalize()} server as {svc_name} (port {port}).")
+        props = read_properties(mc_dir)
+        props["server-port"] = str(port)
+        if edition == "bedrock":
+            props["server-portv6"] = str(port + 1)
+        write_properties(mc_dir, props)
 
-    props = read_properties(mc_dir)
-    props["server-port"] = str(port)
-    if edition == "bedrock":
-        props["server-portv6"] = str(port + 1)
-    write_properties(mc_dir, props)
-    
-    if edition == "bedrock":
-        run_and_log(["chmod", "+x", f"{mc_dir}/bedrock_server"])
-        write_screenrc(mc_dir)
-        exec_start = f"/usr/bin/screen -c {mc_dir}/screenrc -L -Logfile {mc_dir}/server.log -DmS {svc_name} ./bedrock_server"
-        env_vars = "Environment=\"LD_LIBRARY_PATH=.\""
-    else:
-        exec_start = "/usr/bin/java -Xms1G -Xmx2G -jar server.jar nogui"
-        env_vars = ""
-        
-    open_firewall(port, proto)
-    ensure_minecraft_user(mc_dir)
-    run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
-    
-    # Generate Systemd Service
-    svc_content = f"""[Unit]
-Description=Minecraft Server ({svc_name})
-After=network.target
+        if edition == "bedrock":
+            run_and_log(["chmod", "+x", f"{mc_dir}/bedrock_server"])
+            write_screenrc(mc_dir)
 
-[Service]
-User=minecraft
-Group=minecraft
-WorkingDirectory={mc_dir}
-{env_vars}
-ExecStart={exec_start}
-Restart=on-failure
-RestartSec=20
+        open_firewall(port, proto)
+        ensure_minecraft_user(mc_dir)
+        run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+        _write_unit(svc_name, mc_dir, edition)
+        run_and_log(["systemctl", "enable", f"{svc_name}.service"])
+        run_and_log(["systemctl", "start", f"{svc_name}.service"])
+        return svc_name
+    finally:
+        _release_name(svc_name)
 
-[Install]
-WantedBy=multi-user.target
-"""
-    with open(f"/etc/systemd/system/{svc_name}.service", "w") as f:
-        f.write(svc_content)
-        
-    run_and_log(["systemctl", "daemon-reload"])
-    run_and_log(["systemctl", "enable", f"{svc_name}.service"])
-    run_and_log(["systemctl", "start", f"{svc_name}.service"])
-    return svc_name
-    
 def deploy_server(edition, template_id=None):
     edition = edition.lower()
     if edition not in ("java", "bedrock"):
@@ -680,113 +910,41 @@ def deploy_server(edition, template_id=None):
     if template_id:
         get_checked_template(template_id, edition)   # fail before downloading anything
     require_tools("curl", "wget", "jq", *(["java"] if edition == "java" else ["unzip", "screen"]))
-    base_name = "minecraft-java" if edition == "java" else "minecraft-bedrock"
-    base_port = 25565 if edition == "java" else 19132
-    step = 1 if edition == "java" else 2
     proto = "tcp" if edition == "java" else "udp"
-    
-    current_port = base_port
-    counter = 1
-    suffix = ""
-    svc_name = ""
-    port = 0
-    
-    # Auto-Port Allocation
-    while True:
-        c_name = f"{base_name}{suffix}"
-        c_dir = f"/opt/{c_name}"
-        port_used = os.path.exists(c_dir) or os.path.exists(f"/etc/systemd/system/{c_name}.service")
-        
-        if not port_used:
-            # Check every port other servers claim (RCON included), and Bedrock's IPv6 port too
-            needed = {current_port, current_port + 1} if edition == "bedrock" else {current_port}
-            port_used = bool(needed & _used_ports())
-                        
-        if not port_used:
-            svc_name = c_name
-            port = current_port
-            break
-            
-        counter += 1
-        suffix = f"-{counter}"
-        current_port += step
 
-    mc_dir = f"/opt/{svc_name}"
-    
-    # Dependencies come from the redstonepanel package (Java is a Recommends); just make sure
-    open_firewall(port, proto)
-    
-    ensure_minecraft_user(mc_dir)
-    os.makedirs(mc_dir, exist_ok=True)
-    
-    # Download & Extract Binary
-    if edition == "java":
-        fetch_cmd = """
-        VERSION=$(curl -s https://piston-meta.mojang.com/mc/game/version_manifest_v2.json | jq -r '.latest.release')
-        VERSION_URL=$(curl -s https://piston-meta.mojang.com/mc/game/version_manifest_v2.json | jq -r ".versions[] | select(.id == \\\"$VERSION\\\") | .url")
-        SERVER_URL=$(curl -s "$VERSION_URL" | jq -r '.downloads.server.url')
-        wget "$SERVER_URL" -O """ + mc_dir + "/server.jar"
-        run_and_log(fetch_cmd, shell=True)
-        warn_if_java_too_old(f"{mc_dir}/server.jar")
+    svc_name, port = _reserve_name(edition)       # auto-allocated name and port
+    try:
+        mc_dir = os.path.join(SERVERS_ROOT, svc_name)
 
-        with open(f"{mc_dir}/eula.txt", "w") as f:
-            f.write("eula=true\n")
-        
-        with open(f"{mc_dir}/server.properties", "w") as f:
-            f.write(f"server-port={port}\nquery.port={port}\nmotd=A Managed Java Minecraft Server\n")
-                
-        exec_start = "/usr/bin/java -Xms1G -Xmx2G -jar server.jar nogui"
-        env_vars = ""
-    else:
-        fetch_cmd = """
-        SERVER_URL=$(curl -s https://net-secondary.web.minecraft-services.net/api/v1.0/download/links | jq -r '.result.links[] | select(.downloadType=="serverBedrockLinux") | .downloadUrl' 2>/dev/null)
-        if [ -z "$SERVER_URL" ] || [ "$SERVER_URL" == "null" ]; then
-            SERVER_URL=$(curl -s -H "User-Agent: Mozilla/4.0" https://www.minecraft.net/en-us/download/server/bedrock | grep -o 'https://[^"]*/bin-linux/bedrock-server-[^"]*\\.zip' | head -n 1)
-        fi
-        wget "$SERVER_URL" -O """ + mc_dir + "/bedrock-server.zip"
-        run_and_log(fetch_cmd, shell=True)
-        
-        run_and_log(["unzip", "-o", "-q", f"{mc_dir}/bedrock-server.zip", "-d", mc_dir])
-        os.remove(f"{mc_dir}/bedrock-server.zip")
-        run_and_log(["chmod", "+x", f"{mc_dir}/bedrock_server"])
-        
-        with open(f"{mc_dir}/server.properties", "w") as f:
-            f.write(f"server-port={port}\nserver-portv6={port+1}\nquery.port={port}\n")
-        
-        write_screenrc(mc_dir)
-        exec_start = f"/usr/bin/screen -c {mc_dir}/screenrc -L -Logfile {mc_dir}/server.log -DmS {svc_name} ./bedrock_server"
-        env_vars = "Environment=\"LD_LIBRARY_PATH=.\""
-        
-    run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
-    
-    # Generate Systemd Service
-    svc_content = f"""[Unit]
-Description=Minecraft Server ({svc_name})
-After=network.target
+        # Dependencies come from the redstonepanel package (Java is a Recommends); just make sure
+        open_firewall(port, proto)
+        ensure_minecraft_user(mc_dir)
+        os.makedirs(mc_dir, exist_ok=True)
 
-[Service]
-User=minecraft
-Group=minecraft
-WorkingDirectory={mc_dir}
-{env_vars}
-ExecStart={exec_start}
-Restart=on-failure
-RestartSec=20
+        # Download & Extract Binary
+        if edition == "java":
+            _fetch_java_jar(mc_dir)
+            with open(f"{mc_dir}/eula.txt", "w") as f:
+                f.write("eula=true\n")
+            with open(f"{mc_dir}/server.properties", "w") as f:
+                f.write(f"server-port={port}\nquery.port={port}\nmotd=A Managed Java Minecraft Server\n")
+        else:
+            _fetch_bedrock(mc_dir)
+            with open(f"{mc_dir}/server.properties", "w") as f:
+                f.write(f"server-port={port}\nserver-portv6={port+1}\nquery.port={port}\n")
+            write_screenrc(mc_dir)
 
-[Install]
-WantedBy=multi-user.target
-"""
-    with open(f"/etc/systemd/system/{svc_name}.service", "w") as f:
-        f.write(svc_content)
-    run_and_log(["systemctl", "daemon-reload"])
-    if template_id:
-        # After daemon-reload, so systemd already knows the new unit's working directory
-        apply_template_to_server(svc_name, template_id, edition=edition)
-    run_and_log(["systemctl", "enable", f"{svc_name}.service"])
-    run_and_log(["systemctl", "start", f"{svc_name}.service"])
-    
-    return svc_name
-    
+        run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+        _write_unit(svc_name, mc_dir, edition)
+        if template_id:
+            # After daemon-reload, so systemd already knows the new unit's working directory
+            apply_template_to_server(svc_name, template_id, edition=edition)
+        run_and_log(["systemctl", "enable", f"{svc_name}.service"])
+        run_and_log(["systemctl", "start", f"{svc_name}.service"])
+        return svc_name
+    finally:
+        _release_name(svc_name)
+
 def read_permissions(server_name):
     d = get_server_dir(server_name)
     exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"], capture_output=True, text=True).stdout.strip()

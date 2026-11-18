@@ -69,6 +69,8 @@
             </div>
         </div>
         <div class="flex-1 overflow-y-auto p-3 space-y-1" id="server-list"></div>
+        <!-- Servers uninstalled with "Keep World": their files are still in /opt -->
+        <div id="removed-hint" class="hidden px-3 pb-3"></div>
         <!-- Signed-in user -->
         <div class="p-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
             <div class="flex items-center justify-between gap-2">
@@ -221,7 +223,7 @@
                 <div>
                     <h3 class="text-lg font-bold mb-2 text-yellow-600 dark:text-yellow-500">Uninstall Instance</h3>
                     <div class="bg-yellow-50 dark:bg-gray-800 border border-yellow-200 dark:border-yellow-700 rounded p-5 max-w-xl flex justify-between items-center shadow-sm">
-                        <p class="text-sm text-gray-700 dark:text-gray-300">Removes binaries and system service. Keeps world data.</p>
+                        <p class="text-sm text-gray-700 dark:text-gray-300">Removes the system service, so the server leaves the panel. Its files stay in /opt; bring it back from ➕ New Server → Removed servers.</p>
                         <button onclick="ServerApp.uninstallServer(true)" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-bold">Uninstall (Keep World)</button>
                     </div>
                 </div>
