@@ -1351,6 +1351,9 @@ const ServerApp = {
 		document.getElementById('btn-manage-users').classList.toggle('hidden', u.role !== 'admin');
 		document.getElementById('btn-panel-settings').classList.toggle('hidden', u.role !== 'admin');
 		document.getElementById('btn-change-password').classList.toggle('hidden', u.source !== 'panel');
+		// Uninstall and purge are admin-only (the API refuses them too)
+		document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', u.role !== 'admin'));
+		document.getElementById('uninstall-admin-note').classList.toggle('hidden', u.role === 'admin');
 		const banner = document.getElementById('https-error-banner');
 		banner.innerText = u.https_error ? `⚠️ ${u.https_error} Check Panel Settings.` : '';
 		banner.classList.toggle('hidden', !u.https_error);

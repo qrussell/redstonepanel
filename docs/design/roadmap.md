@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.8.0 · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.8.1 · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,7 +20,7 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.8.0)
+## What already exists (1.8.1)
 
 Java and Bedrock servers as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
@@ -74,6 +74,11 @@ else that looks for a Bedrock world.
 5. **Console colouring.** Errors, warnings, backups/restarts, sign-ins/settings and the
    panel's own commands each get a colour. Front-end only.
 
+### 1.8.1: only admins delete *(Nov 2026)*
+
+Uninstall and purge needed no more than the `user` role, which trusted-LAN visitors get
+without signing in. Both are admin-only now (API and UI), and the log names who did it.
+
 ### 1.9: more than vanilla
 
 6. **Paper and Fabric.** The most-asked-for gap: the panel only installs Mojang's vanilla jar.
@@ -111,8 +116,6 @@ else that looks for a Bedrock world.
 - **Tests for `core/manager.py`.** Deploy, import, remove, restore and port allocation run as
   root against `/opt`; cover them with a temp `SERVERS_ROOT` and a stubbed `systemctl`, and in
   the systemd test container.
-- **Tighten who can delete.** Any signed-in `user`, and anonymous trusted-LAN visitors, can
-  currently uninstall or purge a server. Purge should need an admin; uninstall probably too.
 - **Security review** of sign-in, import (archive unpacking) and anything that builds paths.
 - **Mobile pass** on the dashboard, server list and console (there are very few responsive
   classes today).

@@ -340,7 +340,18 @@ def control_server(server_name: str, req: ServerActionRequest):
     return {"status": "success"}
 
 @app.delete("/api/servers/{server_name}")
-def uninstall_server(server_name: str, keep_world: bool = True):
+def uninstall_server(request: Request, server_name: str, keep_world: bool = True):
+    # Takes the server off the panel (or erases it): admins only, never a trusted-LAN visitor
+    if request.state.user["role"] != "admin":
+        detail = ("Sign in as an admin to uninstall a server." if request.state.user.get("source") == "trusted"
+                  else "Only admins can uninstall a server.")
+        raise HTTPException(status_code=403, detail=detail)
+    try:
+        manager._check_server(server_name)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[REMOVE] {request.state.user['username']} is "
+                      f"{'uninstalling (keeping its files)' if keep_world else 'purging'} {server_name}.")
     try:
         manager.remove_server(server_name, keep_world)
     except manager.ServerError as e:

@@ -233,14 +233,15 @@
                         <button onclick="ServerApp.updateServer()" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold">Check & Update</button>
                     </div>
                 </div>
-                <div>
+                <p id="uninstall-admin-note" class="hidden text-sm text-gray-500 dark:text-gray-400 max-w-xl">Only an admin can uninstall or purge a server.</p>
+                <div class="admin-only">
                     <h3 class="text-lg font-bold mb-2 text-yellow-600 dark:text-yellow-500">Uninstall Instance</h3>
                     <div class="bg-yellow-50 dark:bg-gray-800 border border-yellow-200 dark:border-yellow-700 rounded p-5 max-w-xl flex justify-between items-center shadow-sm">
                         <p class="text-sm text-gray-700 dark:text-gray-300">Removes the system service, so the server leaves the panel. Its files stay in /opt; bring it back from ➕ New Server → Removed servers.</p>
                         <button onclick="ServerApp.uninstallServer(true)" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-bold">Uninstall (Keep World)</button>
                     </div>
                 </div>
-                <div>
+                <div class="admin-only">
                     <h3 class="text-lg font-bold mb-2 text-red-600 dark:text-red-500">Danger Zone</h3>
                     <div class="bg-red-50 dark:bg-gray-800 border border-red-200 dark:border-red-800 rounded p-5 max-w-xl flex justify-between items-center shadow-sm">
                         <p class="text-sm text-gray-700 dark:text-gray-300">Permanently erase this server and all world data.</p>

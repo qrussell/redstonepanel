@@ -203,6 +203,9 @@ Changing a role takes effect at the next restart.
 - **Update Server → Check & Update**: stops the server, downloads the latest official release,
   and starts it again. Your world, settings, ports, operators and allowlist are kept. Take a
   backup first: a Java world opened by a newer version can't go back to an older one.
+Uninstalling and purging need an **admin**; other accounts, and visitors on a trusted local
+network, don't see these two sections.
+
 - **Uninstall (Keep World)**: removes the server's systemd service, so it leaves the panel.
   Its files stay in `/opt/minecraft-…` and its backups stay too, so it can be
   [restored](#13-restore-a-removed-server).
@@ -338,8 +341,8 @@ sudo redstonepanel restore minecraft-java-2
 
 - **Add user**: a username, a password of at least 8 characters, and a role:
   - **User** can manage servers;
-  - **Admin** can also manage panel users and Panel Settings, restore backups, and delete
-    backups and removed servers.
+  - **Admin** can also manage panel users and Panel Settings, uninstall and purge servers,
+    restore backups, and delete backups and removed servers.
 - For each account you can change the role, **Reset password**, **Disable** (it can't sign
   in until enabled again) or **Delete**.
 - Linux accounts aren't listed here; they're managed with the usual Linux tools.
@@ -397,7 +400,8 @@ Other services receive a JSON POST with the fields `text`, `event`, `server`, `p
 - **Always required (recommended)**.
 - **Not required on the local network**: devices on the private networks you list can manage
   servers without signing in. Things to know:
-  - they get the *User* role, so users and settings still need an admin sign-in;
+  - they get the *User* role, so users, settings and uninstalling servers still need an
+    admin sign-in;
   - it never applies to requests coming through a reverse proxy;
   - everyone on those networks gets in, including guests on your Wi-Fi.
 
