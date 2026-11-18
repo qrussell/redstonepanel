@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.6.0 · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.7.0 · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,11 +20,11 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.6.0)
+## What already exists (1.7.0)
 
 Java and Bedrock servers as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, restoring removed servers, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, restoring removed servers, scheduled backups with restore, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
@@ -39,21 +39,18 @@ restore one: a new unit, a free port if the old one was taken, and the server bi
 again only if it's missing. Uninstall now keeps the binary, so a restore runs the same game
 version as before.
 
-### 1.7: don't lose worlds
+### 1.7.0: scheduled backups *(Nov 2026)*
 
-1. **Scheduled backups with retention.** *(in progress)* The single most valuable missing feature.
-   - A `redstonepanel-backup@<server>.timer` / `.service` pair per server, written by the panel.
-     Backups run even when the panel is down.
-   - Consistent copies: Java `save-off` → `save-all flush` (RCON) → archive → `save-on`;
-     Bedrock `save hold` → poll `save query` → copy the listed files → `save resume` through
-     the screen session.
-   - Stored in `/var/backups/redstonepanel/<server>/` (outside the server folder, so purging a
-     server doesn't delete its backups); keep the last N and/or N days.
-   - A Backups tab: schedule, list, download, restore over the current world (stop, swap,
-     start, keeping the replaced world as one more backup).
-2. **`install.sh`.** About 20 lines: add the qrussell-repo key and source, `apt install
-   redstonepanel`. Hosted on GitHub Pages. Uses the repo you already publish, so it doesn't
-   need a panel release.
+A `redstonepanel-backup@<server>.timer` per server, so backups run while the panel is down.
+Running servers are copied consistently (Java `save-off` / `save-all flush` / `save-on` over
+RCON, Bedrock `save hold` / `save query` / `save resume`). Archives go to
+`/var/backups/redstonepanel/<server>/`, outside the server folder, and scheduled ones are pruned
+to the last N. The Backups tab schedules, lists, downloads and restores; a restore keeps the
+replaced world as one more backup.
+
+Testing the release candidate on a real host found that Bedrock 1.26 keeps its world in
+`worlds/level` and panel-made servers have no `level-name`; worth remembering for anything
+else that looks for a Bedrock world.
 
 ### 1.8: know what's happening
 
@@ -108,9 +105,14 @@ version as before.
 - **Mobile pass** on the dashboard, server list and console (there are very few responsive
   classes today).
 - **README screenshots and a short GIF.**
+- **`install.sh`.** About 20 lines: add the qrussell-repo key and source, `apt install
+  redstonepanel`. Hosted on GitHub Pages. It uses the repository that already exists, so it
+  doesn't need a panel release.
 
 ## Later (only when asked for)
 
+- Backup retention by age ("keep 30 days") as well as by count, and copying backups off the
+  machine (rsync/S3).
 - Forge and NeoForge (installer jar, `run.sh`, `user_jvm_args.txt`).
 - Modrinth modpacks (`.mrpack`). Not CurseForge: it needs an API key and some packs can't be
   downloaded automatically.
