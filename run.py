@@ -12,6 +12,9 @@
     redstonepanel removed             list game servers uninstalled with "Keep World"
     redstonepanel restore NAME        give a removed server a systemd service again and start it
     redstonepanel backup NAME         back up a game server now (its backup timer runs this too)
+    redstonepanel restart-server NAME warn players, then restart a game server (its restart timer
+                                      runs this)
+    redstonepanel notify-test         send a test message to the notification webhook
 
   Clusters (one master panel controls the game servers of other panels, its nodes):
     redstonepanel cluster create "NAME"   make this panel a cluster master
@@ -318,6 +321,32 @@ def backup_cmd(name):
           + ("" if b["consistent"] else "; copied while the server was writing (see the panel log)") + ".")
 
 
+def restart_server_cmd(name):
+    from core import restarts
+    try:
+        result = restarts.run_restart(name)
+    except restarts.RestartError as e:
+        sys.exit(str(e))
+    print(f"{name}: {result}.")
+
+
+def notify_test_cmd():
+    from core import notify
+    ok, err = notify.send_test()
+    if not ok:
+        sys.exit(err)
+    print("Sent a test message to the webhook.")
+
+
+def notify_unit_cmd(phase, name):
+    # Run by the minecraft-*.service drop-in on every start and stop; must never fail the unit
+    try:
+        from core import notify
+        notify.unit_event(phase, name)
+    except Exception as e:
+        print(f"redstonepanel notify-unit: {e}", file=sys.stderr)
+
+
 def restore_cmd(name):
     from core import manager
     try:
@@ -342,6 +371,12 @@ if __name__ == "__main__":
         removed_cmd()
     elif cmd == "backup" and len(rest) == 1:
         backup_cmd(rest[0])
+    elif cmd == "restart-server" and len(rest) == 1:
+        restart_server_cmd(rest[0])
+    elif cmd == "notify-test" and not rest:
+        notify_test_cmd()
+    elif cmd == "notify-unit" and len(rest) == 2 and rest[0] in ("start", "stop"):
+        notify_unit_cmd(*rest)
     elif cmd == "restore" and len(rest) == 1:
         restore_cmd(rest[0])
     elif cmd == "set-name" and len(rest) == 1:

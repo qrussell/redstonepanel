@@ -21,6 +21,11 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .B redstonepanel backup
 .I NAME
 .br
+.B redstonepanel restart-server
+.I NAME
+.br
+.B redstonepanel notify-test
+.br
 .B redstonepanel cluster
 .RB { create
 .IR NAME | status | join-code
@@ -78,6 +83,30 @@ A running Java server stops writing to disk during the copy (over RCON), a runni
 server through \fBsave hold\fR. Backups taken this way are never pruned. Each server's backup
 timer, \fBredstonepanel-backup@\fINAME\fB.timer\fR, runs the same command for scheduled
 backups, which keep only the number set in the panel's Backups tab.
+.TP
+.BI "restart-server " NAME
+Warn the server's players in game (Java over RCON, Bedrock through its console), wait the
+warning time set in the panel's Maintenance tab, then restart the server. A stopped server is
+left stopped, and the restart waits for a running backup of the same server. Each server's
+restart timer, \fBredstonepanel-restart@\fINAME\fB.timer\fR, runs this command; it fires the
+warning time before the restart time shown in the panel.
+.TP
+.B notify-test
+Send a test message to the webhook set under Panel Settings > Notifications.
+.SH NOTIFICATIONS
+The package installs a systemd drop-in for every
+.BR minecraft-*.service ,
+.IR /usr/lib/systemd/system/minecraft-.service.d/redstonepanel.conf .
+It treats exit status 143 (Java stopped by SIGTERM) as a clean stop, and its
+\fBExecStartPost\fR and \fBExecStopPost\fR run \fBredstonepanel notify-unit\fR, which sends
+"started", "stopped" and "crashed" notifications to the webhook, if one is set. They run without
+the panel, so a crash is reported while the panel is stopped. Failures of these hooks never
+affect the game server.
+.PP
+A stop that systemd was not asked for is a crash. Bedrock servers run under \fBscreen\fR, which
+exits 0 when the game dies, so systemd would not restart them; when a Bedrock server's console
+log doesn't end with "Quit correctly" (its \fBstop\fR command), the hook starts the server again
+after 20 seconds with a transient \fBsystemd-run\fR timer.
 .SH CLUSTER COMMANDS
 A cluster lets one panel, the master, see and start, stop or restart the game servers of
 other RedstonePanels, its nodes. The master runs a small certificate authority and issues
@@ -139,6 +168,13 @@ Game servers. Removing or purging the package never deletes them.
 .I /var/backups/redstonepanel/
 Backups, one folder per server (mode 0700). Kept when a server is uninstalled or the package
 is purged. Schedules are in /var/lib/redstonepanel/backups.json.
+.TP
+.I /var/lib/redstonepanel/notifications.json
+The notification webhook URL and the events to send (mode 0600: the URL lets anyone post to
+the channel).
+.TP
+.I /var/lib/redstonepanel/restarts.json
+Scheduled restart times and warnings.
 .SH SEE ALSO
 .BR systemctl (1),
 .BR journalctl (1)
