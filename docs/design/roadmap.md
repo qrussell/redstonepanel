@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.8.1 · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.9.0 · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,9 +20,10 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.8.1)
+## What already exists (1.9.0)
 
-Java and Bedrock servers as systemd units with `Restart=on-failure`, templates,
+Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
+as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
 zip export and .zip/.tar.gz/.tar import, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
@@ -79,15 +80,22 @@ else that looks for a Bedrock world.
 Uninstall and purge needed no more than the `user` role, which trusted-LAN visitors get
 without signing in. Both are admin-only now (API and UI), and the log names who did it.
 
-### 1.9: more than vanilla
+### 1.9.0: more than vanilla *(Nov 2026)*
 
-6. **Paper and Fabric.** The most-asked-for gap: the panel only installs Mojang's vanilla jar.
-   - Paper: the PaperMC downloads API (latest build for a Minecraft version).
-   - Fabric: the Fabric meta server-launcher jar (one file, same `java -jar` unit).
-   - A version picker (latest by default, or a chosen release) for vanilla too.
-   - Java versions: Minecraft 1.20.5+ needs Java 21, older versions need 17 or 8. Detect the
-     installed JREs (`/usr/lib/jvm`) and write the right `java` path into each unit. Say
-     clearly which `openjdk-*` package to install when the one needed is missing.
+6. **Paper and Fabric.** New Java servers can be vanilla, Paper or Fabric, on a chosen
+   Minecraft release (newest by default); Update can move a server to a newer release, never
+   an older one.
+   - Paper: the Fill API v3 (`fill.papermc.io`), newest STABLE build, SHA-256 checked. It
+     asks clients for a User-Agent naming the software.
+   - Fabric: the meta server-launcher jar for the newest stable loader and installer.
+   - Every jar is `server.jar`, so units, backups, export and import didn't change. What it
+     is goes in `.redstonepanel-server.json`; older servers are recognised from the jar.
+   - Java: Mojang's per-version data (`javaVersion.majorVersion`) is the requirement for all
+     three loaders (26.x: 25, 1.20.5+: 21, 1.18+: 17, 1.17: 16, older: 8; Ubuntu has no Java 16, so 1.17 gets 17). The unit runs the matching JRE
+     from `/usr/lib/jvm`, or the closest newer one; deploy and update stop before downloading
+     and name the `openjdk-*` package when none is new enough.
+   - Not done: switching an existing server between loaders, and installing plugins or mods
+     (see Later).
 
 ### 1.10: edit files
 

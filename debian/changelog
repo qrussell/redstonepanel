@@ -1,3 +1,16 @@
+redstonepanel (1.9.0) noble; urgency=medium
+
+  * Java servers can be Paper or Fabric as well as vanilla, on a chosen
+    Minecraft release (the newest by default).
+  * Each Java server runs the Java its Minecraft version needs, from
+    /usr/lib/jvm; deploy and update name the openjdk package to install
+    when no installed Java is new enough.
+  * Update can move a Java server to a newer Minecraft release, never an
+    older one, and downloads before stopping the server.
+  * Vanilla and Paper downloads are checked against their checksums.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Wed, 18 Nov 2026 15:23:46 +0000
+
 redstonepanel (1.8.1) noble; urgency=medium
 
   * Only admins can uninstall or purge a server. Panel users and

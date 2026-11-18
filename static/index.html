@@ -229,8 +229,12 @@
                 <div>
                     <h3 class="text-lg font-bold mb-2 text-gray-900 dark:text-white">Update Server</h3>
                     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl flex justify-between items-center shadow-sm">
-                        <p class="text-sm text-gray-600 dark:text-gray-300">Download the latest binaries for this edition.</p>
-                        <button onclick="ServerApp.updateServer()" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold">Check & Update</button>
+                        <div class="pr-3">
+                            <p id="update-text" class="text-sm text-gray-600 dark:text-gray-300">Download the latest binaries for this edition.</p>
+                            <select id="update-version" class="hidden mt-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-1 text-sm text-gray-900 dark:text-white"></select>
+                            <p id="update-java-note" class="text-xs mt-1 text-gray-500 dark:text-gray-400"></p>
+                        </div>
+                        <button onclick="ServerApp.updateServer()" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold shrink-0">Check & Update</button>
                     </div>
                 </div>
                 <p id="uninstall-admin-note" class="hidden text-sm text-gray-500 dark:text-gray-400 max-w-xl">Only an admin can uninstall or purge a server.</p>
