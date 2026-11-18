@@ -78,11 +78,7 @@ const ServerApp = {
     themeColor: localStorage.getItem('rp_themeColor') || 'diamond',
 
     applyTheme() {
-        if (this.themeMode === 'dark') {
-            document.body.classList.add('dark');
-        } else {
-            document.body.classList.remove('dark');
-        }
+        document.documentElement.classList.toggle('dark', this.themeMode === 'dark');
         
         document.documentElement.setAttribute('data-theme', this.themeColor);
     },

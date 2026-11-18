@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RedstonePanel</title>
     <link rel="stylesheet" href="/static/css/tailwind.css">
+    <script>
+        // Tailwind's dark: variants match elements inside .dark, so the class goes on <html>
+        // (on <body> it missed body's own dark: colours). Set before first paint.
+        try {
+            if ((localStorage.getItem('rp_themeMode') || 'dark') === 'dark') document.documentElement.classList.add('dark');
+        } catch (e) { document.documentElement.classList.add('dark'); }
+    </script>
     <style>
         /* Base Theme Variables */
         :root {
@@ -40,7 +47,7 @@
         .text-theme { color: var(--accent-text); }
     </style>
 </head>
-<body class="dark flex h-screen font-sans antialiased overflow-hidden relative bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-200">
+<body class="flex h-screen font-sans antialiased overflow-hidden relative bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-200">
     
     <aside class="w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full shadow-xl z-10">
         <div class="p-5 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
