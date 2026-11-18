@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.10.0 and the 1.11 dashboard · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.11.0 · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,12 +20,12 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.10.0)
+## What already exists (1.11.0)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, a file manager, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, a file manager, a host dashboard, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
@@ -113,7 +113,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
      meanwhile isn't overwritten silently.
    - Each change is logged with the admin's name.
 
-### 1.11: host dashboard
+### 1.11.0: host dashboard *(Nov 2026)*
 
 8. **A dashboard where the empty screen is.** With no server selected, the right side of
    the panel is blank. Fill it with the state of the machine and everything the panel relies
@@ -161,6 +161,14 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
 
    **Size:** about a week. The background folder-size walk and the per-node cards are the
    fiddly parts.
+
+   **As built:** `core/host.py` and `GET /api/host` (plus `/api/cluster/hosts` on a master);
+   the dashboard is also behind a **📊 Dashboard** sidebar button, and the Cluster page shows
+   each panel's CPU, memory and free disk. Timer times come from `systemctl show` run with
+   `TZ=UTC` (systemd 255 ignores `--timestamp=unix` for timer properties). A server counts as
+   crash-looping while it's activating after 3 or more automatic restarts, not only in the
+   short `auto-restart` pause. Not done: the last notification error (the panel doesn't keep
+   one yet), and the sidebar itself still isn't laid out for phones.
 
 ### 2.0: run it for other people
 

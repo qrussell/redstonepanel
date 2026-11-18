@@ -58,6 +58,8 @@
             <p id="cluster-badge" class="hidden text-xs text-gray-500 dark:text-gray-400 truncate mt-1"></p>
             <p id="https-error-banner" class="hidden mt-2 text-xs p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700"></p>
             <button onclick="ServerApp.openDeployModal()" class="mt-4 w-full bg-theme hover-bg-theme text-white py-2 rounded text-sm font-bold transition mb-2">➕ New Server</button>
+            <!-- This machine: resources, services, what needs attention (also shown when no server is selected) -->
+            <button id="btn-dashboard" onclick="ServerApp.showDashboard()" class="w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">📊 Dashboard</button>
             <!-- On a cluster master: every node's servers on one page -->
             <button id="btn-cluster" onclick="ServerApp.openCluster()" class="hidden w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">🌐 Cluster</button>
             <div class="flex gap-2 mb-4">
@@ -285,6 +287,18 @@
 				</div>
 			</div>
         </div>
+    </main>
+
+    <!-- Dashboard: shown when no server is selected -->
+    <main class="flex-1 flex flex-col h-full min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="dashboard">
+        <header class="p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+            <div class="min-w-0">
+                <h2 id="dash-title" class="text-2xl font-bold text-gray-900 dark:text-white truncate">Dashboard</h2>
+                <p id="dash-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mt-1">Loading...</p>
+            </div>
+            <button onclick="ServerApp.loadDashboard()" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white px-4 py-2 rounded font-bold transition whitespace-nowrap">↻ Refresh</button>
+        </header>
+        <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6" id="dash-body"></div>
     </main>
 
     <!-- Cluster (master only): the servers of every panel in the cluster -->

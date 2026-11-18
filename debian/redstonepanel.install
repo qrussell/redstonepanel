@@ -1,7 +1,7 @@
 main.py usr/share/redstonepanel/
 run.py usr/share/redstonepanel/
 https_redirect.py usr/share/redstonepanel/
-core/__init__.py core/archive.py core/auth.py core/backups.py core/bedrock_net.py core/cluster.py core/cluster_client.py core/files.py core/javaservers.py core/manager.py core/models.py core/notify.py core/properties.py core/proxies.py core/rcon.py core/restarts.py core/settings.py core/tls.py core/version.py usr/share/redstonepanel/core/
+core/__init__.py core/archive.py core/auth.py core/backups.py core/bedrock_net.py core/cluster.py core/cluster_client.py core/files.py core/host.py core/javaservers.py core/manager.py core/models.py core/notify.py core/properties.py core/proxies.py core/rcon.py core/restarts.py core/settings.py core/tls.py core/version.py usr/share/redstonepanel/core/
 static/index.html static/login.html usr/share/redstonepanel/static/
 static/css/tailwind.css usr/share/redstonepanel/static/css/
 static/js/app.js usr/share/redstonepanel/static/js/

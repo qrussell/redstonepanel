@@ -24,6 +24,10 @@ them from a browser:
   backup finishes or fails
 - scheduled restarts that warn players in game first
 - a panel activity log
+- a dashboard for the machine: CPU, memory, disks, network, each server's CPU, memory,
+  players and disk use, supporting services (Java, firewall, timers, certificates,
+  Phantom proxies), a list of what needs attention, and on a cluster master each node's
+  resources
 
 **New here?** The [user guide](docs/guide/README.md) walks through setting it up and every
 feature, with screenshots.

@@ -47,6 +47,12 @@ const ServerApp = {
         this.renderSidebar();
         this.loadRemovedServers();
 
+        // Nothing selected: show the dashboard (unless the cluster page is open)
+        if (!this.activeServer && document.getElementById('dashboard').classList.contains('hidden')
+            && document.getElementById('cluster-view').classList.contains('hidden')) {
+            this.showDashboard();
+        }
+
         if (this.activeServer) {
             const srv = this.servers.find(s => s.name === this.activeServer.name);
             if (srv) this.openWorkspace(srv);
@@ -191,6 +197,7 @@ const ServerApp = {
 		this.rconOutputs = [];
         
 		this.closeCluster();
+		this.hideDashboard();
 		document.getElementById('workspace').classList.remove('hidden');
         this.renderSidebar();
 
@@ -1616,7 +1623,7 @@ const ServerApp = {
             const res = await fetch(`/api/servers/${this.activeServer.name}?keep_world=${keepWorld}`, { method: 'DELETE' });
             if (!res.ok) return alert(`Uninstall failed: ${await this.apiError(res)}`);
             this.activeServer = null;
-            document.getElementById('workspace').classList.add('hidden');
+            this.showDashboard();
             this.loadServers();
         }
     },
@@ -1918,6 +1925,268 @@ const ServerApp = {
 		setTimeout(() => window.location.assign(target), 4000);
 	},
 
+	// --- Dashboard (no server selected): this machine, its game servers and supporting services ---
+	dashTimer: null,
+	dashData: null,
+	dashHosts: null,
+
+	showDashboard() {
+		if (this.fileEditor && this.fileEditor.dirty
+			&& !confirm('Discard your unsaved changes to ' + this.fileEditor.path + '?')) return;
+		this.fileEditor = null;
+		this.activeServer = null;
+		this.renderSidebar();
+		this.closeCluster();
+		document.getElementById('workspace').classList.add('hidden');
+		document.getElementById('dashboard').classList.remove('hidden');
+		this.loadDashboard();
+		clearInterval(this.dashTimer);
+		this.dashTimer = setInterval(() => { if (!document.hidden) this.loadDashboard(); }, 10000);
+	},
+
+	hideDashboard() {
+		clearInterval(this.dashTimer);
+		this.dashTimer = null;
+		document.getElementById('dashboard').classList.add('hidden');
+	},
+
+	async loadDashboard() {
+		const body = document.getElementById('dash-body');
+		try {
+			const res = await fetch('/api/host');
+			if (!res.ok) throw new Error(await this.apiError(res));
+			this.dashData = await res.json();
+		} catch (e) {
+			if (!this.dashData) body.innerHTML = `<p class="text-red-500">Couldn't load the dashboard: ${this.escapeHtml(e.message)}</p>`;
+			return;
+		}
+		const cl = this.dashData.services.cluster;
+		if (cl && cl.role === 'master') {
+			try {
+				const r = await fetch('/api/cluster/hosts');
+				this.dashHosts = r.ok ? await r.json() : null;
+			} catch (e) { /* keep the last answer */ }
+		} else {
+			this.dashHosts = null;
+		}
+		if (!document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard();
+	},
+
+	// Formatting helpers
+	fmtBytes(n) {
+		if (n === null || n === undefined) return '—';
+		const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+		let i = 0;
+		while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+		return (i === 0 ? n : n.toFixed(n >= 100 ? 0 : 1)) + ' ' + units[i];
+	},
+	fmtRate(n) { return n === null || n === undefined ? '—' : this.fmtBytes(n) + '/s'; },
+	fmtDuration(s) {
+		if (s === null || s === undefined) return '—';
+		s = Math.floor(s);
+		const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+		if (d) return `${d} d ${h} h`;
+		if (h) return `${h} h ${m} min`;
+		return m ? `${m} min` : `${s} s`;
+	},
+	fmtWhen(t) {
+		if (!t) return '—';
+		const diff = t - Date.now() / 1000;
+		if (Math.abs(diff) > 7 * 86400) return (diff >= 0 ? 'on ' : 'since ') + new Date(t * 1000).toLocaleDateString();
+		const rel = this.fmtDuration(Math.abs(diff));
+		return diff >= 0 ? `in ${rel}` : `${rel} ago`;
+	},
+	fmtPct(p) { return p === null || p === undefined ? '—' : `${Math.round(p)}%`; },
+	barColor(p) { return p >= 90 ? 'bg-red-500' : p >= 75 ? 'bg-yellow-500' : 'bg-green-500'; },
+	bar(p) {
+		const w = Math.max(0, Math.min(100, p || 0));
+		return `<div class="w-full h-2 rounded bg-gray-200 dark:bg-gray-700 overflow-hidden"><div class="h-2 rounded ${this.barColor(w)}" style="width:${w}%"></div></div>`;
+	},
+
+	openServerByName(name, tab) {
+		const srv = this.servers.find(s => s.name === name);
+		if (!srv) return;
+		this.openWorkspace(srv);
+		if (tab) this.switchTab(tab);
+	},
+
+	renderDashboard() {
+		const d = this.dashData, esc = t => this.escapeHtml(t === null || t === undefined ? '' : t);
+		const card = 'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow';
+		const h3 = 'font-bold text-gray-900 dark:text-white';
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const row = (k, v) => `<div class="flex justify-between gap-3 py-1 border-t border-gray-100 dark:border-gray-700 first:border-t-0"><span class="text-gray-500 dark:text-gray-400">${k}</span><span class="text-right text-gray-900 dark:text-gray-200 min-w-0 break-words">${v}</span></div>`;
+		const svc = d.services || {};
+		const hostLine = [d.host.os, d.host.uptime ? `up ${this.fmtDuration(d.host.uptime)}` : null].filter(Boolean).join(' · ');
+		document.getElementById('dash-title').innerText = d.host.name || d.host.hostname;
+		document.getElementById('dash-subtitle').innerText = `${hostLine}${hostLine ? ' · ' : ''}refreshes every 10 seconds`;
+
+		// Needs attention
+		const icon = { error: '⛔', warn: '⚠️', info: 'ℹ️' };
+		const tone = { error: 'border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30',
+			warn: 'border-yellow-300 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/30',
+			info: 'border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30' };
+		const nodeIssues = (this.dashHosts ? this.dashHosts.nodes : []).filter(n => !n.local && n.state !== 'ok')
+			.map(n => ({ level: 'warn', text: `Cluster node ${n.name}: ${this.clusterStates[n.state] || n.state}` }));
+		const attention = (d.attention || []).concat(nodeIssues);
+		const attentionHtml = attention.length ? `
+			<section class="${card} p-4">
+				<h3 class="${h3} mb-2">Needs attention</h3>
+				<div class="space-y-2">${attention.map(a => {
+					const tab = a.where === 'backups' ? 'backups' : '';
+					const link = a.server ? ` <button onclick="ServerApp.openServerByName(${this.jsArg(a.server)}, ${this.jsArg(tab)})" class="underline text-theme whitespace-nowrap">Open ${esc(a.server)}</button>` : '';
+					return `<div class="text-sm p-2 rounded border ${tone[a.level] || tone.warn} text-gray-900 dark:text-gray-100">${icon[a.level] || '⚠️'} ${esc(a.text)}${link}</div>`;
+				}).join('')}</div>
+			</section>` : `
+			<section class="${card} p-4 text-sm text-gray-700 dark:text-gray-300">✅ Nothing needs attention.</section>`;
+
+		// Tiles
+		const servers = d.servers || [];
+		const srvDisk = (d.disks || []).find(x => x.holds.includes('Game servers')) || (d.disks || [])[0];
+		const net = d.network || [];
+		const rx = net.reduce((a, n) => a + n.rx, 0), tx = net.reduce((a, n) => a + n.tx, 0);
+		const m = d.memory;
+		const tile = (title, big, barP, lines) => `
+			<div class="${card} p-4">
+				<p class="${note} uppercase tracking-wider font-bold">${title}</p>
+				<p class="text-2xl font-bold text-gray-900 dark:text-white my-1">${big}</p>
+				${barP === null ? '' : this.bar(barP)}
+				<p class="${note} mt-2">${lines}</p>
+			</div>`;
+		const tiles = `
+			<section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+				${tile('CPU', this.fmtPct(d.cpu.percent), d.cpu.percent, `${d.cpu.cores || '?'} cores · load ${d.cpu.load ? d.cpu.load.join(' ') : '—'}${d.cpu.model ? `<br>${esc(d.cpu.model)}` : ''}`)}
+				${tile('Memory', `${this.fmtBytes(m.used)} <span class="text-sm font-normal text-gray-500">of ${this.fmtBytes(m.total)}</span>`, m.percent,
+					`${this.fmtBytes(m.available)} available · swap ${m.swap_total ? `${this.fmtBytes(m.swap_used)} of ${this.fmtBytes(m.swap_total)}` : 'none'}`)}
+				${srvDisk ? tile('Disk', `${this.fmtBytes(srvDisk.free)} <span class="text-sm font-normal text-gray-500">free</span>`, srvDisk.percent,
+					`${this.fmtPct(srvDisk.percent)} of ${this.fmtBytes(srvDisk.total)} used on ${esc(srvDisk.mount)}`) : ''}
+				${tile('Game servers', `${servers.filter(s => s.status === 'online').length} <span class="text-sm font-normal text-gray-500">of ${servers.length} online</span>`, null,
+					`${servers.reduce((a, s) => a + (s.players || 0), 0)} players online (Java, over RCON) · network ↓ ${this.fmtRate(rx)} ↑ ${this.fmtRate(tx)}`)}
+			</section>`;
+
+		// Game servers
+		const th = 'text-left font-bold px-3 py-2 whitespace-nowrap';
+		const td = 'px-3 py-2 whitespace-nowrap';
+		const serverRows = servers.map(s => {
+			const crash = s.crash_loop;
+			const dot = s.status === 'online' ? 'text-green-500' : crash || s.state === 'failed' ? 'text-red-500' : 'text-gray-400';
+			const stateText = crash ? 'crash loop' : s.state === 'failed' ? 'failed' : s.status;
+			const lb = s.last_backup;
+			const backupNote = lb ? (lb.ok ? `last ${this.fmtWhen(lb.at)}` : '<span class="text-red-500">last failed</span>') : 'none yet';
+			return `
+				<tr class="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onclick="ServerApp.openServerByName(${this.jsArg(s.name)})">
+					<td class="${td}"><span class="${dot}">●</span> <b class="text-gray-900 dark:text-white">${esc(s.name)}</b><div class="${note}">${esc(s.edition)} ${esc(s.version || '')} · port ${esc(s.port)}</div></td>
+					<td class="${td}">${esc(stateText)}<div class="${note}">${s.uptime !== null ? 'up ' + this.fmtDuration(s.uptime) : ''}</div></td>
+					<td class="${td}">${this.fmtPct(s.cpu_percent)}</td>
+					<td class="${td}">${this.fmtBytes(s.memory)}<div class="${note}">${s.heap && s.heap !== 'N/A' ? 'max heap ' + esc(s.heap) : ''}</div></td>
+					<td class="${td}">${s.players !== null ? `${s.players} / ${s.max_players}` : '—'}</td>
+					<td class="${td}">${s.folder_size !== null ? this.fmtBytes(s.folder_size) : '<span class="' + note + '">measuring…</span>'}</td>
+					<td class="${td}">${s.backups ? `${s.backups} · ${this.fmtBytes(s.backups_size)}` : '—'}<div class="${note}">${backupNote}</div></td>
+					<td class="${td}">${s.next_backup ? this.fmtWhen(s.next_backup) : '—'}</td>
+					<td class="${td}">${s.next_restart ? this.fmtWhen(s.next_restart) : '—'}</td>
+				</tr>`;
+		}).join('');
+		const serverTable = `
+			<section class="${card}">
+				<h3 class="${h3} p-4 pb-2">Game servers</h3>
+				${servers.length ? `<div class="overflow-x-auto"><table class="w-full text-sm text-gray-700 dark:text-gray-300">
+					<thead class="text-xs text-gray-500 dark:text-gray-400"><tr>
+						<th class="${th}">Server</th><th class="${th}">State</th><th class="${th}">CPU</th><th class="${th}">Memory</th>
+						<th class="${th}">Players</th><th class="${th}">Folder</th><th class="${th}">Backups</th>
+						<th class="${th}">Next backup</th><th class="${th}">Next restart</th>
+					</tr></thead><tbody>${serverRows}</tbody></table></div>
+					<p class="${note} px-4 py-2">CPU is a share of the whole machine. Folder sizes are measured in the background every 10 minutes.</p>`
+				: `<p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">No Minecraft servers yet. Use ➕ New Server to make one.</p>`}
+			</section>`;
+
+		// Host, disks, services
+		const host = `
+			<section class="${card} p-4 text-sm">
+				<h3 class="${h3} mb-2">Host</h3>
+				${row('Host name', esc(d.host.hostname))}
+				${d.host.os ? row('System', esc(d.host.os)) : ''}
+				${d.host.kernel ? row('Kernel', esc(d.host.kernel)) : ''}
+				${row('Up', this.fmtDuration(d.host.uptime))}
+				${row('Time zone', esc(d.host.timezone))}
+				${d.host.ips ? row('Addresses', d.host.ips.map(esc).join('<br>') || '—') : ''}
+				${d.host.version ? row('RedstonePanel', esc(d.host.version) + (d.host.update ? ` <span class="text-blue-500">(${esc(d.host.update)} available)</span>` : '')) : ''}
+				${net.length ? row('Network', net.map(n => `${esc(n.name)} ↓ ${this.fmtRate(n.rx)} ↑ ${this.fmtRate(n.tx)}`).join('<br>')) : ''}
+			</section>`;
+		const disks = `
+			<section class="${card} p-4 text-sm">
+				<h3 class="${h3} mb-2">Disks</h3>
+				${(d.disks || []).map(x => `
+					<div class="mb-3">
+						<div class="flex justify-between gap-2"><span class="font-bold text-gray-900 dark:text-gray-200">${esc(x.mount)}</span><span>${this.fmtBytes(x.free)} free of ${this.fmtBytes(x.total)}</span></div>
+						${this.bar(x.percent)}
+						<p class="${note} mt-1">${esc(x.holds.join(', '))}${x.fstype ? ' · ' + esc(x.fstype) : ''}</p>
+					</div>`).join('')}
+				${servers.length ? `<p class="${note}">Game servers: ${this.fmtBytes(servers.reduce((a, s) => a + (s.folder_size || 0), 0))} · backups: ${this.fmtBytes(servers.reduce((a, s) => a + (s.backups_size || 0), 0))}</p>` : ''}
+			</section>`;
+		const ok = (good, text) => `<span class="${good ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}">${good ? '●' : '▲'}</span> ${text}`;
+		const p = svc.panel || {};
+		const fw = svc.firewall, https = svc.https, notif = svc.notifications, cl = svc.cluster;
+		const timers = servers.filter(s => s.next_backup || s.next_restart);
+		const services = `
+			<section class="${card} p-4 text-sm">
+				<h3 class="${h3} mb-2">Supporting services</h3>
+				${row('RedstonePanel', ok(p.state === 'active', `${esc(p.state)}${p.uptime ? ', up ' + this.fmtDuration(p.uptime) : ''}${p.memory ? ' · ' + this.fmtBytes(p.memory) : ''}`))}
+				${row('Failed units', svc.failed_units && svc.failed_units.length ? ok(false, svc.failed_units.map(esc).join('<br>')) : ok(true, 'none'))}
+				${svc.java ? row('Java', svc.java.length ? svc.java.map(j => `Java ${j.major}${j.servers.length ? ` <span class="${note}">(${j.servers.map(esc).join(', ')})</span>` : ''}`).join('<br>')
+					: servers.some(s => s.edition === 'Java') ? ok(false, 'not installed') : 'not installed') : ''}
+				${row('screen', ok(svc.screen, svc.screen ? 'installed' : 'not installed (Bedrock chat and backups need it)'))}
+				${fw ? row('Firewall (ufw)', !fw.installed ? 'not installed' : ok(true, fw.active ? 'on' : 'off')) : ''}
+				${svc.phantoms && svc.phantoms.length ? row('Phantom proxies', svc.phantoms.map(x => ok(x.active === 'active', `${esc(x.unit)}: ${esc(x.active)}`)).join('<br>')) : ''}
+				${row('Backup / restart timers', timers.length ? `${servers.filter(s => s.next_backup).length} backup, ${servers.filter(s => s.next_restart).length} restart` : 'none scheduled')}
+				${https ? row('HTTPS', https.mode === 'off' ? 'off' : ok(!https.error, `${esc(https.mode.replace('_', '-'))}${https.cert_expires ? ', certificate expires ' + this.fmtWhen(https.cert_expires) : ''}`)) : ''}
+				${notif ? row('Notifications', notif.configured ? ok(true, esc(notif.kind || 'webhook')) : 'not set up') : ''}
+				${cl ? row('Cluster', cl.role === 'standalone' ? 'not in a cluster' : `${esc(cl.role)} of ${esc(cl.name || '?')}${cl.role === 'master' ? ` · ${cl.nodes} node${cl.nodes === 1 ? '' : 's'}` : ''}${cl.cert_expires ? `, certificate expires ${this.fmtWhen(cl.cert_expires)}` : ''}`) : ''}
+			</section>`;
+
+		// Cluster nodes (master)
+		let nodes = '';
+		if (this.dashHosts) {
+			nodes = `
+				<section>
+					<h3 class="${h3} mb-2">Cluster: ${esc(this.dashHosts.cluster)}</h3>
+					<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${this.dashHosts.nodes.map(n => this.nodeCard(n)).join('')}</div>
+				</section>`;
+		}
+
+		document.getElementById('dash-body').innerHTML = attentionHtml + tiles + serverTable
+			+ `<section class="grid grid-cols-1 lg:grid-cols-3 gap-4">${host}${disks}${services}</section>` + nodes
+			+ (d.redacted ? `<p class="${note}">You're on the trusted local network without signing in, so addresses, versions and settings are hidden.</p>` : '');
+	},
+
+	// One panel of the cluster: the few numbers core.host.summary() gives
+	nodeCard(n) {
+		const esc = t => this.escapeHtml(t === null || t === undefined ? '' : t);
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const s = n.summary;
+		const head = `
+			<div class="flex justify-between gap-2 items-start">
+				<div class="min-w-0">
+					<p class="font-bold text-gray-900 dark:text-white truncate"><span class="${n.state === 'ok' ? 'text-green-500' : 'text-yellow-500'}">●</span> ${esc(n.name)}${n.local ? ` <span class="${note} font-normal">(this panel)</span>` : ''}</p>
+					<p class="${note}">${s ? `RedstonePanel ${esc(s.version || '?')} · up ${this.fmtDuration(s.uptime)}` : esc(n.url || '')}</p>
+				</div>
+				${n.local ? '' : `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-xs underline text-theme whitespace-nowrap">Open ↗</a>`}
+			</div>`;
+		if (!s) {
+			return `<div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow p-4 text-sm">${head}
+				<p class="mt-2 text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200">⚠️ ${esc(this.clusterStates[n.state] || n.state)}${n.state === 'too_old' ? ' (1.11 or newer shows its resources here)' : ''}</p></div>`;
+		}
+		const line = (label, p, text) => `
+			<div class="mt-2"><div class="flex justify-between ${note}"><span>${label}</span><span>${text}</span></div>${this.bar(p)}</div>`;
+		const mem = s.memory || {};
+		return `<div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow p-4 text-sm">${head}
+			${line('CPU', s.cpu_percent, `${this.fmtPct(s.cpu_percent)} of ${s.cores || '?'} cores`)}
+			${line('Memory', mem.percent, `${this.fmtBytes(mem.available)} free of ${this.fmtBytes(mem.total)}`)}
+			${s.disk ? line('Disk', s.disk.percent, `${this.fmtBytes(s.disk.free)} free of ${this.fmtBytes(s.disk.total)}`) : ''}
+			<p class="mt-2 text-gray-700 dark:text-gray-300">${s.servers_online} of ${s.servers_total} servers online${s.attention.length ? ` · <span class="text-yellow-600 dark:text-yellow-400">${s.attention.length} need${s.attention.length === 1 ? 's' : ''} attention</span>` : ''}</p>
+			${s.attention.slice(0, 3).map(a => `<p class="${note} mt-1">${a.level === 'error' ? '⛔' : '⚠️'} ${esc(a.text)}</p>`).join('')}
+		</div>`;
+	},
+
 	// --- Cluster page (master): every panel's servers, with start/stop/restart ---
 	clusterTimer: null,
 	clusterData: null,
@@ -1930,6 +2199,7 @@ const ServerApp = {
 	},
 
 	openCluster() {
+		this.hideDashboard();
 		this.activeServer = null;
 		this.renderSidebar();
 		document.getElementById('workspace').classList.add('hidden');
@@ -1953,6 +2223,10 @@ const ServerApp = {
 			return;
 		}
 		this.clusterData = await res.json();
+		try {
+			const h = await fetch('/api/cluster/hosts');
+			this.clusterHosts = h.ok ? await h.json() : null;
+		} catch (e) { this.clusterHosts = null; }
 		this.renderCluster();
 	},
 
@@ -1994,6 +2268,7 @@ const ServerApp = {
 								${n.local ? '<span class="text-xs font-normal text-gray-500 dark:text-gray-400">(this panel, the master)</span>' : ''}
 							</h3>
 							${n.local ? '' : `<p class="text-xs text-gray-500 dark:text-gray-400 font-mono">${esc(n.url)} · RedstonePanel ${esc(n.version || '?')}</p>`}
+							${this.nodeResources(n.id)}
 						</div>
 						${n.local ? '' : `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-sm underline text-theme whitespace-nowrap">Open dashboard ↗</a>`}
 					</div>
@@ -2001,6 +2276,17 @@ const ServerApp = {
 					${rows || (ok ? '<p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">No Minecraft servers on this panel yet.</p>' : '')}
 				</div>`;
 		}).join('');
+	},
+
+	// "CPU 12% · 3.1 GB memory free · 40 GB disk free" for a node on the cluster page
+	nodeResources(id) {
+		const h = this.clusterHosts && this.clusterHosts.nodes.find(x => x.id === id);
+		const s = h && h.summary;
+		if (!s) return '';
+		const parts = [`CPU ${this.fmtPct(s.cpu_percent)}`, `${this.fmtBytes((s.memory || {}).available)} memory free`];
+		if (s.disk) parts.push(`${this.fmtBytes(s.disk.free)} disk free`);
+		if (s.attention.length) parts.push(`⚠️ ${s.attention.length} need${s.attention.length === 1 ? 's' : ''} attention`);
+		return `<p class="text-xs text-gray-500 dark:text-gray-400">${parts.join(' · ')}</p>`;
 	},
 
 	async clusterPower(nodeId, server, action, button) {

@@ -114,12 +114,47 @@ def _node_servers(node):
     return result
 
 
+def _node_host(node, summarize):
+    key = ("host", node["id"])
+    now = time.time()
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and now - hit[0] < OVERVIEW_TTL:
+            return hit[1]
+    base = {"id": node["id"], "name": node["name"], "url": node["url"], "version": node.get("version")}
+    try:
+        rep = call_node(node, "GET", "/api/host", timeout=15)
+        result = dict(base, state="ok", summary=summarize(rep) if isinstance(rep, dict) else None)
+    except NodeError as e:
+        result = dict(base, state=e.state, error=str(e), summary=None)
+    except Exception as e:                      # a node's odd answer mustn't break the page
+        result = dict(base, state="error", error=f"{type(e).__name__}: {e}", summary=None)
+    with _cache_lock:
+        _cache[key] = (now, result)
+    return result
+
+
+def hosts(local_summary, summarize):
+    """Every panel's host summary (core.host.summary), the master's own first."""
+    try:
+        local = {"id": "local", "name": panel_settings.display_name(), "local": True, "state": "ok",
+                 "summary": local_summary()}
+    except Exception as e:
+        local = {"id": "local", "name": panel_settings.display_name(), "local": True, "state": "error",
+                 "error": str(e), "summary": None}
+    nodes = cluster.load_nodes()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        others = list(pool.map(lambda n: _node_host(n, summarize), nodes)) if nodes else []
+    return {"cluster": cluster.state().get("name"), "nodes": [local] + others}
+
+
 def forget_cached(node_id=None):
     with _cache_lock:
         if node_id is None:
             _cache.clear()
         else:
             _cache.pop(node_id, None)
+            _cache.pop(("host", node_id), None)
 
 
 def overview(list_local_servers):

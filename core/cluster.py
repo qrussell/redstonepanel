@@ -63,6 +63,7 @@ NODE_ROUTES = (
     ("GET", r"/api/servers"),
     ("GET", r"/api/logs"),
     ("GET", r"/api/templates"),
+    ("GET", r"/api/host"),
     ("POST", r"/api/servers/[^/]+/action"),
 )
 

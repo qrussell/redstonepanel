@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 import core.manager as manager
 import core.files as files
+import core.host as host
 import urllib.parse
 import core.javaservers as javaservers
 import core.backups as backups
@@ -47,7 +48,7 @@ PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/health", "/api/panel-
               "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join"}
 ADMIN_API = ("/api/users", "/api/settings")
 NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert")
-CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/nodes/")
+CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster/nodes/")
 STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 
 @app.middleware("http")
@@ -283,6 +284,12 @@ def index():
 @app.get("/api/servers")
 def get_servers():
     return manager.list_servers()
+
+# --- The dashboard (no server selected): this machine and what the panel relies on.
+# Trusted-LAN visitors get it without addresses, versions or paths; the cluster master reads it too.
+@app.get("/api/host")
+def host_api(request: Request):
+    return host.report(redacted=request.state.user.get("source") == "trusted")
 
 @app.get("/api/servers/{server_name}/properties")
 def get_properties(server_name: str):
@@ -813,6 +820,12 @@ def _need_master():
 def cluster_overview_api():
     _need_master()
     return cluster_client.overview(manager.list_servers)
+
+@app.get("/api/cluster/hosts")
+def cluster_hosts_api():
+    """Each panel's CPU, memory, disk and servers online, the master's own first."""
+    _need_master()
+    return cluster_client.hosts(lambda: host.summary(host.report()), host.summary)
 
 @app.post("/api/cluster/nodes/{node_id}/servers/{server_name}/action")
 def cluster_node_action_api(node_id: str, server_name: str, req: ServerActionRequest, request: Request):
