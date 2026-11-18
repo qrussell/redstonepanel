@@ -71,6 +71,35 @@ Admins can turn sign-in off for devices on your home network; see
 
 ## 3. The dashboard
 
+When no server is selected, the right side shows the state of this machine and everything the
+panel relies on. It's what you see after signing in, and **📊 Dashboard** in the sidebar brings
+it back. It refreshes every 10 seconds while the page is open.
+
+![The dashboard on a cluster master](images/dashboard.png)
+
+- **Needs attention** comes first, and only lists what's wrong: a disk over 90% full, memory
+  or swap nearly full, a failed or crash-looping server, a failed backup, a Java server whose
+  Java isn't installed, a game port the firewall (ufw) blocks, a stopped Phantom proxy, a
+  certificate expiring within 14 days, an unreachable cluster node, or a newer RedstonePanel
+  in apt. Items about a server have an **Open** link.
+- **CPU, Memory, Disk, Game servers**: use right now, with the load average, swap, the free
+  space where the servers live, players online and network traffic.
+- **Game servers**: one row per server with its state and uptime, CPU (a share of the whole
+  machine), memory, players online (Java servers with RCON set up), folder size, backups and
+  when the next backup and restart are due. Click a row to open the server. Folder sizes are
+  measured in the background every 10 minutes, so a new server shows *measuring…* at first.
+- **Host**: host name, Ubuntu release, kernel, uptime, time zone, addresses, the panel's
+  version and whether an update is waiting.
+- **Disks**: each file system holding the servers, backups and panel data, with free space.
+- **Supporting services**: the panel itself, failed units, installed Java versions and which
+  servers use each, `screen`, the firewall, Phantom proxies, backup and restart timers, HTTPS
+  and its certificate, notifications, and the cluster.
+- On a cluster master, **Cluster** adds a card per panel with its CPU, memory, disk, servers
+  online and anything that needs attention. Nodes need RedstonePanel 1.11 or newer for this.
+
+Visitors from a trusted local network who haven't signed in see the dashboard without
+addresses, versions, certificates or settings.
+
 ![Dashboard with a Java server selected](images/overview.png)
 
 The sidebar on the left holds everything that isn't about one server:
@@ -79,6 +108,8 @@ The sidebar on the left holds everything that isn't about one server:
 | --- | --- |
 | **RedstonePanel v1.7.0 / Survival Box** | The version, and the panel's name, so you can tell several panels apart. |
 | **➕ New Server** | Create a server, import one, or restore a removed one. |
+| **📊 Dashboard** | This machine's resources, services and what needs attention (above). |
+| **🌐 Cluster** | On a cluster master: every panel's servers (see [Clusters](#17-clusters)). |
 | **🖥️ Console** | The panel's live activity log. |
 | **📋 Templates** | Saved server settings to reuse. |
 | **⚙️** | Appearance: dark or light mode and the accent colour. Saved in your browser. |
@@ -468,6 +499,10 @@ Tailscale), or a reverse proxy with a real certificate as described in the
 
 Running RedstonePanel on several machines? One panel can be the **master** of a cluster and
 show every **node's** game servers on its **🌐 Cluster** page, with start, stop and restart.
+Each panel's CPU, memory and free disk are shown under its name, and the master's dashboard
+has a card per panel.
+
+![The Cluster page](images/cluster.png)
 
 1. On the master: **Settings → Cluster → Make this panel a master**, give the cluster a name,
    and click **Create cluster**. The panel restarts on HTTPS (port 8443).

@@ -312,7 +312,7 @@ class RouteCoverage(unittest.TestCase):
     """Every API route is either reachable with a node token on purpose, or not at all."""
     EXPECTED = {("GET", "/api/cluster/hello"), ("DELETE", "/api/cluster/membership"),
                 ("POST", "/api/cluster/cert/csr"), ("PUT", "/api/cluster/cert"),
-                ("GET", "/api/servers"), ("GET", "/api/logs"), ("GET", "/api/templates"),
+                ("GET", "/api/servers"), ("GET", "/api/logs"), ("GET", "/api/templates"), ("GET", "/api/host"),
                 ("POST", "/api/servers/{server_name}/action")}
 
     def test_routes(self):

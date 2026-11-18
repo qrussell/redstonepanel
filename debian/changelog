@@ -1,3 +1,17 @@
+redstonepanel (1.11.0) noble; urgency=medium
+
+  * Dashboard: with no server selected, the panel shows this machine's CPU,
+    memory, disks and network; each game server's state, uptime, CPU,
+    memory, players, folder and backup sizes and next backup and restart;
+    supporting services (the panel, Java runtimes, screen, ufw, Phantom
+    proxies, timers, HTTPS and cluster certificates, notifications); and a
+    list of what needs attention. Read from /proc, statvfs and systemctl.
+  * On a cluster master, the dashboard and Cluster page show each node's
+    CPU, memory, disk and servers online, through a new read-only node
+    route, GET /api/host.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Wed, 18 Nov 2026 19:40:00 +0000
+
 redstonepanel (1.10.0) noble; urgency=medium
 
   * File manager (admins): each server's Files tab browses its folder,
