@@ -190,7 +190,8 @@ There are two kinds of account:
   ```
 
   The password is asked for interactively, or read from standard input when it is piped.
-  The default role is `admin`.
+  The default role is `admin`. A `user` manages servers; only an `admin` can also manage
+  accounts and Panel Settings, uninstall or purge a server, and restore or delete backups.
 
 `sudo redstonepanel status` shows the service state, the address, the HTTPS and sign-in
 mode, and the panel accounts. See `man redstonepanel` for details.
@@ -215,7 +216,7 @@ Admins can also change how the panel is reached under **Panel Settings**:
   `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) can use the panel without
   signing in. Its limits:
   - LAN visitors get the **user** role, never admin. Changing panel settings and
-    accounts still needs a sign-in.
+    accounts, and uninstalling or purging a server, still need an admin sign-in.
   - It never applies to requests through a reverse proxy (any `X-Forwarded-For`,
     `Forwarded` or `X-Real-IP` header) or from loopback, so a proxy on the same machine
     can't make internet visitors look local.

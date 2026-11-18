@@ -1,3 +1,12 @@
+redstonepanel (1.8.1) noble; urgency=medium
+
+  * Only admins can uninstall or purge a server. Panel users and
+    trusted-LAN visitors no longer see those buttons, and the API refuses
+    them. Who uninstalled or purged a server is logged.
+  * User guide: new New Server screenshot.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Wed, 18 Nov 2026 14:38:19 +0000
+
 redstonepanel (1.8.0) noble; urgency=medium
 
   * Notifications: a Discord or JSON webhook for crashed, started and
