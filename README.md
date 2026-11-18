@@ -354,7 +354,7 @@ packaging/build-css.sh
 ### Releases
 
 Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which mirrors
-`main` and tags to GitHub, where releases are built. To release version 1.0.1:
+`main` and tags to GitHub. Each version is released on both. To release version 1.0.1:
 
 1. On a branch, add a `debian/changelog` entry (`dch -v 1.0.1`), update the version in
    `packaging/redstonepanel.8`, and write the release description in
@@ -366,6 +366,18 @@ the install tests on Ubuntu 24.04 and 25.04 (with and without recommends), and p
 a GitHub Release with the .deb, using `release-notes/<tag>.md` as its description (or
 GitHub's generated notes if the file is missing). The tag must match the version in
 `debian/changelog`. The qrussell-repo apt repository picks up the release within 4 hours.
+
+On GitLab the same tag runs `.gitlab-ci.yml`. Its checks run first. Then `build-deb`
+builds the .deb in `ubuntu:24.04` (it runs on every merge request and on `main` too, with
+the .deb kept as a job artifact for 30 days). Finally `release` runs
+`packaging/gitlab-release.py`, which uploads the .deb to the project's package registry
+(Deploy → Package registry, `redstonepanel/<version>`) and creates the GitLab release
+with the same description and the .deb attached. The install tests run only on GitHub.
+
+If a GitLab release is missing or wrong, run a pipeline on `main` (Build → Pipelines → Run
+pipeline) with the variable `RELEASE_TAG` set to the tag, e.g. `v1.0.1`. Its
+`release-from-github` job copies the .deb from the GitHub release, then creates or updates
+the GitLab release. Older releases were backfilled this way.
 
 ## License
 
