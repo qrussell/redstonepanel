@@ -28,7 +28,7 @@ import tarfile
 import tempfile
 import time
 
-from core import manager, properties, rcon
+from core import manager, notify, properties, rcon
 from core.settings import DATA_DIR
 
 BACKUP_ROOT = os.environ.get("RP_BACKUP_DIR") or "/var/backups/redstonepanel"
@@ -271,10 +271,16 @@ def run_backup(server, kind="manual"):
         msg = str(e) if isinstance(e, BackupError) else f"{type(e).__name__}: {e}"
         manager.write_log(f"[BACKUP] {kind.capitalize()} backup of {server} failed: {msg}")
         _write_status(server, {"at": int(started), "ok": False, "kind": kind, "error": msg})
+        if kind != "pre-restore":
+            notify.send("backup_failed", server, f"{kind.capitalize()} backup of {server} failed: {msg}")
         raise
     _write_status(server, {"at": int(started), "ok": True, "kind": kind, "file": info["file"],
                            "size": info["size"], "consistent": info["consistent"],
                            "seconds": round(time.time() - started, 1)})
+    if kind != "pre-restore":
+        notify.send("backup_ok", server, f"{kind.capitalize()} backup of {server} saved "
+                    f"({info['size'] / 1048576:.1f} MB)" + ("." if info["consistent"] else
+                    ", but copied while the server was writing: turn RCON on for consistent backups."))
     return info
 
 def _run_backup_locked(server, kind):

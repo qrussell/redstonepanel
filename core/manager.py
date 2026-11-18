@@ -641,9 +641,10 @@ def remove_server(server_name, keep_world):
     if os.path.exists(_unit_path(server_name)):
         os.remove(_unit_path(server_name))
     run_and_log(["sudo", "systemctl", "daemon-reload"])
-    # Its backup timer goes too; the backups themselves stay in /var/backups/redstonepanel
-    from core import backups
+    # Its backup and restart timers go too; the backups themselves stay in /var/backups/redstonepanel
+    from core import backups, restarts
     backups.on_server_removed(server_name, purged=not keep_world)
+    restarts.on_server_removed(server_name, purged=not keep_world)
 
     if keep_world:
         if os.path.isdir(d):
@@ -827,8 +828,9 @@ def restore_server(name):
             os.remove(os.path.join(d, REMOVED_INFO))
         except OSError:
             pass
-        from core import backups
-        backups.on_server_restored(name)          # its backup schedule, if it had one
+        from core import backups, restarts
+        backups.on_server_restored(name)          # its backup and restart schedules, if it had them
+        restarts.on_server_restored(name)
         write_log(f"[RESTORE] Restored {name} (port {port}).")
         return {"name": name, "port": port, "old_port": old_port, "downloaded": downloaded}
     finally:

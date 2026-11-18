@@ -16,6 +16,9 @@ them from a browser:
   new systemd service under the same name, on their old port if it's still free
 - scheduled and on-demand backups with retention, and restoring a world from a backup
   (**Backups** tab, or `sudo redstonepanel backup NAME`)
+- notifications to Discord or any webhook when a server crashes, starts or stops, and when a
+  backup finishes or fails
+- scheduled restarts that warn players in game first
 - a panel activity log
 
 **New here?** The [user guide](docs/guide/README.md) walks through setting it up and every
@@ -128,6 +131,44 @@ root.
   its schedule back.
 
 `sudo redstonepanel backup NAME` takes a manual backup from the command line.
+
+## Notifications
+
+**Panel Settings → Notifications** (admins) sends a message to a Discord channel, or to any
+web address that accepts a JSON POST, when something happens. Pick the events: a server
+crashed, started or stopped, a scheduled restart, a backup finished or failed. By default only
+crashes, failed backups and scheduled restarts are sent.
+
+1. In Discord: the channel's settings → **Integrations** → **Webhooks** → **New Webhook** →
+   **Copy Webhook URL**.
+2. Paste it into **Panel Settings → Notifications**, tick the events, **Save notifications**,
+   then **Send a test**.
+
+Other services get a JSON body with `text`, `event`, `server`, `panel`, `message` and `time`.
+
+- **Crashes are reported even while the panel is stopped.** The package installs a systemd
+  drop-in for every `minecraft-*.service` whose start and stop hooks send the message. A
+  server stuck in a crash loop sends one "crashed" message per 5 minutes, not one per restart.
+- **Crashed Bedrock servers come back.** Bedrock runs under `screen`, which exits normally when
+  the game dies, so until 1.8 systemd didn't notice and left a crashed Bedrock server stopped.
+  The same hook now tells a crash from a `stop` typed in the console and starts the server
+  again after 20 seconds, as systemd already does for Java.
+- The webhook URL lets anyone post to your channel, so it is stored readable only by root and
+  the panel never shows it again (only its host and last characters).
+- `sudo redstonepanel notify-test` sends a test message from the command line.
+
+## Scheduled restarts
+
+Each server's **Maintenance** tab can restart it every day, every 6 or 12 hours, or every
+Sunday, at a time you pick (the server's clock). Players are warned in chat first, for example
+"Server restarts in 5 minutes", then 1 minute and 10 seconds before.
+
+- Java servers are warned over RCON: open the **Live Chat** tab once so the panel sets it up.
+  Without RCON the restart still happens on time, without a warning.
+- A stopped server stays stopped, and a restart waits for a backup of the same server to finish.
+- Like backups, restarts are systemd timers (`redstonepanel-restart@<server>.timer`), so they
+  happen while the panel is stopped. Uninstalling the server removes its timer; restoring it
+  brings the schedule back.
 
 ## Signing in
 

@@ -311,7 +311,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab('visual');
-        if (tabId === 'maintenance') this.refreshApplyTemplates();
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'chat') {
@@ -973,6 +973,62 @@ const ServerApp = {
         this.loadBackups();
     },
 
+    async loadRestarts() {
+        if (!this.activeServer) return;
+        const name = this.activeServer.name;
+        const res = await fetch(`/api/servers/${encodeURIComponent(name)}/restarts`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        const box = document.getElementById('restart-content');
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        const info = await res.json();
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const s = info.schedule;
+        const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+        const freqOptions = Object.entries(info.frequencies)
+            .map(([id, label]) => `<option value="${esc(id)}" ${id === s.frequency ? 'selected' : ''}>${esc(label)}</option>`).join('');
+        const warnOptions = info.warn_choices
+            .map(m => `<option value="${m}" ${m === s.warn ? 'selected' : ''}>${m ? `${m} min warning` : 'No warning'}</option>`).join('');
+        const tz = info.timezone ? ` (${esc(info.timezone)})` : '';
+        const javaNoRcon = this.activeServer.edition === 'Java' && !/^\d+$/.test(String(this.activeServer.rcon_port || ''));
+        box.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm">
+                <div class="flex items-center justify-between mb-3">
+                    <p class="text-sm text-gray-600 dark:text-gray-300">Restart the server regularly, warning players in game first.</p>
+                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap ml-3">
+                        <input type="checkbox" id="restart-enabled" ${s.enabled ? 'checked' : ''}> On
+                    </label>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                    <select id="restart-frequency" class="${field}">${freqOptions}</select>
+                    <input type="time" id="restart-time" value="${esc(s.time)}" class="${field}" title="Time of day on the server${tz}">
+                    <select id="restart-warn" class="${field}">${warnOptions}</select>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">The time is the server's clock${tz}. Players see "Server restarts in N minutes" in chat, then again 1 minute and 10 seconds before. A stopped server stays stopped, and a restart waits for a running backup to finish.</p>
+                ${info.next_restart && s.enabled ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Next restart: ${esc(new Date(info.next_restart * 1000).toLocaleString())}</p>` : ''}
+                ${javaNoRcon ? `<p class="text-xs text-yellow-600 dark:text-yellow-500 mb-2">RCON isn't set up for this server, so players can't be warned. Open the Live Chat tab once to set it up.</p>` : ''}
+                <button onclick="ServerApp.saveRestartSchedule(this)" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold text-sm mt-1">Save schedule</button>
+            </div>`;
+    },
+
+    async saveRestartSchedule(button) {
+        const body = {
+            enabled: document.getElementById('restart-enabled').checked,
+            frequency: document.getElementById('restart-frequency').value,
+            time: document.getElementById('restart-time').value,
+            warn: parseInt(document.getElementById('restart-warn').value, 10) || 0,
+        };
+        button.disabled = true;
+        const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/restarts`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        button.disabled = false;
+        if (!res.ok) return alert(`Couldn't save the restart schedule: ${await this.apiError(res)}`);
+        this.loadRestarts();
+    },
+
     async backupNow(button) {
         button.disabled = true;
         button.innerText = 'Backing up…';
@@ -1169,13 +1225,29 @@ const ServerApp = {
             const out = document.getElementById('console-output');
             
             const isScrolledToBottom = out.scrollHeight - out.clientHeight <= out.scrollTop + 10;
-            out.innerText = data.content;
+            out.innerHTML = this.colorizeLog(data.content || '');
             if (isScrolledToBottom) {
                 out.scrollTop = out.scrollHeight;
             }
         } catch (e) {
             console.error("Log fetch failed");
         }
+    },
+
+    // One <div> per log line, coloured by what kind of line it is
+    colorizeLog(text) {
+        const rules = [
+            [/\[(ERROR|CRASH)\]|\bERROR\b|\bFATAL\b|Exception|Traceback|\bfailed\b/i, 'text-red-400'],
+            [/\[WARNING\]|\bWARN(ING)?\b/i, 'text-yellow-300'],
+            [/^\s*\[SYSTEM\] Executing:/, 'text-gray-500'],
+            [/\[(BACKUP|RESTART|RESTORE|NOTIFY)\]/, 'text-sky-300'],
+            [/\[(AUTH|SETTINGS|CLUSTER|USERS?)\]/, 'text-purple-300'],
+            [/\bINFO\b|\bDone\b|\bSaved\b|\bsuccess/i, 'text-green-300'],
+        ];
+        return text.split('\n').map(line => {
+            const rule = rules.find(([re]) => re.test(line));
+            return `<div class="${rule ? rule[1] : 'text-gray-300'}">${this.escapeHtml(line) || '&nbsp;'}</div>`;
+        }).join('');
     },
 
     async sendPower(action) {
@@ -1324,6 +1396,9 @@ const ServerApp = {
 			<input id="set-panel-name" maxlength="40" value="${esc(s.panel_name)}" placeholder="${esc(d.defaults.panel_name)}" class="${field} mb-1">
 			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">Tells this server's panel apart from others: shown in the sidebar, the browser tab and on the sign-in page (visible before signing in). Leave empty to use the server's host name, <b>${esc(d.defaults.panel_name)}</b>.</p>
 
+			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Notifications</h4>
+			<div id="set-notifications" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
@@ -1373,6 +1448,62 @@ const ServerApp = {
 		this.updateSettingsForm();
 		document.getElementById('set-https-port').disabled = s.https_mode === 'cluster';
 		this.loadClusterSettings();
+		this.loadNotificationSettings();
+	},
+
+	async loadNotificationSettings() {
+		const box = document.getElementById('set-notifications');
+		if (!box) return;
+		const res = await fetch('/api/settings/notifications');
+		if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = await res.json();
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const small = 'text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-3 py-1.5 rounded font-bold transition';
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const checks = Object.entries(d.event_names).map(([id, label]) => `
+			<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+				<input type="checkbox" name="notify-event" value="${esc(id)}" ${d.events.includes(id) ? 'checked' : ''}> ${esc(label)}
+			</label>`).join('');
+		box.innerHTML = `
+			<p class="${note} mb-2">Send a message to a Discord channel, or any web address that takes a JSON POST, when something happens to a server. Crashes are reported even while the panel itself is stopped.</p>
+			<p class="text-sm mb-2 text-gray-700 dark:text-gray-300">${d.configured
+				? `Webhook: <span class="font-mono">${esc(d.url_hint)}</span> (${d.kind === 'discord' ? 'Discord' : 'JSON'})`
+				: 'No webhook set.'}</p>
+			<input id="notify-url" type="password" autocomplete="off" placeholder="${d.configured ? 'Paste a new URL to replace it' : 'https://discord.com/api/webhooks/…'}" class="${field} mb-1">
+			<p class="${note} mb-3">In Discord: channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL. Anyone with the URL can post in the channel, so the panel never shows it again.</p>
+			<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">${checks}</div>
+			<p id="notify-msg" class="hidden text-sm mb-2"></p>
+			<div class="flex flex-wrap gap-2">
+				<button onclick="ServerApp.saveNotifications()" class="${small}">Save notifications</button>
+				${d.configured ? `<button onclick="ServerApp.testNotifications(this)" class="${small}">Send a test</button>
+				<button onclick="ServerApp.saveNotifications(true)" class="${small}">Remove webhook</button>` : ''}
+			</div>`;
+	},
+
+	notifyMessage(text, ok) {
+		const el = document.getElementById('notify-msg');
+		el.innerText = text;
+		el.className = `text-sm mb-2 ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`;
+	},
+
+	async saveNotifications(clear = false) {
+		const url = document.getElementById('notify-url').value.trim();
+		const events = [...document.querySelectorAll('input[name="notify-event"]:checked')].map(e => e.value);
+		const res = await fetch('/api/settings/notifications', {
+			method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(clear ? { clear: true } : { url: url || null, events })
+		});
+		if (!res.ok) return this.notifyMessage(await this.apiError(res), false);
+		await this.loadNotificationSettings();
+		this.notifyMessage(clear ? 'Webhook removed.' : 'Saved.', true);
+	},
+
+	async testNotifications(button) {
+		button.disabled = true;
+		const res = await fetch('/api/settings/notifications/test', { method: 'POST' });
+		button.disabled = false;
+		this.notifyMessage(res.ok ? 'Test message sent. Check your channel.' : await this.apiError(res), res.ok);
 	},
 
 	// Show only the fields that apply to the chosen options

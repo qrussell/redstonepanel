@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from typing import Optional
 import core.manager as manager
 import core.backups as backups
+import core.notify as notify
+import core.restarts as restarts
 import core.auth as auth
 import core.settings as panel_settings
 from core.version import panel_version
@@ -394,6 +396,60 @@ def restore_backup(request: Request, server_name: str, filename: str):
 def delete_backup(request: Request, server_name: str, filename: str):
     _require_admin(request, "delete a backup")
     _backup_call(backups.delete_backup, server_name, filename)
+    return {"status": "success"}
+
+# Scheduled restarts: a systemd timer per server, warning players first
+class RestartSchedule(BaseModel):
+    enabled: bool
+    frequency: str
+    time: str
+    warn: int
+
+def _restart_call(fn, *args):
+    try:
+        return fn(*args)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (restarts.RestartError, backups.BackupError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/servers/{server_name}/restarts")
+def get_restarts(server_name: str):
+    _restart_call(manager._check_server, server_name)
+    return restarts.overview(server_name)
+
+@app.put("/api/servers/{server_name}/restarts")
+def set_restarts(server_name: str, req: RestartSchedule):
+    _restart_call(manager._check_server, server_name)
+    _restart_call(restarts.set_schedule, server_name, req.enabled, req.frequency, req.time, req.warn)
+    return restarts.overview(server_name)
+
+# Webhook notifications (admins: under /api/settings). The URL is never sent back in full.
+class NotificationSettings(BaseModel):
+    url: Optional[str] = None
+    events: Optional[list] = None
+    clear: bool = False
+
+@app.get("/api/settings/notifications")
+def get_notifications():
+    return notify.public()
+
+@app.put("/api/settings/notifications")
+def set_notifications(request: Request, req: NotificationSettings):
+    try:
+        result = notify.save(req.url, req.events, req.clear)
+    except notify.NotifyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[SETTINGS] {request.state.user['username']} changed notifications: "
+                      + (f"{result['kind']} webhook, events {', '.join(result['events']) or 'none'}."
+                         if result["configured"] else "no webhook."))
+    return result
+
+@app.post("/api/settings/notifications/test")
+def test_notifications():
+    ok, err = notify.send_test()
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
     return {"status": "success"}
 
 # Removed servers: folders in /opt whose systemd unit is gone (uninstalled with "Keep World")

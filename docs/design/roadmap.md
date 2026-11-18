@@ -52,15 +52,27 @@ Testing the release candidate on a real host found that Bedrock 1.26 keeps its w
 `worlds/level` and panel-made servers have no `level-name`; worth remembering for anything
 else that looks for a Bedrock world.
 
-### 1.8: know what's happening
+### 1.8: know what's happening *(built, not yet released)*
 
-3. **Discord (and generic) webhook notifications.** Started, stopped, crashed, backup done or
-   failed. "Crashed" comes from an `OnFailure=` unit, so it fires without the panel. The
-   webhook URL is a secret: stored in panel state, never shown back in full.
-4. **Scheduled restarts.** Same timer mechanism as backups, with an in-game warning
-   (`say Restarting in 5 minutes`) before the restart.
-5. **Console colouring.** Highlight `ERROR` / `WARN` / `INFO` in the console the panel already
-   polls. Front-end only.
+3. **Discord (and generic) webhook notifications.** Started, stopped, crashed, scheduled
+   restart, backup done or failed. Done with a systemd drop-in shipped in the package
+   (`/usr/lib/systemd/system/minecraft-.service.d/redstonepanel.conf`) rather than
+   `OnFailure=`. Its `ExecStopPost` runs on every stop and sees `$SERVICE_RESULT`, so it tells
+   a crash from a normal stop, covers servers made before 1.8 without rewriting their units,
+   and fires without the panel. It also sets `SuccessExitStatus=143`: Java exits 143
+   when stopped, which systemd counted as a failure. Testing found that a crashed Bedrock
+   server was never restarted: `screen` exits 0 when `bedrock_server` dies, so
+   `Restart=on-failure` didn't fire. The hook now treats an unrequested stop without Bedrock's
+   "Quit correctly" as a crash and starts the server again after 20 s (`systemd-run`). A stop is
+   "requested" when systemd has a job queued on the unit, which also covers Bedrock's `screen`
+   exiting 1 on every `systemctl stop`. The webhook URL is stored root-only and
+   never shown back in full; crash loops are limited to one message per 5 minutes.
+4. **Scheduled restarts.** Same timer mechanism as backups
+   (`redstonepanel-restart@<server>.timer`), firing the warning time early so the restart
+   happens at the time shown. Warns at N minutes, 1 minute and 10 seconds; skips stopped
+   servers; waits for a running backup.
+5. **Console colouring.** Errors, warnings, backups/restarts, sign-ins/settings and the
+   panel's own commands each get a colour. Front-end only.
 
 ### 1.9: more than vanilla
 

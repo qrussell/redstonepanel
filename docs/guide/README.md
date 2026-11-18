@@ -17,12 +17,14 @@ For installation details, file locations and the security model, see the main
 7. [Configuration and player roles](#7-configuration-and-player-roles)
 8. [Maintenance: templates, export, update, uninstall](#8-maintenance-templates-export-update-uninstall)
 9. [Backups](#9-backups)
+   - [Scheduled restarts](#scheduled-restarts)
 10. [World & Maps](#10-world--maps)
 11. [Console](#11-console)
 12. [Templates](#12-templates)
 13. [Restore a removed server](#13-restore-a-removed-server)
 14. [Users](#14-users)
 15. [Panel Settings: name, HTTPS, sign-in](#15-panel-settings-name-https-sign-in)
+    - [Notifications](#notifications)
 16. [Clusters](#16-clusters)
 17. [Command line](#17-command-line)
 18. [Troubleshooting](#18-troubleshooting)
@@ -254,6 +256,28 @@ Bedrock servers work the same way:
 
 From the command line, `sudo redstonepanel backup minecraft-java` takes a backup.
 
+### Scheduled restarts
+
+**Maintenance → Scheduled Restarts** restarts the server every day, every 6 or 12 hours, or
+every Sunday, at the time you pick (the server's clock).
+
+![Scheduled restarts](images/scheduled-restarts.png)
+
+1. Tick **On**.
+2. Choose how often and the time.
+3. Choose a warning: none, or 1, 5, 10 or 15 minutes.
+4. Click **Save schedule**. **Next restart** shows when it will happen.
+
+Players see "Server restarts in 5 minutes" in chat, then again 1 minute and 10 seconds before,
+and the restart happens at the time you chose. Things to know:
+
+- Java servers are warned over RCON. Open the **Live Chat** tab once so the panel sets it up;
+  without it the restart still happens on time, without a warning.
+- A server you stopped stays stopped.
+- If a backup of the same server is running, the restart waits for it.
+- The schedule is a systemd timer (`redstonepanel-restart@<server>.timer`), so it works while
+  the panel is stopped.
+
 ## 10. World & Maps
 
 ![World & Maps](images/world.png)
@@ -268,7 +292,9 @@ From the command line, `sudo redstonepanel backup minecraft-java` takes a backup
 ![Console](images/console.png)
 
 **🖥️ Console** opens the panel's activity log at the bottom of the screen: deploys, updates,
-service starts and stops, firewall changes, backups, and who signed in. The same log is in
+service starts and stops, firewall changes, backups, and who signed in. Lines are coloured by
+kind: errors and crashes red, warnings yellow, backups and restarts blue, sign-ins and settings
+purple, commands the panel runs grey. The same log is in
 `/var/log/redstonepanel/panel.log`. Close it with **❌ Close**.
 
 ## 12. Templates
@@ -340,6 +366,32 @@ the machine's host name and helps when you run several panels.
 - **HTTPS with my own certificate**: point it at a certificate and key you already have, for
   example from certbot.
 
+### Notifications
+
+Get a message in Discord, or any service that takes a webhook, when something happens.
+
+![Notification settings](images/notifications.png)
+
+1. In Discord, open the channel's settings → **Integrations** → **Webhooks** → **New
+   Webhook**, then **Copy Webhook URL**.
+2. Paste it into **Notifications** and tick the events you want:
+   - **Server crashed**: the server stopped without being asked to. It starts again by itself
+     after 20 seconds (Java and Bedrock alike).
+   - **Server started** / **Server stopped**: every start and stop, including your own.
+   - **Scheduled restart**: a [scheduled restart](#scheduled-restarts) happened, or failed.
+   - **Backup finished** / **Backup failed**.
+3. Click **Save notifications**, then **Send a test**.
+
+By default only crashes, failed backups and scheduled restarts are sent. A server that keeps
+crashing sends one message every 5 minutes, not one per crash.
+
+Crash, start and stop messages come straight from systemd, so they arrive even while the panel
+is stopped. The webhook URL lets anyone post in your channel, so the panel stores it readable
+only by root and never shows it again. Paste a new one to replace it, or **Remove webhook**.
+
+Other services receive a JSON POST with the fields `text`, `event`, `server`, `panel`,
+`message` and `time`.
+
 **Sign-in**:
 
 - **Always required (recommended)**.
@@ -387,6 +439,8 @@ Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 | `redstonepanel removed` | List servers uninstalled with Keep World. |
 | `redstonepanel restore NAME` | Restore a removed server. |
 | `redstonepanel backup NAME` | Back up a server now. |
+| `redstonepanel restart-server NAME` | Warn players, then restart a server (what its restart timer runs). |
+| `redstonepanel notify-test` | Send a test notification. |
 | `redstonepanel cluster create "NAME"` | Make this panel a cluster master. |
 | `redstonepanel cluster join-code` | Make a join code (master). |
 | `redstonepanel join 'CODE'` | Join a cluster. |
@@ -432,6 +486,7 @@ tab once; the panel sets RCON up and later backups are consistent.
 | --- | --- |
 | Game servers | `/opt/minecraft-*` |
 | Backups | `/var/backups/redstonepanel/<server>/` |
+| Notification webhook (root only) | `/var/lib/redstonepanel/notifications.json` |
 | Panel settings, accounts, templates | `/var/lib/redstonepanel` |
 | Activity log | `/var/log/redstonepanel/panel.log` |
 | Panel service | `systemctl status redstonepanel` |
