@@ -21,23 +21,67 @@ The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as a
 
 ## Install
 
-Download `redstonepanel_X_all.deb` from the
+### From the qrussell-repo apt repository (recommended)
+
+RedstonePanel is published in **qrussell-repo**, a signed apt repository. Adding it once
+installs the latest version now, and `apt upgrade` brings each new version after that.
+
+1. Add the repository's signing key and the repository:
+
+   ```bash
+   sudo apt install -y curl ca-certificates
+   curl -fsSL https://qrussell.github.io/qrussell-repo/deb/qrussell-repo.gpg | sudo tee /usr/share/keyrings/qrussell-repo.gpg >/dev/null
+   echo "deb [signed-by=/usr/share/keyrings/qrussell-repo.gpg] https://qrussell.github.io/qrussell-repo/deb ./" | sudo tee /etc/apt/sources.list.d/qrussell.list
+   ```
+
+   To check the key before trusting it, `gpg --show-keys /usr/share/keyrings/qrussell-repo.gpg`
+   should show the fingerprint `9994A9EB39EB3C101C949FB2012BA14E0FE3A355`.
+
+2. Install the latest version:
+
+   ```bash
+   sudo apt update
+   sudo apt install redstonepanel
+   ```
+
+   `apt-cache policy redstonepanel` shows which version is installed and which is the latest
+   in the repository.
+
+3. Open **http://&lt;server&gt;:8080/** in a browser and sign in (see
+   [Signing in](#signing-in)).
+
+**Upgrading:** new versions reach the repository within a few hours of their release. Install
+them with your normal updates:
+
+```bash
+sudo apt update && sudo apt upgrade
+```
+
+### From a .deb file
+
+If you'd rather not add a repository, download `redstonepanel_X_all.deb` from the
 [latest release](https://github.com/qrussell/redstonepanel/releases/latest), then:
 
 ```bash
 sudo apt install ./redstonepanel_X_all.deb
 ```
 
-Replace `X` with the version you downloaded. `apt` pulls in the dependencies from Ubuntu's
-archive (`python3-fastapi`, `python3-uvicorn`, `python3-multipart`, PAM, `screen` and so on),
-then starts the `redstonepanel` service. Open **http://&lt;server&gt;:8080/** in a browser.
+Replace `X` with the version you downloaded. Upgrade the same way, with the newer file.
+
+### What gets installed
+
+Either way, `apt` pulls in the dependencies from Ubuntu's archive (`python3-fastapi`,
+`python3-uvicorn`, `python3-multipart`, PAM, `screen` and so on), then starts the
+`redstonepanel` service.
 
 Java is a *Recommends* (`openjdk-25-jre-headless`), so a normal install includes it. On a
 host that will only run Bedrock servers you can leave it out:
 
 ```bash
-sudo apt install --no-install-recommends ./redstonepanel_X_all.deb
+sudo apt install --no-install-recommends redstonepanel
 ```
+
+(or `--no-install-recommends ./redstonepanel_X_all.deb` for a downloaded file).
 
 `ufw` is also recommended. When it is installed, the panel opens each game server's port
 in it.
