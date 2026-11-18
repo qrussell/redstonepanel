@@ -14,6 +14,8 @@ them from a browser:
 - restore servers you uninstalled with **Keep World** (➕ New Server → Removed servers, or
   `sudo redstonepanel restore NAME`): their files stay in `/opt`, and restoring gives them a
   new systemd service under the same name, on their old port if it's still free
+- scheduled and on-demand backups with retention, and restoring a world from a backup
+  (**Backups** tab, or `sudo redstonepanel backup NAME`)
 - a panel activity log
 
 The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as an
@@ -92,10 +94,37 @@ in it.
 | Panel state (accounts, settings, TLS, templates) | `/var/lib/redstonepanel` |
 | Activity log | `/var/log/redstonepanel/panel.log` |
 | Game servers | `/opt/minecraft-*` |
+| Backups | `/var/backups/redstonepanel/<server>/` |
 | Service | `systemctl status redstonepanel` |
 
 `apt remove` stops the panel and keeps its state. `apt purge` also deletes
-`/var/lib/redstonepanel`. Neither one touches your game servers in `/opt/minecraft-*`.
+`/var/lib/redstonepanel`. Neither one touches your game servers in `/opt/minecraft-*` or
+your backups.
+
+## Backups
+
+Each server's **Backups** tab takes backups on a schedule (hourly, every 6 or 12 hours, daily
+or weekly, at a time you pick) and on demand with **Back up now**. They're `.tar.gz` files of
+the server's folder, without what can be downloaded again (`server.jar`, `bedrock_server`,
+Bedrock's own packs) or logs, in `/var/backups/redstonepanel/<server>/`, readable only by
+root.
+
+- **Schedules are systemd timers** (`redstonepanel-backup@<server>.timer`), so backups happen
+  even while the panel is stopped. A missed backup (machine off) runs at the next boot.
+- **Consistent copies of running servers.** Java servers stop writing to disk while the
+  files are copied (`save-off` / `save-all flush` / `save-on` over RCON); Bedrock servers do
+  the same with `save hold` / `save query` / `save resume`. A Java server without RCON is
+  copied while it runs, and the panel warns you: open its **Live Chat** tab once to set RCON
+  up.
+- **Retention.** Only scheduled backups are pruned to the number you keep. Manual backups and
+  the ones taken before a restore stay until you delete them.
+- **Restore** (admins) replaces the server's world with the one in a backup. The server is
+  stopped while that happens, and the world it replaces is saved first as a "Before restore"
+  backup, so a restore can be undone.
+- Uninstalling a server removes its timer and keeps its backups; restoring the server brings
+  its schedule back.
+
+`sudo redstonepanel backup NAME` takes a manual backup from the command line.
 
 ## Signing in
 

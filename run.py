@@ -11,6 +11,7 @@
     redstonepanel reset-security      recovery: plain HTTP on 8080, sign-in required, restart
     redstonepanel removed             list game servers uninstalled with "Keep World"
     redstonepanel restore NAME        give a removed server a systemd service again and start it
+    redstonepanel backup NAME         back up a game server now (its backup timer runs this too)
 
   Clusters (one master panel controls the game servers of other panels, its nodes):
     redstonepanel cluster create "NAME"   make this panel a cluster master
@@ -304,6 +305,19 @@ def removed_cmd():
     print("\nRestore one with: sudo redstonepanel restore NAME")
 
 
+def backup_cmd(name):
+    from core import backups
+    # The backup timer's service sets RP_BACKUP_KIND=scheduled; run by hand it's a manual backup,
+    # which retention never deletes.
+    kind = os.environ.get("RP_BACKUP_KIND", "manual")
+    try:
+        b = backups.run_backup(name, kind if kind in backups.KINDS else "manual")
+    except backups.BackupError as e:
+        sys.exit(str(e))
+    print(f"Saved {backups.server_backup_dir(name)}/{b['file']} ({b['size'] / 1048576:.1f} MB)"
+          + ("" if b["consistent"] else "; copied while the server was writing (see the panel log)") + ".")
+
+
 def restore_cmd(name):
     from core import manager
     try:
@@ -326,6 +340,8 @@ if __name__ == "__main__":
         add_user(rest)
     elif cmd == "removed" and not rest:
         removed_cmd()
+    elif cmd == "backup" and len(rest) == 1:
+        backup_cmd(rest[0])
     elif cmd == "restore" and len(rest) == 1:
         restore_cmd(rest[0])
     elif cmd == "set-name" and len(rest) == 1:
