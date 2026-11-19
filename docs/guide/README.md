@@ -20,15 +20,16 @@ For installation details, file locations and the security model, see the main
    - [Scheduled restarts](#scheduled-restarts)
 10. [World & Maps](#10-world--maps)
 11. [Files](#11-files)
-12. [Console](#12-console)
-13. [Templates](#13-templates)
-14. [Restore a removed server](#14-restore-a-removed-server)
-15. [Users](#15-users)
-16. [Panel Settings: name, HTTPS, sign-in](#16-panel-settings-name-https-sign-in)
+12. [Mods, plugins and add-ons](#12-mods-plugins-and-add-ons)
+13. [Console](#13-console)
+14. [Templates](#14-templates)
+15. [Restore a removed server](#15-restore-a-removed-server)
+16. [Users](#16-users)
+17. [Panel Settings: name, HTTPS, sign-in](#17-panel-settings-name-https-sign-in)
     - [Notifications](#notifications)
-17. [Clusters](#17-clusters)
-18. [Command line](#18-command-line)
-19. [Troubleshooting](#19-troubleshooting)
+18. [Clusters](#18-clusters)
+19. [Command line](#19-command-line)
+20. [Troubleshooting](#20-troubleshooting)
 
 ---
 
@@ -64,10 +65,10 @@ There are two kinds of account:
   username and password. They are panel admins. To let someone in without giving them
   `sudo`, run `sudo usermod -aG redstonepanel alice`.
 - **Panel accounts** exist only in the panel. Admins create them under **👥 Users** (see
-  [Users](#15-users)), or root creates one with `sudo redstonepanel add-user alice --role user`.
+  [Users](#16-users)), or root creates one with `sudo redstonepanel add-user alice --role user`.
 
 Admins can turn sign-in off for devices on your home network; see
-[Panel Settings](#16-panel-settings-name-https-sign-in).
+[Panel Settings](#17-panel-settings-name-https-sign-in).
 
 ## 3. The dashboard
 
@@ -109,7 +110,7 @@ The sidebar on the left holds everything that isn't about one server:
 | **RedstonePanel v1.7.0 / Survival Box** | The version, and the panel's name, so you can tell several panels apart. |
 | **➕ New Server** | Create a server, import one, or restore a removed one. |
 | **📊 Dashboard** | This machine's resources, services and what needs attention (above). |
-| **🌐 Cluster** | On a cluster master: every panel's servers (see [Clusters](#17-clusters)). |
+| **🌐 Cluster** | On a cluster master: every panel's servers (see [Clusters](#18-clusters)). |
 | **🖥️ Console** | The panel's live activity log. |
 | **📋 Templates** | Saved server settings to reuse. |
 | **⚙️** | Appearance: dark or light mode and the accent colour. Saved in your browser. |
@@ -119,7 +120,8 @@ The sidebar on the left holds everything that isn't about one server:
 | **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts). |
 
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top,
-with six tabs underneath, and a seventh, **Files**, for admins.
+with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
+**Mods**, **Plugins** or **Add-ons**.
 
 ## 4. Create or import a server
 
@@ -141,7 +143,7 @@ Click **➕ New Server**.
    - The line under the lists says which Java that version needs and which installed Java
      will run it. If none is new enough, it names the package to install first
      (`sudo apt install openjdk-21-jre-headless`, for example).
-3. Optionally pick a **Base Template** (see [Templates](#13-templates)) to start from saved
+3. Optionally pick a **Base Template** (see [Templates](#14-templates)) to start from saved
    settings.
 4. Click **Deploy Fresh Server**.
 
@@ -169,7 +171,7 @@ click **Upload & Import**. A backup wrapped in a single folder is fine; its cont
 The panel gives it a name, a free port and a service, like a fresh deploy.
 
 **Removed servers** are listed at the bottom of the same dialog. See
-[Restore a removed server](#14-restore-a-removed-server).
+[Restore a removed server](#15-restore-a-removed-server).
 
 ## 5. Overview
 
@@ -258,7 +260,7 @@ network, don't see these two sections.
 
 - **Uninstall (Keep World)**: removes the server's systemd service, so it leaves the panel.
   Its files stay in `/opt/minecraft-…` and its backups stay too, so it can be
-  [restored](#14-restore-a-removed-server).
+  [restored](#15-restore-a-removed-server).
 - **Danger Zone → Purge Data**: removes the service and deletes the server's folder,
   world included. This can't be undone. Backups in `/var/backups/redstonepanel` are kept.
 
@@ -348,9 +350,12 @@ things the other tabs don't cover: plugin and mod settings, `ops.json`, `bukkit.
 ![Files tab](images/files.png)
 
 - Click a folder to open it; the path at the top goes back up.
-- **Upload** adds files to the folder you're in, for example a plugin `.jar` into `plugins`
-  (Paper) or a mod into `mods` (Fabric). Uploading a file that already exists asks before
+- **Upload**, or drag files from your computer onto the tab, adds them to the folder you're
+  in, with a progress bar for each. Uploading a file that already exists asks before
   replacing it. Up to 512 MB per file.
+- Mods, plugins and Bedrock add-ons dropped at the top of the folder (or into `mods` or
+  `plugins`) are checked and put in the right place, as on the
+  [Mods / Plugins / Add-ons](#12-mods-plugins-and-add-ons) tab.
 - **Download** saves a file. To get a whole folder, use **Export Server** (Maintenance) or a
   [backup](#9-backups).
 - **Rename**, **Delete** (a folder is deleted with everything in it), **New folder**,
@@ -373,7 +378,47 @@ Safety:
   server.
 - Every change is in the activity log with the admin who made it (`[FILES] alex saved …`).
 
-## 12. Console
+## 12. Mods, plugins and add-ons
+
+Admins see a **Mods** tab on Fabric servers, **Plugins** on Paper servers and **Add-ons** on
+Bedrock servers. Vanilla servers can't load mods or plugins, so they don't have one.
+
+![Mods tab on a Fabric server](images/mods.png)
+
+**Adding:** drag `.jar` files (Fabric, Paper) or `.mcpack` / `.mcaddon` files (Bedrock) onto
+the tab, or click the box to choose them. Each one is checked before it's installed:
+
+- A Fabric mod goes into `mods/`, a Paper or Bukkit/Spigot plugin into `plugins/`.
+- A file that can't work on this server is refused with the reason: a Forge or NeoForge mod,
+  a plugin on a Fabric server, a mod on a Paper server, a proxy (Velocity, BungeeCord)
+  plugin, or a jar that isn't a mod or plugin at all.
+- A newer version of something already installed (same mod id, different file name) asks
+  first and then replaces the old file, so the server never has two copies.
+- The panel only reads each jar's description file; nothing in it is run.
+
+**The list** shows each mod or plugin's name, version, authors and file, and warns when:
+
+- it was made for a different Minecraft version than the server runs (from the mod's
+  `fabric.mod.json`, or the plugin's `api-version`);
+- it needs another mod or plugin that isn't installed, for example *Needs fabric-api* (most
+  Fabric mods need [Fabric API](https://modrinth.com/mod/fabric-api)).
+
+**Disable** renames the file to `….jar.disabled`, which the server skips; **Enable** renames
+it back. **Remove** deletes it. Changes apply when the server restarts; the tab offers
+**Restart now**.
+
+**Bedrock add-ons.** A `.mcpack` holds one pack, a `.mcaddon` usually a behavior pack and a
+resource pack. Each pack is unpacked into `behavior_packs/` or `resource_packs/` and added to
+the active world (`world_behavior_packs.json`, `world_resource_packs.json`), so it's on after
+a restart. **Disable** takes a pack out of the world and keeps its files; **Remove** deletes
+it. Players download resource packs only if they accept server packs. Skin packs and world
+templates are refused.
+
+![Add-ons tab on a Bedrock server](images/addons-bedrock.png)
+
+Every install, change and removal goes in the activity log (`[MODS] alex installed Sodium …`).
+
+## 13. Console
 
 ![Console](images/console.png)
 
@@ -383,7 +428,7 @@ kind: errors and crashes red, warnings yellow, backups and restarts blue, sign-i
 purple, commands the panel runs grey. The same log is in
 `/var/log/redstonepanel/panel.log`. Close it with **❌ Close**.
 
-## 13. Templates
+## 14. Templates
 
 **📋 Templates** opens the template manager. A template is a set of `server.properties`
 values plus an operators/permissions list, for one edition.
@@ -396,7 +441,7 @@ values plus an operators/permissions list, for one edition.
   server (**Maintenance → Apply Template**). Ports are never copied from a template, so
   servers made from the same template don't clash.
 
-## 14. Restore a removed server
+## 15. Restore a removed server
 
 A server uninstalled with **Keep World** still has its files in `/opt`. The sidebar shows
 **♻️ N removed servers: restore**, and they are listed under **➕ New Server → Removed servers**
@@ -416,7 +461,7 @@ sudo redstonepanel removed
 sudo redstonepanel restore minecraft-java-2
 ```
 
-## 15. Users
+## 16. Users
 
 **👥 Users** (admins) manages panel accounts.
 
@@ -432,7 +477,7 @@ sudo redstonepanel restore minecraft-java-2
 
 An admin account controls a service that runs as root, so treat it like `sudo` access.
 
-## 16. Panel Settings: name, HTTPS, sign-in
+## 17. Panel Settings: name, HTTPS, sign-in
 
 **🛡️ Settings** (admins).
 
@@ -489,13 +534,13 @@ Other services receive a JSON POST with the fields `text`, `event`, `server`, `p
   - everyone on those networks gets in, including guests on your Wi-Fi.
 
 If a change locks you out, run `sudo redstonepanel reset-security` on the machine (see
-[Troubleshooting](#19-troubleshooting)).
+[Troubleshooting](#20-troubleshooting)).
 
 **Don't forward port 8080 to the internet.** For remote access use a VPN (WireGuard,
 Tailscale), or a reverse proxy with a real certificate as described in the
 [README](../../README.md#exposing-the-panel-to-the-internet).
 
-## 17. Clusters
+## 18. Clusters
 
 Running RedstonePanel on several machines? One panel can be the **master** of a cluster and
 show every **node's** game servers on its **🌐 Cluster** page, with start, stop and restart.
@@ -517,7 +562,7 @@ node's users or settings, or delete servers. Download an encrypted **cluster bac
 adding or removing nodes, so another panel can take over if the master is lost. Details are
 in the [README](../../README.md#clusters-several-servers-from-one-panel).
 
-## 18. Command line
+## 19. Command line
 
 Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 
@@ -546,7 +591,7 @@ journalctl -u minecraft-java -f
 systemctl list-timers 'redstonepanel-backup@*'
 ```
 
-## 19. Troubleshooting
+## 20. Troubleshooting
 
 **I can't reach the panel after changing a setting.** Run this on the machine:
 

@@ -32,6 +32,7 @@ const ServerApp = {
         }
 
         this.applyTheme();
+        this.setupDropZones();
         this.fetchTemplates();
         const sortDropdown = document.getElementById('server-sort');
         if (sortDropdown) sortDropdown.value = this.sortOrder;
@@ -201,6 +202,7 @@ const ServerApp = {
 		document.getElementById('workspace').classList.remove('hidden');
         this.renderSidebar();
 
+        this.updateAddonsTab(srv);
         document.getElementById('ws-title').innerText = srv.name;
         document.getElementById('ws-subtitle').innerText = srv.directory;
         document.getElementById('ws-status').innerText = srv.status === 'online' ? '🟢' : '🔴';
@@ -302,7 +304,7 @@ const ServerApp = {
         if (this.fileEditor && this.fileEditor.dirty && tabId !== 'files'
             && !confirm('Discard your unsaved changes to ' + this.fileEditor.path + '?')) return;
         if (tabId !== 'files') this.fileEditor = null;
-        ['overview', 'properties', 'maintenance', 'backups', 'chat', 'world', 'files'].forEach(t => {
+        ['overview', 'properties', 'maintenance', 'backups', 'chat', 'world', 'files', 'addons'].forEach(t => {
             const tab = document.getElementById(`tab-${t}`);
             const btn = document.getElementById(`tab-btn-${t}`);
             if (tab) tab.classList.add('hidden-tab');
@@ -325,6 +327,7 @@ const ServerApp = {
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.activeServer.name ? this.filesPath : '');
+        if (tabId === 'addons') this.loadAddons();
         if (tabId === 'chat') {
             this.loadChat();
             this.chatInterval = setInterval(() => this.loadChat(), 3000); // Poll every 3 seconds
@@ -1053,8 +1056,12 @@ const ServerApp = {
         this.renderFiles();
     },
 
+    filesNotice: null,
+
     renderFiles() {
         const d = this.filesData;
+        const notice = this.filesNotice;
+        this.filesNotice = null;
         const esc = t => this.escapeHtml(String(t ?? ''));
         const attr = t => esc(t).replace(/'/g, '&#39;');
         const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
@@ -1102,7 +1109,9 @@ const ServerApp = {
                     <input type="file" id="files-upload" multiple class="hidden" onchange="ServerApp.uploadFiles(this.files)">
                 </div>
             </div>
-            <p id="files-status" class="text-xs text-gray-500 dark:text-gray-400 mb-2"></p>
+            <div id="files-status" class="space-y-2 mb-2"></div>
+            ${(notice || []).length ? `<div class="${card} p-3 mb-2 text-sm space-y-1 text-gray-800 dark:text-gray-200">${notice.map(m => `<p>${esc(m)}</p>`).join('')}<p class="text-xs text-gray-500 dark:text-gray-400">Restart the server to load them.</p></div>` : ''}
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Drop files anywhere on this tab to upload them here.${this.addonKind(this.activeServer) ? ` Mods, plugins and add-ons dropped at the top are checked and put in the right folder.` : ''}</p>
             <div class="${card} overflow-x-auto">
                 <table class="w-full text-sm">
                     <tbody>${rows || '<tr><td class="p-3 text-gray-500">This folder is empty.</td></tr>'}</tbody>
@@ -1209,18 +1218,223 @@ const ServerApp = {
                 alert(`${f.name} is larger than ${this.formatSize(this.filesData.max_upload)}; it can't be uploaded here.`);
                 continue;
             }
-            status.innerText = `Uploading ${f.name} (${this.formatSize(f.size)})…`;
-            const send = async overwrite => {
-                const form = new FormData();
-                form.append('file', f, f.name);
-                return fetch(this.filesUrl('/upload', { path: folder, overwrite }), { method: 'POST', body: form });
-            };
-            let res = await send(false);
-            if (res.status === 409 && confirm(`'${f.name}' already exists here. Replace it?`)) res = await send(true);
-            if (!res.ok && res.status !== 409) alert(`Couldn't upload ${f.name}: ${await this.apiError(res)}`);
+            const row = this.progressRow(status, f.name);
+            const send = overwrite => this.xhrUpload(this.filesUrl('/upload', { path: folder, overwrite }), f, p => row.set(p));
+            let r = await send(false);
+            if (r.status === 409 && confirm(`'${f.name}' already exists here. Replace it?`)) r = await send(true);
+            if (r.ok) row.done('done');
+            else {
+                row.done(r.status === 409 ? 'skipped' : 'failed', true);
+                if (r.status !== 409) alert(`Couldn't upload ${f.name}: ${r.data.detail || 'HTTP ' + r.status}`);
+            }
         }
-        status.innerText = '';
         this.loadFiles(folder);
+    },
+
+    // --- Mods, plugins and Bedrock add-ons (admins): drag and drop, and the installed list ---
+    addonsData: null,
+    addonsChanged: {},          // server -> true after an install/enable/remove this session
+
+    addonKind(srv) {
+        if (!srv) return null;
+        if (srv.edition === 'Bedrock') return 'bedrock';
+        return ['fabric', 'paper'].includes(srv.loader) ? srv.loader : null;
+    },
+
+    addonsUrl(params) {
+        const q = new URLSearchParams(params || {}).toString();
+        return `/api/servers/${encodeURIComponent(this.activeServer.name)}/addons${q ? '?' + q : ''}`;
+    },
+
+    // The Mods / Plugins / Add-ons tab: admins, on Fabric, Paper and Bedrock servers
+    updateAddonsTab(srv) {
+        const btn = document.getElementById('tab-btn-addons');
+        if (!btn) return;
+        const kind = this.addonKind(srv);
+        const show = kind && this.currentUser && this.currentUser.role === 'admin';
+        btn.classList.toggle('hidden', !show);
+        btn.innerText = { fabric: 'Mods', paper: 'Plugins', bedrock: 'Add-ons' }[kind] || 'Mods';
+    },
+
+    // Uploads one file with a progress callback; resolves {status, ok, data}
+    xhrUpload(url, file, onProgress) {
+        return new Promise(resolve => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', url);
+            xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+            xhr.onload = () => {
+                if (xhr.status === 401) return window.location.replace('/static/login.html');
+                let data = {};
+                try { data = JSON.parse(xhr.responseText); } catch (e) {}
+                resolve({ status: xhr.status, ok: xhr.status >= 200 && xhr.status < 300, data });
+            };
+            xhr.onerror = () => resolve({ status: 0, ok: false, data: { detail: 'The upload was interrupted.' } });
+            const form = new FormData();
+            form.append('file', file, file.name);
+            xhr.send(form);
+        });
+    },
+
+    // One row per file in the progress box (#upload-progress inside the current tab)
+    progressRow(box, name) {
+        const row = document.createElement('div');
+        row.className = 'text-xs text-gray-700 dark:text-gray-300';
+        row.innerHTML = `<div class="flex justify-between gap-2"><span class="truncate"></span><span class="pct">0%</span></div>
+            <div class="w-full h-1.5 rounded bg-gray-200 dark:bg-gray-700 overflow-hidden"><div class="bar h-1.5 bg-theme" style="width:0%"></div></div>`;
+        row.querySelector('.truncate').innerText = name;
+        if (box) box.appendChild(row);
+        return {
+            set: p => { row.querySelector('.bar').style.width = `${Math.round(p * 100)}%`; row.querySelector('.pct').innerText = `${Math.round(p * 100)}%`; },
+            done: (text, bad) => { row.querySelector('.pct').innerText = text; row.querySelector('.bar').className = `bar h-1.5 ${bad ? 'bg-red-500' : 'bg-green-500'}`; row.querySelector('.bar').style.width = '100%'; },
+        };
+    },
+
+    // Installs files through the add-ons endpoint (jars sorted into mods/ or plugins/, packs unpacked)
+    async installAddons(fileList, box) {
+        const server = this.activeServer.name;
+        const results = [];
+        for (const f of Array.from(fileList)) {
+            const row = this.progressRow(box, f.name);
+            const send = overwrite => this.xhrUpload(this.addonsUrl({ overwrite }), f, p => row.set(p));
+            let r = await send(false);
+            if (r.status === 409 && confirm(r.data.detail || `${f.name} is already installed. Replace it?`)) r = await send(true);
+            if (r.ok) {
+                this.addonsChanged[server] = true;
+                const what = (r.data.installed || []).map(i => i.name || i.file).join(', ');
+                row.done(r.data.fits === false ? 'installed, check version' : 'installed');
+                results.push(`✅ ${what || f.name}` + (r.data.replaced && r.data.replaced.length ? ` (replaced ${r.data.replaced.join(', ')})` : '')
+                    + (r.data.fits === false ? ' — made for a different Minecraft version' : ''));
+            } else if (r.status === 409) {
+                row.done('skipped', true);
+            } else {
+                row.done('refused', true);
+                results.push(`⛔ ${f.name}: ${r.data.detail || 'HTTP ' + r.status}`);
+            }
+        }
+        return results;
+    },
+
+    async loadAddons() {
+        const box = document.getElementById('addons-content');
+        if (!this.activeServer || !box) return;
+        const res = await fetch(this.addonsUrl());
+        if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+        this.addonsData = await res.json();
+        this.renderAddons();
+    },
+
+    renderAddons(messages) {
+        const d = this.addonsData, esc = t => this.escapeHtml(String(t ?? ''));
+        const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
+        const small = 'px-2 py-1 rounded text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const title = { fabric: 'Mods', paper: 'Plugins', bedrock: 'Add-ons' }[d.kind] || 'Mods';
+        const accepts = d.accepts.join(', ');
+        const where = d.kind === 'bedrock' ? 'behavior_packs/ or resource_packs/, and enabled for the world'
+            : `${d.folder}/`;
+        const items = d.items.map(i => {
+            const warn = [];
+            if (i.problem) warn.push(`⛔ ${esc(i.problem)}`);
+            if (i.fits === false) warn.push(`⚠️ Made for Minecraft ${esc(i.minecraft)}; this server runs ${esc(d.minecraft)}.`);
+            if (i.missing && i.missing.length) warn.push(`⚠️ Needs ${i.missing.map(esc).join(', ')}, which ${i.missing.length === 1 ? "isn't" : "aren't"} installed.`);
+            const sub = [i.version ? `v${esc(i.version)}` : '', i.authors && i.authors.length ? `by ${i.authors.slice(0, 3).map(esc).join(', ')}` : '',
+                d.kind === 'bedrock' ? `${esc(i.type)} pack` : esc(i.file), i.size ? esc(this.formatSize(i.size)) : ''].filter(Boolean).join(' · ');
+            return `<div class="flex flex-wrap items-start justify-between gap-3 p-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0 ${i.enabled ? '' : 'opacity-60'}">
+                <div class="min-w-0 flex-1">
+                    <p class="font-bold text-gray-900 dark:text-white break-words">${esc(i.name || i.file)}${i.enabled ? '' : ' <span class="text-xs font-normal px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700">disabled</span>'}</p>
+                    <p class="${note} break-all">${sub}</p>
+                    ${i.description ? `<p class="text-xs text-gray-600 dark:text-gray-300 mt-1">${esc(String(i.description).slice(0, 200))}</p>` : ''}
+                    ${warn.map(w => `<p class="text-xs mt-1 text-yellow-700 dark:text-yellow-300">${w}</p>`).join('')}
+                </div>
+                <div class="flex gap-2 whitespace-nowrap">
+                    ${i.folder !== null || d.kind !== 'bedrock' ? `<button onclick="ServerApp.toggleAddon(${this.jsArg(i.file)}, ${!i.enabled})" class="${small}">${i.enabled ? 'Disable' : 'Enable'}</button>` : ''}
+                    <button onclick="ServerApp.removeAddon(${this.jsArg(i.file)}, ${this.jsArg(i.name || i.file)})" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white">Remove</button>
+                </div>
+            </div>`;
+        }).join('');
+        const changed = this.addonsChanged[this.activeServer.name];
+        document.getElementById('addons-content').innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white">${title}${d.minecraft ? ` <span class="text-sm font-normal text-gray-500">for ${esc(d.kind === 'paper' ? 'Paper' : 'Fabric')} ${esc(d.minecraft)}</span>` : ''}</h3>
+                <span class="${note}">${d.items.length} installed</span>
+            </div>
+            <div id="addons-drop" class="${card} border-2 border-dashed p-6 text-center cursor-pointer" onclick="document.getElementById('addons-upload').click()">
+                <p class="font-bold text-gray-900 dark:text-white">Drop ${esc(accepts)} files here</p>
+                <p class="${note} mt-1">or click to choose them. They go into ${esc(where)}.${d.kind === 'fabric' ? ' Most Fabric mods also need the Fabric API mod.' : ''}</p>
+                <input type="file" id="addons-upload" multiple accept="${esc(accepts)}" class="hidden" onchange="ServerApp.dropOnAddons(this.files)">
+            </div>
+            <div id="upload-progress" class="space-y-2"></div>
+            ${(messages || []).length ? `<div class="${card} p-3 text-sm space-y-1 text-gray-800 dark:text-gray-200">${messages.map(m => `<p>${esc(m)}</p>`).join('')}</div>` : ''}
+            ${changed ? `<div class="p-3 rounded text-sm bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-800 text-gray-900 dark:text-gray-100">Restart the server to load your changes. <button onclick="ServerApp.sendPower('restart')" class="underline text-theme">Restart now</button></div>` : ''}
+            <div class="${card}">${items || `<p class="p-4 text-sm text-gray-500 dark:text-gray-400">No ${esc(title.toLowerCase())} yet.</p>`}</div>
+            <p class="${note}">${d.kind === 'bedrock'
+                ? 'Packs are unpacked into the server folder and added to the active world. Disable takes a pack out of the world; Remove deletes it. Resource packs reach players only if they accept server packs.'
+                : `Disable renames the file to .jar.disabled, which the server skips. Files are read, never run, to check they suit this server.`}</p>`;
+    },
+
+    async dropOnAddons(fileList) {
+        const box = document.getElementById('upload-progress');
+        const messages = await this.installAddons(fileList, box);
+        await this.loadAddons();
+        this.renderAddons(messages);
+    },
+
+    async toggleAddon(item, enabled) {
+        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/toggle', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item, enabled })
+        });
+        if (!res.ok) return alert(await this.apiError(res));
+        this.addonsChanged[this.activeServer.name] = true;
+        this.loadAddons();
+    },
+
+    async removeAddon(item, label) {
+        if (!confirm(`Remove ${label} from ${this.activeServer.name}? The file is deleted.`)) return;
+        const res = await fetch(this.addonsUrl({ item }), { method: 'DELETE' });
+        if (!res.ok) return alert(await this.apiError(res));
+        this.addonsChanged[this.activeServer.name] = true;
+        this.loadAddons();
+    },
+
+    // Drag and drop onto the Files and Mods/Plugins tabs (set up once)
+    setupDropZones() {
+        const zone = (id, onDrop) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            let depth = 0;
+            const on = v => el.classList.toggle('ring-4', v);
+            el.addEventListener('dragenter', e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); depth++; on(true); } });
+            el.addEventListener('dragover', e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); });
+            el.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; on(false); } });
+            el.addEventListener('drop', e => {
+                e.preventDefault(); depth = 0; on(false);
+                if (e.dataTransfer.files.length) onDrop(e.dataTransfer.files);
+            });
+        };
+        zone('tab-files', files => this.dropOnFiles(files));
+        zone('tab-addons', files => this.dropOnAddons(files));
+    },
+
+    // Files tab: mods, plugins and packs dropped at the top or in their folder are installed
+    // (sorted and checked); everything else is uploaded into the folder you're in.
+    async dropOnFiles(fileList) {
+        const kind = this.addonKind(this.activeServer);
+        const folder = { fabric: 'mods', paper: 'plugins' }[kind];
+        const asAddon = f => {
+            const n = f.name.toLowerCase();
+            if (kind === 'bedrock') return n.endsWith('.mcpack') || n.endsWith('.mcaddon');
+            return !!folder && n.endsWith('.jar') && (this.filesPath === '' || this.filesPath === folder);
+        };
+        const all = Array.from(fileList);
+        const addons = all.filter(asAddon), plain = all.filter(f => !asAddon(f));
+        const status = document.getElementById('files-status');
+        let messages = [];
+        if (addons.length) {
+            messages = await this.installAddons(addons, status);
+        }
+        this.filesNotice = messages;          // shown once, above the list, by renderFiles
+        if (plain.length) await this.uploadFiles(plain);
+        else await this.loadFiles(this.filesPath);
     },
 
     renderBackups() {
