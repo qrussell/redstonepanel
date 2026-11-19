@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.12.0 and the 1.14 performance plan · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.13.0 and the 1.14 performance plan · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,12 +20,12 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.12.0)
+## What already exists (1.13.0)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a host dashboard, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar browser with updates, a host dashboard, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
@@ -214,7 +214,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    drop test installs and lists jars; a real Fabric 1.21.4 server loaded Fabric API installed
    this way and skipped a `.jar.disabled` mod.
 
-### 1.13: Modrinth and Hangar browser
+### 1.13.0: Modrinth and Hangar browser *(Nov 2026)*
 
 10. **Find and install mods and plugins from the panel.** Search, install, update, with the
     right build picked for the server.
@@ -248,6 +248,26 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
 
     **Size:** one to two weeks. Dependency resolution and matching hand-added jars are the
     fiddly parts.
+
+    **As built:** `core/sources.py` (cached JSON, and downloads only over HTTPS from
+    `cdn.modrinth.com` and `hangarcdn.papermc.io`, redirects included, hash-checked, size
+    limited), `core/modrinth.py`, `core/hangar.py` and `core/catalog.py`; routes under
+    `/api/servers/{name}/addons/` (`search`, `install`, `updates`, `update`, `undo`,
+    `compatibility`), admin-only. Search asks Modrinth for `server_side` required or optional,
+    so client-only mods aren't offered. Install takes the newest release, else beta, never
+    alpha. Updates use Modrinth's `version_files/update` (one request for every jar), and
+    jars added by hand are matched with `version_files`. Two changes from the plan:
+    - **Undo is per update, not only from Backups.** A world backup can't undo a mod change,
+      because restore puts back the world, not `mods/`. So updating renames the old jar to
+      `….jar.previous` (neither loader loads it) and **Undo** puts the last batch back.
+      **Update all** can still take a world backup first, as a new **pre-change** kind, for
+      mods that change world data.
+    - Single installs don't take a backup: they only add files, and **Remove** undoes them.
+
+    Tested in the systemd container against the real APIs: AppleSkin installed Fabric API
+    with it, a hand-added older Fabric API was recognised by hash and updated (with backup)
+    and undone, a real Fabric 1.21.4 server started with the installed mods, and WorldEdit
+    (Hangar) and LuckPerms (Modrinth) went into a Paper server's `plugins/`.
 
     Next after this (in Later): Modrinth modpacks (`.mrpack`), which reuse this downloader.
 

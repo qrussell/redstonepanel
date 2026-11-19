@@ -8,6 +8,7 @@ from typing import Optional
 import core.manager as manager
 import core.files as files
 import core.mods as mods
+import core.catalog as catalog
 import core.host as host
 import urllib.parse
 import core.javaservers as javaservers
@@ -579,6 +580,50 @@ def toggle_addon(request: Request, server_name: str, req: AddonToggle):
 @app.delete("/api/servers/{server_name}/addons")
 def remove_addon(request: Request, server_name: str, item: str):
     return _files_call(request, mods.remove, server_name, item, actor=request.state.user["username"])
+
+# --- Modrinth and Hangar: search, install with dependencies, updates (admins)
+class CatalogInstall(BaseModel):
+    source: str
+    project: str
+
+class CatalogUpdate(BaseModel):
+    files: list[str] = []
+    backup: bool = False
+
+def _catalog_call(request: Request, fn, *args, **kw):
+    try:
+        return _files_call(request, fn, *args, **kw)
+    except backups.BackupError as e:
+        raise HTTPException(status_code=400, detail=f"The world backup before updating failed, so nothing "
+                                                    f"was changed: {e}")
+
+@app.get("/api/servers/{server_name}/addons/search")
+def search_addons(request: Request, server_name: str, source: str = "modrinth", q: str = "", offset: int = 0):
+    return _catalog_call(request, catalog.search, server_name, source, q, offset)
+
+@app.post("/api/servers/{server_name}/addons/install")
+def install_from_catalog(request: Request, server_name: str, req: CatalogInstall):
+    return _catalog_call(request, catalog.install, server_name, req.source, req.project,
+                         actor=request.state.user["username"])
+
+@app.get("/api/servers/{server_name}/addons/updates")
+def addon_updates(request: Request, server_name: str):
+    return _catalog_call(request, catalog.updates, server_name)
+
+@app.post("/api/servers/{server_name}/addons/update")
+def update_addons(request: Request, server_name: str, req: CatalogUpdate):
+    return _catalog_call(request, catalog.update, server_name, req.files, req.backup,
+                         actor=request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/addons/undo")
+def undo_addon_update(request: Request, server_name: str):
+    return _catalog_call(request, catalog.undo, server_name, actor=request.state.user["username"])
+
+@app.get("/api/servers/{server_name}/addons/compatibility")
+def addon_compatibility(request: Request, server_name: str, minecraft: str):
+    if not javaservers.RELEASE_RE.match(minecraft or ""):
+        raise HTTPException(status_code=400, detail="Choose a Minecraft release such as 1.21.4.")
+    return _catalog_call(request, catalog.compatibility, server_name, minecraft)
 
 @app.post("/api/servers/{server_name}/files/mkdir")
 def make_folder(request: Request, server_name: str, req: FilePath):

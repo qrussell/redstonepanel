@@ -1320,10 +1320,19 @@ const ServerApp = {
         const res = await fetch(this.addonsUrl());
         if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
         this.addonsData = await res.json();
+        if (this.addonsFor !== this.activeServer.name) {
+            this.addonsFor = this.activeServer.name;
+            this.addonsView = 'installed';
+            this.addonUpdates = null;
+            this.addonSearch = null;
+        }
+        if (this.addonsView === 'browse') return this.renderAddonBrowser();
         this.renderAddons();
+        if (['fabric', 'paper'].includes(this.addonsData.kind)) this.loadAddonUpdates();
     },
 
     renderAddons(messages) {
+        messages = messages || this.addonMessages;
         const d = this.addonsData, esc = t => this.escapeHtml(String(t ?? ''));
         const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
         const small = 'px-2 py-1 rounded text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
@@ -1337,8 +1346,12 @@ const ServerApp = {
             if (i.problem) warn.push(`⛔ ${esc(i.problem)}`);
             if (i.fits === false) warn.push(`⚠️ Made for Minecraft ${esc(i.minecraft)}; this server runs ${esc(d.minecraft)}.`);
             if (i.missing && i.missing.length) warn.push(`⚠️ Needs ${i.missing.map(esc).join(', ')}, which ${i.missing.length === 1 ? "isn't" : "aren't"} installed.`);
+            const u = this.addonUpdates && this.addonUpdates.items ? this.addonUpdates.items[i.file] : null;
+            const src = u ? `<a href="${esc(this.addonProjectUrl(u))}" target="_blank" rel="noopener noreferrer" class="underline">${u.source === 'hangar' ? 'Hangar' : 'Modrinth'}</a>` : '';
             const sub = [i.version ? `v${esc(i.version)}` : '', i.authors && i.authors.length ? `by ${i.authors.slice(0, 3).map(esc).join(', ')}` : '',
-                d.kind === 'bedrock' ? `${esc(i.type)} pack` : esc(i.file), i.size ? esc(this.formatSize(i.size)) : ''].filter(Boolean).join(' · ');
+                d.kind === 'bedrock' ? `${esc(i.type)} pack` : esc(i.file), i.size ? esc(this.formatSize(i.size)) : '', src].filter(Boolean).join(' · ');
+            const upd = u && u.update && i.enabled
+                ? `<button onclick="ServerApp.updateAddons([${esc(JSON.stringify(i.file))}])" class="px-2 py-1 rounded text-xs bg-theme hover-bg-theme text-white">Update to ${esc(u.update.version)}${u.update.channel && u.update.channel !== 'release' ? ` (${esc(u.update.channel)})` : ''}</button>` : '';
             return `<div class="flex flex-wrap items-start justify-between gap-3 p-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0 ${i.enabled ? '' : 'opacity-60'}">
                 <div class="min-w-0 flex-1">
                     <p class="font-bold text-gray-900 dark:text-white break-words">${esc(i.name || i.file)}${i.enabled ? '' : ' <span class="text-xs font-normal px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700">disabled</span>'}</p>
@@ -1347,6 +1360,7 @@ const ServerApp = {
                     ${warn.map(w => `<p class="text-xs mt-1 text-yellow-700 dark:text-yellow-300">${w}</p>`).join('')}
                 </div>
                 <div class="flex gap-2 whitespace-nowrap">
+                    ${upd}
                     ${i.folder !== null || d.kind !== 'bedrock' ? `<button onclick="ServerApp.toggleAddon(${this.jsArg(i.file)}, ${!i.enabled})" class="${small}">${i.enabled ? 'Disable' : 'Enable'}</button>` : ''}
                     <button onclick="ServerApp.removeAddon(${this.jsArg(i.file)}, ${this.jsArg(i.name || i.file)})" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white">Remove</button>
                 </div>
@@ -1358,6 +1372,8 @@ const ServerApp = {
                 <h3 class="text-lg font-bold text-gray-900 dark:text-white">${title}${d.minecraft ? ` <span class="text-sm font-normal text-gray-500">for ${esc(d.kind === 'paper' ? 'Paper' : 'Fabric')} ${esc(d.minecraft)}</span>` : ''}</h3>
                 <span class="${note}">${d.items.length} installed</span>
             </div>
+            ${this.addonViewSwitch()}
+            ${this.addonUpdatesBar()}
             <div id="addons-drop" class="${card} border-2 border-dashed p-6 text-center cursor-pointer" onclick="document.getElementById('addons-upload').click()">
                 <p class="font-bold text-gray-900 dark:text-white">Drop ${esc(accepts)} files here</p>
                 <p class="${note} mt-1">or click to choose them. They go into ${esc(where)}.${d.kind === 'fabric' ? ' Most Fabric mods also need the Fabric API mod.' : ''}</p>
@@ -1370,6 +1386,180 @@ const ServerApp = {
             <p class="${note}">${d.kind === 'bedrock'
                 ? 'Packs are unpacked into the server folder and added to the active world. Disable takes a pack out of the world; Remove deletes it. Resource packs reach players only if they accept server packs.'
                 : `Disable renames the file to .jar.disabled, which the server skips. Files are read, never run, to check they suit this server.`}</p>`;
+    },
+
+    // --- Modrinth and Hangar (Fabric and Paper servers)
+    addonView(view) {
+        this.addonsView = view;
+        if (view === 'browse') {
+            if (!this.addonSearch) this.searchAddons();
+            else this.renderAddonBrowser();
+        } else this.loadAddons();
+    },
+
+    addonViewSwitch() {
+        const d = this.addonsData;
+        if (!['fabric', 'paper'].includes(d.kind)) return '';
+        const b = (v, label) => `<button onclick="ServerApp.addonView('${v}')" class="px-3 py-1.5 rounded text-sm ${this.addonsView === v
+            ? 'bg-theme text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'}">${label}</button>`;
+        return `<div class="flex flex-wrap gap-2">${b('installed', 'Installed')}${b('browse', `Find ${d.kind === 'paper' ? 'plugins' : 'mods'}`)}</div>`;
+    },
+
+    addonProjectUrl(u) {
+        if (u.source === 'hangar') return `https://hangar.papermc.io/search?query=${encodeURIComponent(u.slug || u.project)}`;
+        const kind = this.addonsData && this.addonsData.kind === 'paper' ? 'plugin' : 'mod';
+        return `https://modrinth.com/${kind}/${encodeURIComponent(u.slug || u.project)}`;
+    },
+
+    addonUpdatesBar() {
+        const u = this.addonUpdates, esc = t => this.escapeHtml(String(t ?? ''));
+        const box = 'p-3 rounded text-sm border flex flex-wrap items-center justify-between gap-2';
+        const paper = this.addonsData.kind === 'paper';
+        if (!['fabric', 'paper'].includes(this.addonsData.kind)) return '';
+        if (!u) return `<p class="text-xs text-gray-500 dark:text-gray-400">Checking Modrinth${paper ? ' and Hangar' : ''} for updates…</p>`;
+        if (u.error) return `<p class="text-xs text-yellow-700 dark:text-yellow-300">Couldn't check for updates: ${esc(u.error)}</p>`;
+        const n = Object.values(u.items || {}).filter(i => i.update).length;
+        let html = '';
+        if (u.undo) html += `<div class="${box} bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100">
+            <span>The last update replaced ${u.undo.files.length} file${u.undo.files.length === 1 ? '' : 's'}. The old ones are kept until the next update.</span>
+            <button onclick="ServerApp.undoAddonUpdate()" class="px-2 py-1 rounded text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Undo</button></div>`;
+        if (n) html += `<div class="${box} bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-800 text-gray-900 dark:text-gray-100">
+            <span>${n} update${n === 1 ? '' : 's'} available.</span>
+            <span class="flex items-center gap-3"><label class="text-xs flex items-center gap-1"><input type="checkbox" id="addons-backup" checked> Back up the world first</label>
+            <button onclick="ServerApp.updateAddons([])" class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white">Update all</button></span></div>`;
+        else {
+            const known = Object.keys(u.items || {}).length, unknown = (u.unknown || []).length;
+            const parts = [];
+            if (known) parts.push(`Everything from Modrinth${paper ? ' or Hangar' : ''} is up to date.`);
+            if (unknown) parts.push(`${unknown} file${unknown === 1 ? '' : 's'} not found on Modrinth${paper ? ' or Hangar' : ''}, so ${unknown === 1 ? "it isn't" : "they aren't"} checked for updates.`);
+            if (parts.length) html += `<p class="text-xs text-gray-500 dark:text-gray-400">${parts.join(' ')}</p>`;
+        }
+        return html;
+    },
+
+    async loadAddonUpdates() {
+        const server = this.activeServer.name;
+        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/updates');
+        if (!this.activeServer || this.activeServer.name !== server) return;
+        this.addonUpdates = res.ok ? await res.json() : { error: await this.apiError(res) };
+        if (this.addonsView === 'installed' && document.getElementById('addons-drop')) this.renderAddons();
+        this.addonMessages = null;
+    },
+
+    async updateAddons(fileList) {
+        const box = document.getElementById('addons-backup');
+        const backup = fileList.length === 0 && box ? box.checked : false;
+        const what = fileList.length ? fileList.join(', ') : 'every mod and plugin with an update';
+        if (!confirm(`Update ${what} on ${this.activeServer.name}?${backup ? ' The world is backed up first.' : ''} The old files are kept so you can undo.`)) return;
+        this.addonUpdates = null;
+        this.renderAddons(['Updating…']);
+        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/update', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files: fileList, backup })
+        });
+        let messages = [];
+        if (!res.ok) messages = [`⛔ ${await this.apiError(res)}`];
+        else {
+            const r = await res.json();
+            if (r.updated.length) this.addonsChanged[this.activeServer.name] = true;
+            messages = r.updated.map(u => `✅ ${u.title || u.file} ${u.from || ''} → ${u.to}`)
+                .concat(r.failed.map(f => `⛔ ${f.file}: ${f.error}`))
+                .concat(r.backup ? [`World backed up first: ${r.backup}`] : []);
+            if (!messages.length) messages = ['Nothing to update.'];
+        }
+        this.addonMessages = messages;
+        await this.loadAddons();
+    },
+
+    async undoAddonUpdate() {
+        if (!confirm('Put back the files the last update replaced?')) return;
+        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/undo', { method: 'POST' });
+        if (!res.ok) return alert(await this.apiError(res));
+        const r = await res.json();
+        this.addonsChanged[this.activeServer.name] = true;
+        this.addonMessages = [`↩️ Put back ${r.restored.join(', ')}`];
+        this.addonUpdates = null;
+        await this.loadAddons();
+    },
+
+    async searchAddons(more) {
+        const d = this.addonsData;
+        const s = this.addonSearch || { source: 'modrinth', q: '', hits: [], total: 0 };
+        const input = document.getElementById('addon-q'), sel = document.getElementById('addon-source');
+        if (input) s.q = input.value.trim();
+        if (sel) s.source = sel.value;
+        if (!more) s.hits = [];
+        s.loading = true; s.error = null;
+        this.addonSearch = s;
+        this.renderAddonBrowser();
+        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/search?' + new URLSearchParams({ source: s.source, q: s.q, offset: s.hits.length }));
+        s.loading = false;
+        if (!res.ok) s.error = await this.apiError(res);
+        else {
+            const r = await res.json();
+            s.hits = s.hits.concat(r.hits);
+            s.total = r.total;
+            s.sources = r.sources;
+        }
+        if (this.addonsView === 'browse' && this.addonsData === d) this.renderAddonBrowser();
+    },
+
+    renderAddonBrowser(messages) {
+        const d = this.addonsData, s = this.addonSearch || { source: 'modrinth', q: '', hits: [] };
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const noun = d.kind === 'paper' ? 'plugins' : 'mods';
+        const loader = d.kind === 'paper' ? 'Paper' : 'Fabric';
+        const sources = s.sources || (d.kind === 'paper' ? ['modrinth', 'hangar'] : ['modrinth']);
+        const fmt = n => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n || 0);
+        const safeUrl = u => /^https:\/\//.test(String(u || '')) ? esc(u) : '#';
+        const rows = s.hits.map(h => `<div class="flex items-start gap-3 p-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0">
+                ${h.icon && /^https:\/\//.test(h.icon) ? `<img src="${esc(h.icon)}" alt="" loading="lazy" referrerpolicy="no-referrer" class="w-10 h-10 rounded shrink-0 bg-gray-100 dark:bg-gray-700">` : '<div class="w-10 h-10 rounded shrink-0 bg-gray-100 dark:bg-gray-700"></div>'}
+                <div class="min-w-0 flex-1">
+                    <p class="font-bold text-gray-900 dark:text-white break-words"><a href="${safeUrl(h.url)}" target="_blank" rel="noopener noreferrer" class="hover:underline">${esc(h.title)}</a> <span class="${note} font-normal">by ${esc(h.author)}</span></p>
+                    <p class="text-xs text-gray-600 dark:text-gray-300 mt-0.5">${esc(String(h.description || '').slice(0, 220))}</p>
+                    <p class="${note} mt-0.5">${fmt(h.downloads)} downloads${h.updated ? ` · updated ${esc(String(h.updated).slice(0, 10))}` : ''}</p>
+                </div>
+                ${h.installed ? `<span class="text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 whitespace-nowrap">Installed</span>`
+                : `<button onclick="ServerApp.installFromCatalog(${esc(JSON.stringify(h.source))}, ${esc(JSON.stringify(h.project))}, ${esc(JSON.stringify(h.title || h.project))})" class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white whitespace-nowrap">Install</button>`}
+            </div>`).join('');
+        const changed = this.addonsChanged[this.activeServer.name];
+        document.getElementById('addons-content').innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white">Find ${noun} <span class="text-sm font-normal text-gray-500">for ${loader} ${esc(d.minecraft || '')}</span></h3>
+            </div>
+            ${this.addonViewSwitch()}
+            <form class="flex flex-wrap gap-2" onsubmit="event.preventDefault(); ServerApp.searchAddons()">
+                <input id="addon-q" type="search" value="${esc(s.q)}" placeholder="Search ${noun}" class="flex-1 min-w-[12rem] bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-3 py-1.5 text-sm text-gray-900 dark:text-white">
+                ${sources.length > 1 ? `<select id="addon-source" onchange="ServerApp.searchAddons()" class="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white">
+                    ${sources.map(x => `<option value="${x}" ${x === s.source ? 'selected' : ''}>${x === 'hangar' ? 'Hangar' : 'Modrinth'}</option>`).join('')}</select>` : ''}
+                <button class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white">Search</button>
+            </form>
+            ${(messages || []).length ? `<div class="${card} p-3 text-sm space-y-1 text-gray-800 dark:text-gray-200">${messages.map(m => `<p>${esc(m)}</p>`).join('')}</div>` : ''}
+            ${changed ? `<div class="p-3 rounded text-sm bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-800 text-gray-900 dark:text-gray-100">Restart the server to load your changes. <button onclick="ServerApp.sendPower('restart')" class="underline text-theme">Restart now</button></div>` : ''}
+            ${s.error ? `<p class="text-sm text-red-500">${esc(s.error)}</p>` : ''}
+            <div class="${card}">${rows || `<p class="p-4 text-sm text-gray-500 dark:text-gray-400">${s.loading ? 'Searching…' : `No ${noun} found for this Minecraft version.`}</p>`}</div>
+            ${s.hits.length && s.hits.length < (s.total || 0) ? `<button onclick="ServerApp.searchAddons(true)" class="px-3 py-1.5 rounded text-sm bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white" ${s.loading ? 'disabled' : ''}>${s.loading ? 'Loading…' : 'More'}</button>` : ''}
+            <p class="${note}">Only ${noun} with a build for ${loader} ${esc(d.minecraft || '')} that run on a server are shown. Install picks the newest release build, checks its hash, and installs what it needs${d.kind === 'fabric' ? ' (such as Fabric API)' : ''} too.</p>`;
+    },
+
+    async installFromCatalog(source, project, title) {
+        const s = this.addonSearch;
+        this.renderAddonBrowser([`Installing ${title}…`]);
+        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/install', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, project })
+        });
+        let messages;
+        if (!res.ok) messages = [`⛔ ${title}: ${await this.apiError(res)}`];
+        else {
+            const r = await res.json();
+            this.addonsChanged[this.activeServer.name] = true;
+            messages = r.installed.map(i => `✅ ${i.name || i.file} ${i.version || ''}${i.channel && i.channel !== 'release' ? ` (${i.channel})` : ''}`
+                + (i.fits === false ? ' — made for a different Minecraft version' : '')).concat(r.notes.map(n => `⚠️ ${n}`));
+            if (s) s.hits.forEach(h => { if (h.project === project || r.installed.some(i => i.project === h.project)) h.installed = true; });
+            this.addonUpdates = null;
+        }
+        this.renderAddonBrowser(messages);
     },
 
     async dropOnAddons(fileList) {
@@ -1446,7 +1636,7 @@ const ServerApp = {
         const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
         const freqOptions = Object.entries(info.frequencies)
             .map(([id, label]) => `<option value="${esc(id)}" ${id === s.frequency ? 'selected' : ''}>${esc(label)}</option>`).join('');
-        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore' };
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod update' };
 
         let last = '';
         if (info.last) {
@@ -1820,7 +2010,18 @@ const ServerApp = {
         const select = document.getElementById('update-version');
         const version = this.activeServer.edition === 'Java' && select ? select.value : '';
         const target = version ? `Minecraft ${version}` : 'the newest version';
-        if (!confirm(`Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.`)) return;
+        let warn = '';
+        const kind = this.addonKind(this.activeServer);
+        if (version && version !== this.activeServer.minecraft && ['fabric', 'paper'].includes(kind) && this.currentUser && this.currentUser.role === 'admin') {
+            const r = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/addons/compatibility?minecraft=${encodeURIComponent(version)}`);
+            if (r.ok) {
+                const c = await r.json();
+                const noun = kind === 'paper' ? 'plugins' : 'mods';
+                if (c.missing.length) warn += `\n\nThese ${noun} have no build for ${version} yet, so the server may not start:\n- ` + c.missing.map(m => m.title).join('\n- ');
+                if (c.unknown.length) warn += `\n\nThese ${noun} couldn't be checked (not found on Modrinth or Hangar):\n- ` + c.unknown.map(m => m.title).join('\n- ');
+            }
+        }
+        if (!confirm(`Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.${warn}`)) return;
         this.toggleConsole(true);
         const res = await fetch(`/api/servers/${this.activeServer.name}/update`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
