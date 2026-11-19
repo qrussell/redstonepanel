@@ -254,6 +254,9 @@ Changing a role takes effect at the next restart.
   the server, installs the download and starts it again. Your world, settings, ports,
   operators and allowlist are kept. Take a backup first: a Java world opened by a newer
   version can't go back to an older one. Bedrock servers always update to the newest release.
+  On Fabric and Paper servers, moving to a newer Minecraft version first lists the mods or
+  plugins that have no build for it yet on Modrinth or Hangar (and any it couldn't check),
+  so you can wait rather than update into a server that won't start.
 
 Uninstalling and purging need an **admin**; other accounts, and visitors on a trusted local
 network, don't see these two sections.
@@ -302,7 +305,8 @@ The time is the **server's clock**, and the form shows its time zone (UTC on mos
 - **⬇️**: downloads a backup.
 - **Restore** (admins): stops the server, replaces its world with the one in the backup, and
   starts it again. The world being replaced is saved first as a **Before restore** backup, so
-  you can undo a restore by restoring that one.
+  you can undo a restore by restoring that one. **Before mod update** backups are taken by
+  **Update all** on the Mods / Plugins tab.
 - **🗑**: deletes a backup (admins).
 
 Bedrock servers work the same way:
@@ -415,6 +419,42 @@ it. Players download resource packs only if they accept server packs. Skin packs
 templates are refused.
 
 ![Add-ons tab on a Bedrock server](images/addons-bedrock.png)
+
+### Finding mods and plugins
+
+On Fabric and Paper servers, **Find mods** (or **Find plugins**) searches
+[Modrinth](https://modrinth.com) and, for Paper, [Hangar](https://hangar.papermc.io), PaperMC's
+plugin site. Only projects with a build for the server's loader and Minecraft version, and
+that run on a server, are shown, so client-only mods such as Sodium don't appear. With an
+empty search you see the most downloaded.
+
+![Finding mods on Modrinth](images/mods-browse.png)
+
+**Install** picks the newest release build (a beta only when there's no release, never an
+alpha), downloads it from the site's own download server, checks it against the checksum the
+site gives, and then installs it like a dropped file. Mods and plugins it needs are installed
+first, for example Fabric API. A dependency that isn't on the same site, or a Hangar plugin
+that's downloaded from somewhere else, is named so you can get it yourself.
+
+![Plugins from Hangar on a Paper server](images/plugins-hangar.png)
+
+### Updates
+
+When you open the tab, the panel asks Modrinth and Hangar whether anything installed has a
+newer build for the server's Minecraft version. Jars installed from the tab are known by
+their project; jars you added by hand are looked up on Modrinth by their checksum, so most of
+them are found too. Each one shows where it's from, with **Update to …** when there's
+something newer.
+
+![Mods with an update available](images/mods-updates.png)
+
+- **Update all** updates every one, and can back up the world first (ticked by default): the
+  backup shows on the Backups tab as **Before mod update**.
+- An update keeps the old file as `….jar.previous`, which the server doesn't load, and
+  **Undo** puts the last update's old files back. They're kept until the next update.
+- Restart the server to load the new versions.
+
+Where each jar came from is kept in `.redstonepanel-mods.json` in the server folder.
 
 Every install, change and removal goes in the activity log (`[MODS] alex installed Sodium …`).
 

@@ -15,6 +15,8 @@ them from a browser:
   files on the server and they're checked and put in the right place; the list shows what's
   installed, warns about the wrong Minecraft version or missing dependencies, and can
   disable or remove each one
+- find and install mods and plugins from Modrinth and Hangar (with their dependencies), see
+  which have updates, update them all with a world backup first, and undo the last update
 - player roles (operator, member and so on)
 - reusable server templates
 - export a server as a zip backup, and import server backups (.zip, .tar.gz/.tgz or .tar; a

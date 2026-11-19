@@ -1,3 +1,17 @@
+redstonepanel (1.13.0) noble; urgency=medium
+
+  * Find and install mods and plugins from Modrinth (Fabric and Paper) and
+    Hangar (Paper) on the Mods / Plugins tab. Install picks the newest
+    release build for the server's loader and Minecraft version, checks its
+    hash, and installs required dependencies (such as Fabric API) too.
+  * Updates: the list shows which mods and plugins have a newer build, with
+    Update and Update all (optionally backing up the world first) and Undo
+    for the last update. Jars added by hand are recognised by hash.
+  * Maintenance -> Update warns about mods and plugins that have no build
+    for the Minecraft version you're moving to.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Thu, 19 Nov 2026 22:00:00 +0000
+
 redstonepanel (1.12.0) noble; urgency=medium
 
   * Mods, plugins and Bedrock add-ons: a Mods (Fabric), Plugins (Paper) or
