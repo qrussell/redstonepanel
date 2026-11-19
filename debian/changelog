@@ -1,3 +1,16 @@
+redstonepanel (1.12.0) noble; urgency=medium
+
+  * Mods, plugins and Bedrock add-ons: a Mods (Fabric), Plugins (Paper) or
+    Add-ons (Bedrock) tab for admins. Drop .jar, .mcpack or .mcaddon files
+    on it; each is checked and put in mods/, plugins/ or the packs folders,
+    and Bedrock packs are enabled for the world. Forge mods, plugins on
+    Fabric, mods on Paper and anything on vanilla are refused with the
+    reason. The list warns about other Minecraft versions and missing
+    dependencies, and can disable or remove each one.
+  * Files tab: drag and drop uploads, with a progress bar per file.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Thu, 19 Nov 2026 17:30:00 +0000
+
 redstonepanel (1.11.0) noble; urgency=medium
 
   * Dashboard: with no server selected, the panel shows this machine's CPU,

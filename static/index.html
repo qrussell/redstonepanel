@@ -121,6 +121,8 @@
 			<button onclick="ServerApp.switchTab('backups')" id="tab-btn-backups" class="py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Backups</button>
 			<button onclick="ServerApp.switchTab('world')" id="tab-btn-world" class="py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">World &amp; Maps</button>
 			<button onclick="ServerApp.switchTab('files')" id="tab-btn-files" class="admin-only py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Files</button>
+			<!-- Mods (Fabric) / Plugins (Paper) / Add-ons (Bedrock), admins; shown by ServerApp.updateAddonsTab -->
+			<button onclick="ServerApp.switchTab('addons')" id="tab-btn-addons" class="hidden py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Mods</button>
 		</div>
 
         <div class="flex-1 overflow-y-auto p-6 relative">
@@ -261,8 +263,12 @@
 				<div id="backups-content"><p class="text-sm text-gray-500">Loading…</p></div>
 			</div>
 			<!-- FILES TAB (admins; filled by ServerApp.renderFiles / openFileEditor) -->
-			<div id="tab-files" class="hidden-tab space-y-4">
+			<div id="tab-files" class="hidden-tab space-y-4 rounded">
 				<div id="files-content"><p class="text-sm text-gray-500">Loading…</p></div>
+			</div>
+			<!-- MODS / PLUGINS / ADD-ONS TAB (admins; filled by ServerApp.renderAddons) -->
+			<div id="tab-addons" class="hidden-tab space-y-4 rounded">
+				<div id="addons-content" class="space-y-4"><p class="text-sm text-gray-500">Loading…</p></div>
 			</div>
 			<!-- WORLD TAB -->
 			<div id="tab-world" class="hidden-tab space-y-6">

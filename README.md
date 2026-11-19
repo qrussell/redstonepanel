@@ -10,7 +10,11 @@ them from a browser:
 - live chat and console commands (over RCON)
 - a `server.properties` editor
 - a file manager for each server's folder (admins): browse, edit text files such as plugin
-  configs, upload plugins and mods, download, rename and delete
+  configs, drag and drop uploads, download, rename and delete
+- mods (Fabric), plugins (Paper) and add-ons (Bedrock): drop `.jar`, `.mcpack` or `.mcaddon`
+  files on the server and they're checked and put in the right place; the list shows what's
+  installed, warns about the wrong Minecraft version or missing dependencies, and can
+  disable or remove each one
 - player roles (operator, member and so on)
 - reusable server templates
 - export a server as a zip backup, and import server backups (.zip, .tar.gz/.tgz or .tar; a

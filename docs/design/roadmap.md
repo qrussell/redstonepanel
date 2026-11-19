@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.11.0 and the 1.12–1.13 mod plans · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.12.0 · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,12 +20,12 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.11.0)
+## What already exists (1.12.0)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, a file manager, a host dashboard, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a host dashboard, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
@@ -170,7 +170,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    short `auto-restart` pause. Not done: the last notification error (the panel doesn't keep
    one yet), and the sidebar itself still isn't laid out for phones.
 
-### 1.12: drop in mods and plugins
+### 1.12.0: drop in mods and plugins *(Nov 2026)*
 
 9. **Drag and drop, and the installed list.** Getting a mod onto a server today means the
    Files tab, the right folder, Upload, Restart. Make it one drop, and show what's installed.
@@ -204,6 +204,15 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    upload uses `XMLHttpRequest` for progress; the endpoint is the existing streaming upload.
 
    **Size:** about 3 days. The Bedrock world-pack JSON is the fiddly part.
+
+   **As built:** `core/mods.py` and `/api/servers/{name}/addons` (list, install, toggle,
+   remove), admin-only. The tab is called **Mods**, **Plugins** or **Add-ons** by server type
+   and is hidden on vanilla. Fabric jar-in-jar modules (`META-INF/jars/`) count as installed,
+   so a mod needing `fabric-networking-api-v1` is satisfied by Fabric API. Pack folders are
+   written into a hidden staging folder first and renamed into place, and are matched by
+   their manifest uuid, so dropping a newer version replaces the old one. A browser drag and
+   drop test installs and lists jars; a real Fabric 1.21.4 server loaded Fabric API installed
+   this way and skipped a `.jar.disabled` mod.
 
 ### 1.13: Modrinth and Hangar browser
 

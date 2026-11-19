@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 import core.manager as manager
 import core.files as files
+import core.mods as mods
 import core.host as host
 import urllib.parse
 import core.javaservers as javaservers
@@ -555,6 +556,29 @@ def upload_file(request: Request, server_name: str, path: str = "", overwrite: b
             yield chunk
     return _files_call(request, files.upload, server_name, path, os.path.basename(file.filename or ""),
                        chunks(), overwrite, actor=request.state.user["username"])
+
+# --- Mods, plugins and Bedrock add-ons (admins, like the file manager)
+class AddonToggle(BaseModel):
+    item: str
+    enabled: bool
+
+@app.get("/api/servers/{server_name}/addons")
+def list_addons(request: Request, server_name: str):
+    return _files_call(request, mods.list_installed, server_name)
+
+@app.post("/api/servers/{server_name}/addons")
+def install_addon(request: Request, server_name: str, overwrite: bool = False, file: UploadFile = File(...)):
+    return _files_call(request, mods.install, server_name, file.filename or "", file.file, overwrite,
+                       actor=request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/addons/toggle")
+def toggle_addon(request: Request, server_name: str, req: AddonToggle):
+    return _files_call(request, mods.set_enabled, server_name, req.item, req.enabled,
+                       actor=request.state.user["username"])
+
+@app.delete("/api/servers/{server_name}/addons")
+def remove_addon(request: Request, server_name: str, item: str):
+    return _files_call(request, mods.remove, server_name, item, actor=request.state.user["username"])
 
 @app.post("/api/servers/{server_name}/files/mkdir")
 def make_folder(request: Request, server_name: str, req: FilePath):
