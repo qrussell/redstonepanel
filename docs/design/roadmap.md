@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.12.0 · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.12.0 and the 1.14 performance plan · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -120,7 +120,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    on, so "is anything wrong?" has an answer without opening each server or SSHing in.
 
    Why here: it's read-only (low risk), every admin sees it on every visit, and it builds the
-   sampler that 2.0's resource graphs need, so it takes most of the work out of item 11
+   sampler that the resource graphs need, so it takes most of the work out of item 11 (1.14)
    rather than adding to the plan. It comes before 2.0 because per-server permissions and API
    tokens change who can see what; a dashboard that already exists only needs a filter then.
 
@@ -156,7 +156,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    **How:** `core/host.py` reads `/proc`, `statvfs` and `systemctl show`; no `psutil`, no
    database, no new dependency. One `GET /api/host` for signed-in users. Trusted-LAN visitors
    get the same view minus IP addresses and versions. The CPU and network samples are kept
-   in memory between requests; that sampler becomes 2.0's ring buffer. Lay it out for phones
+   in memory between requests; that sampler becomes 1.14's history. Lay it out for phones
    too (see the mobile pass in Groundwork).
 
    **Size:** about a week. The background folder-size walk and the per-node cards are the
@@ -251,12 +251,95 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
 
     Next after this (in Later): Modrinth modpacks (`.mrpack`), which reuse this downloader.
 
+### 1.14: server performance and tuning
+
+11. **How well each server runs, its history, and what to change.** 1.11 answers "is the
+    machine all right?". This answers "is the game lagging, since when, and why?", and
+    suggests fixes based on what was measured, not a fixed checklist.
+
+    Why here: asked for after 1.12 (from a "performance dashboard" proposal, reviewed below).
+    It's mostly read-only and builds on 1.11's sampler. It comes after 1.13 because several
+    suggestions are "install this mod or plugin" (Lithium, FastAsyncWorldEdit, spark), which
+    1.13 makes one click. It takes the resource graphs out of 2.0, because TPS without
+    history only says how things are right now.
+
+    **What 1.11 already shows** from the proposal: CPU, memory and disk use, network rates,
+    players online, uptime, per-server memory, folder size, warning colours, and webhook
+    messages when a server stops or crashes (1.8). Those stay as they are.
+
+    **New on each server's Overview (a Performance card) and the dashboard's server rows:**
+    - **Tick health.** Paper: RCON `tps` (1, 5, 15 min) and `mspt`. Vanilla and Fabric
+      1.20.3+: RCON `tick query` (average and percentile ms per tick); TPS is
+      `min(20, 1000 / ms)`. Older Java releases and Bedrock have no command for it, so the card
+      says "not available" rather than guessing. Polled every 30 s per running server with
+      RCON, alongside the player list.
+    - **Memory.** The heap limit (`-Xmx` from the unit) next to what the process uses (the
+      unit's cgroup). Heap actually in use needs the JDK's `jcmd`, which the headless JRE
+      doesn't have, so it isn't shown.
+    - **World size** (the world folder, in 1.11's background size walk), **mods/plugins
+      loaded** (1.12's list), and **connections** to the game port (`/proc/net/tcp` and
+      `tcp6`, counted per port, no new tool).
+    - **Address and "updated N s ago"** in the server header, so a stale view is obvious.
+
+    **History (moved from 2.0).** 1.11's sampler writes every 60 s to a small fixed-size ring
+    file per server and for the host under `/var/lib/redstonepanel/metrics/`: CPU, memory,
+    players, TPS/MSPT; host CPU, memory, disk, network. 24 hours at 1-minute resolution,
+    7 days at 15 minutes. Charts are drawn as inline SVG by `app.js` (no chart library) on the
+    Performance card and the dashboard. Live numbers keep refreshing every 10 s only while the
+    page is visible; history is written whether anyone is watching or not. No `psutil`, no
+    database.
+
+    **Memory setting.** Every Java server is made with `-Xms1G -Xmx2G` and nothing in the
+    panel changes it. Add **Memory** to Maintenance (admins): rewrite the unit's `-Xms`/`-Xmx`,
+    refuse a total across running servers that leaves under 1 GB for the system, and restart
+    on request.
+
+    **Suggestions.** Each one is shown only when its condition is measured, says what was
+    seen, and links to where it's changed (the `server.properties` editor, Memory, the Mods
+    tab, Backups). Nothing is applied automatically, because every change here trades world
+    behaviour for speed and only the owner can make that call.
+    - TPS under 18 for 10 minutes: lower `simulation-distance` first, then `view-distance`
+      (Bedrock: `tick-distance`). Profile with **spark** (a Paper plugin and Fabric mod).
+    - Fabric with no performance mods: **Lithium** (and **FerriteCore** when memory is
+      tight). Vanilla with low TPS: a new Paper or Fabric server; switching an existing one
+      stays out of scope (1.9).
+    - Paper with WorldEdit: **FastAsyncWorldEdit** does the same edits off the main thread.
+    - Process memory at its `-Xmx` with frequent restarts: raise Memory, if the host has
+      room. All `-Xmx` together above the host's RAM minus 1 GB, or swap in use: lower one or
+      move a server to another node.
+    - A big world with no world border (`worldborder get`): set one, and pre-generate with
+      **Chunky** so exploring doesn't generate chunks during play.
+    - No backup schedule; `logs/` over 1 GB; worlds on a rotating disk
+      (`/sys/block/*/queue/rotational`).
+
+    **Alerts.** The 1.8 webhook gains "TPS under 15 for 5 minutes" and "disk over 95 %",
+    each at most once an hour per server. Off by default.
+
+    **Left out of the proposal, and why.**
+    - A separate Node.js or Python monitor with its own installer: the panel already runs
+      as that process, so this is a feature of it.
+    - Fixed advice such as "set `-Xmx6G`", "upgrade to 8–16 GB" or "dual-core": the right
+      heap depends on the host and the other servers, so suggestions come from measurements.
+      Minecraft's main loop is one thread; core speed matters, core count much less.
+    - Raising `view-distance` to 10–12 adds load rather than removing it.
+      `sync-chunk-writes=true` and `max-tick-time=60000` are already the defaults;
+      `entity-broadcast-radius-per-player` isn't a real setting (the nearest is
+      `entity-broadcast-range-percentage`); `use-native-transport` is on by default.
+    - Citizens → CustomNPCs and Vault → "SimpleVault": CustomNPCs is a Forge mod that
+      can't run on Paper, and Vault is already tiny. Only replacements that exist for the
+      server's loader are suggested.
+    - Setting `server-ip`, CDNs for resource packs, "clustering for large player bases"
+      (see Not planned: load balancing), and version control for config files (Backups
+      already keep them).
+
+    **How:** `core/perf.py` (RCON parsing, ring files, suggestions) next to `core/host.py`;
+    `GET /api/servers/{name}/perf` and `GET /api/host/history`. The RCON command runs as a
+    read-only query, never changing state.
+
+    **Size:** one to two weeks. The ring file format and the SVG charts are the fiddly parts.
+
 ### 2.0: run it for other people
 
-11. **Resource graphs.** History for the live numbers 1.11 shows: CPU and memory per server
-    from the unit's cgroup, host CPU, memory and disk, player count over RCON/query. 1.11's
-    sampler writes every 30–60 s into a small on-disk ring buffer per server and for the host;
-    24-hour charts on the dashboard and each server's Overview. No `psutil`, no database.
 12. **Per-server permissions.** Today a `user` can do everything to every server. Add
     per-server grants (view, console/chat, power, files, mods & plugins, settings) for `user`
     accounts. Admins
