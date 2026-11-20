@@ -379,7 +379,7 @@
 
     <div id="console-dock" class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-700 transition-transform transform translate-y-full z-40 flex flex-col" style="height: 300px;">
         <div class="flex justify-between items-center bg-gray-900 px-4 py-2 border-b border-gray-700">
-            <h3 class="text-sm font-bold text-gray-300">Live Action Console</h3>
+            <h3 class="text-sm font-bold text-gray-300">Live Action Console <span id="console-node" class="font-normal text-gray-400"></span></h3>
             <button onclick="ServerApp.toggleConsole(false)" class="text-gray-400 hover:text-white font-bold">❌ Close</button>
         </div>
         <div class="p-4 overflow-y-auto flex-1 font-mono text-xs text-green-400 whitespace-pre-wrap" id="console-output">

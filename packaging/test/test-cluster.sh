@@ -7,6 +7,9 @@
 #   docker run --rm -v "$PWD:/src:ro" -v "$PWD/dist:/out" ubuntu:24.04 bash /src/packaging/build-deb.sh
 #   bash packaging/test/test-cluster.sh            (KEEP=1 leaves the containers running)
 set -uo pipefail
+# Git Bash on Windows: keep container paths as they are, and mount the Windows path of dist/
+export MSYS_NO_PATHCONV=1
+HOST_PWD=$(pwd -W 2>/dev/null || pwd)
 FAILS=0
 NET=rp-cluster-test
 IMG=rp-systemd:24.04
@@ -32,7 +35,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-DEB=$(ls dist/redstonepanel_*_all.deb 2>/dev/null | tail -1)
+DEB=${DEB:-$(ls dist/redstonepanel_*_all.deb 2>/dev/null | sort -V | tail -1)}
 [ -n "$DEB" ] || { echo "No dist/redstonepanel_*_all.deb: build it first (see the top of this file)."; exit 1; }
 echo "=== cluster test with $(basename "$DEB")"
 docker build -q -t "$IMG" packaging/test >/dev/null
@@ -40,7 +43,7 @@ docker rm -f rpa rpb rpc >/dev/null 2>&1
 docker network rm "$NET" >/dev/null 2>&1
 docker network create --subnet 172.30.77.0/24 "$NET" >/dev/null
 for c in rpa rpb rpc; do
-    docker run -d --privileged --name "$c" --hostname "$c" --network "$NET" -v "$PWD/dist:/dist:ro" "$IMG" >/dev/null
+    docker run -d --privileged --name "$c" --hostname "$c" --network "$NET" -v "$HOST_PWD/dist:/dist:ro" "$IMG" >/dev/null
 done
 sleep 3
 for c in rpa rpb rpc; do
@@ -100,12 +103,12 @@ rpb_id=$(echo "$ov" | json "[n['id'] for n in d['nodes'] if n.get('url','').star
 api rpa POST "/api/cluster/nodes/$rpc_id/servers/minecraft-test/action" '{"action":"start"}' >/dev/null
 sleep 1
 check "start on rpc from the master" dx rpc "systemctl is-active --quiet minecraft-test"
-check "rpc logged who did it" dx rpc "grep -q '\[CLUSTER\].* as admin: POST /api/servers/minecraft-test/action' /var/log/redstonepanel/panel.log"
+check "rpc logged who did it" dx rpc "grep -q '\[CLUSTER\].* admin@[^:]*: POST /api/servers/minecraft-test/action' /var/log/redstonepanel/panel.log"
 api rpa POST "/api/cluster/nodes/$rpc_id/servers/minecraft-test/action" '{"action":"stop"}' >/dev/null
 sleep 1
 check "stop on rpc from the master" bash -c "! docker exec rpc systemctl is-active --quiet minecraft-test"
 r=$(api rpa POST "/api/cluster/nodes/$rpc_id/servers/redstonepanel/action" '{"action":"stop"}')
-echo "$r" | grep -q "No Minecraft server" && ok "can't stop non-game services" || { bad "can't stop non-game services"; echo "$r"; }
+echo "$r" | grep -qE "No Minecraft server|Not allowed for the cluster master" && ok "can't stop non-game services" || { bad "can't stop non-game services"; echo "$r"; }
 check "rpc's panel still running" dx rpc "systemctl is-active --quiet redstonepanel"
 
 # --- what the node token can and can't do (as if the master were compromised)
@@ -114,7 +117,7 @@ code_for() { dx rpa "curl -sk -o /dev/null -w '%{http_code}' -X $1 -H 'Authoriza
 [ "$(code_for GET /api/servers)" = 200 ] && ok "token: list servers" || bad "token: list servers"
 [ "$(code_for GET /api/users)" = 403 ] && ok "token: no users" || bad "token: no users"
 [ "$(code_for GET /api/settings)" = 403 ] && ok "token: no settings" || bad "token: no settings"
-[ "$(code_for DELETE /api/servers/minecraft-test)" = 403 ] && ok "token: no deleting servers" || bad "token: no deleting servers"
+[ "$(code_for DELETE "/api/servers/minecraft-test?keep_world=false")" = 403 ] && ok "token: no erasing servers" || bad "token: no erasing servers"
 [ "$(dx rpa "curl -sk -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer $tok' https://$B:8443/api/servers")" = 401 ] \
     && ok "token: epoch header required" || bad "token: epoch header required"
 [ "$(dx rpa "curl -sk -o /dev/null -w '%{http_code}' https://$B:8443/api/cluster/hello")" = 401 ] \

@@ -24,6 +24,8 @@
     redstonepanel join 'CODE'             join the cluster in a join code (from the master)
     redstonepanel leave                   node: leave the cluster; master: dissolve an empty one
     redstonepanel cluster backup FILE     master: encrypted backup of the cluster (asks a passphrase)
+    redstonepanel cluster nightly on|off  master: an encrypted backup every night, keeping 7
+                                          (on asks the passphrase they are encrypted with)
     redstonepanel cluster promote FILE    make this panel the master from a backup
     redstonepanel cluster-https           turn cluster HTTPS back on after reset-security
 
@@ -97,6 +99,10 @@ def main():
     from core import playerlog
     playerlog.on_new_events(playerlog.notify_events)
     playerlog.start()
+    # Cluster masters: renew node certificates 30 days before they expire, nightly cluster backup
+    from core import cluster_client, manager
+    import main as main_module
+    cluster_client.maintenance(manager.write_log, main_module._restart_soon)
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 
@@ -239,6 +245,13 @@ def cluster_cmd(args):
             _log(f"{_actor()} wrote an encrypted cluster backup to {args[1]}.")
             print(f"Wrote {args[1]} ({len(data)} bytes). Store it somewhere other than this server, and keep")
             print("the passphrase safe: the backup holds the keys that control every node.")
+        elif args[:1] == ["nightly"] and len(args) == 2 and args[1] in ("on", "off"):
+            on = args[1] == "on"
+            view = cluster.set_nightly(on, _passphrase(confirm=True) if on else None, _actor())
+            _log(f"{_actor()} turned nightly cluster backups {'on' if view['enabled'] else 'off'}.")
+            print(f"Nightly cluster backups are {'on' if view['enabled'] else 'off'}."
+                  + (f" Copies go to {cluster.backups_dir()} after {cluster.NIGHTLY_HOUR}:00, keeping "
+                     f"{cluster.NIGHTLY_KEEP}. Copy them somewhere else now and then." if view["enabled"] else ""))
         elif args[:1] == ["promote"] and len(args) == 2:
             with open(args[1], "rb") as f:
                 data = f.read()

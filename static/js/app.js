@@ -11,6 +11,22 @@
     };
 })();
 
+// Which panel a request goes to. On a cluster master, a server that lives on a node is reached
+// through the master's proxy, /api/cluster/nodes/{id}/proxy/api/...; everything else is this panel.
+// By default a request goes where the open server lives; opts.node picks a node explicitly
+// (null = this panel), e.g. for New Server's "Where". Panel-wide calls (the server list, settings,
+// users, the cluster page) use fetch() directly: they are always about this panel.
+function apiUrl(path, node) {
+    if (node === undefined) node = ServerApp.activeServer ? ServerApp.activeServer.node || null : null;
+    if (!node || path.startsWith('/api/cluster/nodes/')) return path;
+    return `/api/cluster/nodes/${encodeURIComponent(node)}/proxy${path}`;
+}
+
+function api(path, opts = {}) {
+    const { node, ...init } = opts;
+    return fetch(apiUrl(path, node), init);
+}
+
 const ServerApp = {
     activeServer: null,
     servers: [],
@@ -40,10 +56,42 @@ const ServerApp = {
         await this.loadServers();
     },
 
+    // On a cluster master: the nodes from the last overview, [{id, name, state, error, ...}]
+    clusterNodes: [],
+
+    isMaster() {
+        const u = this.currentUser;
+        return !!(u && u.cluster && u.cluster.role === 'master' && u.source !== 'trusted');
+    },
+
+    sameServer(a, b) {
+        return !!(a && b && a.name === b.name && (a.node || null) === (b.node || null));
+    },
+
+    // "minecraft-java-1" here, or "minecraft-java-1 · Basement" for a node's server
+    serverLabel(srv) {
+        return srv.node ? `${srv.name} · ${srv.nodeName}` : srv.name;
+    },
+
     async loadServers() {
-        const res = await fetch('/api/servers');
-        this.servers = await res.json();
-        
+        let servers = null;
+        if (this.isMaster()) {
+            try {
+                const res = await fetch('/api/cluster/overview');
+                if (res.ok) {
+                    const ov = await res.json();
+                    this.clusterNodes = ov.nodes.filter(n => !n.local);
+                    servers = ov.nodes.flatMap(n => (n.servers || []).map(s => n.local ? { ...s, node: null }
+                        : { ...s, node: n.id, nodeName: n.name, nodeApi: n.cluster_api || 1 }));
+                }
+            } catch (e) { servers = null; }
+        }
+        if (!servers) {
+            const res = await fetch('/api/servers');
+            servers = await res.json();
+        }
+        this.servers = servers;
+                
         this.applySort();
         this.renderSidebar();
         this.loadRemovedServers();
@@ -55,7 +103,7 @@ const ServerApp = {
         }
 
         if (this.activeServer) {
-            const srv = this.servers.find(s => s.name === this.activeServer.name);
+            const srv = this.servers.find(s => this.sameServer(s, this.activeServer));
             if (srv) this.openWorkspace(srv);
         }
     },
@@ -160,19 +208,22 @@ const ServerApp = {
         const list = document.getElementById('server-list');
         list.innerHTML = '';
 
-        const javaServers = this.servers.filter(s => s.edition === 'Java');
-        const bedrockServers = this.servers.filter(s => s.edition === 'Bedrock');
-        const otherServers = this.servers.filter(s => s.edition !== 'Java' && s.edition !== 'Bedrock');
+        const local = this.servers.filter(s => !s.node);
+        const javaServers = local.filter(s => s.edition === 'Java');
+        const bedrockServers = local.filter(s => s.edition === 'Bedrock');
+        const otherServers = local.filter(s => s.edition !== 'Java' && s.edition !== 'Bedrock');
+        const esc = t => this.escapeHtml(String(t ?? ''));
 
-        const renderGroup = (title, serversGroup) => {
-            if (serversGroup.length === 0) return;
-            
+        const renderGroup = (title, serversGroup, note) => {
+            if (serversGroup.length === 0 && !note) return;
+
             list.innerHTML += `<div class="text-xs font-bold text-gray-500 uppercase tracking-wider mt-4 mb-1 px-3">${title}</div>`;
-            
+            if (note) list.innerHTML += `<div class="text-xs text-yellow-600 dark:text-yellow-500 px-3 mb-1">${note}</div>`;
+
             serversGroup.forEach(srv => {
                 const dot = srv.status === 'online' ? 'text-green-500' : 'text-red-500';
-                const isActive = this.activeServer && this.activeServer.name === srv.name ? 'bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
-                
+                const isActive = this.sameServer(this.activeServer, srv) ? 'bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
+                                
                 list.innerHTML += `
                     <div onclick="ServerApp.openWorkspace(${JSON.stringify(srv).replace(/"/g, '&quot;')})" 
                          class="p-3 rounded cursor-pointer transition flex items-center gap-3 ${isActive}">
@@ -189,6 +240,14 @@ const ServerApp = {
         renderGroup('Java Edition', javaServers);
         renderGroup('Bedrock Edition', bedrockServers);
         renderGroup('Unknown / Other', otherServers);
+        // A cluster master: each node's servers under the node's name
+        this.clusterNodes.forEach(n => {
+            const servers = this.servers.filter(s => s.node === n.id);
+            const note = n.state !== 'ok' ? `⚠️ ${esc(this.clusterStates[n.state] || n.state)}`
+                : (n.cluster_api || 1) < 2 ? 'Update RedstonePanel on this node to manage its servers here.'
+                : (servers.length ? '' : 'No servers yet.');
+            renderGroup(`🌐 ${esc(n.name)}`, servers, note);
+        });
     },
 
     async openWorkspace(srv) {
@@ -204,7 +263,7 @@ const ServerApp = {
 
         this.updateAddonsTab(srv);
         document.getElementById('ws-title').innerText = srv.name;
-        document.getElementById('ws-subtitle').innerText = srv.directory;
+        document.getElementById('ws-subtitle').innerText = srv.node ? `🌐 ${srv.nodeName}: ${srv.directory}` : srv.directory;
         document.getElementById('ws-status').innerText = srv.status === 'online' ? '🟢' : '🔴';
         
         // Populate the live chat RCON port badge
@@ -326,7 +385,7 @@ const ServerApp = {
         if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadJavaChoice(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
-        if (tabId === 'files') this.loadFiles(this.filesServer === this.activeServer.name ? this.filesPath : '');
+        if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
         if (tabId === 'addons') this.loadAddons();
         if (tabId === 'chat') {
             this.loadChat();
@@ -339,8 +398,12 @@ const ServerApp = {
         this.rconOutputs = [];
         this.chatHistoryIndex = -1;
         // Tell the backend, otherwise the next 3-second poll just repaints the old history
-        await fetch(`/api/servers/${this.activeServer.name}/chat/clear`, { method: 'POST' });
+        await api(`/api/servers/${this.activeServer.name}/chat/clear`, { method: 'POST' });
         document.getElementById('chat-history').innerHTML = '<p class="text-gray-500 italic">Chat cleared...</p>';
+    },
+
+    serverKey(srv) {
+        return srv ? `${srv.node || ''}/${srv.name}` : '';
     },
 
     escapeHtml(t) {
@@ -353,7 +416,7 @@ const ServerApp = {
         const box = document.getElementById('chat-history');
         let data;
         try {
-            const res = await fetch(`/api/servers/${serverName}/chat`);
+            const res = await api(`/api/servers/${serverName}/chat`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             data = await res.json();
         } catch (e) {
@@ -452,7 +515,7 @@ const ServerApp = {
         input.value = ''; 
 
         // 2. Send the payload to the backend API
-        const res = await fetch(`/api/servers/${this.activeServer.name}/chat`, {
+        const res = await api(`/api/servers/${this.activeServer.name}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: msg })
@@ -503,14 +566,14 @@ const ServerApp = {
 	},
 
     async loadRawPermissions() {
-        const res = await fetch(`/api/servers/${this.activeServer.name}/permissions/raw`);
+        const res = await api(`/api/servers/${this.activeServer.name}/permissions/raw`);
         const data = await res.json();
         document.getElementById('permissions-editor').value = data.content;
     },
 
     async saveRawPermissions() {
         const content = document.getElementById('permissions-editor').value;
-        await fetch(`/api/servers/${this.activeServer.name}/permissions/raw`, {
+        await api(`/api/servers/${this.activeServer.name}/permissions/raw`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content })
@@ -519,7 +582,7 @@ const ServerApp = {
     },
 
     async loadProperties(serverName) {
-        const res = await fetch(`/api/servers/${serverName}/properties`);
+        const res = await api(`/api/servers/${serverName}/properties`);
         const props = await res.json();
         const editor = document.getElementById('properties-editor');
         editor.innerHTML = '';
@@ -584,7 +647,7 @@ const ServerApp = {
         const inputs = document.querySelectorAll('.prop-input');
         const updatedProps = {};
         inputs.forEach(input => updatedProps[input.getAttribute('data-key')] = input.value);
-        await fetch(`/api/servers/${this.activeServer.name}/properties`, {
+        await api(`/api/servers/${this.activeServer.name}/properties`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ properties: updatedProps })
@@ -593,14 +656,14 @@ const ServerApp = {
     },
 
     async loadRawProperties() {
-        const res = await fetch(`/api/servers/${this.activeServer.name}/properties/raw`);
+        const res = await api(`/api/servers/${this.activeServer.name}/properties/raw`);
         const data = await res.json();
         document.getElementById('raw-editor').value = data.content;
     },
 
     async saveRawProperties() {
         const content = document.getElementById('raw-editor').value;
-        await fetch(`/api/servers/${this.activeServer.name}/properties/raw`, {
+        await api(`/api/servers/${this.activeServer.name}/properties/raw`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content })
@@ -615,7 +678,7 @@ const ServerApp = {
 		list.innerHTML = "<p class='text-gray-400'>Loading players...</p>";
 		let data;
 		try {
-			const res = await fetch(`/api/servers/${serverName}/players`);
+			const res = await api(`/api/servers/${serverName}/players`);
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			data = await res.json();
 		} catch (e) {
@@ -677,7 +740,7 @@ const ServerApp = {
 		list.innerHTML = `<p class="p-3 text-gray-400">Loading...</p>`;
 		let d;
 		try {
-			const res = await fetch(`/api/servers/${encodeURIComponent(server)}/whitelist`);
+			const res = await api(`/api/servers/${encodeURIComponent(server)}/whitelist`);
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			d = await res.json();
 		} catch (e) {
@@ -730,7 +793,7 @@ const ServerApp = {
     async accessChange(action, player) {
 		let msg;
 		try {
-			const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/whitelist/${action}`, {
+			const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/whitelist/${action}`, {
 				method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player })
 			});
 			const j = await res.json().catch(() => ({}));
@@ -758,7 +821,7 @@ const ServerApp = {
 		const rows = document.getElementById('al-rows');
 		let d;
 		try {
-			const res = await fetch(`/api/servers/${encodeURIComponent(server)}/players/log?${q}`);
+			const res = await api(`/api/servers/${encodeURIComponent(server)}/players/log?${q}`);
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			d = await res.json();
 		} catch (e) {
@@ -788,7 +851,7 @@ const ServerApp = {
         select.disabled = true;
         let ok = false, detail = '';
         try {
-            const res = await fetch(`/api/servers/${this.activeServer.name}/players/role`, {
+            const res = await api(`/api/servers/${this.activeServer.name}/players/role`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ player, role, player_id: select.dataset.playerId || null })
@@ -856,7 +919,11 @@ const ServerApp = {
     async saveAsTemplate() {
         const name = document.getElementById('save-temp-name').value.trim();
         if (!name) return alert("Enter a template name.");
-        const res = await fetch(`/api/servers/${this.activeServer.name}/template/save`, {
+        // A node's server is saved as one of the master's templates, like every other template here
+        const res = this.activeServer.node
+            ? await fetch(`/api/cluster/nodes/${encodeURIComponent(this.activeServer.node)}/servers/${encodeURIComponent(this.activeServer.name)}/template`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
+            : await api(`/api/servers/${this.activeServer.name}/template/save`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name })
@@ -871,8 +938,9 @@ const ServerApp = {
         const tempId = document.getElementById('apply-temp-select').value;
         if (!tempId) return alert("Select a template.");
         if (!confirm("This will overwrite existing properties and permissions (ports are preserved). Continue?")) return;
+        if (this.activeServer.node && !await this.pushTemplate(this.activeServer.node, tempId)) return;
 
-        const res = await fetch(`/api/servers/${this.activeServer.name}/template/apply`, {
+        const res = await api(`/api/servers/${this.activeServer.name}/template/apply`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ template_id: tempId })
@@ -884,6 +952,15 @@ const ServerApp = {
         }
         alert("Template applied. Restart the server for changes to take effect.");
         this.loadProperties(this.activeServer.name);
+    },
+
+    // The master's templates live on the master: copy one to a node before using it there
+    async pushTemplate(node, templateId) {
+        const res = await fetch(`/api/cluster/nodes/${encodeURIComponent(node)}/templates`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template_id: templateId })
+        });
+        if (!res.ok) { alert(`The template couldn't be copied to the node: ${await this.apiError(res)}`); return false; }
+        return true;
     },
 
     async openTemplateManager() {
@@ -969,8 +1046,24 @@ const ServerApp = {
         // Only templates for the chosen edition; the list follows the edition dropdown
         const templateOptions = this.templateOptionsHtml('java', 'None (Standard Defaults)');
 
+        // A cluster master can create the server on any node that answers (and is new enough)
+        const nodes = this.isMaster() ? this.clusterNodes.filter(n => n.state === 'ok' && (n.cluster_api || 1) >= 2) : [];
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const where = this.activeServer && this.activeServer.node && nodes.some(n => n.id === this.activeServer.node)
+            ? this.activeServer.node : '';
+        this.deployNode = where || null;
+        const whereHtml = nodes.length ? `
+            <div class="mb-4">
+                <label class="block text-sm text-gray-400 mb-1">Where</label>
+                <select id="deploy-where" onchange="ServerApp.onDeployWhereChange(this.value)" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white">
+                    <option value="">${esc(this.panelName || 'This panel')} (this panel, the master)</option>
+                    ${nodes.map(n => `<option value="${esc(n.id)}" ${n.id === where ? 'selected' : ''}>🌐 ${esc(n.name)}</option>`).join('')}
+                </select>
+                <p class="text-xs text-gray-500 mt-1">Ports are chosen on that server, a template is copied to it first, and a missing Java can be installed there.</p>
+            </div>` : '';
         document.getElementById('modal-content').innerHTML = `
             <h3 class="text-xl font-bold mb-4">Deploy or Import Server</h3>
+            ${whereHtml}
 
             <div class="mb-4">
                 <label class="block text-sm text-gray-400 mb-1">Engine Edition</label>
@@ -1018,6 +1111,17 @@ const ServerApp = {
         `;
         modal.classList.remove('hidden');
         this.loadDeployVersions();
+        if (this.deployNode) this.loadRemovedServers();
+    },
+
+    // New Server's "Where": null = this panel, else a node id
+    deployNode: null,
+
+    onDeployWhereChange(node) {
+        this.deployNode = node || null;
+        const version = document.getElementById('deploy-version');
+        if (version) this.showJavaRequirement(version.value || version.dataset.newest, 'deploy-java-note');
+        this.loadRemovedServers();
     },
 
     onDeployEditionChange(edition) {
@@ -1063,7 +1167,8 @@ const ServerApp = {
         const note = document.getElementById(noteId);
         if (!note || !version) return;
         note.dataset.version = version;
-        const res = await fetch(`/api/java/requirement?version=${encodeURIComponent(version)}`);
+        const res = await api(`/api/java/requirement?version=${encodeURIComponent(version)}`,
+            noteId === 'deploy-java-note' ? { node: this.deployNode } : {});
         if (note.dataset.version !== version) return;
         if (!res.ok) { note.innerText = ''; return; }
         const r = await res.json();
@@ -1086,10 +1191,19 @@ const ServerApp = {
     isAdmin() { return !!(this.currentUser && this.currentUser.role === 'admin'); },
     javaJob: null,
 
-    async installJava(major, why) {
-        if (!confirm(`${why ? why + '\n\n' : ''}Install Java ${major} (openjdk-${major}-jre-headless) now? `
-            + `apt downloads it from this machine's package sources (roughly 50–100 MB); it takes a minute or two.`)) return false;
-        return this.runJavaJob('install', major);
+    // node: where to install it (undefined = where the open server lives, null = this panel)
+    async installJava(major, why, node) {
+        const host = this.nodeName(node);
+        if (!confirm(`${why ? why + '\n\n' : ''}Install Java ${major} (openjdk-${major}-jre-headless) ${host ? 'on ' + host + ' ' : ''}now? `
+            + `apt downloads it from ${host ? 'that' : 'this'} machine's package sources (roughly 50–100 MB); it takes a minute or two.`)) return false;
+        return this.runJavaJob('install', major, node);
+    },
+
+    // The node's name for messages, or '' for this panel
+    nodeName(node) {
+        if (node === undefined) node = this.activeServer ? this.activeServer.node : null;
+        const n = node && this.clusterNodes.find(x => x.id === node);
+        return n ? n.name : '';
     },
 
     async removeJava(major) {
@@ -1099,11 +1213,11 @@ const ServerApp = {
         await this.runJavaJob('remove', major);
     },
 
-    async runJavaJob(action, major) {
+    async runJavaJob(action, major, node) {
         const done = action === 'install' ? 'installed' : 'removed';
-        this.toggleConsole(true);
-        const res = await fetch(`/api/java/runtimes/${action}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ major })
+        this.toggleConsole(true, node);
+        const res = await api(`/api/java/runtimes/${action}`, {
+            node, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ major })
         });
         if (!res.ok) { alert(`Java ${major} wasn't ${done}: ${await this.apiError(res)}`); return false; }
         this.javaJob = (await res.json());
@@ -1112,7 +1226,7 @@ const ServerApp = {
         try {
             while (job && job.state === 'running') {
                 await new Promise(r => setTimeout(r, 1500));
-                const r = await fetch('/api/java/runtimes/job');
+                const r = await api('/api/java/runtimes/job', { node });
                 if (!r.ok) throw new Error(await this.apiError(r));
                 job = (await r.json()).job;
             }
@@ -1140,12 +1254,12 @@ const ServerApp = {
 
     // A request refused because the server needs a Java that isn't installed (HTTP 409 with
     // {java: {required, package}}): an admin can install it and send the request again.
-    async withJava(res, send) {
+    async withJava(res, send, node) {
         if (res.status !== 409 || !this.isAdmin()) return res;
         let data = {};
         try { data = await res.clone().json(); } catch (e) { return res; }
         if (!data.java) return res;
-        if (!await this.installJava(data.java.required, data.detail)) return res;
+        if (!await this.installJava(data.java.required, data.detail, node)) return res;
         return send();
     },
 
@@ -1157,7 +1271,7 @@ const ServerApp = {
         if (!card || !srv) return;
         card.classList.toggle('hidden', srv.edition !== 'Java' || !this.isAdmin());
         if (srv.edition !== 'Java' || !this.isAdmin()) return;
-        const res = await fetch('/api/java/runtimes');
+        const res = await api('/api/java/runtimes');
         if (!res.ok) { body.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
         const rt = await res.json();
         if (!this.activeServer || this.activeServer.name !== srv.name) return;
@@ -1196,7 +1310,7 @@ const ServerApp = {
         if (!srv) return;
         if (major === srv.java_installed) return;
         if (srv.status === 'online' && !confirm(`Run ${srv.name} on Java ${major}? It restarts now.`)) return;
-        const res = await fetch(`/api/servers/${encodeURIComponent(srv.name)}/java`, {
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/java`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ major })
         });
         if (!res.ok) return alert(`Java not changed: ${await this.apiError(res)}`);
@@ -1260,7 +1374,7 @@ const ServerApp = {
     async loadBackups() {
         if (!this.activeServer) return;
         const name = this.activeServer.name;
-        const res = await fetch(`/api/servers/${encodeURIComponent(name)}/backups`);
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/backups`);
         if (!this.activeServer || this.activeServer.name !== name) return;   // switched server meanwhile
         const box = document.getElementById('backups-content');
         if (!res.ok) {
@@ -1279,7 +1393,7 @@ const ServerApp = {
 
     filesUrl(suffix, params) {
         const q = new URLSearchParams(params || {}).toString();
-        return `/api/servers/${encodeURIComponent(this.activeServer.name)}/files${suffix}${q ? '?' + q : ''}`;
+        return apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/files${suffix}${q ? '?' + q : ''}`);
     },
 
     joinPath(...parts) {
@@ -1290,7 +1404,7 @@ const ServerApp = {
         const box = document.getElementById('files-content');
         if (!this.activeServer || !box) return;
         this.fileEditor = null;
-        const res = await fetch(this.filesUrl('', { path: path || '' }));
+        const res = await api(this.filesUrl('', { path: path || '' }));
         if (!res.ok) {
             const msg = await this.apiError(res);
             if (path) return this.loadFiles('');           // the folder went away: back to the top
@@ -1299,7 +1413,7 @@ const ServerApp = {
         }
         this.filesData = await res.json();
         this.filesPath = this.filesData.path;
-        this.filesServer = this.activeServer.name;
+        this.filesServer = this.serverKey(this.activeServer);
         this.renderFiles();
     },
 
@@ -1371,7 +1485,7 @@ const ServerApp = {
     async openFileEditor(path, isNew) {
         let data = { path, content: '', modified: null };
         if (!isNew) {
-            const res = await fetch(this.filesUrl('/text', { path }));
+            const res = await api(this.filesUrl('/text', { path }));
             if (!res.ok) return alert(`Can't open ${path}: ${await this.apiError(res)}`);
             data = await res.json();
         }
@@ -1402,7 +1516,7 @@ const ServerApp = {
     async saveFileEditor() {
         const ed = this.fileEditor;
         if (!ed) return;
-        const res = await fetch(this.filesUrl('/text'), {
+        const res = await api(this.filesUrl('/text'), {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: ed.path, content: document.getElementById('file-editor').value, modified: ed.modified })
         });
@@ -1421,7 +1535,7 @@ const ServerApp = {
     async newFolder() {
         const name = prompt('New folder name:');
         if (!name) return;
-        const res = await fetch(this.filesUrl('/mkdir'), {
+        const res = await api(this.filesUrl('/mkdir'), {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: this.joinPath(this.filesPath, name) })
         });
@@ -1441,7 +1555,7 @@ const ServerApp = {
         const old = path.split('/').pop();
         const name = prompt(`Rename '${old}' to:`, old);
         if (!name || name === old) return;
-        const res = await fetch(this.filesUrl('/rename'), {
+        const res = await api(this.filesUrl('/rename'), {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path, name })
         });
@@ -1452,7 +1566,7 @@ const ServerApp = {
     async deleteFile(path, type) {
         const what = type === 'dir' ? `the folder '${path}' and everything in it` : `'${path}'`;
         if (!confirm(`Permanently delete ${what}? This can't be undone.`)) return;
-        const res = await fetch(this.filesUrl('', { path }), { method: 'DELETE' });
+        const res = await api(this.filesUrl('', { path }), { method: 'DELETE' });
         if (!res.ok) alert(`Couldn't delete: ${await this.apiError(res)}`);
         this.loadFiles(this.filesPath);
     },
@@ -1490,7 +1604,7 @@ const ServerApp = {
 
     addonsUrl(params) {
         const q = new URLSearchParams(params || {}).toString();
-        return `/api/servers/${encodeURIComponent(this.activeServer.name)}/addons${q ? '?' + q : ''}`;
+        return apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/addons${q ? '?' + q : ''}`);
     },
 
     // The Mods / Plugins / Add-ons tab: admins, on Fabric, Paper and Bedrock servers
@@ -1564,7 +1678,7 @@ const ServerApp = {
     async loadAddons() {
         const box = document.getElementById('addons-content');
         if (!this.activeServer || !box) return;
-        const res = await fetch(this.addonsUrl());
+        const res = await api(this.addonsUrl());
         if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
         this.addonsData = await res.json();
         if (this.addonsFor !== this.activeServer.name) {
@@ -1583,13 +1697,13 @@ const ServerApp = {
 
     // --- Server tools (Bedrock): Phantom, which makes a server on another port show up as a LAN game
     phantomUrl(tail) {
-        return `/api/servers/${encodeURIComponent(this.activeServer.name)}/phantom${tail || ''}`;
+        return apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/phantom${tail || ''}`);
     },
 
     async loadPhantom() {
         const server = this.activeServer && this.activeServer.name;
         if (!server) return;
-        const res = await fetch(this.phantomUrl());
+        const res = await api(this.phantomUrl());
         const data = res.ok ? await res.json() : { error: await this.apiError(res) };
         if (!this.activeServer || this.activeServer.name !== server) return;
         this.phantomData = { ...data, for: server };
@@ -1669,7 +1783,7 @@ const ServerApp = {
         this.phantomBusy = action;
         this.renderPhantom();
         try {
-            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit: unit || null }) });
+            const res = await api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit: unit || null }) });
             if (!res.ok) alert(`Phantom: ${await this.apiError(res)}`);
             else if (this.activeServer && this.activeServer.name === server) this.phantomData = { ...(await res.json()), for: server };
         } finally {
@@ -1788,7 +1902,7 @@ const ServerApp = {
 
     async loadAddonUpdates() {
         const server = this.activeServer.name;
-        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/updates');
+        const res = await api(this.addonsUrl().replace(/\?.*$/, '') + '/updates');
         if (!this.activeServer || this.activeServer.name !== server) return;
         this.addonUpdates = res.ok ? await res.json() : { error: await this.apiError(res) };
         if (this.addonsView === 'installed' && document.getElementById('addons-drop')) this.renderAddons();
@@ -1802,7 +1916,7 @@ const ServerApp = {
         if (!confirm(`Update ${what} on ${this.activeServer.name}?${backup ? ' The world is backed up first.' : ''} The old files are kept so you can undo.`)) return;
         this.addonUpdates = null;
         this.renderAddons(['Updating…']);
-        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/update', {
+        const res = await api(this.addonsUrl().replace(/\?.*$/, '') + '/update', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files: fileList, backup })
         });
         let messages = [];
@@ -1821,7 +1935,7 @@ const ServerApp = {
 
     async undoAddonUpdate() {
         if (!confirm('Put back the files the last update replaced?')) return;
-        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/undo', { method: 'POST' });
+        const res = await api(this.addonsUrl().replace(/\?.*$/, '') + '/undo', { method: 'POST' });
         if (!res.ok) return alert(await this.apiError(res));
         const r = await res.json();
         this.addonsChanged[this.activeServer.name] = true;
@@ -1833,13 +1947,13 @@ const ServerApp = {
     // --- The catalog (Fabric and Paper): starter set and bundles, search with category and sort, details
     addonApi(path, params) {
         const q = new URLSearchParams(params || {}).toString();
-        return `/api/servers/${encodeURIComponent(this.activeServer.name)}/addons/${path}${q ? '?' + q : ''}`;
+        return apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/addons/${path}${q ? '?' + q : ''}`);
     },
 
     async loadAddonCatalog() {
         const server = this.activeServer.name;
         this.addonCatalog = { loading: true, for: server };
-        const res = await fetch(this.addonApi('catalog'));
+        const res = await api(this.addonApi('catalog'));
         const data = res.ok ? await res.json() : { error: await this.apiError(res) };
         if (!this.activeServer || this.activeServer.name !== server) return;
         this.addonCatalog = { ...data, for: server };
@@ -1864,7 +1978,7 @@ const ServerApp = {
         this.addonSearch = s;
         if (!this.addonCatalog || this.addonCatalog.for !== this.activeServer.name) this.loadAddonCatalog();
         this.renderAddonBrowser();
-        const res = await fetch(this.addonApi('search', { source: s.source, q: s.q, offset: s.hits.length, category: s.category, sort: s.sort }));
+        const res = await api(this.addonApi('search', { source: s.source, q: s.q, offset: s.hits.length, category: s.category, sort: s.sort }));
         s.loading = false;
         if (!res.ok) s.error = await this.apiError(res);
         else {
@@ -1944,7 +2058,7 @@ const ServerApp = {
         this.renderAddonBrowser();
         const el = document.getElementById('addon-detail');
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        const res = await fetch(this.addonApi('details', { source, project }));
+        const res = await api(this.addonApi('details', { source, project }));
         const data = res.ok ? await res.json() : { error: await this.apiError(res) };
         if (!this.activeServer || this.activeServer.name !== server || !this.addonDetail || this.addonDetail.project !== project) return;
         this.addonDetail = { source, project, data };
@@ -2095,7 +2209,7 @@ const ServerApp = {
     async installFromCatalog(source, project, title) {
         const s = this.addonSearch;
         this.renderAddonBrowser([`Installing ${title}…`]);
-        const res = await fetch(this.addonApi('install'), {
+        const res = await api(this.addonApi('install'), {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, project })
         });
         let messages;
@@ -2115,7 +2229,7 @@ const ServerApp = {
         if (!confirm(`Install the ${title} bundle on ${this.activeServer.name}?${backup ? ' The world is backed up first.' : ''} `
             + `Restart the server afterwards to load them.`)) return;
         this.renderAddonBrowser([`Installing ${title}${backup ? ' (backing up the world first)' : ''}…`]);
-        const res = await fetch(this.addonApi('bundle'), {
+        const res = await api(this.addonApi('bundle'), {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bundle, backup })
         });
         let messages;
@@ -2142,7 +2256,7 @@ const ServerApp = {
     },
 
     async toggleAddon(item, enabled) {
-        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/toggle', {
+        const res = await api(this.addonsUrl().replace(/\?.*$/, '') + '/toggle', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item, enabled })
         });
         if (!res.ok) return alert(await this.apiError(res));
@@ -2152,7 +2266,7 @@ const ServerApp = {
 
     async removeAddon(item, label) {
         if (!confirm(`Remove ${label} from ${this.activeServer.name}? The file is deleted.`)) return;
-        const res = await fetch(this.addonsUrl({ item }), { method: 'DELETE' });
+        const res = await api(this.addonsUrl({ item }), { method: 'DELETE' });
         if (!res.ok) return alert(await this.apiError(res));
         this.addonsChanged[this.activeServer.name] = true;
         this.loadAddons();
@@ -2226,7 +2340,7 @@ const ServerApp = {
                 <td class="py-2 pr-3">${esc(kindLabel[b.kind] || b.kind)}</td>
                 <td class="py-2 pr-3 text-right whitespace-nowrap">${esc(this.formatSize(b.size))}</td>
                 <td class="py-2 text-right whitespace-nowrap">
-                    <a href="/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(b.file)}" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white" title="Download">⬇</a>
+                    <a href="${apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(b.file)}`)}" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white" title="Download">⬇</a>
                     ${isAdmin ? `<button onclick="ServerApp.restoreBackup('${esc(b.file)}')" class="px-2 py-1 rounded bg-yellow-600 hover:bg-yellow-700 text-white" title="Restore this world">Restore</button>
                     <button onclick="ServerApp.deleteBackup('${esc(b.file)}')" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-red-700 hover:text-white text-gray-900 dark:text-white" title="Delete">🗑</button>` : ''}
                 </td>
@@ -2278,7 +2392,7 @@ const ServerApp = {
             keep: parseInt(document.getElementById('backup-keep').value, 10) || 0,
         };
         button.disabled = true;
-        const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/schedule`, {
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/schedule`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
         });
         button.disabled = false;
@@ -2289,7 +2403,7 @@ const ServerApp = {
     async loadRestarts() {
         if (!this.activeServer) return;
         const name = this.activeServer.name;
-        const res = await fetch(`/api/servers/${encodeURIComponent(name)}/restarts`);
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/restarts`);
         if (!this.activeServer || this.activeServer.name !== name) return;
         const box = document.getElementById('restart-content');
         if (!res.ok) {
@@ -2334,7 +2448,7 @@ const ServerApp = {
             warn: parseInt(document.getElementById('restart-warn').value, 10) || 0,
         };
         button.disabled = true;
-        const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/restarts`, {
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/restarts`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
         });
         button.disabled = false;
@@ -2346,7 +2460,7 @@ const ServerApp = {
         button.disabled = true;
         button.innerText = 'Backing up…';
         this.toggleConsole(true);
-        const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups`, { method: 'POST' });
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups`, { method: 'POST' });
         if (!res.ok) alert(`Backup failed: ${await this.apiError(res)}`);
         this.loadBackups();
     },
@@ -2356,7 +2470,7 @@ const ServerApp = {
         const when = b ? new Date(b.created * 1000).toLocaleString() : file;
         if (!confirm(`Replace ${this.activeServer.name}'s world with the backup from ${when}?\n\nThe server stops while this happens. The current world is saved first as a "Before restore" backup.`)) return;
         this.toggleConsole(true);
-        const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(file)}/restore`, { method: 'POST' });
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(file)}/restore`, { method: 'POST' });
         if (!res.ok) alert(`Restore failed: ${await this.apiError(res)}`);
         else alert('World restored.');
         this.loadBackups();
@@ -2364,7 +2478,7 @@ const ServerApp = {
 
     async deleteBackup(file) {
         if (!confirm(`Delete the backup ${file}? This can't be undone.`)) return;
-        const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(file)}`, { method: 'DELETE' });
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(file)}`, { method: 'DELETE' });
         if (!res.ok) alert(`Delete failed: ${await this.apiError(res)}`);
         this.loadBackups();
     },
@@ -2374,7 +2488,7 @@ const ServerApp = {
 
     async loadRemovedServers() {
         try {
-            const res = await fetch('/api/servers/removed');
+            const res = await api('/api/servers/removed', { node: this.removedNode() });
             this.removedServers = res.ok ? await res.json() : [];
         } catch (e) {
             this.removedServers = [];
@@ -2392,10 +2506,16 @@ const ServerApp = {
         return this.removedServers;
     },
 
+    // Removed servers are listed for the New Server dialog's "Where" while it is open
+    removedNode() {
+        return document.getElementById('removed-servers') ? this.deployNode : null;
+    },
+
     removedServersHtml() {
         if (!this.removedServers.length) return '';
         const esc = t => this.escapeHtml(String(t ?? ''));
-        const isAdmin = this.currentUser && this.currentUser.role === 'admin';
+        // Deleting a removed server's files can't be undone, so it's never done from the master
+        const isAdmin = this.currentUser && this.currentUser.role === 'admin' && !this.removedNode();
         const rows = this.removedServers.map(s => {
             const details = [s.edition, s.port ? `port ${esc(s.port)}` : '', s.world ? `world “${esc(s.world)}”` : '']
                 .filter(Boolean).join(' • ');
@@ -2433,11 +2553,13 @@ const ServerApp = {
     async restoreRemoved(name, button) {
         const srv = this.removedServers.find(s => s.name === name);
         if (!srv) return;
+        this.logNode = this.removedNode();
         if (!srv.has_binary && !confirm(`${name} has no server binary. Download the latest ${srv.edition} release and restore it?`)) return;
         if (button) { button.disabled = true; button.innerText = 'Restoring…'; }
         this.toggleConsole(true);
-        const send = () => fetch(`/api/servers/removed/${encodeURIComponent(name)}/restore`, { method: 'POST' });
-        const res = await this.withJava(await send(), send);
+        const node = this.removedNode();
+        const send = () => api(`/api/servers/removed/${encodeURIComponent(name)}/restore`, { node, method: 'POST' });
+        const res = await this.withJava(await send(), send, node);
         if (!res.ok) {
             alert(`Restore failed: ${await this.apiError(res)}`);
         } else {
@@ -2467,15 +2589,18 @@ const ServerApp = {
             const version = document.getElementById('deploy-version').value;
             if (version) payload.version = version;
         }
+        const node = this.deployNode;
+        if (node && tempId && !await this.pushTemplate(node, tempId)) return;
         document.getElementById('modal-overlay').classList.add('hidden');
-        this.toggleConsole(true);
+        this.toggleConsole(true, node);
 
-        const send = () => fetch('/api/servers/deploy', {
+        const send = () => api('/api/servers/deploy', {
+            node,
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        const res = await this.withJava(await send(), send);
+        const res = await this.withJava(await send(), send, node);
         if (!res.ok) {
             let detail = `HTTP ${res.status}`;
             try { detail = (await res.json()).detail || detail; } catch (e) {}
@@ -2486,7 +2611,7 @@ const ServerApp = {
 
     exportServer() {
         if (!this.activeServer) return;
-        window.location.href = `/api/servers/${this.activeServer.name}/export`;
+        window.location.href = apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/export`);
     },
 
     async executeImport() {
@@ -2496,10 +2621,12 @@ const ServerApp = {
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
 
+        const node = this.deployNode;
         document.getElementById('modal-overlay').classList.add('hidden');
-        this.toggleConsole(true);
+        this.toggleConsole(true, node);
 
-        const res = await fetch('/api/servers/import', {
+        const res = await api('/api/servers/import', {
+            node,
             method: 'POST',
             body: formData
         });
@@ -2515,9 +2642,15 @@ const ServerApp = {
     
     logInterval: null,
 
-    toggleConsole(forceOpen = false) {
+    // node: whose panel log to show (undefined = where the open server lives, null = this panel)
+    logNode: null,
+
+    toggleConsole(forceOpen = false, node) {
         const dock = document.getElementById('console-dock');
         if (forceOpen) {
+            this.logNode = node === undefined ? (this.activeServer ? this.activeServer.node || null : null) : node;
+            const title = document.getElementById('console-node');
+            if (title) title.innerText = this.logNode ? `(${this.nodeName(this.logNode)})` : '';
             dock.classList.remove('translate-y-full');
             this.startLogPolling();
         } else {
@@ -2539,7 +2672,7 @@ const ServerApp = {
 
     async fetchLogs() {
         try {
-            const res = await fetch('/api/logs');
+            const res = await api('/api/logs', { node: this.logNode });
             const data = await res.json();
             const out = document.getElementById('console-output');
             
@@ -2572,7 +2705,7 @@ const ServerApp = {
     async sendPower(action) {
         if (!this.activeServer) return;
         this.toggleConsole(true);
-        await fetch(`/api/servers/${this.activeServer.name}/action`, {
+        await api(`/api/servers/${this.activeServer.name}/action`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action })
@@ -2587,7 +2720,7 @@ const ServerApp = {
         let warn = '';
         const kind = this.addonKind(this.activeServer);
         if (version && version !== this.activeServer.minecraft && ['fabric', 'paper'].includes(kind) && this.currentUser && this.currentUser.role === 'admin') {
-            const r = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/addons/compatibility?minecraft=${encodeURIComponent(version)}`);
+            const r = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/addons/compatibility?minecraft=${encodeURIComponent(version)}`);
             if (r.ok) {
                 const c = await r.json();
                 const noun = kind === 'paper' ? 'plugins' : 'mods';
@@ -2598,7 +2731,7 @@ const ServerApp = {
         if (!confirm(`Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.${warn}`)) return;
         this.toggleConsole(true);
         const name = this.activeServer.name;
-        const send = () => fetch(`/api/servers/${encodeURIComponent(name)}/update`, {
+        const send = () => api(`/api/servers/${encodeURIComponent(name)}/update`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(version ? { version } : {})
         });
@@ -2612,7 +2745,7 @@ const ServerApp = {
     async uninstallServer(keepWorld) {
         if(confirm(`WARNING: ${keepWorld ? 'Uninstall' : 'Completely purge'} ${this.activeServer.name}?`)) {
             this.toggleConsole(true);
-            const res = await fetch(`/api/servers/${this.activeServer.name}?keep_world=${keepWorld}`, { method: 'DELETE' });
+            const res = await api(`/api/servers/${this.activeServer.name}?keep_world=${keepWorld}`, { method: 'DELETE' });
             if (!res.ok) return alert(`Uninstall failed: ${await this.apiError(res)}`);
             this.activeServer = null;
             this.showDashboard();
@@ -2624,7 +2757,7 @@ const ServerApp = {
 	exportWorld() {
 		if (!this.activeServer) return;
 		// Direct browser navigation forces the browser to download the payload as a file
-		window.location.href = `/api/servers/${this.activeServer.name}/worlds/export`;
+		window.location.href = apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/worlds/export`);
 	},
 
 	currentWorldName: null,
@@ -2637,7 +2770,7 @@ const ServerApp = {
 		this.currentWorldName = null;
 		label.innerText = 'Loading...';
 		try {
-			const res = await fetch(`/api/servers/${serverName}/properties`);
+			const res = await api(`/api/servers/${serverName}/properties`);
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const props = await res.json();
 			if (!this.activeServer || this.activeServer.name !== serverName) return;
@@ -2659,7 +2792,7 @@ const ServerApp = {
 		const from = this.currentWorldName ? `from '${this.currentWorldName}' ` : '';
 		if(confirm(`Are you sure you want to rename the world ${from}to '${newName}'? The server will temporarily stop.`)) {
 			this.toggleConsole(true);
-			const res = await fetch(`/api/servers/${this.activeServer.name}/worlds/rename`, {
+			const res = await api(`/api/servers/${this.activeServer.name}/worlds/rename`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ new_name: newName })
@@ -2723,6 +2856,7 @@ const ServerApp = {
 				<span><span class="font-bold text-gray-900 dark:text-white">${title}</span><br><span class="text-xs text-gray-500 dark:text-gray-400">${desc}</span></span>
 			</label>`;
 		const now = d.runtime.scheme ? `${d.runtime.scheme.toUpperCase()} on port ${d.runtime.port}` : 'unknown (not started by run.py)';
+		const clusterRole = ((this.currentUser || {}).cluster || {}).role || 'standalone';
 		const ss = d.self_signed;
 
 		box.innerHTML = `
@@ -2747,8 +2881,11 @@ const ServerApp = {
 
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
 			<div class="space-y-2 mb-3">
-				${s.https_mode === 'cluster'
-					? radio('https_mode', 'cluster', s.https_mode, 'HTTPS from the cluster', 'This panel is in a cluster, so its certificate comes from the cluster and its HTTPS settings are fixed. Leave the cluster to change them.')
+				${clusterRole === 'master'
+					? `${radio('https_mode', 'cluster', s.https_mode, 'HTTPS from the cluster', 'The cluster CA\'s certificate. Browsers warn until each device imports the cluster CA.')}
+				${radio('https_mode', 'custom', s.https_mode, 'HTTPS with my own certificate', 'For a master on the internet: a certbot (Let\'s Encrypt) certificate for its domain name. Browsers trust it as it is; nodes keep their cluster certificates on private addresses, because only the master talks to them.')}`
+					: clusterRole === 'node'
+					? radio('https_mode', s.https_mode, s.https_mode, s.https_mode === 'custom' ? 'HTTPS with my own certificate' : 'HTTPS from the cluster', 'This panel is a cluster node, so its HTTPS settings are fixed. Leave the cluster to change them.')
 					: `${radio('https_mode', 'off', s.https_mode, 'HTTP (simple)', 'Unencrypted. Fine on a home network you trust.')}
 				${radio('https_mode', 'self_signed', s.https_mode, 'HTTPS with a self-signed certificate', 'Encrypted. Browsers warn unless each device imports the panel\'s CA certificate.')}
 				${radio('https_mode', 'custom', s.https_mode, 'HTTPS with my own certificate', 'For a real domain name, e.g. a Let\'s Encrypt certificate from certbot.')}`}
@@ -2789,7 +2926,7 @@ const ServerApp = {
 				<button id="set-save" onclick="ServerApp.savePanelSettings()" class="flex-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Save</button>
 			</div>`;
 		this.updateSettingsForm();
-		document.getElementById('set-https-port').disabled = s.https_mode === 'cluster';
+		document.getElementById('set-https-port').disabled = clusterRole !== 'standalone';
 		this.loadClusterSettings();
 		this.loadNotificationSettings();
 	},
@@ -3358,6 +3495,7 @@ const ServerApp = {
 						</div>
 					</div>
 					<div class="flex gap-2">
+						${ok && (n.local || (n.cluster_api || 1) >= 2) ? `<button onclick="ServerApp.openClusterServer(${this.jsArg(n.local ? '' : n.id)}, ${this.jsArg(s.name)})" class="${btn} bg-gray-500 hover:bg-gray-600">Open</button>` : ''}
 						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'start', this)" class="${btn} bg-green-600 hover:bg-green-700">Start</button>
 						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'restart', this)" class="${btn} bg-theme hover-bg-theme">Restart</button>
 						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'stop', this)" class="${btn} bg-red-600 hover:bg-red-700">Stop</button>
@@ -3391,6 +3529,14 @@ const ServerApp = {
 		if (s.disk) parts.push(`${this.fmtBytes(s.disk.free)} disk free`);
 		if (s.attention.length) parts.push(`⚠️ ${s.attention.length} need${s.attention.length === 1 ? 's' : ''} attention`);
 		return `<p class="text-xs text-gray-500 dark:text-gray-400">${parts.join(' · ')}</p>`;
+	},
+
+	// The cluster page's "Open": the server's own tabs, wherever it lives
+	async openClusterServer(nodeId, name) {
+		const find = () => this.servers.find(s => s.name === name && (s.node || '') === nodeId);
+		if (!find()) await this.loadServers();
+		const srv = find();
+		if (srv) this.openWorkspace(srv);
 	},
 
 	async clusterPower(nodeId, server, action, button) {
@@ -3443,7 +3589,7 @@ const ServerApp = {
 
 		if (d.role === 'node') {
 			box.innerHTML = `
-				<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">This panel is a <b>node</b> of cluster <b>${esc(d.name)}</b>. Its master, <b>${esc(d.master_name)}</b> (<span class="font-mono">${esc(d.master_url)}</span>), can see and start, stop or restart its game servers. It can't change this panel's users or settings.</p>
+				<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">This panel is a <b>node</b> of cluster <b>${esc(d.name)}</b>. Its master, <b>${esc(d.master_name)}</b> (<span class="font-mono">${esc(d.master_url)}</span>), can see and manage its game servers (every tab, creating servers, Java and Phantom). It can't change this panel's users, settings or HTTPS, or erase a server's files.</p>
 				<p class="${note} mb-2">Last contact from the master: ${esc(this.fmtTime(d.last_used))}${d.last_ip ? ' from ' + esc(d.last_ip) : ''}.</p>
 				${caLine}
 				<button onclick="ServerApp.leaveCluster(false)" class="${small}">Leave cluster</button>
@@ -3456,17 +3602,23 @@ const ServerApp = {
 			<div class="flex items-center justify-between gap-2 p-2 border-t border-gray-200 dark:border-gray-700">
 				<div class="min-w-0">
 					<p class="text-sm font-bold text-gray-900 dark:text-white truncate">${esc(n.name)} <span class="font-normal font-mono text-xs text-gray-500">${esc(n.url)}</span></p>
-					<p class="${note}">RedstonePanel ${esc(n.version || '?')} · certificate expires ${esc(this.fmtTime(n.cert_expires))} · last answered ${esc(this.fmtTime(n.last_ok))}</p>
+					<p class="${note}">RedstonePanel ${esc(n.version || '?')}${(n.cluster_api || 1) < 2 ? ' (update it to manage its servers from here)' : ''} · certificate expires ${esc(this.fmtTime(n.cert_expires))}${n.verify === 'cluster' ? ' (renewed automatically ' + esc(d.renew_within_days) + ' days before)' : ''} · last answered ${esc(this.fmtTime(n.last_ok))}</p>
+					<p class="${note}">Certificate checked with
+						<select onchange="ServerApp.setNodeVerify(${this.jsArg(n.id)}, this.value)" class="bg-transparent border border-gray-300 dark:border-gray-600 rounded text-xs">
+							<option value="cluster" ${n.verify === 'cluster' ? 'selected' : ''}>the cluster CA</option>
+							<option value="system" ${n.verify === 'system' ? 'selected' : ''}>the system's trust store (its own public certificate)</option>
+						</select></p>
+					${n.renew_error ? `<p class="text-xs text-red-500">Automatic renewal failed: ${esc(n.renew_error)}</p>` : ''}
 				</div>
 				<div class="flex gap-2">
-					<button onclick="ServerApp.renewNodeCert(${this.jsArg(n.id)}, this)" class="${small}">Renew cert</button>
+					${n.verify === 'cluster' ? `<button onclick="ServerApp.renewNodeCert(${this.jsArg(n.id)}, this)" class="${small}">Renew cert</button>` : ''}
 					<button onclick="ServerApp.removeNode(${this.jsArg(n.id)}, ${this.jsArg(n.name)})" class="${small}">Remove</button>
 				</div>
 			</div>`).join('');
 		const joins = d.joins.map(j => `
 			<p class="${note}">Join code ${esc(j.id)}… made by ${esc(j.created_by)}, valid until ${esc(this.fmtTime(j.expires))} · <a href="#" onclick="ServerApp.cancelJoin(${this.jsArg(j.id)}); return false;" class="underline">cancel</a></p>`).join('');
 		box.innerHTML = `
-			<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">This panel is the <b>master</b> of cluster <b>${esc(d.name)}</b>. Signed-in users manage every node's servers from the <b>🌐 Cluster</b> page.</p>
+			<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">This panel is the <b>master</b> of cluster <b>${esc(d.name)}</b>. Signed-in users manage every node's servers here: they're listed in the sidebar under each node's name, with all their tabs, and on the <b>🌐 Cluster</b> page. Admins here are admins on the nodes too (except for users, settings and cluster membership); users here have a user's rights there.</p>
 			${caLine}
 			<div class="rounded border border-gray-200 dark:border-gray-700 mb-3">
 				<p class="p-2 text-sm font-bold text-gray-900 dark:text-white">Nodes (${d.nodes.length})</p>
@@ -3488,11 +3640,43 @@ const ServerApp = {
 					<button onclick="ServerApp.downloadClusterBackup()" class="${small} whitespace-nowrap">Download backup</button>
 				</div>
 			</div>
+			${this.nightlyHtml(d.nightly, { field, small, note })}
 			<div class="flex gap-2">
 				<button onclick="ServerApp.renewNodeCert('local', this)" class="${small}">Renew this master's certificate</button>
 				${d.nodes.length ? '' : `<button onclick="ServerApp.leaveCluster(true)" class="${small}">Dissolve cluster</button>`}
 			</div>
 			<p id="cl-error" class="hidden text-sm text-red-500 mt-2"></p>`;
+	},
+
+	// Nightly backups: an encrypted copy of the cluster state every night, kept on the master
+	nightlyHtml(n, { field, small, note }) {
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const files = (n.files || []).map(f => `<a href="/api/settings/cluster/backups/${encodeURIComponent(f.file)}" class="underline text-theme">${esc(f.file.replace(/^redstonepanel-cluster-|\.rpbackup$/g, ''))}</a>`).join(' · ');
+		return `
+			<div class="p-3 rounded border border-gray-200 dark:border-gray-700 mb-3">
+				<p class="font-bold text-sm text-gray-900 dark:text-white mb-1">Nightly backups ${n.enabled ? '<span class="text-green-600 text-xs">on</span>' : '<span class="text-gray-500 text-xs">off</span>'}</p>
+				<p class="${note} mb-2">Every night after 3:00 the master writes an encrypted backup to its data folder and keeps the last ${esc(n.keep)}. The passphrase is stored on this master so it can do that unattended. These copies only help while this server's disk survives: still download one now and then.</p>
+				${n.last_error ? `<p class="text-xs text-red-500 mb-2">Last nightly backup failed: ${esc(n.last_error)}</p>` : ''}
+				${files ? `<p class="${note} mb-2">Download: ${files}</p>` : ''}
+				<div class="flex gap-2">
+					<input id="cl-nightly-pass" type="password" autocomplete="new-password" placeholder="${n.enabled ? 'New passphrase (optional)' : 'Passphrase (10+ characters)'}" class="${field}">
+					<button onclick="ServerApp.setNightly(true)" class="${small} whitespace-nowrap">${n.enabled ? 'Change passphrase' : 'Turn on'}</button>
+					${n.enabled ? `<button onclick="ServerApp.setNightly(false)" class="${small} whitespace-nowrap">Turn off</button>` : ''}
+				</div>
+			</div>`;
+	},
+
+	async setNightly(enabled) {
+		const passphrase = enabled ? document.getElementById('cl-nightly-pass').value : null;
+		if (enabled && !passphrase && !this.clusterSettings.nightly.enabled) return this.clusterError('Give the passphrase the backups are encrypted with.');
+		if (enabled && !passphrase) return;
+		const data = await this.clusterPost('/api/settings/cluster/nightly', { enabled, passphrase }, 'PUT');
+		if (data) this.loadClusterSettings();
+	},
+
+	async setNodeVerify(id, verify) {
+		const data = await this.clusterPost(`/api/settings/cluster/nodes/${encodeURIComponent(id)}`, { verify }, 'PATCH');
+		if (data) this.loadClusterSettings();
 	},
 
 	clusterError(msg) {
