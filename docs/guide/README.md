@@ -711,9 +711,11 @@ Tailscale), or a reverse proxy with a real certificate as described in the
 ## 18. Clusters
 
 Running RedstonePanel on several machines? One panel can be the **master** of a cluster and
-show every **node's** game servers on its **🌐 Cluster** page, with start, stop and restart.
-Each panel's CPU, memory and free disk are shown under its name, and the master's dashboard
-has a card per panel.
+manage every **node's** game servers. In the master's sidebar, each node's servers are listed
+under the node's name (🌐), and opening one gives you every tab, just like a server on the
+master. The **🌐 Cluster** page shows every panel at once, with start, stop, restart and **Open**
+for each server, and each panel's CPU, memory and free disk. The master's dashboard has a card
+per panel.
 
 ![The Cluster page](images/cluster.png)
 
@@ -724,11 +726,25 @@ has a card per panel.
    **Join**.
 4. Download the cluster CA from **Settings → Cluster** and install it on your devices once.
 
+**Creating a server on a node:** in **New Server**, pick the node under **Where**. A template
+you choose is copied to the node first, ports are picked on the node, and if the node doesn't have
+the Java that Minecraft version needs, you're asked to install it there. **Save as Template** on a
+node's server adds the template to the master's list.
+
+**Who can do what:** admins on the master are admins on the nodes; users on the master have a
+user's rights there (no file manager, Java or Phantom). Both panels' consoles log each change
+with the master user's name, e.g. `[CLUSTER] alex@Main: …`. The master can never change a node's
+users, settings or HTTPS, or erase a server's files.
+
+**Certificates:** the master renews the nodes' certificates, and its own, 30 days before they
+expire. A master on the internet can serve its own certificate (certbot) to browsers: **Settings →
+Connection → HTTPS with my own certificate**. A node with its own public certificate can join too;
+under **Settings → Cluster** it shows as checked with "the system's trust store".
+
 Each node keeps its own dashboard, and its game servers keep running if the master is down.
-The master can only list, start, stop and restart a node's servers; it can't change the
-node's users or settings, or delete servers. Download an encrypted **cluster backup** after
-adding or removing nodes, so another panel can take over if the master is lost. Details are
-in the [README](../../README.md#clusters-several-servers-from-one-panel).
+Download an encrypted **cluster backup** after adding or removing nodes, or turn on **Nightly
+backups**, so another panel can take over if the master is lost. Details are in the
+[README](../../README.md#clusters-several-servers-from-one-panel).
 
 ## 19. Command line
 
@@ -750,6 +766,7 @@ Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 | `redstonepanel join 'CODE'` | Join a cluster. |
 | `redstonepanel leave` | Leave the cluster. |
 | `redstonepanel cluster backup FILE` / `cluster promote FILE` | Back up the cluster / make this panel the master from a backup. |
+| `redstonepanel cluster nightly on\|off` | Nightly encrypted cluster backups on the master (keeps 7). |
 
 Game servers are ordinary systemd services, so the usual tools work too:
 

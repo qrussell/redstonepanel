@@ -20,13 +20,14 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.14.2)
+## What already exists (1.15.0)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
 zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
-trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
+trusted-LAN sign-in, clusters (managing every node's servers from the master, with real
+certificates for a master on the internet), the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
 
@@ -381,7 +382,7 @@ runs. Configuration gains **Whitelist & Access**; Needs attention lists players 
 last 24 h; webhooks gain Player joined / Player turned away (off by default). Bedrock doesn't log
 refused joins, so those are Java only.
 
-### 1.15: manage every node from the master
+### 1.15.0: manage every node from the master *(Nov 2026)*
 
 11. **Clusters phase 2 ([fleet.md](fleet.md) §13).** Asked for after 1.13.1: with only the
     master reachable, you can't create a server on a node or use most of a node server's
@@ -417,6 +418,15 @@ refused joins, so those are Java only.
 
     **Size:** two to three weeks. The proxy, the allowlist and making every tab panel-aware
     are most of it.
+
+    **As built:** the proxy streams requests and answers both ways (uploads and downloads too),
+    never passes on the cluster's own routes, and turns a node's 401 into a 502 so the browser
+    isn't signed out. Nodes refuse purging from the master; uninstalling keeps the world. The
+    master sends the user's role; master admins are admins on nodes, everyone else a user. A
+    master-side route copies a template to a node, and Save as Template on a node's server makes
+    a master template. Housekeeping runs hourly on the master: renewal 30 days ahead (a failure is
+    shown on the node's row) and the nightly backup after 3:00, keeping 7, with the passphrase
+    stored on the master. 1.14 nodes keep phase 1 and are asked to update.
 
 ### 1.16: move a server to another node
 

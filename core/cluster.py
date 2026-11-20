@@ -37,7 +37,9 @@ from core.version import panel_version
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
-CLUSTER_API = 1                 # the master<->node contract version (see hello())
+CLUSTER_API = 2                 # the master<->node contract version (see hello())
+MIN_JOIN_API = 1                # oldest node contract a master still lets join (phase 1 nodes)
+PROXY_API = 2                   # a node needs this for the master's proxy (phase 2, 1.15)
 JOIN_TTL = 3600                 # join codes are single-use and valid for an hour
 CERT_DAYS = 825
 CA_DAYS = 3650
@@ -53,9 +55,13 @@ MIN_PASSPHRASE = 10
 PERMITTED_DNS = ("local", "lan", "home.arpa", "internal")
 PERMITTED_NETS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10")
 
-# Routes the master's node token may use on a node: (method, path regex). Everything else is
-# refused, including /api/users*, /api/settings*, /api/auth/* and DELETE /api/servers/{name}.
+# Routes the master's node token may use on a node: (methods, path regex). Everything else is
+# refused, including /api/users*, /api/settings*, /api/auth/*, /api/panel/* (updating the panel)
+# and deleting a removed server's files. RouteCoverage in tests/test_cluster.py lists every route
+# this reaches, so a new route stays off it until someone adds it there on purpose.
+SERVER = r"/api/servers/minecraft[A-Za-z0-9_.@-]*"
 NODE_ROUTES = (
+    # phase 1: membership, certificates, the cluster page
     ("GET", r"/api/cluster/hello"),
     ("DELETE", r"/api/cluster/membership"),
     ("POST", r"/api/cluster/cert/csr"),
@@ -64,8 +70,20 @@ NODE_ROUTES = (
     ("GET", r"/api/logs"),
     ("GET", r"/api/templates"),
     ("GET", r"/api/host"),
-    ("POST", r"/api/servers/[^/]+/action"),
+    # phase 2 (1.15): every tab of a server, creating, removing and restoring servers, templates
+    # pushed by the master, Java runtimes. Phantom lives under the server's own routes.
+    ("GET|POST|PUT|DELETE", SERVER + r"(/[^/]+)*"),
+    ("POST", r"/api/servers/deploy"),
+    ("POST", r"/api/servers/import"),
+    ("GET", r"/api/servers/removed"),
+    ("POST", r"/api/servers/removed/minecraft[A-Za-z0-9_.@-]*/restore"),
+    ("POST", r"/api/cluster/templates"),
+    ("GET", r"/api/java/(versions|requirement|runtimes|runtimes/job)"),
+    ("POST", r"/api/java/runtimes/(install|remove)"),
 )
+# What the master's proxy (/api/cluster/nodes/{id}/proxy/...) passes on for its users: the node
+# routes except the cluster's own plumbing, which only the master itself calls.
+CLUSTER_PLUMBING = ("/api/cluster/",)
 
 _lock = threading.RLock()
 _token_cache = {}               # sha256(token) -> cache expiry
@@ -159,8 +177,16 @@ def find_node(node_id):
 
 def public_node(n):
     """A node record without its token."""
-    return {k: n.get(k) for k in ("id", "name", "url", "platform", "version", "cluster_api",
-                                  "cert_expires", "added", "added_by", "last_ok", "sans")}
+    out = {k: n.get(k) for k in ("id", "name", "url", "platform", "version", "cluster_api",
+                                 "cert_expires", "added", "added_by", "last_ok", "sans", "renew_error")}
+    out["verify"] = node_verify(n)
+    return out
+
+
+def node_verify(n):
+    """How the master checks a node's certificate: "cluster" (the cluster CA, the default) or
+    "system" (the system's trust store, for a node with its own public certificate)."""
+    return "system" if n.get("verify") == "system" else "cluster"
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +433,24 @@ def _without_taken(names, ips, address, except_node=None):
 # Node side: the master's token
 # ---------------------------------------------------------------------------
 def path_allowed(method, path):
-    return any(method == m and re.fullmatch(p, path) for m, p in NODE_ROUTES)
+    if "//" in path or any(seg in (".", "..") for seg in path.split("/")):
+        return False
+    return any(re.fullmatch(m, method) and re.fullmatch(p, path) for m, p in NODE_ROUTES)
+
+
+def proxy_allowed(method, path):
+    """A master user's request the proxy may pass on to a node."""
+    return path_allowed(method, path) and not path.startswith(CLUSTER_PLUMBING)
+
+
+def master_identity(base, actor, role):
+    """The identity a node gives a request from its master: the master's user (informational,
+    sent in X-RedstonePanel-Actor) and that user's role on the master. A master admin can do
+    everything the allowlist reaches; a master user only what a user may do on the node."""
+    actor = "".join(c for c in str(actor or "?")[:64] if c.isprintable() and c != "@") or "?"
+    master = base.get("master") or "?"
+    return {"username": f"{actor}@{master}", "source": "cluster", "role": "admin" if role == "admin" else "user",
+            "master": master, "actor": actor}
 
 
 def _token_ok(token, st):
@@ -448,13 +491,17 @@ def read_node_token(token, epoch_header, ip):
         if changed or now - int(st.get("last_used") or 0) > 60 or st.get("last_ip") != ip:
             st.update(last_used=now, last_ip=ip)
             _write_json("cluster.json", st)
-    return {"username": f"master:{st.get('master_name', '?')}", "source": "cluster", "role": "user"}
+    return {"username": f"master:{st.get('master_name', '?')}", "source": "cluster", "role": "user",
+            "master": st.get("master_name", "?")}
 
 
 def hello():
     st = state()
-    return {"name": panel_settings.display_name(), "version": panel_version(), "cluster_api": CLUSTER_API,
-            "platform": "linux", "cluster_id": st.get("cluster_id"), "cert_expires": cert_expires(node_crt())}
+    s = panel_settings.load()
+    cert = s["cert_file"] if s["https_mode"] == "custom" else node_crt()
+    return {"name": panel_settings.display_name(s), "version": panel_version(), "cluster_api": CLUSTER_API,
+            "platform": "linux", "cluster_id": st.get("cluster_id"), "cert_expires": cert_expires(cert),
+            "https_mode": s["https_mode"]}
 
 
 # ---------------------------------------------------------------------------
@@ -471,10 +518,25 @@ def _require(want):
     raise ClusterError("This panel isn't a cluster node.")
 
 
-def _no_custom_cert():
-    if panel_settings.load()["https_mode"] == "custom":
-        raise ClusterError("This panel uses its own HTTPS certificate. Clusters don't support that yet: "
-                           "switch to HTTP or self-signed HTTPS in Panel Settings first.")
+def _custom_https():
+    """True when this panel serves its own certificate (certbot or uploaded, https_mode "custom").
+    It keeps serving it in a cluster: browsers see the real certificate, and a node with one is
+    checked with the system's trust store instead of the cluster CA (verify "system")."""
+    return panel_settings.load()["https_mode"] == "custom"
+
+
+def custom_cert_names(path):
+    """The DNS names in a certificate's subjectAltName (empty if none or unreadable)."""
+    try:
+        out = _openssl(["x509", "-in", path, "-noout", "-ext", "subjectAltName"]).decode()
+    except ClusterError:
+        return []
+    return [n.lower() for n in re.findall(r"DNS:([A-Za-z0-9.*-]+)", out) if "*" not in n]
+
+
+def _cluster_https_unless_custom():
+    if not _custom_https():
+        _set_https("cluster")
 
 
 def create_cluster(name, actor):
@@ -484,15 +546,17 @@ def create_cluster(name, actor):
         raise ClusterError("Give the cluster a name.")
     with _lock:
         _require("standalone")
-        _no_custom_cert()
-        if not own_identity()["ips"]:
+        custom = _custom_https()
+        ident = own_identity()
+        if not custom and not ident["ips"]:
             raise ClusterError("This server has no private network address (10.x, 172.16-31.x, 192.168.x "
                                "or 100.64-127.x), which cluster certificates need.")
         shutil.rmtree(CLUSTER_DIR, ignore_errors=True)
         _ensure_dir()
         try:
             _create_ca(name)
-            _issue_own_cert()
+            if ident["ips"] or ident["names"]:
+                _issue_own_cert()        # for cluster HTTPS (a custom-certificate master may switch to it later)
             st = {"role": "master", "cluster_id": str(uuid.uuid4()), "name": name, "epoch": 1,
                   "created": int(time.time()), "created_by": actor}
             _save_nodes([])
@@ -501,7 +565,7 @@ def create_cluster(name, actor):
         except Exception:
             shutil.rmtree(CLUSTER_DIR, ignore_errors=True)
             raise
-        _set_https("cluster")
+        _cluster_https_unless_custom()
         return st
 
 
@@ -518,7 +582,8 @@ def dissolve(actor):
         if load_nodes():
             raise ClusterError("Remove the nodes first.")
         shutil.rmtree(CLUSTER_DIR, ignore_errors=True)
-        _set_https("self_signed")
+        if not _custom_https():
+            _set_https("self_signed")
 
 
 def default_join_url(host_header):
@@ -527,7 +592,11 @@ def default_join_url(host_header):
     s = panel_settings.load()
     ident = own_identity()
     host = panel_settings.host_only(host_header)
-    if host not in ident["names"] and host not in ident["ips"]:
+    if s["https_mode"] == "custom":
+        names = custom_cert_names(s["cert_file"])
+        if names and host not in names:
+            host = names[0]                 # the name the master's own certificate is for
+    elif host not in ident["names"] and host not in ident["ips"]:
         host = ident["ips"][0] if ident["ips"] else host
     port = "" if s["https_port"] == 443 else f":{s['https_port']}"
     return f"https://{host}{port}"
@@ -595,18 +664,27 @@ def accept_join(body, client_ip):
             raise ClusterError("Bad request.")
         if not 1 <= port <= 65535:
             raise ClusterError("Bad HTTPS port.")
-        if api < CLUSTER_API:
+        if api < MIN_JOIN_API:
             raise ClusterError("Update RedstonePanel on this server before joining the cluster.")
-        ip = _ip(client_ip)
-        if not allowed_ip(client_ip):
-            raise ClusterError(f"Nodes must reach the master from a private address; this one came from {client_ip}.")
-        names, ips = _clean_sans(body.get("names", []), body.get("ips", []))
-        names, ips = _without_taken(names, ips, str(ip))
-        cert = sign_csr(body.get("csr"), names, ips)
-        expires = cert_expires_pem(cert)
-
         nodes = load_nodes()
-        node = {"id": "n-" + secrets.token_hex(3), "name": name, "url": f"https://{ip}:{port}",
+        if body.get("verify") == "system":
+            # A node with its own public certificate (certbot): the master reaches it by that name
+            # and checks it with the system's trust store, so it needs no cluster certificate.
+            url, verify, cert, names, ips = _system_node_url(body.get("url"), port, nodes), "system", None, set(), set()
+            expires = body.get("cert_expires") if isinstance(body.get("cert_expires"), int) else None
+        else:
+            ip = _ip(client_ip)
+            if not allowed_ip(client_ip):
+                raise ClusterError(f"Nodes must reach the master from a private address; this one came from "
+                                   f"{client_ip}. A node on a public address needs its own certificate "
+                                   "(certbot) in Panel Settings before it joins.")
+            names, ips = _clean_sans(body.get("names", []), body.get("ips", []))
+            names, ips = _without_taken(names, ips, str(ip))
+            cert = sign_csr(body.get("csr"), names, ips)
+            expires = cert_expires_pem(cert)
+            url, verify = f"https://{ip}:{port}", "cluster"
+
+        node = {"id": "n-" + secrets.token_hex(3), "name": name, "url": url, "verify": verify,
                 "token": token, "sans": {"names": sorted(names), "ips": sorted(ips)},
                 "cert_expires": expires, "platform": str(body.get("platform") or "linux")[:20],
                 "version": str(body.get("version") or "unknown")[:40], "cluster_api": api,
@@ -619,13 +697,29 @@ def accept_join(body, client_ip):
             "cert": cert, "ca": read_ca()}, node
 
 
+def _system_node_url(url, port, nodes):
+    """The address of a node that has its own public certificate: https://NAME:PORT."""
+    m = re.fullmatch(r"https://([A-Za-z0-9.-]+):([0-9]{1,5})", str(url or ""))
+    if not m or "." not in m.group(1) or _ip(m.group(1)) or int(m.group(2)) != port:
+        raise ClusterError("A node with its own certificate must give its public name, like https://mc.example.com:8443")
+    host = m.group(1).lower()
+    if any(panel_settings.host_only(n["url"].split("://", 1)[1]) == host for n in nodes):
+        raise ClusterError(f"{host} is already another node's address.")
+    return f"https://{host}:{port}"
+
+
 def join(code, actor, client):
     """Node: joins the cluster in the join code. `client` is core.cluster_client (passed in to keep
     this module free of network code). The caller restarts the panel."""
     c = decode_code(code)
     with _lock:
         _require("standalone")
-        _no_custom_cert()
+        s = panel_settings.load()
+        custom = s["https_mode"] == "custom"
+        public = custom_cert_names(s["cert_file"]) if custom else []
+        if custom and not public:
+            raise ClusterError("This panel's own certificate names no host, so the master couldn't check it. "
+                               "Use a certificate for this server's public name, or switch to self-signed HTTPS.")
         ca_pem = client.fetch_master_ca(c["u"])
         if ca_fingerprint(ca_pem) != c["ca"]:
             raise ClusterError("The master's certificate doesn't match the join code. Check the address, "
@@ -635,20 +729,24 @@ def join(code, actor, client):
         try:
             _write_bytes(ca_crt(), ca_pem.encode(), 0o644)
             token = new_token("rpn_")
-            key_new = node_key() + ".new"
-            csr = new_key_and_csr(key_new)
-            ident = own_identity()
-            s = panel_settings.load()
-            resp = client.post_join(c["u"], ca_pem, {
-                "secret": c["s"], "name": panel_settings.display_name(s), "token": token, "csr": csr,
-                "names": ident["names"], "ips": ident["ips"], "https_port": s["https_port"],
-                "version": panel_version(), "cluster_api": CLUSTER_API, "platform": "linux"})
+            req = {"secret": c["s"], "name": panel_settings.display_name(s), "token": token,
+                   "https_port": s["https_port"], "version": panel_version(), "cluster_api": CLUSTER_API,
+                   "platform": "linux"}
+            if custom:
+                req.update(verify="system", url=f"https://{public[0]}:{s['https_port']}",
+                           cert_expires=cert_expires(s["cert_file"]))
+            else:
+                key_new = node_key() + ".new"
+                ident = own_identity()
+                req.update(csr=new_key_and_csr(key_new), names=ident["names"], ips=ident["ips"])
+            resp = client.post_join(c["u"], ca_pem, req)
             if ca_fingerprint(resp.get("ca", "")) != c["ca"]:
                 raise ClusterError("The master answered with a different certificate authority.")
-            _write_bytes(node_crt() + ".new", resp["cert"].encode(), 0o644)
-            _check_cert(node_crt() + ".new", key_new)
-            os.replace(key_new, node_key())
-            os.replace(node_crt() + ".new", node_crt())
+            if not custom:
+                _write_bytes(node_crt() + ".new", resp["cert"].encode(), 0o644)
+                _check_cert(node_crt() + ".new", key_new)
+                os.replace(key_new, node_key())
+                os.replace(node_crt() + ".new", node_crt())
             st = {"role": "node", "cluster_id": resp["cluster_id"], "cluster_name": resp["cluster_name"],
                   "master_name": resp["master_name"], "master_url": c["u"], "node_id": resp["node_id"],
                   "epoch": int(resp["epoch"]), "token_hash": auth.hash_password(token),
@@ -657,7 +755,7 @@ def join(code, actor, client):
         except Exception:
             shutil.rmtree(CLUSTER_DIR, ignore_errors=True)
             raise
-        _set_https("cluster")
+        _cluster_https_unless_custom()
         return st
 
 
@@ -679,7 +777,7 @@ def forget_node(node_id):
         _save_nodes([n for n in nodes if n["id"] != node_id])
 
 
-def update_node(node_id, name=None, url=None, **fields):
+def update_node(node_id, name=None, url=None, verify=None, **fields):
     with _lock:
         nodes = load_nodes()
         n = next((x for x in nodes if x["id"] == node_id), None)
@@ -695,6 +793,10 @@ def update_node(node_id, name=None, url=None, **fields):
             if not re.fullmatch(r"https://[A-Za-z0-9.\-\[\]:]+", url):
                 raise ClusterError("The node address must look like https://192.168.1.20:8443")
             n["url"] = url
+        if verify is not None:
+            if verify not in ("cluster", "system"):
+                raise ClusterError("Check a node's certificate with the cluster CA or the system's trust store.")
+            n["verify"] = verify
         n.update(fields)
         _save_nodes(nodes)
         return n
@@ -729,6 +831,8 @@ def install_cert(pem):
 
 def sign_renewal(node, req):
     """Master: signs a node's renewal request. The node keeps the address the master uses."""
+    if node_verify(node) == "system":
+        raise ClusterError(f"{node['name']} uses its own certificate; renew it on that server (certbot does it by itself).")
     names, ips = _clean_sans(req.get("names", []), req.get("ips", []))
     host = panel_settings.host_only(node["url"].split("://", 1)[1])
     if not (allowed_ip(host) or allowed_name(host)):
@@ -830,7 +934,7 @@ def promote(data, passphrase, actor):
             raise ClusterError("This panel is already a master.")
         if cur["role"] == "node" and cur.get("cluster_id") != manifest["cluster_id"]:
             raise ClusterError("This panel is a node of a different cluster. Leave it first.")
-        _no_custom_cert()
+        custom = _custom_https()
         own_id = cur.get("node_id")
         old_dir = CLUSTER_DIR + ".old"
         shutil.rmtree(old_dir, ignore_errors=True)
@@ -845,7 +949,9 @@ def promote(data, passphrase, actor):
             _save_joins([])
             st = json.loads(files["cluster/cluster.json"])
             st.update(epoch=int(st.get("epoch", 1)) + 1, promoted=int(time.time()), promoted_by=actor)
-            _issue_own_cert()
+            ident = own_identity()
+            if not custom or ident["ips"] or ident["names"]:
+                _issue_own_cert()
             _write_json("cluster.json", st)
         except Exception:
             shutil.rmtree(CLUSTER_DIR, ignore_errors=True)
@@ -858,5 +964,130 @@ def promote(data, passphrase, actor):
         for arc in ("users.json", "templates.json"):
             if arc in files:
                 _write_bytes(BACKUP_FILES[arc](), files[arc], 0o600)
-        _set_https("cluster")
+        _cluster_https_unless_custom()
         return st
+
+
+# ---------------------------------------------------------------------------
+# Nightly backups (master): an encrypted copy of the cluster state in data/cluster/backups/,
+# keeping NIGHTLY_KEEP. The passphrase is kept here (0600) so the copies can be made unattended;
+# it protects the copies once they leave this machine, not against someone who has its disk.
+# ---------------------------------------------------------------------------
+NIGHTLY_KEEP = 7
+NIGHTLY_HOUR = 3                # local time; the first check after this hour makes the day's copy
+NIGHTLY_RE = re.compile(r"^redstonepanel-cluster-[0-9]{8}\.rpbackup$")
+
+
+def backups_dir():
+    return _path("backups")
+
+
+def nightly_settings():
+    data = _read_json("nightly.json", {})
+    return data if isinstance(data, dict) else {}
+
+
+def nightly_view():
+    n = nightly_settings()
+    files = []
+    try:
+        for f in sorted(os.listdir(backups_dir()), reverse=True):
+            if NIGHTLY_RE.match(f):
+                st = os.stat(os.path.join(backups_dir(), f))
+                files.append({"file": f, "size": st.st_size, "created": int(st.st_mtime)})
+    except OSError:
+        pass
+    return {"enabled": bool(n.get("enabled") and n.get("passphrase")), "set_by": n.get("set_by"),
+            "set_at": n.get("set_at"), "last": n.get("last"), "last_error": n.get("last_error"),
+            "keep": NIGHTLY_KEEP, "files": files}
+
+
+def set_nightly(enabled, passphrase, actor):
+    """Master: turns nightly backups on (with the passphrase to encrypt them) or off."""
+    with _lock:
+        _require("master")
+        n = nightly_settings()
+        if enabled:
+            if passphrase:
+                if len(passphrase) < MIN_PASSPHRASE:
+                    raise ClusterError(f"Use a passphrase of at least {MIN_PASSPHRASE} characters.")
+                n["passphrase"] = passphrase
+            elif not n.get("passphrase"):
+                raise ClusterError("Give the passphrase the nightly backups are encrypted with.")
+            n.update(enabled=True, set_by=actor, set_at=int(time.time()))
+        else:
+            n = {"enabled": False, "set_by": actor, "set_at": int(time.time())}   # forgets the passphrase
+        _write_json("nightly.json", n)
+    return nightly_view()
+
+
+def nightly_due(now=None):
+    """True when nightly backups are on and today's copy (after NIGHTLY_HOUR) isn't made yet."""
+    n = nightly_settings()
+    if role() != "master" or not (n.get("enabled") and n.get("passphrase")):
+        return False
+    now = time.time() if now is None else now
+    lt = time.localtime(now)
+    if lt.tm_hour < NIGHTLY_HOUR:
+        return False
+    today = time.strftime("%Y%m%d", lt)
+    return time.strftime("%Y%m%d", time.localtime(n.get("last") or 0)) != today
+
+
+def run_nightly(now=None):
+    """Writes today's encrypted backup and prunes old ones. Returns the file name."""
+    now = time.time() if now is None else now
+    with _lock:
+        n = nightly_settings()
+        try:
+            data = make_backup(n.get("passphrase") or "", "nightly backup")
+            os.makedirs(backups_dir(), mode=0o700, exist_ok=True)
+            name = f"redstonepanel-cluster-{time.strftime('%Y%m%d', time.localtime(now))}.rpbackup"
+            _write_bytes(os.path.join(backups_dir(), name), data)
+            kept = sorted((f for f in os.listdir(backups_dir()) if NIGHTLY_RE.match(f)), reverse=True)
+            for old in kept[NIGHTLY_KEEP:]:
+                os.remove(os.path.join(backups_dir(), old))
+            n.update(last=int(now), last_error=None)
+            return name
+        except (ClusterError, OSError) as e:
+            n.update(last=int(now), last_error=str(e))
+            raise ClusterError(f"Nightly cluster backup failed: {e}")
+        finally:
+            _write_json("nightly.json", n)
+
+
+def nightly_file(name):
+    if not NIGHTLY_RE.match(name or ""):
+        raise ClusterError("No such backup.")
+    path = os.path.join(backups_dir(), name)
+    if not os.path.isfile(path):
+        raise ClusterError("No such backup.")
+    return path
+
+
+# ---------------------------------------------------------------------------
+# Templates the master pushes to a node before creating a server there with one
+# ---------------------------------------------------------------------------
+TEMPLATE_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+
+
+def clean_template(t, master_name):
+    """A template received from the master, checked field by field."""
+    if not isinstance(t, dict):
+        raise ClusterError("Bad template.")
+    tid, name, edition = t.get("id"), t.get("name"), t.get("edition")
+    props, perms = t.get("properties"), t.get("permissions", "")
+    if not (isinstance(tid, str) and TEMPLATE_ID_RE.match(tid)):
+        raise ClusterError("Bad template id.")
+    if not (isinstance(name, str) and 0 < len(name.strip()) <= 100):
+        raise ClusterError("Bad template name.")
+    if edition not in ("Java", "Bedrock"):
+        raise ClusterError("Bad template edition.")
+    if not (isinstance(props, dict) and len(props) <= 500 and all(
+            isinstance(k, str) and len(k) <= 200 and "\n" not in k and "=" not in k
+            and isinstance(v, (str, int, float, bool)) and "\n" not in str(v) for k, v in props.items())):
+        raise ClusterError("Bad template properties.")
+    if not (isinstance(perms, str) and len(perms) <= 1 << 20):
+        raise ClusterError("Bad template permissions.")
+    return {"id": tid, "name": name.strip(), "edition": edition, "properties": props, "permissions": perms,
+            "from_master": master_name}

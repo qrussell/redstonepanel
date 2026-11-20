@@ -1,3 +1,38 @@
+redstonepanel (1.15.0) noble; urgency=medium
+
+  * Clusters phase 2: manage every node's servers from the master. The
+    master's server list shows each node's servers under the node's name,
+    and opening one shows every tab: Overview, Live Chat, Configuration
+    (with Whitelist & Access), Maintenance, Backups, World & Maps, Files,
+    Mods, Java and Phantom. Requests go through the master's proxy,
+    /api/cluster/nodes/{id}/proxy/..., with the node's token; downloads
+    and uploads are streamed.
+  * Nodes accept a wider allowlist from the master: every route of a
+    single server, creating, importing, removing and restoring servers,
+    templates pushed by the master and Java runtimes. Never users, panel
+    settings, HTTPS, sign-in, panel updates, cluster membership changes
+    by proxy, or erasing a server's files.
+  * Master admins act as admins on the nodes; master users get a user's
+    rights there. Both panels log each change as
+    "[CLUSTER] user@master: ...".
+  * New Server has a Where choice on a master. A template is copied to
+    the node first, ports are chosen on the node, and a missing Java can
+    be installed there. Save as Template on a node's server saves it as
+    one of the master's templates.
+  * A cluster master can use its own certificate (certbot or uploaded,
+    HTTPS mode "custom") for browsers; nodes keep cluster certificates on
+    private addresses. A node with its own public certificate can join
+    and is checked with the system's trust store (verify "system").
+  * The master renews node cluster certificates automatically 30 days
+    before they expire, and its own.
+  * Nightly cluster backups: Panel Settings > Cluster > Nightly backups
+    (or "redstonepanel cluster nightly on") writes an encrypted backup
+    every night after 3:00, keeping 7.
+  * The cluster contract goes to version 2. 1.14 nodes still join and
+    show on the Cluster page; update them to manage their servers.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Fri, 20 Nov 2026 23:30:00 +0000
+
 redstonepanel (1.14.2) noble; urgency=medium
 
   * Player access log: the panel reads each server's console and logs and

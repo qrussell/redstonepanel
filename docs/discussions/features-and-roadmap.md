@@ -5,7 +5,7 @@ Hi everyone 👋
 RedstonePanel is a web panel for running Minecraft servers on your own Ubuntu machine. Each
 Java or Bedrock server is a plain systemd service, there's no Docker and no database, and the
 panel installs from a signed apt repository. This post is a tour of what the panel already
-does (as of **1.14.2**) and what's planned next. Your feedback decides the order, so please
+does (as of **1.15.0**) and what's planned next. Your feedback decides the order, so please
 reply with what you'd use, what's missing, or what gets in your way.
 
 ---
@@ -72,9 +72,10 @@ reply with what you'd use, what's missing, or what gets in your way.
   trusted LAN.
 - **Sign-in** with Linux accounts (through PAM) or panel-only accounts with admin/user
   roles. **Trusted-LAN sign-in** is optional.
-- **Clusters (phase 1):** one panel is the master. It lists every node's servers and can
-  start, stop and restart them. There are join codes, a cluster CA, and an encrypted cluster
-  backup that lets you promote another panel if the master is lost.
+- **Clusters:** one panel is the master and manages every node's servers with all their tabs,
+  creates servers on any node, and can use a real (certbot) certificate on the internet. There
+  are join codes, a cluster CA with automatic renewal, and encrypted cluster backups (also
+  nightly) that let you promote another panel if the master is lost.
 - **Dark and light themes.** A CLI (`sudo redstonepanel …`) covers status, backups,
   restores and cluster tasks.
 - **Installs with `apt install redstonepanel`** from the signed qrussell-repo repository.
@@ -86,15 +87,6 @@ reply with what you'd use, what's missing, or what gets in your way.
 
 Version numbers are targets, not promises. The guiding rule stays the same: **protect
 people's worlds first**, and use systemd rather than reinventing it.
-
-### 1.15: manage every node from the master
-- **Every tab for every server from the master:** Overview, Live Chat, Configuration,
-  Backups, Files, Mods, Java and Phantom, even for servers on other nodes. Requests go
-  through the master to the node, limited by an allowlist.
-- **Create a server on a node** with a new **Where** choice. Templates and Java follow
-  automatically.
-- **Real certificates for a panel on the internet** (certbot or uploaded). Nodes can stay
-  on private addresses. Node certificates renew automatically.
 
 ### 1.16: move a server to another node
 - **Move** a server between cluster members. The world is streamed and checksummed, and

@@ -264,9 +264,11 @@ On a cluster member, run `sudo redstonepanel cluster-https` afterwards to rejoin
 ## Clusters: several servers from one panel
 
 Running RedstonePanel on several servers? Make one panel the **master** of a cluster and add
-the others as **nodes**. The master's **🌐 Cluster** page then lists every node's game servers
-and can start, stop and restart them. Every node keeps its own dashboard for its own servers, and
-its game servers keep running if the master is down.
+the others as **nodes**. The master then manages every node's game servers: its sidebar lists
+them under each node's name with all their tabs (Configuration, Backups, Files, Mods, Java,
+Phantom and the rest), **New Server** has a **Where** choice, and the **🌐 Cluster** page shows
+every panel at a glance. Every node keeps its own dashboard for its own servers, and its game
+servers keep running if the master is down.
 
 1. On the master: **Panel Settings → Cluster → Create cluster**
    (or `sudo redstonepanel cluster create "Home"`). The panel restarts on HTTPS (port 8443).
@@ -281,16 +283,24 @@ The master and its nodes connect to each other on the HTTPS port (8443 by defaul
 firewall such as ufw is active, allow that port between them, for example
 `sudo ufw allow from 192.168.1.0/24 to any port 8443 proto tcp`.
 
-What the master can do on a node is limited: list its game servers, start/stop/restart them, and
-renew its certificate. It can't see or change the node's users or settings, or delete servers.
-Cluster certificates only cover private addresses (10.x, 172.16–31.x, 192.168.x, 100.64–127.x)
-and local names (`.lan`, `.local`, `.home.arpa`, `.internal`), so the CA you import can't be
-used to impersonate other websites. Panels using their own certificate (e.g. certbot) can't
-join a cluster yet.
+Admins on the master act as admins on the nodes, and users as users; both panels log each
+change with the master user's name. What the master can do on a node is still limited: it can
+manage game servers, templates and Java, but never see or change the node's users, settings or
+HTTPS, update the panel, or erase a server's files (uninstalling keeps the world as a removed
+server). Cluster certificates only cover private addresses (10.x, 172.16–31.x, 192.168.x,
+100.64–127.x) and local names (`.lan`, `.local`, `.home.arpa`, `.internal`), so the CA you
+import can't be used to impersonate other websites. The master renews them 30 days before they
+expire.
+
+**A master on the internet** can use its own certificate (certbot) for browsers: choose **HTTPS
+with my own certificate** under Panel Settings → Connection. Browsers only talk to the master, so
+the nodes can stay on private addresses. A node that has its own public certificate can join too;
+the master then checks it with the system's trust store instead of the cluster CA.
 
 **If the master is lost:** download an encrypted backup from **Panel Settings → Cluster →
 Backup** (or `sudo redstonepanel cluster backup FILE`) after adding or removing nodes, and keep
-it off the master. `sudo redstonepanel cluster promote FILE` on any other panel makes that panel
+it off the master. **Nightly backups** (Panel Settings → Cluster, or
+`sudo redstonepanel cluster nightly on`) also keep the last 7 on the master itself. `sudo redstonepanel cluster promote FILE` on any other panel makes that panel
 the master. Nodes accept it straight away and refuse the old master from then on.
 
 `sudo redstonepanel leave` takes a node out of the cluster (remove it on the master too). The

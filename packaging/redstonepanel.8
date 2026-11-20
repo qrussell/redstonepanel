@@ -1,4 +1,4 @@
-.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.14.2" "System Administration"
+.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.15.0" "System Administration"
 .SH NAME
 redstonepanel \- manage the RedstonePanel Minecraft server panel
 .SH SYNOPSIS
@@ -121,11 +121,14 @@ exits 0 when the game dies, so systemd would not restart them; when a Bedrock se
 log doesn't end with "Quit correctly" (its \fBstop\fR command), the hook starts the server again
 after 20 seconds with a transient \fBsystemd-run\fR timer.
 .SH CLUSTER COMMANDS
-A cluster lets one panel, the master, see and start, stop or restart the game servers of
-other RedstonePanels, its nodes. The master runs a small certificate authority and issues
+A cluster lets one panel, the master, manage the game servers of other RedstonePanels, its
+nodes, with every tab of each server. The master runs a small certificate authority and issues
 every member's HTTPS certificate; certificates only cover private addresses and local names
-(.lan, .local, .home.arpa, .internal). A node accepts the master's token only for listing and
-controlling game servers: never users, settings or deleting servers.
+(.lan, .local, .home.arpa, .internal), and the master renews them 30 days before they expire.
+A master, or a node on a public address, may use its own certificate (certbot) instead.
+A node accepts the master's token only for its game servers, templates and Java: never users,
+settings, HTTPS, panel updates or erasing a server's files. Master admins act as admins on the
+nodes and master users as users; both panels log each change as [CLUSTER] user@master.
 .TP
 .BI "cluster create " NAME
 Make this panel the master of a new cluster, switch it to cluster HTTPS and restart it.
@@ -147,6 +150,15 @@ On a master with no nodes: dissolve the cluster.
 .BI "cluster backup " FILE
 On the master: write the cluster's state (CA, nodes and their tokens, panel accounts, templates)
 to FILE, encrypted with a passphrase that is asked for (or read from standard input).
+.TP
+.BR "cluster nightly on" | off
+On the master: write an encrypted cluster backup to
+.I /var/lib/redstonepanel/cluster/backups/
+every night after 3:00, keeping 7.
+.B on
+asks for the passphrase, which is stored on the master;
+.B off
+forgets it.
 .TP
 .BI "cluster promote " FILE
 Make this panel the master from a backup, replacing its panel accounts and templates. Nodes

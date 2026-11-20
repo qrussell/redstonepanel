@@ -11,7 +11,10 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_TMP = tempfile.mkdtemp(prefix="rp-test-cluster-")
+os.environ.setdefault("RP_LOG_FILE", os.path.join(_TMP, "panel.log"))
+os.environ.setdefault("RP_DATA_DIR", os.path.join(_TMP, "data"))
+sys.path.insert(0,os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core import auth, settings  # noqa: E402
 from core import cluster as C  # noqa: E402
 
@@ -95,18 +98,63 @@ class CodesAndRules(unittest.TestCase):
         allowed = [("GET", "/api/servers"), ("POST", "/api/servers/minecraft-java-1/action"),
                    ("GET", "/api/cluster/hello"), ("DELETE", "/api/cluster/membership"),
                    ("GET", "/api/logs"), ("GET", "/api/templates"),
-                   ("POST", "/api/cluster/cert/csr"), ("PUT", "/api/cluster/cert")]
+                   ("POST", "/api/cluster/cert/csr"), ("PUT", "/api/cluster/cert"),
+                   # phase 2: every tab of a server, creating, removing and restoring servers
+                   ("GET", "/api/servers/minecraft-java-1/properties"),
+                   ("POST", "/api/servers/minecraft-java-1/whitelist/add"),
+                   ("PUT", "/api/servers/minecraft-java-1/files/text"),
+                   ("GET", "/api/servers/minecraft-java-1/backups/backup-2026.tar.gz"),
+                   ("POST", "/api/servers/minecraft-bedrock-1/phantom/install"),
+                   ("DELETE", "/api/servers/minecraft-java-1"),
+                   ("GET", "/api/servers/minecraft-java-1/export"),
+                   ("POST", "/api/servers/deploy"), ("POST", "/api/servers/import"),
+                   ("GET", "/api/servers/removed"), ("POST", "/api/servers/removed/minecraft-old/restore"),
+                   ("POST", "/api/cluster/templates"), ("GET", "/api/java/runtimes"),
+                   ("POST", "/api/java/runtimes/install"), ("GET", "/api/java/requirement")]
         refused = [("GET", "/api/users"), ("POST", "/api/users"), ("PUT", "/api/settings"),
                    ("GET", "/api/settings/cluster"), ("POST", "/api/settings/cluster/backup"),
-                   ("DELETE", "/api/servers/minecraft-java-1"), ("POST", "/api/servers/a/b/action"),
+                   ("PUT", "/api/settings/notifications"), ("POST", "/api/panel/update"),
+                   ("POST", "/api/servers/a/b/action"), ("POST", "/api/servers/redstonepanel/action"),
                    ("POST", "/api/auth/password"), ("GET", "/api/cluster/overview"),
                    ("POST", "/api/cluster/nodes/n-1/servers/x/action"), ("POST", "/api/servers"),
-                   ("GET", "/api/servers/x/export"), ("POST", "/api/servers/deploy"),
-                   ("GET", "/api/servers/"), ("GET", "/api/serversX")]
+                   ("DELETE", "/api/servers/removed/minecraft-old"), ("PATCH", "/api/servers/minecraft-java-1"),
+                   ("GET", "/api/servers/"), ("GET", "/api/serversX"), ("PUT", "/api/templates/abc"),
+                   ("GET", "/api/servers/minecraft-a/../../users"), ("GET", "/api/servers/minecraft-a//x"),
+                   ("GET", "/api/servers/minecraft-a/files/..")]
         for m, p in allowed:
             self.assertTrue(C.path_allowed(m, p), f"{m} {p}")
         for m, p in refused:
             self.assertFalse(C.path_allowed(m, p), f"{m} {p}")
+
+    def test_proxy_passes_on_only_what_users_may_reach(self):
+        self.assertTrue(C.proxy_allowed("GET", "/api/servers/minecraft-a/chat"))
+        self.assertTrue(C.proxy_allowed("POST", "/api/servers/deploy"))
+        for m, p in (("DELETE", "/api/cluster/membership"), ("PUT", "/api/cluster/cert"),
+                     ("POST", "/api/cluster/cert/csr"), ("POST", "/api/cluster/templates"),
+                     ("GET", "/api/cluster/hello"), ("GET", "/api/users"), ("GET", "/api/settings")):
+            self.assertFalse(C.proxy_allowed(m, p), f"{m} {p}")
+
+    def test_master_identity(self):
+        base = {"username": "master:Main", "source": "cluster", "role": "user", "master": "Main"}
+        alex = C.master_identity(base, "alex", "user")
+        self.assertEqual((alex["username"], alex["role"], alex["source"]), ("alex@Main", "user", "cluster"))
+        self.assertEqual(C.master_identity(base, "root", "admin")["role"], "admin")
+        self.assertEqual(C.master_identity(base, "x", "superuser")["role"], "user", "only 'admin' is an admin")
+        self.assertEqual(C.master_identity(base, None, None)["username"], "?@Main")
+        self.assertEqual(C.master_identity(base, "a@b\nc", "user")["username"], "abc@Main",
+                         "no line breaks or extra @ from a header end up in the activity log")
+
+    def test_templates_from_the_master(self):
+        t = {"id": "1f0c-aa", "name": " Survival ", "edition": "Java",
+             "properties": {"difficulty": "hard", "pvp": False, "max-players": 20}, "permissions": "[]"}
+        clean = C.clean_template(t, "Main")
+        self.assertEqual(clean["name"], "Survival")
+        self.assertEqual(clean["from_master"], "Main")
+        for bad in ({**t, "id": "../x"}, {**t, "edition": "Forge"}, {**t, "properties": {"a\nb": "1"}},
+                    {**t, "properties": {"motd": "x\nrcon.password=1"}}, {**t, "properties": []},
+                    {**t, "name": ""}, {**t, "permissions": 5}, "nope"):
+            with self.assertRaises(C.ClusterError, msg=str(bad)):
+                C.clean_template(bad, "Main")
 
     def test_certificate_names(self):
         for ok in ("box.lan", "basement.local", "mc.home.arpa", "a.b.internal", "lan"):
@@ -307,26 +355,165 @@ class ClusterFlow(unittest.TestCase):
             C.promote(data, "a long passphrase", "dave")
 
 
+def own_certificate(directory, name):
+    """A certificate and key for a public name, standing in for a certbot certificate."""
+    cert, key = os.path.join(directory, "own.crt"), os.path.join(directory, "own.key")
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
+                    "-nodes", "-keyout", key, "-out", cert, "-days", "90", "-subj", f"/CN={name}",
+                    "-addext", f"subjectAltName=DNS:{name}"], check=True, capture_output=True)
+    return cert, key
+
+
+def use_own_certificate(directory, name):
+    cert, key = own_certificate(directory, name)
+    settings.save(dict(settings.load(), https_mode="custom", cert_file=cert, key_file=key))
+
+
+@unittest.skipUnless(HAVE_OPENSSL, "needs the openssl command")
+class Phase2Certificates(unittest.TestCase):
+    """1.15: a master or node with its own (certbot) certificate, nightly backups."""
+    def setUp(self):
+        self.p = Panels()
+
+    def tearDown(self):
+        self.p.close()
+
+    def test_master_keeps_its_own_certificate(self):
+        self.p.use("master")
+        use_own_certificate(os.path.join(self.p.root, "master"), "panel.example.com")
+        C.create_cluster("Home", "alice")
+        self.assertEqual(C.role(), "master")
+        self.assertEqual(settings.load()["https_mode"], "custom", "browsers keep seeing the real certificate")
+        self.assertTrue(os.path.exists(C.ca_crt()))
+        # join codes point at the name the certificate is for, whatever address the browser used
+        url = C.default_join_url("10.0.0.5:8443")
+        self.assertTrue(url.startswith("https://panel.example.com"), url)
+        # and a node can still join (it checks the master with the system CAs plus the cluster CA)
+        code = C.create_join("alice", "https://192.168.1.10:8443")["code"]
+        self.p.use("node")
+        C.join(code, "bob", FakeClient(self.p))
+        self.assertEqual(C.role(), "node")
+        self.p.use("master")
+        C.forget_node(C.load_nodes()[0]["id"])
+        C.dissolve("alice")
+        self.assertEqual(settings.load()["https_mode"], "custom", "dissolving keeps the panel's own certificate")
+
+    def test_node_with_its_own_certificate_is_checked_with_the_system_cas(self):
+        self.p.use("master")
+        C.create_cluster("Home", "alice")
+        code = C.create_join("alice", "https://192.168.1.10:8443")["code"]
+        self.p.use("other")
+        use_own_certificate(os.path.join(self.p.root, "other"), "mc.example.com")
+        # a public address is fine for such a node: the master reaches it by its public name
+        C.join(code, "carol", FakeClient(self.p, node_ip="203.0.113.5"))
+        self.assertEqual(C.role(), "node")
+        self.assertEqual(settings.load()["https_mode"], "custom")
+        self.assertFalse(os.path.exists(C.node_crt()), "no cluster certificate needed")
+        self.assertGreater(C.hello()["cert_expires"], 0, "hello reports the panel's own certificate")
+        self.p.use("master")
+        [node] = C.load_nodes()
+        self.assertEqual(node["url"], "https://mc.example.com:8443")
+        self.assertEqual(C.node_verify(node), "system")
+        self.assertEqual(C.public_node(node)["verify"], "system")
+        with self.assertRaisesRegex(C.ClusterError, "its own certificate"):
+            C.sign_renewal(node, {"csr": "", "names": [], "ips": []})
+        C.update_node(node["id"], verify="cluster")
+        self.assertEqual(C.node_verify(C.find_node(node["id"])), "cluster")
+        with self.assertRaises(C.ClusterError):
+            C.update_node(node["id"], verify="none")
+
+    def test_system_node_names(self):
+        for bad in ("https://203.0.113.5:8443", "https://mc:8443", "http://mc.example.com:8443",
+                    "https://mc.example.com:9999", "https://mc.example.com"):
+            with self.assertRaises(C.ClusterError, msg=bad):
+                C._system_node_url(bad, 8443, [])
+        self.assertEqual(C._system_node_url("https://MC.example.com:8443", 8443, []), "https://mc.example.com:8443")
+        with self.assertRaisesRegex(C.ClusterError, "already"):
+            C._system_node_url("https://mc.example.com:8443", 8443, [{"url": "https://mc.example.com:8443"}])
+
+    def test_nightly_backups(self):
+        import time
+        self.p.use("master")
+        C.create_cluster("Home", "alice")
+        self.assertFalse(C.nightly_view()["enabled"])
+        self.assertFalse(C.nightly_due())
+        with self.assertRaisesRegex(C.ClusterError, "passphrase"):
+            C.set_nightly(True, None, "alice")
+        with self.assertRaisesRegex(C.ClusterError, "at least"):
+            C.set_nightly(True, "short", "alice")
+        self.assertTrue(C.set_nightly(True, "a long nightly passphrase", "alice")["enabled"])
+        with open(os.path.join(C.CLUSTER_DIR, "nightly.json")) as f:
+            self.assertIn("a long nightly passphrase", f.read())
+        self.assertEqual(os.stat(os.path.join(C.CLUSTER_DIR, "nightly.json")).st_mode & 0o777, 0o600)
+
+        day = time.mktime((2026, 11, 1, 4, 0, 0, 0, 0, -1))
+        self.assertFalse(C.nightly_due(day - 2 * 3600), "not before 3:00")
+        for i in range(C.NIGHTLY_KEEP + 2):
+            t = day + i * 86400
+            self.assertTrue(C.nightly_due(t))
+            C.run_nightly(t)
+            self.assertFalse(C.nightly_due(t + 3600), "once a day")
+        view = C.nightly_view()
+        self.assertEqual(len(view["files"]), C.NIGHTLY_KEEP)
+        self.assertEqual(view["files"][0]["file"], "redstonepanel-cluster-20261109.rpbackup")
+        path = C.nightly_file(view["files"][0]["file"])
+        with open(path, "rb") as f:
+            manifest, files = C.read_backup(f.read(), "a long nightly passphrase")
+        self.assertEqual(manifest["cluster"], "Home")
+        for bad in ("../cluster.json", "nightly.json", "redstonepanel-cluster-20200101.rpbackup"):
+            with self.assertRaises(C.ClusterError):
+                C.nightly_file(bad)
+        # turning it off forgets the passphrase
+        C.set_nightly(False, None, "alice")
+        with open(os.path.join(C.CLUSTER_DIR, "nightly.json")) as f:
+            self.assertNotIn("passphrase", f.read())
+        self.assertFalse(C.nightly_due(day + 30 * 86400))
+
+
 @unittest.skipUnless(HAVE_FASTAPI, "needs fastapi")
 class RouteCoverage(unittest.TestCase):
-    """Every API route is either reachable with a node token on purpose, or not at all."""
+    """Every API route is either reachable with a node token on purpose, or not at all.
+
+    Phase 2 (1.15) gives the master every route of a single server (/api/servers/{server_name}/...),
+    so each server tab works from the master. Anything else must be listed here on purpose."""
     EXPECTED = {("GET", "/api/cluster/hello"), ("DELETE", "/api/cluster/membership"),
                 ("POST", "/api/cluster/cert/csr"), ("PUT", "/api/cluster/cert"),
                 ("GET", "/api/servers"), ("GET", "/api/logs"), ("GET", "/api/templates"), ("GET", "/api/host"),
-                ("POST", "/api/servers/{server_name}/action")}
+                ("POST", "/api/servers/deploy"), ("POST", "/api/servers/import"),
+                ("GET", "/api/servers/removed"), ("POST", "/api/servers/removed/{server_name}/restore"),
+                ("POST", "/api/cluster/templates"),
+                ("GET", "/api/java/versions"), ("GET", "/api/java/requirement"), ("GET", "/api/java/runtimes"),
+                ("GET", "/api/java/runtimes/job"), ("POST", "/api/java/runtimes/install"),
+                ("POST", "/api/java/runtimes/remove")}
+    NEVER = ("/api/users", "/api/settings", "/api/auth", "/api/panel", "/api/cluster/overview",
+             "/api/cluster/nodes", "/api/cluster/join", "/api/templates/")
 
-    def test_routes(self):
+    @staticmethod
+    def _sample(path):
+        return (path.replace("{server_name}", "minecraft-x").replace("{path:path}", "x")
+                .replace("{", "").replace("}", ""))
+
+    def _reachable(self):
         import main
-        reachable = set()
+        out = set()
         for r in main.app.routes:
             path = getattr(r, "path", "")
-            if not path.startswith("/api/"):
-                continue
-            sample = path.replace("{", "").replace("}", "")
-            for m in getattr(r, "methods", None) or ():
-                if C.path_allowed(m, sample):
-                    reachable.add((m, path))
-        self.assertEqual(reachable, self.EXPECTED)
+            if path.startswith("/api/"):
+                for m in getattr(r, "methods", None) or ():
+                    if C.path_allowed(m, self._sample(path)):
+                        out.add((m, path))
+        return out
+
+    def test_routes(self):
+        server_routes = {(m, p) for m, p in self._reachable() if p.startswith("/api/servers/{server_name}")}
+        self.assertGreater(len(server_routes), 50, "every tab of a server")
+        self.assertIn(("DELETE", "/api/servers/{server_name}"), server_routes)
+        self.assertEqual(self._reachable() - server_routes, self.EXPECTED)
+
+    def test_never_reachable(self):
+        for m, p in self._reachable():
+            self.assertFalse(p.startswith(self.NEVER), f"{m} {p}")
+        self.assertNotIn(("DELETE", "/api/servers/removed/{server_name}"), self._reachable())
 
     def test_node_only_routes_are_not_public(self):
         import main

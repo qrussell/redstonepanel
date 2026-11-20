@@ -1,6 +1,6 @@
 # Design: RedstonePanel clusters (one master, many nodes)
 
-Status: v2 · Phase 1 shipped in 1.5.0; phases 2+ are proposals · Author: Quentin Russell
+Status: v2 · Phase 1 shipped in 1.5.0, phase 2 in 1.15.0; phases 3+ are proposals · Author: Quentin Russell
 
 v2 replaces the hub/member draft. The two ideas there that survive: a panel that controls other
 panels through tokens, and an allowlist that limits what a token can do. New in v2: one
@@ -416,7 +416,20 @@ The Docker image covers Windows users in the meantime.
   read-only route on the allowlist, `GET /api/host`. It reveals nothing a node's own signed-in
   users can't see and changes nothing.
 
-**Phase 2: manage everything from the master** (roadmap 1.15)
+**Phase 2: manage everything from the master** (1.15.0, implemented: the proxy in `main.py`
+and `core/cluster_client.py`, tests in `tests/test_cluster_proxy.py` and
+`packaging/test/test-cluster-phase2.sh`)
+- As built: the node allowlist gives the master every route of one server
+  (`/api/servers/minecraft*/...`), deploy, import, the removed-server list and restore,
+  `POST /api/cluster/templates` and the Java runtime routes. `DELETE /api/servers/{name}` is
+  allowed, but a node refuses `keep_world=false` from the master, so nothing is erased. The master
+  sends `X-RedstonePanel-Role` with the user's role on the master; the node gives a master admin
+  the admin role and anyone else the user role. The proxy (`proxy_allowed`) never passes on
+  `/api/cluster/*`. Cluster contract (`cluster_api`) 2; masters still let contract-1 nodes join.
+- Custom certificates: a master keeps `https_mode: "custom"` in a cluster; a custom-certificate
+  node joins with `verify: "system"` and its public name, needs no cluster certificate and may
+  join from a public address. Nightly backups use a passphrase stored in
+  `data/cluster/nightly.json` (0600).
 - `api()` helper in `app.js`, plus a proxy `/api/cluster/nodes/{id}/proxy/{path}` limited to
   the phase-2 allowlist
 - Properties, permissions, players, chat and server updates on any node

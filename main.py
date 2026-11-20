@@ -26,6 +26,8 @@ from core.version import panel_version
 import core.cluster as cluster
 import core.cluster_client as cluster_client
 from starlette.background import BackgroundTask
+import json
+import uuid
 import os
 import shutil
 import signal
@@ -90,7 +92,7 @@ async def no_stale_static(request: Request, call_next):
 PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/health", "/api/panel-info",
               "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join"}
 ADMIN_API = ("/api/users", "/api/settings")
-NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert")
+NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates")
 CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster/nodes/")
 STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -110,9 +112,13 @@ async def access_control(request: Request, call_next):
                     return JSONResponse({"detail": "Not this cluster's master."}, status_code=401)
                 if not cluster.path_allowed(request.method, path):
                     return JSONResponse({"detail": "Not allowed for the cluster master."}, status_code=403)
+                # The master says which of its users clicked and that user's role there; a master
+                # user gets what a user may do here, a master admin what an admin may (within the
+                # allowlist, which never reaches users, settings or cluster membership).
+                user = cluster.master_identity(user, request.headers.get("x-redstonepanel-actor"),
+                                               request.headers.get("x-redstonepanel-role"))
                 if request.method in STATE_CHANGING:
-                    actor = "".join(c for c in request.headers.get("x-redstonepanel-actor", "?")[:64] if c.isprintable())
-                    manager.write_log(f"[CLUSTER] {user['username'][7:]} ({ip}) as {actor}: {request.method} {path}")
+                    manager.write_log(f"[CLUSTER] {user['username']}: {request.method} {path} (from {ip})")
             else:
                 token = request.cookies.get(auth.SESSION_COOKIE)
                 user = await run_in_threadpool(auth.read_session_token, token) if token else None
@@ -205,10 +211,17 @@ def update_settings_api(request: Request, new: dict = Body(...)):
     except panel_settings.SettingsError as e:
         raise HTTPException(status_code=400, detail=str(e))
     # In a cluster, HTTPS and its port belong to the cluster (the master reaches nodes there)
-    in_cluster = cluster.role() != "standalone"
-    if in_cluster and (s["https_mode"] != old["https_mode"] or s["https_port"] != old["https_port"]):
-        raise HTTPException(status_code=400, detail="This panel is in a cluster, so its HTTPS mode and port can't "
-                                                    "change. Leave the cluster first (Panel Settings > Cluster).")
+    role = cluster.role()
+    in_cluster = role != "standalone"
+    # A master may switch between cluster HTTPS and its own certificate (certbot or uploaded):
+    # browsers only talk to the master, and nodes never call it after joining.
+    master_switch = role == "master" and {s["https_mode"], old["https_mode"]} <= {"cluster", "custom"}
+    if in_cluster and (s["https_port"] != old["https_port"]
+                       or (s["https_mode"] != old["https_mode"] and not master_switch)):
+        raise HTTPException(status_code=400, detail="This panel is in a cluster, so its HTTPS port can't change, and its "
+                                                    "HTTPS mode only between the cluster certificate and your own "
+                                                    "certificate on the master. Leave the cluster first "
+                                                    "(Panel Settings > Cluster).")
     if not in_cluster and s["https_mode"] == "cluster" and old["https_mode"] != "cluster":
         raise HTTPException(status_code=400, detail="Create or join a cluster to use cluster HTTPS.")
 
@@ -566,6 +579,9 @@ def uninstall_server(request: Request, server_name: str, keep_world: bool = True
         detail = ("Sign in as an admin to uninstall a server." if request.state.user.get("source") == "trusted"
                   else "Only admins can uninstall a server.")
         raise HTTPException(status_code=403, detail=detail)
+    if not keep_world and request.state.user.get("source") == "cluster":
+        raise HTTPException(status_code=403, detail="The cluster master can uninstall a server here but not erase its "
+                                                    "files: they stay as a removed server you can restore.")
     try:
         manager._check_server(server_name)
     except manager.ServerError as e:
@@ -1096,6 +1112,17 @@ def cluster_cert_install_api(request: Request, body: dict = Body(...)):
     manager.write_log("[CLUSTER] Installed a renewed cluster certificate.")
     return _restart_view(request)
 
+@app.post("/api/cluster/templates")
+def cluster_receive_template_api(request: Request, body: dict = Body(...)):
+    """The master pushes one of its templates before creating a server here with it."""
+    try:
+        t = cluster.clean_template(body.get("template"), request.state.user.get("master"))
+    except cluster.ClusterError as e:
+        _cluster_fail(e)
+    templates = [x for x in manager.load_templates() if x.get("id") != t["id"]] + [t]
+    manager.save_templates(templates)
+    return {"status": "success", "id": t["id"]}
+
 # --- Master: the cluster dashboard (signed-in users; trusted-LAN visitors are refused)
 def _need_master():
     if cluster.role() != "master":
@@ -1134,7 +1161,131 @@ def cluster_node_action_api(node_id: str, server_name: str, req: ServerActionReq
         raise HTTPException(status_code=502, detail=f"{node['name']}: {e}")
     finally:
         cluster_client.forget_cached(node_id)
-    manager.write_log(f"[CLUSTER] {me}: {req.action} {server_name} on {node['name']}")
+    manager.write_log(f"[CLUSTER] {me}@{panel_settings.display_name()}: {req.action} {server_name} on {node['name']}")
+    return {"status": "success"}
+
+def _proxy_node(node_id):
+    _need_master()
+    node = cluster.find_node(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="No such node.")
+    return node
+
+def _node_too_old(node):
+    if (node.get("cluster_api") or 1) >= cluster.PROXY_API:
+        return False
+    fields = cluster_client._hello_fields(node)        # it may have been updated since
+    if fields:
+        cluster.update_node(node["id"], **fields)
+        node.update(fields)
+    return (node.get("cluster_api") or 1) < cluster.PROXY_API
+
+def _too_old_detail(node):
+    return (f"{node['name']} runs RedstonePanel {node.get('version') or 'older than 1.15'}. Update it to 1.15 or "
+            "later to manage its servers from the master.")
+
+# The proxy: every tab of a node's server, from the master. The browser calls
+# /api/cluster/nodes/{id}/proxy/api/servers/...; the master passes the request on with the node's
+# token and the user's name and role, and streams the answer back (downloads included).
+@app.api_route("/api/cluster/nodes/{node_id}/proxy/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def cluster_proxy_api(node_id: str, path: str, request: Request):
+    node = await run_in_threadpool(_proxy_node, node_id)
+    user = request.state.user
+    target = "/" + path
+    if not cluster.proxy_allowed(request.method, target):
+        raise HTTPException(status_code=403, detail="That can't be done on a node from the master.")
+    if await run_in_threadpool(_node_too_old, node):
+        raise HTTPException(status_code=409, detail=_too_old_detail(node))
+    # Pass on the path as the browser encoded it (server and file names), with its query string
+    raw = request.scope.get("raw_path", b"").decode("latin-1")
+    raw_target = "/" + raw.split("/proxy/", 1)[1] if "/proxy/" in raw else urllib.parse.quote(target)
+    if request.url.query:
+        raw_target += "?" + request.url.query
+
+    body, length = None, 0
+    if request.method != "GET":
+        body = tempfile.SpooledTemporaryFile(max_size=8 << 20)
+        async for chunk in request.stream():
+            body.write(chunk)
+            length += len(chunk)
+        body.seek(0)
+    try:
+        res = await run_in_threadpool(cluster_client.open_proxy, node, request.method, raw_target, body, length,
+                                      request.headers.get("content-type"), user["username"], user["role"])
+    except cluster_client.NodeError as e:
+        if body:
+            body.close()
+        raise HTTPException(status_code=502, detail=f"{node['name']}: {e}")
+    if request.method in STATE_CHANGING:
+        manager.write_log(f"[CLUSTER] {user['username']}@{panel_settings.display_name()}: {request.method} "
+                          f"{target} on {node['name']}")
+        cluster_client.forget_cached(node["id"])
+    if res.status in (401, 403):
+        raw_body = await run_in_threadpool(res.read_all)
+        if body:
+            body.close()
+        try:
+            detail = json.loads(raw_body).get("detail") or ""
+        except (ValueError, AttributeError):
+            detail = ""
+        if res.status == 401:        # never a 401 to the browser: that would sign the user out here
+            return JSONResponse({"detail": f"{node['name']} didn't accept the master: {detail or 'rejected'}"},
+                                status_code=502)
+        if detail == "Not allowed for the cluster master.":
+            detail = _too_old_detail(node)
+        return JSONResponse({"detail": detail or "Refused."}, status_code=403)
+    return StreamingResponse(res.chunks(), status_code=res.status, headers=res.headers,
+                             background=BackgroundTask(body.close) if body else None)
+
+class TemplatePush(BaseModel):
+    template_id: str
+
+@app.post("/api/cluster/nodes/{node_id}/templates")
+def cluster_push_template_api(node_id: str, req: TemplatePush, request: Request):
+    """Copies one of the master's templates to a node, so a server can be created there with it."""
+    node = _proxy_node(node_id)
+    t = next((x for x in manager.load_templates() if x.get("id") == req.template_id), None)
+    if not t:
+        raise HTTPException(status_code=404, detail="Template not found.")
+    user = request.state.user
+    if _node_too_old(node):
+        raise HTTPException(status_code=409, detail=_too_old_detail(node))
+    try:
+        cluster_client.call_node(node, "POST", "/api/cluster/templates", {"template": t},
+                                 actor=user["username"], role=user["role"])
+    except cluster_client.NodeError as e:
+        raise HTTPException(status_code=502, detail=f"{node['name']}: {e}")
+    manager.write_log(f"[CLUSTER] {user['username']}@{panel_settings.display_name()}: copied template "
+                      f"'{t.get('name')}' to {node['name']}")
+    return {"status": "success"}
+
+@app.post("/api/cluster/nodes/{node_id}/servers/{server_name}/template")
+def cluster_save_template_api(node_id: str, server_name: str, request: Request, name: str = Body(..., embed=True)):
+    """Save as Template on a node's server: a template on the master, like every other one."""
+    node = _proxy_node(node_id)
+    if not manager.SERVICE_NAME_RE.match(server_name) or not str(name).strip():
+        raise HTTPException(status_code=400, detail="Give the template a name.")
+    user = request.state.user
+    if _node_too_old(node):
+        raise HTTPException(status_code=409, detail=_too_old_detail(node))
+    who = {"actor": user["username"], "role": user["role"]}
+    try:
+        srv = next((s for s in cluster_client.call_node(node, "GET", "/api/servers", **who)
+                    if s.get("name") == server_name), None)
+        if not srv:
+            raise HTTPException(status_code=404, detail=f"No server called {server_name} on {node['name']}.")
+        props = cluster_client.call_node(node, "GET", f"/api/servers/{server_name}/properties", **who)
+        perms = cluster_client.call_node(node, "GET", f"/api/servers/{server_name}/permissions/raw", **who)
+    except cluster_client.NodeError as e:
+        raise HTTPException(status_code=502, detail=f"{node['name']}: {e}")
+    templates = manager.load_templates()
+    templates.append({"id": str(uuid.uuid4()), "name": str(name).strip()[:100],
+                      "edition": "Java" if srv.get("edition") == "Java" else "Bedrock",
+                      "properties": props if isinstance(props, dict) else {},
+                      "permissions": perms.get("content", "") if isinstance(perms, dict) else ""})
+    manager.save_templates(templates)
+    manager.write_log(f"[CLUSTER] {user['username']}@{panel_settings.display_name()}: saved {server_name} on "
+                      f"{node['name']} as template '{str(name).strip()[:100]}'")
     return {"status": "success"}
 
 # --- Panel Settings > Cluster (admins only: under /api/settings)
@@ -1150,7 +1301,8 @@ def cluster_settings_api(request: Request):
     if st["role"] == "master":
         view.update(name=st["name"], cluster_id=st["cluster_id"], epoch=st["epoch"],
                     nodes=[cluster.public_node(n) for n in cluster.load_nodes()],
-                    joins=cluster.list_joins(), join_url=cluster.default_join_url(request.headers.get("host")))
+                    joins=cluster.list_joins(), join_url=cluster.default_join_url(request.headers.get("host")),
+                    nightly=cluster.nightly_view(), renew_within_days=cluster.RENEW_WITHIN // 86400)
     elif st["role"] == "node":
         view.update(name=st.get("cluster_name"), cluster_id=st.get("cluster_id"), epoch=st.get("epoch"),
                     master_name=st.get("master_name"), master_url=st.get("master_url"),
@@ -1187,7 +1339,7 @@ def cluster_cancel_join_api(join_id: str):
 @app.patch("/api/settings/cluster/nodes/{node_id}")
 def cluster_update_node_api(node_id: str, body: dict = Body(...)):
     try:
-        n = cluster.update_node(node_id, name=body.get("name"), url=body.get("url"))
+        n = cluster.update_node(node_id, name=body.get("name"), url=body.get("url"), verify=body.get("verify"))
     except cluster.ClusterError as e:
         _cluster_fail(e)
     cluster_client.forget_cached(node_id)
@@ -1208,16 +1360,11 @@ def cluster_renew_api(node_id: str, request: Request):
     if not node:
         raise HTTPException(status_code=404, detail="No such node.")
     try:
-        req = cluster_client.call_node(node, "POST", "/api/cluster/cert/csr", actor=me)
-        pem, sans = cluster.sign_renewal(node, req)
-        cluster_client.call_node(node, "PUT", "/api/cluster/cert", {"cert": pem}, actor=me)
+        expires = cluster_client.renew_node(node, me)
     except cluster_client.NodeError as e:
         raise HTTPException(status_code=502, detail=f"{node['name']}: {e}")
     except cluster.ClusterError as e:
         _cluster_fail(e)
-    expires = cluster.cert_expires_pem(pem)
-    cluster.update_node(node_id, sans=sans, cert_expires=expires)
-    cluster_client.forget_cached(node_id)
     manager.write_log(f"[CLUSTER] {me} renewed the certificate of node '{node['name']}'; it is restarting.")
     return {"status": "success", "cert_expires": expires}
 
@@ -1252,6 +1399,29 @@ def cluster_backup_api(req: BackupRequest, request: Request):
     slug = "".join(c if c.isalnum() else "-" for c in cluster.state()["name"]).strip("-").lower() or "cluster"
     return Response(content=data, media_type="application/octet-stream",
                     headers={"Content-Disposition": f'attachment; filename="redstonepanel-{slug}.rpbackup"'})
+
+class NightlyBackups(BaseModel):
+    enabled: bool
+    passphrase: Optional[str] = None
+
+@app.put("/api/settings/cluster/nightly")
+def cluster_nightly_api(req: NightlyBackups, request: Request):
+    me = request.state.user["username"]
+    try:
+        view = cluster.set_nightly(req.enabled, req.passphrase, me)
+    except cluster.ClusterError as e:
+        _cluster_fail(e)
+    manager.write_log(f"[CLUSTER] {me} turned nightly cluster backups {'on' if view['enabled'] else 'off'}.")
+    return view
+
+@app.get("/api/settings/cluster/backups/{filename}")
+def cluster_nightly_download_api(filename: str, request: Request):
+    try:
+        path = cluster.nightly_file(filename)
+    except cluster.ClusterError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    manager.write_log(f"[CLUSTER] {request.state.user['username']} downloaded the nightly cluster backup {filename}.")
+    return FileResponse(path, filename=filename, media_type="application/octet-stream")
 
 @app.post("/api/settings/cluster/join")
 def cluster_join_settings_api(request: Request, body: dict = Body(...)):
