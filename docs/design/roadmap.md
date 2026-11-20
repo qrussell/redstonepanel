@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.0 (20 Nov 2026): moving servers between cluster members shipped; pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.0 (20 Nov 2026): moving servers between cluster members shipped; a first-run setup guide (1.16.1), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -124,7 +124,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    on, so "is anything wrong?" has an answer without opening each server or SSHing in.
 
    Why here: it's read-only (low risk), every admin sees it on every visit, and it builds the
-   sampler that the resource graphs need, so it takes most of the work out of item 13 (1.17)
+   sampler that the resource graphs need, so it takes most of the work out of item 14 (1.17)
    rather than adding to the plan. It comes before 2.0 because per-server permissions and API
    tokens change who can see what; a dashboard that already exists only needs a filter then.
 
@@ -461,9 +461,49 @@ refused joins, so those are Java only.
     **Size:** one to two weeks; the streaming import and the rollback on failure are the
     careful parts.
 
+### 1.16.1: a first-run setup guide
+
+13. **Get a new owner to a safe setup without reading the manual.** Added to the plan after
+    1.16.0 from a comparison with other panels: installing is already one command, but the
+    first visit lands on an empty dashboard, and backups, HTTPS and notifications stay off
+    unless the owner finds Panel Settings and each server's Backups tab. Beginners on other
+    panels get a guided start; here that gap is the cheapest one to close.
+
+    Why here: it's small, it touches no server or cluster code, and it's what every new
+    owner sees first, so it ships as a point release ahead of the rest of 1.16.x and
+    performance (1.17).
+
+    - **A Setup card on the dashboard** (admins only), shown while any step is unfinished:
+      1. **Create your first server**: opens New Server.
+      2. **Back up your worlds**: a schedule on each server, with a suggested daily one;
+         opens that server's Backups tab.
+      3. **Choose how the panel is reached**: HTTP on a trusted LAN, self-signed HTTPS or
+         your own certificate; opens Panel Settings → Connection, and says plainly what HTTP
+         means for passwords.
+      4. **Get told when something breaks**: a Discord or webhook address and a test
+         message; opens Panel Settings → Notifications.
+    - **Every step is an existing dialog.** The guide only links and explains; it adds no
+      second way to do anything.
+    - **Steps are ticked from the panel's real state**, not from clicks: a server exists,
+      every server has a backup schedule, HTTPS is on (or HTTP was chosen on purpose), a
+      webhook is saved. So a step done elsewhere (the CLI, another admin) ticks itself, and
+      a panel upgraded from 1.16.0 shows only what's still missing.
+    - **Dismissable**, and reopened from Panel Settings. The dismissal is a panel setting, so
+      it holds for every admin.
+    - **On a cluster** a node's HTTPS step is done by joining, and the master's card counts
+      servers on every node.
+    - **Firewall:** when `ufw` isn't installed or is inactive, say so on step 1, since the
+      panel opens game ports only through it.
+
+    **How:** `GET /api/setup` returns each step's state from existing settings and server
+    data; the card and its links are in `app.js`. Nothing new on disk beyond the dismissal
+    flag in the panel settings.
+
+    **Size:** a few days. Wording, and the screenshots for the manual, are most of it.
+
 ### 1.17: server performance and tuning
 
-13. **How well each server runs, its history, and what to change.** 1.11 answers "is the
+14. **How well each server runs, its history, and what to change.** 1.11 answers "is the
     machine all right?". This answers "is the game lagging, since when, and why?", and
     suggests fixes based on what was measured, not a fixed checklist.
 
@@ -551,12 +591,12 @@ refused joins, so those are Java only.
 
 ### 2.0: run it for other people
 
-14. **Per-server permissions.** Today a `user` can do everything to every server. Add
+15. **Per-server permissions.** Today a `user` can do everything to every server. Add
     per-server grants (view, console/chat, power, files, mods & plugins, settings) for `user`
     accounts. Admins
     stay admins (they're effectively root anyway). The dashboard then lists only the servers
     a user may view.
-15. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
+16. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes, shown once, revocable.
 
@@ -600,9 +640,7 @@ until it's agreed.
 
 **Getting started**
 
-- **First-run setup guide.** When there are no servers, the dashboard offers: create a
-  server, turn on backups, choose HTTPS, add a webhook. Each step is the existing dialog.
-  *Small; pairs with the mobile pass.*
+- ~~**First-run setup guide.**~~ *Scheduled as 1.16.1 (item 13 above).*
 
 **Day-to-day management**
 

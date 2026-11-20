@@ -96,6 +96,12 @@ people's worlds first**, and use systemd rather than reinventing it.
 - **Copy** a server, to another machine or the same one, without stopping it.
 - **Templates** copied between the master and its nodes.
 
+### 1.16.1: a first-run setup guide
+- **A Setup card on the dashboard** for new installs: create your first server, turn on
+  backups, choose HTTP or HTTPS, and add a Discord or webhook alert.
+- **Each step opens the existing dialog** and ticks itself from what the panel can see.
+- **Dismiss it** when you're done, and reopen it from Panel Settings.
+
 ### 1.16.x: less downtime for big worlds
 - An optional **pre-copy** while the server keeps running.
 - **Find panels on your network** and add them to the cluster.
@@ -127,7 +133,6 @@ people's worlds first**, and use systemd rather than reinventing it.
 - **Off-machine backups:** to another cluster node, rsync/SFTP or S3-compatible storage.
 - **Automatic Bedrock updates**, so players on new clients can always join.
 - **Two-factor sign-in** for admins.
-- **A first-run setup guide** for new installs.
 - **Kick, ban and a ban list** on each server, and whitelist changes across servers.
 - **Scheduled commands and announcements.**
 - **Update alerts** when a new Minecraft release or Paper/Fabric build is out.
