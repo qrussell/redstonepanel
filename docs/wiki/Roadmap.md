@@ -31,6 +31,20 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
   or moving a busy server to a quieter node.
 - **Alerts** for low TPS or a nearly full disk (off by default).
 
+### 1.18: change a server's type or version
+
+- **Switch types in place:** Vanilla → Paper or Fabric, and every other way round. The world,
+  settings, players, port and schedules stay; Paper's separate Nether and End folders are
+  moved back when leaving Paper.
+- **Mods and plugins follow where they can:** the same Modrinth project's build for the new type
+  is offered, and the old folder is kept, switched off, for going back.
+- **A clear warning** before dropping mods that add blocks or dimensions, which would vanish
+  from the world.
+- **Always a backup first**, a preview of everything that will happen, and an automatic
+  rollback if the server doesn't start.
+- **Roll back the last update**, together with the server software it ran before. Backups
+  record the type and version that made them, so an older server is never handed a newer world.
+
 ### 2.0: run it for other people
 
 - **Per-server permissions** for user accounts: view, console, power, files, mods, settings.
@@ -71,6 +85,8 @@ close the gaps people most often notice when choosing a panel.
 | --- | --- |
 | Docker mode | Running servers as plain systemd services is the reason the panel exists. |
 | Load balancing or auto-migration | A Minecraft server is one stateful process; moving a server by choice (1.16) covers the real need. |
+| Converting worlds between Java and Bedrock | Converters lose blocks and redstone behaviour. Geyser and Floodgate let Bedrock players join Java servers instead. |
+| Downgrading a world to an older Minecraft version | Minecraft doesn't support it; 1.18 rolls back to the backup from before an update instead. |
 | Multi-tenant hosting, billing or paid tiers | It's an MIT project with one developer, not a hosting business. |
 
 ## Recently shipped

@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.15.0 (20 Nov 2026): clusters phase 2 shipped; moving servers (1.16) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.15.0 (20 Nov 2026): clusters phase 2 shipped; moving servers (1.16), performance (1.17) and changing a server's type or version (1.18) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -506,8 +506,8 @@ refused joins, so those are Java only.
     - TPS under 18 for 10 minutes: lower `simulation-distance` first, then `view-distance`
       (Bedrock: `tick-distance`). Profile with **spark** (a Paper plugin and Fabric mod).
     - Fabric with no performance mods: **Lithium** (and **FerriteCore** when memory is
-      tight). Vanilla with low TPS: a new Paper or Fabric server; switching an existing one
-      stays out of scope (1.9).
+      tight). Vanilla with low TPS: switch it to Paper or Fabric (1.18; until then, a new
+      server).
     - Paper with WorldEdit: **FastAsyncWorldEdit** does the same edits off the main thread.
     - Process memory at its `-Xmx` with frequent restarts: raise Memory, if the host has
       room. All `-Xmx` together above the host's RAM minus 1 GB, or swap in use: lower one or
@@ -543,14 +543,119 @@ refused joins, so those are Java only.
 
     **Size:** one to two weeks. The ring file format and the SVG charts are the fiddly parts.
 
+### 1.18: change a server's type or version
+
+14. **Turn a Vanilla server into Paper or Fabric (and any other way round), and roll back an
+    update, without making a new server.** Today a server keeps the type it was created with
+    (1.9 left switching out), and **Update Server** only goes up. The usual dead end: someone
+    starts on Vanilla, then wants plugins or mods, and has to make a new server and copy the
+    world by hand. The second one: an update breaks a mod, and there's no clean way back.
+
+    Why here: it's self-contained (Maintenance tab, `core/convert.py`) and needs nothing from
+    1.16 or 1.17, so it can be pulled forward if it's asked for first. 1.17's "Vanilla with low
+    TPS" suggestion then becomes "switch to Paper" instead of "make a new server".
+
+    **What changes between types.** Every type shares `server.properties`, `ops.json`, the
+    whitelist and ban lists, player data, advancements, statistics, data packs
+    (`world/datapacks`) and the region files. Two things differ:
+
+    - **World layout.** Vanilla and Fabric keep the Nether and End inside the world folder
+      (`world/DIM-1`, `world/DIM1`). Paper keeps them in their own folders
+      (`world_nether/DIM-1`, `world_the_end/DIM1`); it moves a vanilla world into that layout by
+      itself on its first start, but never back.
+    - **Add-ons.** Vanilla has none, Fabric loads mods from `mods/`, Paper loads plugins from
+      `plugins/`. A mod can't run as a plugin or the other way round, though many Modrinth
+      projects publish both (LuckPerms, Chunky, spark, Geyser, Floodgate).
+
+    Later loaders slot into the same two families: Quilt, Forge and NeoForge use the vanilla
+    layout and mods; Purpur uses Paper's layout and plugins.
+
+    **Every combination, at the same Minecraft version:**
+
+    | From → to | World | Mods and plugins | Risk |
+    | --- | --- | --- | --- |
+    | Vanilla → Paper | Paper splits off the Nether and End on its first start; the panel doesn't touch the world. | None to carry. Offer the Paper bundles afterwards. | Low. |
+    | Vanilla → Fabric | Nothing moves. | None to carry. Offer Fabric API and the performance bundle. | Low. |
+    | Paper → Vanilla | The panel moves `world_nether/DIM-1` to `world/DIM-1` and `world_the_end/DIM1` to `world/DIM1`, and refuses if either target already exists. | `plugins/` is renamed `plugins.off`, kept for switching back. | Low to medium: what plugins kept (regions, homes, economy, logs) is unused; blocks they placed stay. |
+    | Paper → Fabric | Moved back as above. | `plugins.off`; for each plugin whose Modrinth project has a Fabric build, offer that build. Its settings and data aren't carried over. | Medium, as above. |
+    | Fabric → Vanilla | Nothing moves. | `mods/` is renamed `mods.off`. | **High if any mod adds content:** its blocks, items and entities disappear and its dimensions (`world/dimensions/<mod>/`) can't be reached. Server-side mods (Lithium, FerriteCore, Krypton) are safe to drop. |
+    | Fabric → Paper | Paper splits the dimensions on first start. | `mods.off`; offer the Paper/Bukkit build of the same Modrinth projects. | High with content mods, as above. |
+
+    Content mods are recognised from what the panel already knows: each mod's Modrinth
+    categories and its client/server sides (from 1.13's lookup), the namespaces in the
+    world's `level.dat` data-pack list, and folders under `world/dimensions/`. When any are
+    found, the preview names them and the change needs the server's name typed to confirm.
+
+    **Versions.**
+
+    - **Up:** **Update Server** as today. Changing type and version together is allowed upwards
+      only, and happens in that order (type at the current version, then the update) with one
+      backup. If the new type has no build for the current version (Paper is often days behind a
+      new release; Fabric starts at 1.14), the preview lists the versions both support.
+    - **Down:** a world opened by a newer version can't safely go back, so there is no general
+      downgrade. Instead, **Roll back the last update** restores the "Before update" backup
+      *together with* the server software it was taken with. That needs the groundwork below.
+      To play an older version with a fresh world, make a new server (already possible).
+    - **Bedrock** has one type and always updates to the newest release, so none of this
+      applies; rolling back a Bedrock update would need older downloads, which Mojang doesn't
+      keep listed.
+    - **Java ↔ Bedrock** isn't a type change: the world formats are different, and converters
+      are lossy (see Not planned). For mixed players, the **Bedrock players** bundle (Geyser,
+      Floodgate) already lets Bedrock clients join a Java server.
+
+    **How a change runs** (Maintenance → **Change type or version**, admins; also from the
+    master for a node's server, since it's under `/api/servers/minecraft*`):
+
+    1. **Preview, changing nothing:** the target build, the Java it needs (offered for install as
+       usual), the world moves, what happens to each mod or plugin (turned off, equivalent
+       available, needs a library such as Fabric API), content-mod warnings, and whether there's
+       room on disk for the backup.
+    2. **Download first:** the new `server.jar` goes into a staging folder, as Update already
+       does, so a failed download changes nothing.
+    3. **Back up, always:** a "Before type change" backup (not optional, unlike mod updates).
+    4. **Stop, swap and move:** replace `server.jar` and `.redstonepanel-server.json`, keep the
+       old ones as `server.jar.previous` and `.redstonepanel-server.previous.json`, move world
+       folders when leaving Paper, rename the add-on folder, install the chosen equivalents,
+       rewrite the unit if the Java changes. Port, properties, players, backup and restart
+       schedules and templates stay as they are.
+    5. **Start and check:** wait for the server's "Done (" line (5 minutes). If it doesn't come up,
+       put everything back automatically (old jar and info, world from the backup, add-on folder
+       renamed back), start the old server, and show the log lines that explain why.
+    6. **Undo:** **Undo type change** stays available until the next change or update, and does
+       the same as step 5's automatic rollback.
+
+    Every step goes in the activity log (`[UPDATE] alex changed minecraft-java from Vanilla 1.21.4
+    to Paper 1.21.4 (build 232)`), and a "Server type changed" notification can be sent.
+
+    **Groundwork it needs (useful on its own):**
+
+    - **Backups record what made them.** Today backups leave out `server.jar` and every
+      `.redstonepanel-*` file, so a backup doesn't say which type and version wrote its world.
+      Add a small manifest to each archive (type, Minecraft version, build, panel version) and
+      show it on the Backups tab. Restoring a world made by a *newer* version than the server
+      runs is then refused with an explanation, instead of corrupting it.
+    - **Update backs up first**, as mod updates already do (ticked by default), as a "Before
+      update" backup that Roll back uses.
+
+    **How:** `core/convert.py` (plan, layout moves, rollback) next to `core/javaservers.py`;
+    `GET /api/servers/{name}/convert?to=paper&minecraft=1.21.4` (the preview),
+    `POST /api/servers/{name}/convert`, `POST /api/servers/{name}/convert/undo`,
+    `POST /api/servers/{name}/update/rollback`. Tests: layout moves and conflict refusals on a
+    temp folder, content-mod detection, the manifest; an end-to-end run in the systemd container
+    taking one real world Vanilla → Paper → Vanilla → Fabric → Paper and checking that the seed,
+    region files and player data come through, plus a failed start that must roll back.
+
+    **Size:** one to two weeks. The world moves are simple; the rollback on a failed start and
+    the content-mod checks are the careful parts.
+
 ### 2.0: run it for other people
 
-14. **Per-server permissions.** Today a `user` can do everything to every server. Add
+15. **Per-server permissions.** Today a `user` can do everything to every server. Add
     per-server grants (view, console/chat, power, files, mods & plugins, settings) for `user`
     accounts. Admins
     stay admins (they're effectively root anyway). The dashboard then lists only the servers
     a user may view.
-15. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
+16. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes, shown once, revocable.
 
@@ -649,5 +754,7 @@ until it's agreed.
 | Docker mode | Contradicts the reason the panel exists; two backends to maintain. |
 | SPA framework rewrite | The UI is already one page with JavaScript; weeks of work for no visible gain. |
 | Load balancing / auto-migration | A Minecraft server is one stateful process; there's nothing to balance. "Move server to node" covers the real need. |
+| Converting worlds between Java and Bedrock | Different world formats; converters lose blocks, entities and redstone behaviour, and a bad conversion looks fine until players find the damage. Geyser and Floodgate (one click in the catalog) let Bedrock players join Java servers instead. |
+| Downgrading a world to an older Minecraft version | Minecraft doesn't support it and worlds break in subtle ways. 1.18's "Roll back the last update" restores the backup from before the update, with its server software. |
 | White-label / multi-tenant hosting | A business, not a feature: tenant isolation, billing and support for other people's customers. |
 | Founders badges, premium tiers, bug bounties | An MIT project with no paid tier and no budget. |
