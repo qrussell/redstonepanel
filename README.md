@@ -83,6 +83,12 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**Kick, ban and unban, and a new look** *(1.16.2)*. **Configuration → Whitelist & Access**
+can now kick anyone online and, on Java, ban and unban (running or stopped), with a
+**Banned** list. Bedrock gets kick only, since it has no ban list. RedstonePanel also has its own
+logo and a stone-and-redstone theme in dark and light. Read the
+[1.16.2 release notes](release-notes/v1.16.2.md).
+
 **A setup guide for new panels** *(1.16.1)*. The dashboard of a new panel opens with four
 steps to a safe setup: your first server, a backup schedule for every server, HTTPS (or plain
 HTTP on a network you trust) and crash alerts in Discord or any webhook. Each step opens the
@@ -130,6 +136,7 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   and remove one per server, so a server on another port shows up under LAN Games
 - a panel activity log, and a player access log per server: who joined, left or was turned away
   (names and IDs only), with whitelist/allowlist editing (**Configuration → Whitelist & Access**)
+- kick, ban and unban players: Online now, a Banned list (Java) and Kick/Ban on access log rows
 - a setup guide on a new panel's dashboard: first server, backup schedules, HTTPS and alerts,
   each step ticked from what the panel can see
 - a dashboard for the machine: CPU, memory, disks, network, each server's CPU, memory,
