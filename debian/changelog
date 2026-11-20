@@ -19,7 +19,7 @@ redstonepanel (1.16.2) noble; urgency=medium
   * Packaging: build-deb.sh no longer strips carriage returns from binary
     files, which corrupted PNG images.
 
- -- Quentin Russell <quentin.russell@cielocloud.org>  Fri, 20 Nov 2026 22:47:24 +0000
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 00:30:00 +0000
 
 redstonepanel (1.16.1) noble; urgency=medium
 
