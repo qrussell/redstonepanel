@@ -760,6 +760,29 @@ until it's agreed.
 **Security**
 
 - ~~**Two-factor sign-in (TOTP).**~~ *Scheduled as 1.16.3 (item 15 above).*
+- **Reach the master panel through a Cloudflare Tunnel** (opt-in). Today a panel on the
+  internet needs a port opened or forwarded to 8443 and a certificate (1.15.0). With
+  `cloudflared`, the machine makes an outbound connection to Cloudflare, and the panel is
+  served at a hostname like `panel.example.com` with Cloudflare's certificate. No inbound port
+  is opened and the home IP address stays hidden. Suggested after 1.16.3, so admins have a
+  second sign-in step before the panel is reachable from anywhere.
+  - **Panel Settings → Connection → Cloudflare Tunnel:** paste the tunnel token from the
+    Cloudflare dashboard. The panel writes a token-based `cloudflared` service pointing at
+    `http://127.0.0.1:8080`, starts it, and shows the tunnel's state and public hostname on
+    the dashboard. Turn off stops and removes the service. CLI: `redstonepanel tunnel on|off|status`.
+  - **cloudflared isn't in Ubuntu's archive**, so it stays optional (a Suggests, not a
+    Depends). The panel tells the admin how to install it from Cloudflare's apt repository
+    and detects it; it doesn't download binaries itself.
+  - **Security:** tunnel visitors must never count as the trusted LAN. The current check
+    already refuses them, because `cloudflared` adds `X-Forwarded-For` and the Host is the
+    public name; keep a test for it. Everything through the tunnel arrives from 127.0.0.1, so
+    the sign-in rate limit and the activity log must use `Cf-Connecting-IP`, but only for
+    requests from the local `cloudflared`. Suggest Cloudflare Access (an email or SSO check
+    in front of the panel) in the setting's help text.
+  - **The master only.** Nodes keep talking to the master over the cluster's own HTTPS.
+    Players' game traffic doesn't go through the tunnel: a free Cloudflare Tunnel carries
+    HTTP to the panel, not Minecraft's TCP/UDP, so game ports are unchanged.
+  - *Size: about a week, mostly the service handling, the IP handling and the manual.*
 
 **Getting started**
 

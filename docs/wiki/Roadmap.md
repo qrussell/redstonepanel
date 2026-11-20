@@ -70,6 +70,7 @@ close the gaps people most often notice when choosing a panel.
 | --- | --- |
 | ⭐ **Backups to SFTP/rsync or S3-compatible storage**, on the same schedule, for panels without a cluster (1.16.4 copies to another cluster node). | A backup on the same disk doesn't survive losing the disk. |
 | ⭐ **Automatic Bedrock updates** (opt-in), with a backup first and a player warning. | Bedrock players' clients update themselves, and then can't join an older server. |
+| **Cloudflare Tunnel for the master panel** (opt-in): paste a tunnel token in Panel Settings and reach the panel at your own hostname, with no port opened or forwarded on your router. Game traffic is unchanged. | Reaching the panel from outside today means opening a port and handling a certificate. A tunnel needs neither, and keeps your home IP address private. |
 | **Whitelist kept in step across servers** from the cluster master. | Today each server's whitelist is changed on its own. |
 | **Scheduled commands and announcements** (for example a daily message or `/save-all`). | Common on other panels, and a natural use of the same systemd timers as restarts. |
 | **Version update alerts:** "a new Paper build / Minecraft release is available" per server. | Updating is one click already; knowing when to is the missing half. |
