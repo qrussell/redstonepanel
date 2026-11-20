@@ -1,3 +1,26 @@
+redstonepanel (1.16.2) noble; urgency=medium
+
+  * Kick, ban and unban from Whitelist & Access: Online now lists the
+    players on the server with Kick (and Ban on Java), a Banned list with
+    Unban and a form to ban by name, Unban on players turned away for a
+    ban, and Kick/Ban on each access log row. A running server is told
+    through its console (Java over RCON, Bedrock through screen); a stopped
+    Java server's banned-players.json is edited directly. Bedrock has no
+    ban list, so it gets kick only. Bans are by name and UUID, never by
+    address. Each action is logged with who did it.
+  * GET /api/servers/{name}/moderation and POST
+    /api/servers/{name}/players/kick|ban|unban, reachable by the cluster
+    master.
+  * A new look: an original RedstonePanel logo and favicon, warm stone
+    greys with redstone-red accents in both the dark and light themes,
+    glowing focus rings, status lamps and usage bars. Redstone Red is the
+    default accent palette; a palette you picked before is kept.
+  * Stop is an outlined red button, so it no longer looks like Restart.
+  * Packaging: build-deb.sh no longer strips carriage returns from binary
+    files, which corrupted PNG images.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Fri, 20 Nov 2026 22:47:24 +0000
+
 redstonepanel (1.16.1) noble; urgency=medium
 
   * First-run setup guide: a Set up RedstonePanel card at the top of the

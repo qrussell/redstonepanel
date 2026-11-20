@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.1**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.2**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,13 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.2: kick and ban from the panel
-
-- **Kick** a player, with an optional reason, from the players list or the access log.
-- **Ban and unban** on Java servers, running or stopped, with a **Banned** list beside the
-  whitelist. Bedrock has no ban list, so it gets kick only.
-- By name only, never by IP address.
 
 ### 1.16.3: two-factor sign-in
 
@@ -103,5 +96,6 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.1** adds a setup guide to a new panel's
+See [What's New](Whats-New.md). The latest: **1.16.2** adds kick, ban and unban, and gives the
+panel its own logo and a redstone theme; **1.16.1** adds a setup guide to a new panel's
 dashboard, and **1.16.0** moves and copies servers between the machines of a cluster.

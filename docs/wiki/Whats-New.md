@@ -9,6 +9,20 @@ the dashboard.
 
 ---
 
+## 1.16.2: kick and ban, and a new look *(November 2026)*
+
+Remove or ban a player with a click, and RedstonePanel now looks like itself.
+
+- **Kick, ban and unban** in **Configuration → Whitelist & Access**: kick anyone online, ban
+  and unban on Java (running or stopped), a **Banned** list, and Kick/Ban on each access log row.
+  Bedrock has no ban list, so it gets kick only. By name, never by IP address.
+- **A new look:** an original RedstonePanel logo and favicon, and warm stone greys with
+  redstone-red accents in both the dark and light themes. **Redstone Red** is the new default
+  accent; a palette you picked before is kept.
+- **Stop** is now an outlined button, so it no longer looks like Restart.
+
+[Release notes](../../release-notes/v1.16.2.md)
+
 ## 1.16.1: a setup guide for new panels *(November 2026)*
 
 A new panel now shows you how to get to a safe setup, right on the dashboard.
