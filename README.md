@@ -478,7 +478,8 @@ packaging/build-css.sh
 Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which mirrors
 `main` and tags to GitHub. Each version is released on both. To release version 1.0.1:
 
-1. On a branch, add a `debian/changelog` entry (`dch -v 1.0.1`), update the version in
+1. On a branch, add a `debian/changelog` entry (`dch -v 1.0.1`) and regenerate `CHANGELOG`
+   from it (`python3 packaging/changelog.py`; CI fails if you forget), update the version in
    `packaging/redstonepanel.8`, and write the release description in
    `release-notes/v1.0.1.md`. Add the release's highlights to the top of
    `docs/wiki/Whats-New.md`, update `docs/wiki/Roadmap.md` and the user manual for what
@@ -492,9 +493,14 @@ a GitHub Release with the .deb, using `release-notes/<tag>.md` as its descriptio
 GitHub's generated notes if the file is missing). The tag must match the version in
 `debian/changelog`. The qrussell-repo apt repository picks up the release within 4 hours.
 
-`.github/workflows/wiki.yml` publishes `docs/wiki/` and the user manual to the GitHub wiki
-whenever they change on `main`, and on every release (`packaging/sync-wiki.sh` does the
-copying, and can be run by hand on a checkout of the wiki).
+The wiki pages live in `docs/wiki/` (plus the user manual, `docs/guide/README.md`) and are
+published to both wikis whenever they change on `main` and on every release:
+`.github/workflows/wiki.yml` updates the GitHub wiki, and the `wiki` job in `.gitlab-ci.yml`
+updates the GitLab wiki (`packaging/publish-gitlab-wiki.py`). Both use
+`packaging/sync-wiki.py`, which rewrites links for each site. The GitLab job needs a project
+access token with the `api` scope and the Developer role, saved as the masked CI/CD variable
+`WIKI_TOKEN`; without it the job passes and says so. Don't edit either wiki by hand: the next
+publish overwrites the pages that come from the repository.
 
 On GitLab the same tag runs `.gitlab-ci.yml`. Its checks run first. Then `build-deb`
 builds the .deb in `ubuntu:24.04` (it runs on every merge request and on `main` too, with
