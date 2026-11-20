@@ -34,14 +34,15 @@ def _host(url):
     return urllib.parse.urlsplit(url).hostname or "?"
 
 
-def get_json(url, body=None, cache=True):
-    """GET (or POST a JSON body) and parse the answer. None on 404."""
+def get_json(url, body=None, cache=True, ttl=None):
+    """GET (or POST a JSON body) and parse the answer. None on 404. Answers are cached for
+    CACHE_SECONDS, or ttl seconds."""
     key = (url, json.dumps(body, sort_keys=True) if body is not None else None)
     now = time.time()
     if cache:
         with _cache_lock:
             hit = _cache.get(key)
-            if hit and now - hit[0] < CACHE_SECONDS:
+            if hit and now - hit[0] < (CACHE_SECONDS if ttl is None else ttl):
                 return hit[1]
     headers = {"User-Agent": _user_agent(), "Accept": "application/json"}
     data = None

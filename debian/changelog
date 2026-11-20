@@ -1,3 +1,23 @@
+redstonepanel (1.14.0) noble; urgency=medium
+
+  * A catalog of mods and plugins: Find mods / Find plugins opens on
+    bundles and a hand-picked starter set (performance, admin tools, for
+    players, libraries), checked against the server's loader and Minecraft
+    version, with Installed / Update available / Not for this version
+    badges.
+  * Bundles install several at once, with what they need, after an
+    optional world backup: Performance pack, Server essentials and Bedrock
+    players on Fabric; Server essentials, Build protection and Bedrock
+    players on Paper.
+  * Search filters by category and sorts by downloads, follows, recent
+    updates or newest, on Modrinth and Hangar.
+  * Click a mod or plugin for its details: downloads, followers, licence,
+    links, and exactly what Install would add (the build, its file and the
+    dependencies it brings).
+  * Catalog project data is cached for an hour.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Fri, 20 Nov 2026 12:00:00 +0000
+
 redstonepanel (1.13.2) noble; urgency=medium
 
   * Phantom LAN proxies for Bedrock servers, managed like add-ons (admins):

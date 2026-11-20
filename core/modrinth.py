@@ -18,30 +18,90 @@ HOSTS = {"cdn.modrinth.com"}
 LOADERS = {"fabric": ["fabric"], "paper": ["paper", "spigot", "bukkit"]}
 PROJECT_TYPE = {"fabric": "mod", "paper": "plugin"}
 CHANNELS = ("release", "beta")          # never alpha
+SORTS = {"downloads": "downloads", "follows": "follows", "updated": "updated", "newest": "newest"}
+CATALOG_TTL = 3600                      # project details for the catalog change slowly
+# Modrinth lists loaders among a project's categories; the catalog shows only real categories
+LOADER_TAGS = {"fabric", "quilt", "forge", "neoforge", "paper", "spigot", "bukkit", "folia", "purpur",
+               "sponge", "velocity", "bungeecord", "waterfall", "datapack", "liteloader", "modloader", "rift",
+               "babric", "bta-babric", "java-agent", "legacy-fabric", "nilloader", "ornithe", "minecraft"}
 
 
 def _q(v):
     return urllib.parse.quote(json.dumps(v, separators=(",", ":")))
 
 
-def search(kind, minecraft, query="", offset=0, limit=20):
-    """Projects for this kind of server and Minecraft version that run on a server."""
+def search(kind, minecraft, query="", offset=0, limit=20, category=None, sort=None):
+    """Projects for this kind of server and Minecraft version that run on a server. category: a
+    Modrinth category (core/featured.py); sort: a key of SORTS (default: relevance when there's
+    a query, else downloads)."""
     facets = [[f"categories:{l}" for l in LOADERS[kind]], [f"project_type:{PROJECT_TYPE[kind]}"],
               ["server_side:required", "server_side:optional"]]
     if minecraft:
         facets.append([f"versions:{minecraft}"])
+    if category:
+        facets.append([f"categories:{category}"])
+    index = SORTS.get(sort) or ("relevance" if query else "downloads")
     params = {"query": query or "", "limit": max(1, min(int(limit), 50)), "offset": max(0, int(offset)),
-              "index": "relevance" if query else "downloads"}
+              "index": index}
     url = f"{API}/search?{urllib.parse.urlencode(params)}&facets={_q(facets)}"
     d = get_json(url) or {}
     hits = []
     for h in d.get("hits") or []:
-        kind_path = "plugin" if kind == "paper" else "mod"
         hits.append({"source": "modrinth", "project": h.get("project_id"), "slug": h.get("slug"),
                      "title": h.get("title"), "author": h.get("author"), "description": h.get("description"),
-                     "downloads": h.get("downloads"), "updated": h.get("date_modified"),
-                     "icon": h.get("icon_url"), "url": f"{SITE}/{kind_path}/{h.get('slug')}"})
+                     "downloads": h.get("downloads"), "follows": h.get("follows"),
+                     "updated": h.get("date_modified"), "icon": h.get("icon_url"),
+                     "categories": [c for c in h.get("display_categories") or h.get("categories") or []
+                                    if c not in LOADER_TAGS],
+                     "url": project_url(kind, h.get("slug"))})
     return {"total": d.get("total_hits", len(hits)), "hits": hits}
+
+
+def project_url(kind, slug):
+    return f"{SITE}/{'plugin' if kind == 'paper' else 'mod'}/{slug}"
+
+
+def catalog_projects(slugs):
+    """Full project objects for several slugs or ids at once (cached for an hour), in the
+    order given; unknown ones are left out."""
+    slugs = [s for s in slugs if s]
+    if not slugs:
+        return []
+    found = get_json(f"{API}/projects?ids={_q(sorted(set(slugs)))}", ttl=CATALOG_TTL) or []
+    by = {}
+    for p in found:
+        by[p.get("slug")] = p
+        by[p.get("id")] = p
+    return [by[s] for s in slugs if s in by]
+
+
+def card(p, kind, minecraft):
+    """A full project object as a catalog card: fits says whether it has builds for this loader
+    and Minecraft version (from the project's own lists)."""
+    loaders = set(p.get("loaders") or [])
+    has_loader = bool(loaders & set(LOADERS[kind]))
+    has_version = not minecraft or minecraft in (p.get("game_versions") or [])
+    reason = None
+    if not has_loader:
+        reason = f"No {'Paper' if kind == 'paper' else 'Fabric'} build"
+    elif not has_version:
+        reason = f"Not for {minecraft} yet"
+    return {"source": "modrinth", "project": p.get("id"), "slug": p.get("slug"), "title": p.get("title"),
+            "description": p.get("description"), "downloads": p.get("downloads"),
+            "follows": p.get("followers"), "updated": p.get("updated"), "icon": p.get("icon_url"),
+            "categories": [c for c in p.get("categories") or [] if c not in LOADER_TAGS],
+            "url": project_url(kind, p.get("slug")), "fits": reason is None, "not_fit": reason,
+            "server_side": p.get("server_side"), "client_side": p.get("client_side")}
+
+
+def details(project, kind):
+    """What a project page says, for the catalog's details view."""
+    p = _project(project)
+    links = {k: p.get(k) for k in ("source_url", "issues_url", "wiki_url", "discord_url") if p.get(k)}
+    lic = p.get("license") or {}
+    return {**card(p, kind, None), "license": lic.get("name") or lic.get("id"), "links": links,
+            "game_versions": (p.get("game_versions") or [])[-6:], "published": p.get("published"),
+            "gallery": [g.get("url") for g in (p.get("gallery") or [])[:3] if g.get("url")]}
 
 
 def _project(project):
