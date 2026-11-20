@@ -18,6 +18,33 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
   see, so steps done from the command line or by another admin count too.
 - Dismiss it when you're done; reopen it from Panel Settings.
 
+### 1.16.2: kick and ban from the panel
+
+- **Kick** a player, with an optional reason, from the players list or the access log.
+- **Ban and unban** on Java servers, running or stopped, with a **Banned** list beside the
+  whitelist. Bedrock has no ban list, so it gets kick only.
+- By name only, never by IP address.
+
+### 1.16.3: two-factor sign-in
+
+- **Codes from an authenticator app** at sign-in, for panel and Linux accounts, with recovery
+  codes shown once.
+- An optional setting to **require it for every admin**.
+- Locked out? `sudo redstonepanel reset-2fa NAME` on the server.
+
+### 1.16.4: backups on another cluster node
+
+- **Keep a copy of each backup on another cluster member**, checked as it's copied, with the
+  same retention.
+- Restore from the copy even if the original machine is gone.
+- A failed copy shows under **Needs attention** and can send an alert.
+
+### 1.16.5: Debian and ARM64
+
+- **Debian 12 and 13** as well as Ubuntu 24.04 and 25.04.
+- **ARM64** machines such as a Raspberry Pi, for Java servers. Bedrock is only made for
+  x86-64, so it's hidden there.
+
 ### 1.16.x: less downtime for big worlds
 
 - An optional **pre-copy** for moves: copy the world while the server keeps running, then only
@@ -48,10 +75,9 @@ close the gaps people most often notice when choosing a panel.
 
 | Idea | Why |
 | --- | --- |
-| ⭐ **Off-machine backups:** copy backups to another cluster node, an SFTP/rsync target or S3-compatible storage, on the same schedule. | A backup on the same disk doesn't survive losing the disk. Clusters make "copy to another node" nearly free. |
+| ⭐ **Backups to SFTP/rsync or S3-compatible storage**, on the same schedule, for panels without a cluster (1.16.4 copies to another cluster node). | A backup on the same disk doesn't survive losing the disk. |
 | ⭐ **Automatic Bedrock updates** (opt-in), with a backup first and a player warning. | Bedrock players' clients update themselves, and then can't join an older server. |
-| ⭐ **Two-factor sign-in** (TOTP) for admin accounts. | Admins are effectively root; a password alone is a thin wall for a public-facing panel. |
-| **Player actions:** kick, ban, unban and a ban list on each server; whitelist kept in step across servers. | Today these need `/` commands in Live Chat. |
+| **Whitelist kept in step across servers** from the cluster master. | Today each server's whitelist is changed on its own. |
 | **Scheduled commands and announcements** (for example a daily message or `/save-all`). | Common on other panels, and a natural use of the same systemd timers as restarts. |
 | **Version update alerts:** "a new Paper build / Minecraft release is available" per server. | Updating is one click already; knowing when to is the missing half. |
 | **Modrinth modpacks** (`.mrpack`) and **Forge / NeoForge**. | The most-requested server types the panel doesn't have. |
@@ -59,7 +85,6 @@ close the gaps people most often notice when choosing a panel.
 | **Per-server resource limits** (systemd `MemoryMax`, `CPUQuota`) alongside 1.17's Memory setting. | Stops one runaway server from starving the others, using what systemd already offers. |
 | **A read-only status page** for players: online or not, address, version, players online. | Players stop asking "is the server up?". Opt-in, and shows nothing private. |
 | **Mobile-friendly layout** and an installable app (PWA). | Restarting a server from a phone is a common need. |
-| **Debian 12/13 and ARM64** (Raspberry Pi) for Java servers. | Many home servers are Debian or a Pi. Bedrock itself stays x86-64 only. |
 | **Discord two-way bridge:** game chat to a channel and back. | Builds on the existing webhooks. |
 
 ## Later, when someone asks for it
