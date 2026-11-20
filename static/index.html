@@ -4,55 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RedstonePanel</title>
+    <link rel="icon" href="/static/img/redstonepanel-icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/img/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1b1a19">
     <link rel="stylesheet" href="/static/css/tailwind.css">
     <script>
         // Tailwind's dark: variants match elements inside .dark, so the class goes on <html>
         // (on <body> it missed body's own dark: colours). Set before first paint.
         try {
             if ((localStorage.getItem('rp_themeMode') || 'dark') === 'dark') document.documentElement.classList.add('dark');
+            document.documentElement.setAttribute('data-theme', localStorage.getItem('rp_themeColor') || 'redstone');
         } catch (e) { document.documentElement.classList.add('dark'); }
     </script>
-    <style>
-        /* Base Theme Variables */
-        :root {
-            --accent-base: #3b82f6;   /* Blue 500 */
-            --accent-hover: #2563eb;  /* Blue 600 */
-            --accent-text: #60a5fa;   /* Blue 400 */
-        }
-        [data-theme="redstone"] {
-            --accent-base: #ef4444;   /* Red 500 */
-            --accent-hover: #dc2626;  /* Red 600 */
-            --accent-text: #f87171;   /* Red 400 */
-        }
-        [data-theme="emerald"] {
-            --accent-base: #10b981;   /* Emerald 500 */
-            --accent-hover: #059669;  /* Emerald 600 */
-            --accent-text: #34d399;   /* Emerald 400 */
-        }
-        [data-theme="amethyst"] {
-            --accent-base: #8b5cf6;   /* Purple 500 */
-            --accent-hover: #7c3aed;  /* Purple 600 */
-            --accent-text: #a78bfa;   /* Purple 400 */
-        }
-
-        body { transition: background-color 0.3s, color 0.3s; }
-        
-        .tab-active { border-bottom: 2px solid var(--accent-base); color: var(--accent-text); }
-        .subtab-active { background-color: var(--accent-base); color: #fff; }
-        .hidden-tab, .hidden { display: none !important; }
-        
-        /* Dynamic Theme Classes */
-        .bg-theme { background-color: var(--accent-base); }
-        .hover-bg-theme:hover { background-color: var(--accent-hover); }
-        .text-theme { color: var(--accent-text); }
-        .border-theme { border-color: var(--accent-base); }
-    </style>
 </head>
 <body class="flex h-screen font-sans antialiased overflow-hidden relative bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-200">
     
     <aside class="w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full shadow-xl z-10">
-        <div class="p-5 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
-            <h1 class="text-xl font-bold text-red-500 dark:text-red-500">RedstonePanel <span id="panel-version" class="text-xs font-normal text-gray-500 dark:text-gray-400"></span></h1>
+        <div class="p-5 bg-gray-50 dark:bg-gray-900">
+            <h1 class="flex items-center gap-2.5 text-xl font-extrabold tracking-tight">
+                <img src="/static/img/redstonepanel-icon.svg" alt="" class="w-9 h-9 shrink-0">
+                <span><span class="text-redstone-600 dark:text-redstone-400">Redstone</span><span class="text-gray-900 dark:text-gray-100">Panel</span> <span id="panel-version" class="text-xs font-normal tracking-normal text-gray-500 dark:text-gray-400"></span></span>
+            </h1>
             <!-- Which server this panel runs on (Panel Settings > Panel name; default: host name) -->
             <p id="panel-name" class="text-sm font-bold text-gray-700 dark:text-gray-300 truncate mt-1"></p>
             <!-- On a cluster node: which cluster and master manage it -->
@@ -78,6 +52,7 @@
                 </select>
             </div>
         </div>
+        <div class="rp-signal" aria-hidden="true"></div>
         <div class="flex-1 overflow-y-auto p-3 space-y-1" id="server-list"></div>
         <!-- Servers uninstalled with "Keep World": their files are still in /opt -->
         <div id="removed-hint" class="hidden px-3 pb-3"></div>
@@ -110,7 +85,7 @@
             <div class="flex gap-2" id="ws-power-controls">
                 <button onclick="ServerApp.sendPower('start')" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded font-bold text-white transition">Start</button>
                 <button onclick="ServerApp.sendPower('restart')" class="bg-theme hover-bg-theme px-4 py-2 rounded font-bold text-white transition">Restart</button>
-                <button onclick="ServerApp.sendPower('stop')" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded font-bold text-white transition">Stop</button>
+                <button onclick="ServerApp.sendPower('stop')" class="bg-white dark:bg-gray-800 border border-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 px-4 py-2 rounded font-bold text-red-600 dark:text-red-400 transition">Stop</button>
             </div>
         </header>
 

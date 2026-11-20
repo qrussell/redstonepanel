@@ -130,7 +130,7 @@ const ServerApp = {
 
     // --- Theming & Preferences ---
     themeMode: localStorage.getItem('rp_themeMode') || 'dark',
-    themeColor: localStorage.getItem('rp_themeColor') || 'diamond',
+    themeColor: localStorage.getItem('rp_themeColor') || 'redstone',
 
     applyTheme() {
         document.documentElement.classList.toggle('dark', this.themeMode === 'dark');
@@ -154,8 +154,8 @@ const ServerApp = {
             <div class="mb-6">
                 <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Accent Palette</label>
                 <select id="setting-color" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
+                    <option value="redstone" ${this.themeColor === 'redstone' ? 'selected' : ''}>Redstone Red (default)</option>
                     <option value="diamond" ${this.themeColor === 'diamond' ? 'selected' : ''}>Diamond Blue</option>
-                    <option value="redstone" ${this.themeColor === 'redstone' ? 'selected' : ''}>Redstone Red</option>
                     <option value="emerald" ${this.themeColor === 'emerald' ? 'selected' : ''}>Emerald Green</option>
                     <option value="amethyst" ${this.themeColor === 'amethyst' ? 'selected' : ''}>Amethyst Purple</option>
                 </select>
@@ -221,8 +221,8 @@ const ServerApp = {
             if (note) list.innerHTML += `<div class="text-xs text-yellow-600 dark:text-yellow-500 px-3 mb-1">${note}</div>`;
 
             serversGroup.forEach(srv => {
-                const dot = srv.status === 'online' ? 'text-green-500' : 'text-red-500';
-                const isActive = this.sameServer(this.activeServer, srv) ? 'bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
+                const dot = srv.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off';
+                const isActive = this.sameServer(this.activeServer, srv) ? 'rp-active bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
                                 
                 list.innerHTML += `
                     <div onclick="ServerApp.openWorkspace(${JSON.stringify(srv).replace(/"/g, '&quot;')})" 
@@ -3263,10 +3263,10 @@ const ServerApp = {
 		return diff >= 0 ? `in ${rel}` : `${rel} ago`;
 	},
 	fmtPct(p) { return p === null || p === undefined ? '—' : `${Math.round(p)}%`; },
-	barColor(p) { return p >= 90 ? 'bg-red-500' : p >= 75 ? 'bg-yellow-500' : 'bg-green-500'; },
+	barColor(p) { return p >= 90 ? 'rp-level rp-level-high' : p >= 75 ? 'rp-level rp-level-warn' : 'rp-level rp-level-ok'; },
 	bar(p) {
 		const w = Math.max(0, Math.min(100, p || 0));
-		return `<div class="w-full h-2 rounded bg-gray-200 dark:bg-gray-700 overflow-hidden"><div class="h-2 rounded ${this.barColor(w)}" style="width:${w}%"></div></div>`;
+		return `<div class="w-full h-2 rounded bg-gray-200 dark:bg-gray-700"><div class="h-2 rounded ${this.barColor(w)}" style="width:${w}%"></div></div>`;
 	},
 
 	openServerByName(name, tab) {
@@ -3339,7 +3339,7 @@ const ServerApp = {
 		const td = 'px-3 py-2 whitespace-nowrap';
 		const serverRows = servers.map(s => {
 			const crash = s.crash_loop;
-			const dot = s.status === 'online' ? 'text-green-500' : crash || s.state === 'failed' ? 'text-red-500' : 'text-gray-400';
+			const dot = s.status === 'online' ? 'rp-lamp-on' : crash || s.state === 'failed' ? 'text-red-500' : 'text-gray-400';
 			const stateText = crash ? 'crash loop' : s.state === 'failed' ? 'failed' : s.status;
 			const lb = s.last_backup;
 			const backupNote = lb ? (lb.ok ? `last ${this.fmtWhen(lb.at)}` : '<span class="text-red-500">last failed</span>') : 'none yet';
@@ -3723,7 +3723,7 @@ const ServerApp = {
 			const rows = (n.servers || []).map(s => `
 				<div class="flex items-center justify-between gap-3 p-3 border-t border-gray-200 dark:border-gray-700">
 					<div class="flex items-center gap-3 min-w-0">
-						<span class="${s.status === 'online' ? 'text-green-500' : 'text-red-500'}">●</span>
+						<span class="${s.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off'}">●</span>
 						<div class="min-w-0">
 							<div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(s.name)}</div>
 							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}</div>

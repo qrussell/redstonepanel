@@ -4,26 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RedstonePanel Sign In</title>
+    <link rel="icon" href="/static/img/redstonepanel-icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/img/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1b1a19">
     <link rel="stylesheet" href="/static/css/tailwind.css">
     <script>
         // Same theme preferences as the dashboard
         try {
             if ((localStorage.getItem('rp_themeMode') || 'dark') === 'dark') document.documentElement.classList.add('dark');
-            document.documentElement.setAttribute('data-theme', localStorage.getItem('rp_themeColor') || 'diamond');
+            document.documentElement.setAttribute('data-theme', localStorage.getItem('rp_themeColor') || 'redstone');
         } catch (e) { document.documentElement.classList.add('dark'); }
     </script>
-    <style>
-        :root { --accent-base: #3b82f6; --accent-hover: #2563eb; }
-        [data-theme="redstone"] { --accent-base: #ef4444; --accent-hover: #dc2626; }
-        [data-theme="emerald"]  { --accent-base: #10b981; --accent-hover: #059669; }
-        [data-theme="amethyst"] { --accent-base: #8b5cf6; --accent-hover: #7c3aed; }
-        .bg-theme { background-color: var(--accent-base); }
-        .hover-bg-theme:hover { background-color: var(--accent-hover); }
-    </style>
 </head>
 <body class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-200 font-sans antialiased p-4">
-    <form id="login-form" class="w-full max-w-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-6">
-        <h1 class="text-2xl font-bold text-red-500 mb-1">RedstonePanel</h1>
+    <form id="login-form" class="w-full max-w-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden">
+        <div class="rp-signal" aria-hidden="true"></div>
+        <div class="p-6">
+        <h1 class="flex items-center gap-3 text-2xl font-extrabold tracking-tight mb-3">
+            <img src="/static/img/redstonepanel-icon.svg" alt="" class="w-11 h-11 shrink-0">
+            <span><span class="text-redstone-600 dark:text-redstone-400">Redstone</span><span class="text-gray-900 dark:text-gray-100">Panel</span></span>
+        </h1>
         <p id="panel-name" class="hidden text-lg font-bold text-gray-700 dark:text-gray-300 mb-1 truncate"></p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Sign in with your server (Linux) account or a RedstonePanel account.</p>
 
@@ -38,6 +40,7 @@
         <p id="login-error" class="hidden text-sm text-red-500 mb-4" role="alert"></p>
 
         <button id="login-btn" type="submit" class="w-full bg-theme hover-bg-theme text-white py-2 rounded font-bold transition disabled:opacity-60">Sign In</button>
+        </div>
     </form>
 
     <script>
@@ -60,7 +63,7 @@
                 back.href = '/static/index.html';
                 back.className = 'block text-center text-sm mt-4 underline text-gray-500 dark:text-gray-400';
                 back.innerText = 'Continue without signing in';
-                document.getElementById('login-form').appendChild(back);
+                document.querySelector('#login-form > .p-6').appendChild(back);
             }
         }).catch(() => {});
 
