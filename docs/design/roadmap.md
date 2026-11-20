@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.1 (20 Nov 2026): moving servers between cluster members and a first-run setup guide shipped; kick and ban (1.16.2), two-factor sign-in (1.16.3), backups on another node (1.16.4), Debian and ARM64 (1.16.5), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.1 (20 Nov 2026): moving servers between cluster members and a first-run setup guide shipped; kick and ban (1.16.2), two-factor sign-in (1.16.3), backups on another node (1.16.4), Debian and ARM64 (1.16.5), a phone-friendly panel (1.16.6), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -124,7 +124,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    on, so "is anything wrong?" has an answer without opening each server or SSHing in.
 
    Why here: it's read-only (low risk), every admin sees it on every visit, and it builds the
-   sampler that the resource graphs need, so it takes most of the work out of item 18 (1.17)
+   sampler that the resource graphs need, so it takes most of the work out of item 19 (1.17)
    rather than adding to the plan. It comes before 2.0 because per-server permissions and API
    tokens change who can see what; a dashboard that already exists only needs a filter then.
 
@@ -161,7 +161,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    database, no new dependency. One `GET /api/host` for signed-in users. Trusted-LAN visitors
    get the same view minus IP addresses and versions. The CPU and network samples are kept
    in memory between requests; that sampler becomes 1.17's history. Lay it out for phones
-   too (see the mobile pass in Groundwork).
+   too (see 1.16.6).
 
    **Size:** about a week. The background folder-size walk and the per-node cards are the
    fiddly parts.
@@ -587,9 +587,44 @@ refused joins, so those are Java only.
 
     **Size:** about a week, mostly the test matrix.
 
+### 1.16.6: a panel that works on a phone
+
+18. **Every page usable on a phone, and the panel installable as an app.** Restarting a
+    crashed server or answering "is it up?" from a phone is one of the commonest reasons to
+    open a panel, and today the fixed sidebar takes most of a phone's width: the dashboard,
+    server pages and the setup guide are squeezed into a strip beside it. Other panels work on
+    phones; this closes that gap. It takes over the "mobile pass" from Groundwork.
+
+    Why here: after the 1.16.2–1.16.5 point releases it touches every page, so it goes last in
+    1.16.x, and before 1.17 so the performance charts are designed for small screens from the
+    start.
+
+    - **Sidebar becomes a menu** below the `md` breakpoint: a top bar with the panel name, the
+      current server and a ☰ button that slides the sidebar in, closing when a server is picked.
+    - **Server pages:** Start, Restart and Stop stay at the top as large buttons; the tabs
+      scroll sideways instead of wrapping; dialogs fill the screen.
+    - **Tables become cards** on narrow screens: the dashboard's server table, backups, the
+      file manager, mods and players.
+    - **Live Chat and the console** keep the input above the on-screen keyboard and stop the
+      page from zooming on focus (16 px inputs).
+    - **Touch targets** of at least 44 px for every button, and no actions that only appear on
+      hover.
+    - **An installable app (PWA):** a web app manifest and icons, so phones offer "Install" or
+      "Add to Home Screen" and the panel opens without browser bars. Browsers only allow
+      installing over HTTPS, so on plain HTTP it stays a home-screen bookmark, and the setup
+      guide's HTTPS step says so. No offline mode: a panel that can't reach its server has
+      nothing true to show.
+    - The screenshot demo also takes phone-sized pictures (390 x 844) for the manual.
+
+    **How:** Tailwind's responsive classes in `index.html` and the markup `app.js` builds, a
+    `static/manifest.webmanifest` and icons, and a minimal service worker (required for
+    installing; it caches nothing). No framework, no new dependency.
+
+    **Size:** one to two weeks; the tables and every dialog are most of it.
+
 ### 1.17: server performance and tuning
 
-18. **How well each server runs, its history, and what to change.** 1.11 answers "is the
+19. **How well each server runs, its history, and what to change.** 1.11 answers "is the
     machine all right?". This answers "is the game lagging, since when, and why?", and
     suggests fixes based on what was measured, not a fixed checklist.
 
@@ -677,12 +712,12 @@ refused joins, so those are Java only.
 
 ### 2.0: run it for other people
 
-19. **Per-server permissions.** Today a `user` can do everything to every server. Add
+20. **Per-server permissions.** Today a `user` can do everything to every server. Add
     per-server grants (view, console/chat, power, files, mods & plugins, settings) for `user`
     accounts. Admins
     stay admins (they're effectively root anyway). The dashboard then lists only the servers
     a user may view.
-20. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
+21. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes, shown once, revocable.
 
@@ -692,8 +727,8 @@ refused joins, so those are Java only.
   root against `/opt`; cover them with a temp `SERVERS_ROOT` and a stubbed `systemctl`, and in
   the systemd test container.
 - **Security review** of sign-in, import (archive unpacking) and anything that builds paths.
-- **Mobile pass** on the dashboard, server list and console (there are very few responsive
-  classes today).
+- ~~**Mobile pass**~~ on the dashboard, server list and console: *scheduled as 1.16.6
+  (item 18 above).*
 - ~~**README screenshots**~~ *(done with 1.15.0: a screenshot tour in the README, retaken by
   `packaging/screenshots/demo.sh`)*. A short GIF is still to do.
 - ~~**`install.sh`**~~ *(done with 1.15.0: `install.sh` in the repository root, served from
@@ -754,7 +789,7 @@ until it's agreed.
 
 **Docs and reach**
 
-- A short GIF for the README, the mobile pass, and a GitHub Pages site built from `docs/wiki/`
+- A short GIF for the README, and a GitHub Pages site built from `docs/wiki/`
   if the wiki proves hard to find.
 
 ## Later (only when asked for)

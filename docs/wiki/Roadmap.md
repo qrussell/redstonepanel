@@ -37,6 +37,14 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 - **ARM64** machines such as a Raspberry Pi, for Java servers. Bedrock is only made for
   x86-64, so it's hidden there.
 
+### 1.16.6: a panel that works on a phone
+
+- **Every page fits a phone:** the sidebar becomes a ☰ menu, tables become cards, and Start,
+  Restart and Stop are big buttons at the top.
+- **Live Chat and the console** work with the on-screen keyboard.
+- **Install it as an app** from your phone's browser (over HTTPS), so it opens like any other
+  app.
+
 ### 1.16.x: less downtime for big worlds
 
 - An optional **pre-copy** for moves: copy the world while the server keeps running, then only
@@ -76,7 +84,6 @@ close the gaps people most often notice when choosing a panel.
 | **World tools:** upload a world, start a fresh world with a seed, pre-generate with Chunky from a button. | World downloads already exist; the other direction is missing. |
 | **Per-server resource limits** (systemd `MemoryMax`, `CPUQuota`) alongside 1.17's Memory setting. | Stops one runaway server from starving the others, using what systemd already offers. |
 | **A read-only status page** for players: online or not, address, version, players online. | Players stop asking "is the server up?". Opt-in, and shows nothing private. |
-| **Mobile-friendly layout** and an installable app (PWA). | Restarting a server from a phone is a common need. |
 | **Discord two-way bridge:** game chat to a channel and back. | Builds on the existing webhooks. |
 
 ## Later, when someone asks for it
