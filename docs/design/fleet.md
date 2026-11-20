@@ -416,7 +416,7 @@ The Docker image covers Windows users in the meantime.
   read-only route on the allowlist, `GET /api/host`. It reveals nothing a node's own signed-in
   users can't see and changes nothing.
 
-**Phase 2: manage everything from the master**
+**Phase 2: manage everything from the master** (roadmap 1.15)
 - `api()` helper in `app.js`, plus a proxy `/api/cluster/nodes/{id}/proxy/{path}` limited to
   the phase-2 allowlist
 - Properties, permissions, players, chat and server updates on any node
@@ -424,7 +424,7 @@ The Docker image covers Windows users in the meantime.
   the node, then deploys)
 - Automatic certificate renewal and nightly backups
 
-**Phase 3: move things between nodes**
+**Phase 3: move things between nodes** (roadmap 1.16)
 - Copy templates between nodes, and move or copy a server (export on A streamed into import on
   B through the master, no 1 MB cap)
 - LAN discovery: find standalone panels via `GET /api/panel-info` on 8080/8443 and offer

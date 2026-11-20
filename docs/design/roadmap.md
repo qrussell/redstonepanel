@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.13.2 and the 1.14 performance plan · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.14.0, with clusters (1.15), moving servers (1.16) and performance (1.17) planned · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,12 +20,12 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.13.2)
+## What already exists (1.14.0)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar browser with updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
@@ -120,7 +120,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    on, so "is anything wrong?" has an answer without opening each server or SSHing in.
 
    Why here: it's read-only (low risk), every admin sees it on every visit, and it builds the
-   sampler that the resource graphs need, so it takes most of the work out of item 11 (1.14)
+   sampler that the resource graphs need, so it takes most of the work out of item 13 (1.17)
    rather than adding to the plan. It comes before 2.0 because per-server permissions and API
    tokens change who can see what; a dashboard that already exists only needs a filter then.
 
@@ -156,7 +156,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    **How:** `core/host.py` reads `/proc`, `statvfs` and `systemctl show`; no `psutil`, no
    database, no new dependency. One `GET /api/host` for signed-in users. Trusted-LAN visitors
    get the same view minus IP addresses and versions. The CPU and network samples are kept
-   in memory between requests; that sampler becomes 1.14's history. Lay it out for phones
+   in memory between requests; that sampler becomes 1.17's history. Lay it out for phones
    too (see the mobile pass in Groundwork).
 
    **Size:** about a week. The background folder-size walk and the per-node cards are the
@@ -327,16 +327,101 @@ ports 19300 and 19301 under the minecraft user, ufw rules opened and closed, a s
 19132 blocking install, a hand-made loop unit removed, purge removing a server's Phantom,
 and non-admins refused.
 
-### 1.14: server performance and tuning
+### 1.14.0: a catalog of mods and plugins *(Nov 2026)*
 
-11. **How well each server runs, its history, and what to change.** 1.11 answers "is the
+Asked for after 1.13.2: make Find mods / Find plugins feel like a catalog of popular mods and
+plugins, not just a search box.
+
+**As built:** the browse view opens on **bundles** and a **starter set** grouped as
+Performance, Admin tools, For players and Libraries. Both are hand-picked Modrinth slugs in
+`core/featured.py` (20 for Fabric, 14 for Paper), looked up in one `/projects` request and
+cached for an hour, and checked against the server's loader and Minecraft version from each
+project's own lists: no build for the loader hides it, not updated for the version yet marks
+it. Cards carry Installed / Update available / Not for this version badges. Search gains
+category and sort filters on both sites (Modrinth facets and `index`, Hangar `category` and
+`sort`), validated against fixed lists. Clicking a project shows its details and exactly what
+Install would do (the build, its file and size, the dependencies it adds), resolved but not
+downloaded. A bundle installs what's missing with dependencies, after an optional world
+backup (taken only if something will be installed), and one that fails doesn't stop the
+rest. Paper has spark built in, so it isn't offered there.
+
+Tested against the live APIs in the systemd container: Fabric "Server essentials" installed
+six jars (Fabric API and Fabric Language Kotlin as dependencies) after a backup, and running it
+again installed nothing and took no backup; on Paper, "Build protection" brought WorldEdit for
+WorldGuard.
+
+### 1.15: manage every node from the master
+
+11. **Clusters phase 2 ([fleet.md](fleet.md) §13).** Asked for after 1.13.1: with only the
+    master reachable, you can't create a server on a node or use most of a node server's
+    tabs, and a panel on the internet has only self-signed or cluster certificates.
+
+    **Every server, every tab, from the master.** The master's server list shows each node's
+    servers under the node's name, and opening one shows the same tabs as a local server:
+    Overview, Live Chat, Configuration, Maintenance, Backups, World & Maps, Files, Mods,
+    Java, Phantom.
+    - A proxy route, `/api/cluster/nodes/{id}/proxy/{path}`, forwards the request with the
+      node's token. The node checks it against a phase-2 allowlist: the server routes,
+      deploy and remove, templates, Java runtimes and Phantom, but still never users,
+      panel settings or cluster membership.
+    - `app.js` gets one `api(path, opts)` helper that knows which panel a server lives on,
+      replacing its direct `fetch` calls.
+    - Both panels log the action with the master user's name (`[CLUSTER] alex@master: …`).
+    - Master admins can do everything; master users only what their role allows (per-server
+      grants come in 2.0).
+
+    **Create a server on a node.** New Server gets a **Where** choice. A master template is
+    pushed to the node first, then deployed there. Ports are checked on the node, and a
+    missing Java is installed there (1.13.1).
+
+    **Certificates for a panel on the internet.**
+    - The master can use a real certificate for browsers: a certbot certificate or one you
+      upload (`https_mode: "custom"`, refused in a cluster today). The browser only ever
+      talks to the master, so nodes can stay on private addresses with cluster-CA
+      certificates and never be exposed.
+    - A node that does have a public name and certificate is checked with the system's
+      trust store instead of the cluster CA (`verify: "system"`, fleet.md §6).
+    - Node certificates renew automatically 30 days before expiry, and the cluster backup
+      runs nightly.
+
+    **Size:** two to three weeks. The proxy, the allowlist and making every tab panel-aware
+    are most of it.
+
+### 1.16: move a server to another node
+
+12. **Move or copy a server between cluster members** (fleet.md phase 3). Asked for after
+    1.13.1 together with 1.15, which it needs.
+
+    - **Move:** stop the server and export it the way a backup does (save-off over RCON,
+      `save hold` on Bedrock). The archive is streamed from node A through the master into
+      an import on node B, in chunks with a SHA-256 checked at the end and no 1 MB limit.
+    - **On B:** keep the server's name and port if they're free there (else pick another and
+      say so), install its Java if needed, bring along its backup schedule, restart schedule,
+      mods tracking and Phantom, start it, and wait until it's running.
+    - **On A:** the folder stays as a removed server (1.6), restorable, until you confirm the
+      move. Nothing is deleted on A before B is up.
+    - **Copy:** the same without removing it from A, under a new name, for a test copy of a
+      world.
+    - **Shorter downtime for big worlds:** an optional pre-copy while the server keeps
+      running, then a final copy of only the files that changed after it stops.
+    - **Templates** can be copied between members too.
+    - Not automatic: there's still nothing to balance (see Not planned). An admin chooses
+      when and where.
+
+    **Size:** one to two weeks; the streaming import and the rollback on failure are the
+    careful parts.
+
+### 1.17: server performance and tuning
+
+13. **How well each server runs, its history, and what to change.** 1.11 answers "is the
     machine all right?". This answers "is the game lagging, since when, and why?", and
     suggests fixes based on what was measured, not a fixed checklist.
 
     Why here: asked for after 1.12 (from a "performance dashboard" proposal, reviewed below).
-    It's mostly read-only and builds on 1.11's sampler. It comes after 1.13 because several
+    It's mostly read-only and builds on 1.11's sampler. It comes after 1.14 because several
     suggestions are "install this mod or plugin" (Lithium, FastAsyncWorldEdit, spark), which
-    1.13 makes one click. It takes the resource graphs out of 2.0, because TPS without
+    1.14 makes one click, and after 1.16 because one fix is moving a
+    server to a less busy node. It takes the resource graphs out of 2.0, because TPS without
     history only says how things are right now.
 
     **What 1.11 already shows** from the proposal: CPU, memory and disk use, network rates,
@@ -416,12 +501,12 @@ and non-admins refused.
 
 ### 2.0: run it for other people
 
-12. **Per-server permissions.** Today a `user` can do everything to every server. Add
+14. **Per-server permissions.** Today a `user` can do everything to every server. Add
     per-server grants (view, console/chat, power, files, mods & plugins, settings) for `user`
     accounts. Admins
     stay admins (they're effectively root anyway). The dashboard then lists only the servers
     a user may view.
-13. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
+15. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes, shown once, revocable.
 
@@ -445,8 +530,7 @@ and non-admins refused.
 - Forge and NeoForge (installer jar, `run.sh`, `user_jvm_args.txt`).
 - Modrinth modpacks (`.mrpack`), on top of 1.13's downloader. Not CurseForge: it needs an API
   key and some packs can't be downloaded automatically.
-- **Move a server to another node** (export + import through the cluster), and clusters
-  phase 2 (see [fleet.md](fleet.md)).
+- Adopting a node over SSH (fleet.md phase 4) and finding panels on the LAN.
 - Velocity proxy support, for people running a network across nodes.
 - Translations, once a contributor offers one.
 
