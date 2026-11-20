@@ -35,7 +35,43 @@ app = FastAPI(title="RedstonePanel API", version=panel_version())
 class RawPropertiesUpdate(BaseModel):
     content: str
 
-app.mount("/static", StaticFiles(directory=os.path.join(panel_settings.APP_DIR, "static")), name="static")
+# The panel's own pages and files. Browsers must check them on every load (no-cache: a quick 304
+# when nothing changed), or after an update they can keep running the old app.js for days. The
+# two pages also link app.js and the stylesheet with ?v=<version>, so an update always fetches
+# the new files, even in a browser that cached them before this header existed.
+STATIC_DIR = os.path.join(panel_settings.APP_DIR, "static")
+PAGES = ("index.html", "login.html")
+_page_cache = {}
+
+def _page(name):
+    path = os.path.join(STATIC_DIR, name)
+    mtime = os.path.getmtime(path)
+    hit = _page_cache.get(name)
+    if not hit or hit[0] != mtime:
+        with open(path, encoding="utf-8") as f:
+            html = f.read()
+        v = urllib.parse.quote(panel_version(), safe="")
+        for asset in ("/static/js/app.js", "/static/css/tailwind.css"):
+            html = html.replace(f'"{asset}"', f'"{asset}?v={v}"')
+        hit = _page_cache[name] = (mtime, html)
+    return hit[1]
+
+@app.get("/static/index.html", include_in_schema=False)
+def index_page():
+    return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
+
+@app.get("/static/login.html", include_in_schema=False)
+def login_page():
+    return HTMLResponse(_page("login.html"), headers={"Cache-Control": "no-cache"})
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.middleware("http")
+async def no_stale_static(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/") and "cache-control" not in response.headers:
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 # ---------------------------------------------------------------------------
 # Access control for every /api/ call

@@ -18,6 +18,10 @@ redstonepanel (1.13.1) noble; urgency=medium
   * Removing a server (Uninstall or Purge) closes its port in ufw and clears
     its failed state. The dashboard no longer lists failed units whose unit
     file is gone, such as servers removed by older versions, and clears them.
+  * Browsers no longer keep running an old app.js after an update (a blank
+    dashboard until Ctrl+F5): the panel's files are sent with
+    Cache-Control: no-cache, and its pages link app.js and the stylesheet
+    with the panel version.
 
  -- Quentin Russell <quentin.russell@cielocloud.org>  Thu, 19 Nov 2026 23:30:00 +0000
 
