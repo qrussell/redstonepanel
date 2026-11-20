@@ -19,6 +19,14 @@ TEMPLATE_FILE = os.path.join(DATA_DIR, "templates.json")
 class DependencyError(RuntimeError):
     """A program the panel needs is not installed (message says which package provides it)."""
 
+class JavaMissing(DependencyError):
+    """The Java a server needs isn't installed; an admin can install it from the panel."""
+
+    def __init__(self, err):
+        super().__init__(str(err))
+        self.required = err.required
+        self.package = err.package
+
 # program -> Ubuntu package (the .deb depends on/recommends these)
 TOOL_PACKAGES = {"java": "openjdk-25-jre-headless", "screen": "screen", "unzip": "unzip",
                  "curl": "curl", "wget": "wget", "jq": "jq"}
@@ -365,6 +373,7 @@ def list_servers():
             "version": ver["version"],
             "java_required": ver["java_required"],
             "java_installed": unit_java_major(exec_start) if "java" in exec_start else None,
+            "java_path": unit_java(exec_start) if "java" in exec_start else None,
             "loader": ver.get("loader"),
             "minecraft": ver.get("minecraft"),
             "status": "online" if st == "active" else "offline",
@@ -550,7 +559,7 @@ def _install_java(d, loader="vanilla", version=None, current=None):
         info, java = javaservers.install(d, loader, version, current)
     except javaservers.MissingJavaError as e:
         write_log(f"[WARNING] {e}")
-        raise DependencyError(str(e))
+        raise JavaMissing(e)
     except javaservers.JavaServerError as e:
         write_log(f"[WARNING] {e}")
         raise ServerError(str(e))
@@ -573,7 +582,7 @@ def java_for_folder(d):
     try:
         return javaservers.choose_java(need, info.get("minecraft"))
     except javaservers.MissingJavaError as e:
-        raise DependencyError(str(e))
+        raise JavaMissing(e)
 
 def _fetch_bedrock(d):
     """Downloads the latest Bedrock Dedicated Server and unpacks it into d."""
@@ -1005,7 +1014,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
     try:
         mc_dir = os.path.join(SERVERS_ROOT, svc_name)
 
-        # Dependencies come from the redstonepanel package (Java is a Recommends); just make sure
+        # Java isn't part of the package: a missing one raises JavaMissing, and the panel offers to install it
         open_firewall(port, proto)
         ensure_minecraft_user(mc_dir)
         os.makedirs(mc_dir, exist_ok=True)

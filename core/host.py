@@ -21,7 +21,7 @@ import subprocess
 import threading
 import time
 
-from core import backups, javaservers, manager, notify, proxies, restarts, tls
+from core import backups, javaservers, manager, notify, proxies, restarts, runtimes, tls
 from core import cluster
 from core import settings as panel_settings
 from core.version import panel_version
@@ -523,8 +523,9 @@ def _needs_attention(rep, failed, phantoms):
                                   server=s["name"], where="backups"))
         if s["edition"] == "Java" and s["java_required"] and (s["java_installed"] or 0) < s["java_required"]:
             out.append(_attention("error", f"{s['name']} needs Java {s['java_required']}, which isn't installed. "
-                                           f"Install it with: sudo apt install {javaservers.java_package(s['java_required'])}",
-                                  server=s["name"]))
+                                           f"Install it under Supporting services → Java, or with: "
+                                           f"sudo apt install {javaservers.java_package(s['java_required'])}",
+                                  server=s["name"], where="java"))
         if s["firewall_open"] is False:
             out.append(_attention("warn", f"The firewall (ufw) doesn't allow {s['name']}'s port {s['port']}, so players "
                                           "outside this machine can't connect.", server=s["name"], where="services"))
@@ -534,6 +535,10 @@ def _needs_attention(rep, failed, phantoms):
     for p in phantoms:
         if p.get("active") != "active":
             out.append(_attention("warn", f"Phantom proxy {p['unit']} is {p.get('active')}.", where="services"))
+    for j in rep["services"]["java"]:
+        if j.get("removable"):
+            out.append(_attention("info", f"Java {j['major']} isn't used by any server. Remove it under Supporting "
+                                          f"services → Java if nothing else on this machine needs it.", where="java"))
     if rep["services"]["screen"] is False and any(s["edition"] == "Bedrock" for s in rep["servers"]):
         out.append(_attention("warn", "screen isn't installed; Bedrock chat and consistent backups need it. "
                                       "Install it with: sudo apt install screen", where="services"))
@@ -570,7 +575,7 @@ def _build():
     phantoms = proxies.find_phantoms()
     failed = failed_units()
     panel = shown.get("redstonepanel.service", {})
-    javas = javaservers.installed_javas()
+    java = runtimes.status(listed)
     try:
         load = [round(x, 2) for x in os.getloadavg()]
     except OSError:
@@ -594,8 +599,10 @@ def _build():
             "failed_units": failed,
             "phantoms": [{"unit": p["unit"], "active": p.get("active"), "enabled": p.get("enabled")} for p in phantoms],
             "firewall": {"installed": fw["installed"], "active": fw["active"]},
-            "java": [{"major": m, "path": p, "servers": [s["name"] for s in servers if s["java_installed"] == m]}
-                     for m, p in sorted(javas.items())],
+            "java": java["installed"],
+            "java_needed": java["needed"],
+            "java_installable": java["installable"],
+            "java_job": java["job"],
             "screen": bool(shutil.which("screen")),
             "https": https(),
             "notifications": {k: v for k, v in notify.public().items() if k in ("configured", "kind")},

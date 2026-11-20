@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.13.0 and the 1.14 performance plan · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.13.1 and the 1.14 performance plan · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,12 +20,12 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.13.0)
+## What already exists (1.13.1)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar browser with updates, a host dashboard, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar browser with updates, Java installed per server on demand, a host dashboard, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
@@ -270,6 +270,31 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
     (Hangar) and LuckPerms (Modrinth) went into a Paper server's `plugins/`.
 
     Next after this (in Later): Modrinth modpacks (`.mrpack`), which reuse this downloader.
+
+### 1.13.1: Java when it's needed *(Nov 2026)*
+
+Asked for after 1.13: a host shouldn't carry Java versions no server uses, and the first
+Java server shouldn't stop with "install this package first".
+
+**As built:** the package suggests Java instead of recommending it, so a fresh install
+has none. When creating, updating or restoring a Java server finds its Java missing, the
+API answers 409 with the version and package, and an admin's browser offers to install it
+and retries. `core/runtimes.py` runs apt in one background job at a time (package names
+only from `openjdk-{8,11,17,21,25}-jre-headless`, `DPkg::Lock::Timeout`, an `apt update`
+only when the package isn't in the lists), then rebinds every server waiting for that
+Java and starts the enabled ones. The dashboard's Java row lists each Java with its
+servers, what servers need, and Install / Remove; Maintenance → Java switches a server
+to another installed Java that's new enough. Removing purges only the JRE package, refuses
+while a server uses it or when apt would take anything else, and then purges the
+dependencies that only it needed (the autoremove list before and after, nothing that was
+already waiting). Binding stays the full path in each root-owned unit: no symlink in the
+server folder, which the game user and the file manager can change and which a backup or
+import would carry to a host where it points nowhere.
+
+Tested in the systemd container: a fresh install had no Java; creating a 1.21.4 server got
+409, installed Java 21 and created it; an imported server needing Java 25 was moved onto
+it when 25 was installed; switching Java and the too-old refusal; removing 25, then the
+last Java with `java-common` and `ca-certificates-java`, leaving the panel installed.
 
 ### 1.14: server performance and tuning
 

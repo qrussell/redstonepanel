@@ -323,7 +323,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab('visual');
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadJavaChoice(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.activeServer.name ? this.filesPath : '');
@@ -947,14 +947,139 @@ const ServerApp = {
         const r = await res.json();
         const base = noteId === 'deploy-java-note' ? 'text-xs mb-2 ' : 'text-xs mt-1 ';
         if (r.java_used === null) {
-            note.className = base + 'text-red-400';
+            const verb = noteId === 'deploy-java-note' ? 'create the server' : 'update';
+            note.className = base + (this.isAdmin() ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-400');
             note.innerText = `Minecraft ${r.minecraft} needs Java ${r.java_required}, which isn't installed. `
-                + `Install it first: sudo apt install ${r.package}`;
+                + (this.isAdmin() ? `You'll be asked to install it (${r.package}) when you ${verb}.`
+                                  : `Ask an admin to install it, or: sudo apt install ${r.package}`);
         } else {
             note.className = base + 'text-gray-400';
             note.innerText = `Minecraft ${r.minecraft} needs Java ${r.java_required}; it will run on Java ${r.java_used}`
                 + (r.java_used !== r.java_required ? ` (Java ${r.java_required} isn't installed; a newer one usually works).` : '.');
         }
+    },
+
+    // --- Java runtimes (admins): install the Java a server needs, remove one no server uses,
+    // and choose the Java a server runs on. apt runs on the panel in one background job. ---
+    isAdmin() { return !!(this.currentUser && this.currentUser.role === 'admin'); },
+    javaJob: null,
+
+    async installJava(major, why) {
+        if (!confirm(`${why ? why + '\n\n' : ''}Install Java ${major} (openjdk-${major}-jre-headless) now? `
+            + `apt downloads it from this machine's package sources (roughly 50–100 MB); it takes a minute or two.`)) return false;
+        return this.runJavaJob('install', major);
+    },
+
+    async removeJava(major) {
+        if (!confirm(`Remove Java ${major} (openjdk-${major}-jre-headless)? No server uses it.\n\n`
+            + `Anything else on this machine that runs Java ${major} stops working. A server that needs it later `
+            + `can install it again.`)) return;
+        await this.runJavaJob('remove', major);
+    },
+
+    async runJavaJob(action, major) {
+        const done = action === 'install' ? 'installed' : 'removed';
+        this.toggleConsole(true);
+        const res = await fetch(`/api/java/runtimes/${action}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ major })
+        });
+        if (!res.ok) { alert(`Java ${major} wasn't ${done}: ${await this.apiError(res)}`); return false; }
+        this.javaJob = (await res.json());
+        this.refreshJavaViews();
+        let job = this.javaJob;
+        try {
+            while (job && job.state === 'running') {
+                await new Promise(r => setTimeout(r, 1500));
+                const r = await fetch('/api/java/runtimes/job');
+                if (!r.ok) throw new Error(await this.apiError(r));
+                job = (await r.json()).job;
+            }
+        } catch (e) {
+            job = { state: 'failed', error: e.message };
+        }
+        this.javaJob = null;
+        await this.loadServers();
+        this.refreshJavaViews();
+        if (!job || job.state !== 'done') {
+            const tail = job && job.lines && job.lines.length ? '\n\n' + job.lines.slice(-6).join('\n') : '';
+            alert(`Java ${major} wasn't ${done}: ${job ? job.error : 'the job disappeared'}${tail}`);
+            return false;
+        }
+        if (job.rebound && job.rebound.length) {
+            alert(`Java ${major} is installed. ${job.rebound.map(r => r.name).join(', ')} now run${job.rebound.length === 1 ? 's' : ''} on it.`);
+        }
+        return true;
+    },
+
+    refreshJavaViews() {
+        if (!document.getElementById('dashboard').classList.contains('hidden')) this.loadDashboard();
+        if (this.activeServer && document.getElementById('java-card')) this.loadJavaChoice();
+    },
+
+    // A request refused because the server needs a Java that isn't installed (HTTP 409 with
+    // {java: {required, package}}): an admin can install it and send the request again.
+    async withJava(res, send) {
+        if (res.status !== 409 || !this.isAdmin()) return res;
+        let data = {};
+        try { data = await res.clone().json(); } catch (e) { return res; }
+        if (!data.java) return res;
+        if (!await this.installJava(data.java.required, data.detail)) return res;
+        return send();
+    },
+
+    // Maintenance tab: which Java this server runs on, and switching to another installed one
+    async loadJavaChoice() {
+        const card = document.getElementById('java-card');
+        const body = document.getElementById('java-card-body');
+        const srv = this.activeServer;
+        if (!card || !srv) return;
+        card.classList.toggle('hidden', srv.edition !== 'Java' || !this.isAdmin());
+        if (srv.edition !== 'Java' || !this.isAdmin()) return;
+        const res = await fetch('/api/java/runtimes');
+        if (!res.ok) { body.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+        const rt = await res.json();
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        const esc = t => this.escapeHtml(String(t));
+        const need = srv.java_required, using = srv.java_installed;
+        const busy = rt.job && rt.job.state === 'running' ? rt.job : this.javaJob;
+        const usable = rt.installed.filter(j => !need || j.major >= need);
+        const btn = 'bg-theme hover-bg-theme text-white px-3 py-1 rounded font-bold text-sm';
+        let html = `<p class="text-sm text-gray-600 dark:text-gray-300">`
+            + (using ? `Runs on <b>Java ${esc(using)}</b>` : `<span class="text-red-500 font-bold">Its Java isn't installed</span>`)
+            + (srv.java_path ? ` <span class="text-xs text-gray-500 dark:text-gray-400 break-all">(${esc(srv.java_path)})</span>` : '')
+            + (need ? `. ${srv.minecraft ? 'Minecraft ' + esc(srv.minecraft) : 'This version'} needs Java ${esc(need)}${using && using > need ? ' or newer' : ''}.` : '.')
+            + `</p>`;
+        if (busy) {
+            html += `<p class="text-sm mt-2">⏳ ${busy.action === 'install' ? 'Installing' : 'Removing'} Java ${esc(busy.major)}…</p>`;
+        } else {
+            if (need && !rt.installed.some(j => j.major === need)) {
+                html += `<p class="text-sm mt-2">Java ${esc(need)} itself isn't installed${using ? `, so it runs on the closest newer one` : ''}.
+                    <button onclick="ServerApp.installJava(${need})" class="underline text-theme">Install Java ${esc(need)}</button></p>`;
+            }
+            if (usable.length > 1 || (usable.length === 1 && usable[0].major !== using)) {
+                html += `<div class="mt-3 flex items-center gap-2">
+                    <select id="java-choice" class="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-1 text-sm text-gray-900 dark:text-white">
+                        ${usable.map(j => `<option value="${j.major}" ${j.major === using ? 'selected' : ''}>Java ${esc(j.major)}${j.major === need ? ' (what it needs)' : ''}${j.major === using ? ' (current)' : ''}</option>`).join('')}
+                    </select>
+                    <button onclick="ServerApp.useJava(+document.getElementById('java-choice').value)" class="${btn}">Use</button>
+                </div>
+                <p class="text-xs mt-1 text-gray-500 dark:text-gray-400">Only Java ${esc(need || '')} and newer are listed. A running server restarts.</p>`;
+            }
+        }
+        body.innerHTML = html;
+    },
+
+    async useJava(major) {
+        const srv = this.activeServer;
+        if (!srv) return;
+        if (major === srv.java_installed) return;
+        if (srv.status === 'online' && !confirm(`Run ${srv.name} on Java ${major}? It restarts now.`)) return;
+        const res = await fetch(`/api/servers/${encodeURIComponent(srv.name)}/java`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ major })
+        });
+        if (!res.ok) return alert(`Java not changed: ${await this.apiError(res)}`);
+        await this.loadServers();
+        this.loadJavaChoice();
     },
 
     // Maintenance tab: Java servers can pick the Minecraft version to update to (never older)
@@ -1864,7 +1989,8 @@ const ServerApp = {
         if (!srv.has_binary && !confirm(`${name} has no server binary. Download the latest ${srv.edition} release and restore it?`)) return;
         if (button) { button.disabled = true; button.innerText = 'Restoring…'; }
         this.toggleConsole(true);
-        const res = await fetch(`/api/servers/removed/${encodeURIComponent(name)}/restore`, { method: 'POST' });
+        const send = () => fetch(`/api/servers/removed/${encodeURIComponent(name)}/restore`, { method: 'POST' });
+        const res = await this.withJava(await send(), send);
         if (!res.ok) {
             alert(`Restore failed: ${await this.apiError(res)}`);
         } else {
@@ -1897,11 +2023,12 @@ const ServerApp = {
         document.getElementById('modal-overlay').classList.add('hidden');
         this.toggleConsole(true);
 
-        const res = await fetch('/api/servers/deploy', {
+        const send = () => fetch('/api/servers/deploy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
+        const res = await this.withJava(await send(), send);
         if (!res.ok) {
             let detail = `HTTP ${res.status}`;
             try { detail = (await res.json()).detail || detail; } catch (e) {}
@@ -2023,13 +2150,16 @@ const ServerApp = {
         }
         if (!confirm(`Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.${warn}`)) return;
         this.toggleConsole(true);
-        const res = await fetch(`/api/servers/${this.activeServer.name}/update`, {
+        const name = this.activeServer.name;
+        const send = () => fetch(`/api/servers/${encodeURIComponent(name)}/update`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(version ? { version } : {})
         });
+        const res = await this.withJava(await send(), send);
         if (!res.ok) alert(`Update failed: ${await this.apiError(res)}`);
         await this.loadServers();
         this.loadUpdateOptions();
+        this.loadJavaChoice();
     },
 
     async uninstallServer(keepWorld) {
@@ -2547,8 +2677,7 @@ const ServerApp = {
 				<h3 class="${h3} mb-2">Supporting services</h3>
 				${row('RedstonePanel', ok(p.state === 'active', `${esc(p.state)}${p.uptime ? ', up ' + this.fmtDuration(p.uptime) : ''}${p.memory ? ' · ' + this.fmtBytes(p.memory) : ''}`))}
 				${row('Failed units', svc.failed_units && svc.failed_units.length ? ok(false, svc.failed_units.map(esc).join('<br>')) : ok(true, 'none'))}
-				${svc.java ? row('Java', svc.java.length ? svc.java.map(j => `Java ${j.major}${j.servers.length ? ` <span class="${note}">(${j.servers.map(esc).join(', ')})</span>` : ''}`).join('<br>')
-					: servers.some(s => s.edition === 'Java') ? ok(false, 'not installed') : 'not installed') : ''}
+				${svc.java ? row('Java', this.javaRow(svc, servers, d.redacted)) : ''}
 				${row('screen', ok(svc.screen, svc.screen ? 'installed' : 'not installed (Bedrock chat and backups need it)'))}
 				${fw ? row('Firewall (ufw)', !fw.installed ? 'not installed' : ok(true, fw.active ? 'on' : 'off')) : ''}
 				${svc.phantoms && svc.phantoms.length ? row('Phantom proxies', svc.phantoms.map(x => ok(x.active === 'active', `${esc(x.unit)}: ${esc(x.active)}`)).join('<br>')) : ''}
@@ -2571,6 +2700,35 @@ const ServerApp = {
 		document.getElementById('dash-body').innerHTML = attentionHtml + tiles + serverTable
 			+ `<section class="grid grid-cols-1 lg:grid-cols-3 gap-4">${host}${disks}${services}</section>` + nodes
 			+ (d.redacted ? `<p class="${note}">You're on the trusted local network without signing in, so addresses, versions and settings are hidden.</p>` : '');
+	},
+
+	// Supporting services → Java: each installed Java and the servers on it, what's missing,
+	// and (admins) install / remove
+	javaRow(svc, servers, redacted) {
+		const esc = t => this.escapeHtml(t === null || t === undefined ? '' : String(t));
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const link = 'underline text-xs text-theme';
+		const admin = this.isAdmin() && !redacted;
+		const job = (svc.java_job && svc.java_job.state === 'running') ? svc.java_job : this.javaJob;
+		const lines = svc.java.map(j => {
+			const users = j.servers.length ? `<span class="${note}">${j.servers.map(esc).join(', ')}</span>`
+				: `<span class="${note} italic">no server</span>`;
+			const remove = admin && !job && j.removable
+				? ` <button onclick="ServerApp.removeJava(${j.major})" class="underline text-xs text-red-600 dark:text-red-400">Remove</button>` : '';
+			return `Java ${esc(j.major)}${j.default ? ` <span class="${note}">(default)</span>` : ''}: ${users}${remove}`;
+		});
+		for (const n of svc.java_needed || []) {
+			const install = admin && !job ? ` <button onclick="ServerApp.installJava(${n.major})" class="${link}">Install</button>` : '';
+			lines.push(`<span class="text-red-600 dark:text-red-400">▲</span> Java ${esc(n.major)} needed by ${n.servers.map(esc).join(', ')}${install}`);
+		}
+		if (job) lines.push(`⏳ ${job.action === 'install' ? 'Installing' : 'Removing'} Java ${esc(job.major)}…`);
+		if (!svc.java.length && !(svc.java_needed || []).length) {
+			lines.push(servers.some(s => s.edition === 'Java') ? 'not installed' : `none <span class="${note}">(installed when a Java server needs it)</span>`);
+		}
+		if (admin && !job && (svc.java_installable || []).length) {
+			lines.push(`<span class="${note}">Install: ${svc.java_installable.map(i => `<button onclick="ServerApp.installJava(${i.major})" class="${link}">${esc(i.major)}</button>`).join(' · ')}</span>`);
+		}
+		return lines.join('<br>');
 	},
 
 	// One panel of the cluster: the few numbers core.host.summary() gives

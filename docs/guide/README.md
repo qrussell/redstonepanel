@@ -46,8 +46,9 @@ sudo apt update
 sudo apt install redstonepanel
 ```
 
-The package pulls in Java (`openjdk-25-jre-headless`) for Java Edition servers. On a machine
-that will only run Bedrock, add `--no-install-recommends` to leave Java out.
+The package doesn't install Java. The first time you create a Java Edition server, the panel
+offers to install the Java that Minecraft version needs (see [Java versions](#java-versions)),
+so a machine that only runs Bedrock never gets Java.
 
 Install `ufw` too if you want the panel to open each game server's port in the firewall for
 you.
@@ -93,7 +94,7 @@ it back. It refreshes every 10 seconds while the page is open.
   version and whether an update is waiting.
 - **Disks**: each file system holding the servers, backups and panel data, with free space.
 - **Supporting services**: the panel itself, failed units, installed Java versions and which
-  servers use each, `screen`, the firewall, Phantom proxies, backup and restart timers, HTTPS
+  servers use each (with **Install** and **Remove**, see [Java versions](#java-versions)), `screen`, the firewall, Phantom proxies, backup and restart timers, HTTPS
   and its certificate, notifications, and the cluster.
 - On a cluster master, **Cluster** adds a card per panel with its CPU, memory, disk, servers
   online and anything that needs attention. Nodes need RedstonePanel 1.11 or newer for this.
@@ -141,8 +142,9 @@ Click **➕ New Server**.
    - **Newest** is the default. Pick an older version to match your players' clients or your
      plugins and mods.
    - The line under the lists says which Java that version needs and which installed Java
-     will run it. If none is new enough, it names the package to install first
-     (`sudo apt install openjdk-21-jre-headless`, for example).
+     will run it. If none is new enough, an admin is asked to install it when they click
+     **Deploy Fresh Server**; other accounts are told which package an admin needs to install
+     (`openjdk-21-jre-headless`, for example).
 3. Optionally pick a **Base Template** (see [Templates](#14-templates)) to start from saved
    settings.
 4. Click **Deploy Fresh Server**.
@@ -256,7 +258,32 @@ Changing a role takes effect at the next restart.
   version can't go back to an older one. Bedrock servers always update to the newest release.
   On Fabric and Paper servers, moving to a newer Minecraft version first lists the mods or
   plugins that have no build for it yet on Modrinth or Hangar (and any it couldn't check),
-  so you can wait rather than update into a server that won't start.
+  so you can wait rather than update into a server that won't start. If the new version
+  needs a Java that isn't installed, you're asked to install it first.
+- **Java** (admins, Java servers): which Java the server runs on and which it needs. Choose
+  another installed Java that's new enough and click **Use**; a running server restarts.
+
+### Java versions
+
+Each Minecraft version needs a particular Java: 26.1 and newer need Java 25, 1.20.5 to
+1.21.11 Java 21, 1.18 to 1.20.4 Java 17, and older versions Java 8. Each server's systemd unit
+names its own Java (`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`), so servers needing
+different versions run side by side, and the system's default `java` doesn't matter.
+
+- **Installing.** When you create, update or restore a Java server and the Java it needs isn't
+  installed, the panel asks to install it (`openjdk-21-jre-headless`, for example) with apt,
+  shows the progress in **🖥️ Console**, and then carries on. Servers that were waiting for
+  that Java, such as an imported one that couldn't start, are moved onto it and started.
+  You can also install one ahead of time from the dashboard: **Supporting services → Java →
+  Install**. Only admins can install or remove Java.
+- **Removing.** A Java that no server uses shows **Remove** on the dashboard, and the
+  dashboard's **Needs attention** mentions it. The panel removes only the
+  `openjdk-N-jre-headless` package, and refuses if apt would take anything else with it
+  (a JDK you installed, for example); remove those yourself. Anything else on the machine that
+  uses that Java stops working, so check before removing. A removed server that's restored
+  later installs its Java again.
+- **When the exact Java isn't installed**, a server runs on the closest newer one, which
+  usually works. **Maintenance → Java** offers to install the exact one and switch to it.
 
 Uninstalling and purging need an **admin**; other accounts, and visitors on a trusted local
 network, don't see these two sections.

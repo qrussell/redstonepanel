@@ -96,24 +96,17 @@ Either way, `apt` pulls in the dependencies from Ubuntu's archive (`python3-fast
 `python3-uvicorn`, `python3-multipart`, PAM, `screen` and so on), then starts the
 `redstonepanel` service.
 
-Java is a *Recommends* (`openjdk-25-jre-headless`), so a normal install includes it. On a
-host that will only run Bedrock servers you can leave it out:
-
-```bash
-sudo apt install --no-install-recommends redstonepanel
-```
-
-(or `--no-install-recommends ./redstonepanel_X_all.deb` for a downloaded file).
+Java isn't installed with the package. When you create a Java Edition server, the panel
+offers to install the Java its Minecraft version needs, so a host that only runs Bedrock
+servers never gets Java.
 
 Java 25 runs Minecraft 26.1 and newer. Older Minecraft versions want older Java: 1.20.5 to
 1.21.11 need Java 21, 1.18 to 1.20.4 need Java 17, 1.17 Java 16 (Ubuntu's Java 17 runs it) and
 older versions Java 8. The panel uses the Java each version asks
-for when it's installed, else the closest newer one, and tells you which package to install
-when none is new enough, for example:
-
-```bash
-sudo apt install openjdk-21-jre-headless
-```
+for when it's installed, else the closest newer one. When none is new enough, an admin can
+install it from the panel (it runs `apt install openjdk-21-jre-headless`, for example), and the
+dashboard lists each installed Java with the servers using it and can remove one no server
+uses.
 
 Several Java versions can be installed side by side; each server's systemd unit names the one
 it runs (`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`).

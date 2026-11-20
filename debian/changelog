@@ -1,3 +1,19 @@
+redstonepanel (1.13.1) noble; urgency=medium
+
+  * Java is installed when a server needs it, not with the package: Java
+    moves from Recommends to Suggests, so Bedrock-only hosts get none.
+    Creating, updating or restoring a Java server whose Java isn't
+    installed offers to install the right openjdk-N-jre-headless (admins),
+    then carries on. Servers that were waiting for it are moved onto it.
+  * Dashboard -> Supporting services -> Java lists each installed Java with
+    the servers on it, the ones servers need, and Install / Remove. Only a
+    Java no server uses can be removed, and only when apt would remove
+    nothing but that JRE.
+  * Maintenance -> Java shows which Java a server runs on and switches it
+    to another installed one that's new enough.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Thu, 19 Nov 2026 23:30:00 +0000
+
 redstonepanel (1.13.0) noble; urgency=medium
 
   * Find and install mods and plugins from Modrinth (Fabric and Paper) and

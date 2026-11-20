@@ -9,6 +9,7 @@ import core.manager as manager
 import core.files as files
 import core.mods as mods
 import core.catalog as catalog
+import core.runtimes as runtimes
 import core.host as host
 import urllib.parse
 import core.javaservers as javaservers
@@ -339,6 +340,8 @@ def set_player_role(server_name: str, player: str = Body(...), role: str = Body(
 def update_server(server_name: str, req: Optional[ServerUpdateRequest] = None):
     try:
         manager.update_server_binary(server_name, req.version if req else None)
+    except manager.JavaMissing:
+        raise                                    # 409, see java_missing() below
     except (manager.DependencyError, manager.ServerError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
@@ -360,6 +363,47 @@ def java_requirement(version: str):
         return javaservers.requirement(version)
     except javaservers.JavaServerError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# Java runtimes (admins): which are installed and used by which server, install one a server
+# needs, remove one no server uses, and choose the Java a server runs on
+@app.exception_handler(manager.JavaMissing)
+async def java_missing(request: Request, e: manager.JavaMissing):
+    """A server needs a Java that isn't installed: 409 with what to install, so an admin's
+    browser can offer to install it and try again."""
+    return JSONResponse({"detail": str(e), "java": {"required": e.required, "package": e.package}},
+                        status_code=409)
+
+class JavaChoice(BaseModel):
+    major: int
+
+def _runtime_call(request: Request, fn, *args, **kw):
+    _require_admin(request, "install, remove or choose Java")
+    try:
+        return fn(*args, **kw)
+    except runtimes.RuntimeJobError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/api/java/runtimes")
+def java_runtimes(request: Request):
+    return _runtime_call(request, runtimes.status)
+
+@app.get("/api/java/runtimes/job")
+def java_runtime_job(request: Request):
+    return _runtime_call(request, lambda: {"job": runtimes.job()})
+
+@app.post("/api/java/runtimes/install")
+def install_java_runtime(request: Request, req: JavaChoice):
+    return _runtime_call(request, runtimes.install, req.major, actor=request.state.user["username"])
+
+@app.post("/api/java/runtimes/remove")
+def remove_java_runtime(request: Request, req: JavaChoice):
+    return _runtime_call(request, runtimes.remove, req.major, actor=request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/java")
+def choose_server_java(request: Request, server_name: str, req: JavaChoice):
+    return _runtime_call(request, runtimes.use, server_name, req.major, actor=request.state.user["username"])
 
 @app.post("/api/servers/{server_name}/action")
 def control_server(server_name: str, req: ServerActionRequest):
@@ -649,6 +693,8 @@ def list_removed_servers():
 def restore_server(server_name: str):
     try:
         result = manager.restore_server(server_name)
+    except manager.JavaMissing:
+        raise                                    # 409, see java_missing() below
     except (manager.ServerError, manager.DependencyError) as e:
         manager.write_log(f"[RESTORE] Refused: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -676,6 +722,8 @@ def deploy_server(req: ServerDeployRequest):
     # This executes the native python deployment and logs output to the web console
     try:
         manager.deploy_server(req.edition, req.template_id, req.loader, req.version)
+    except manager.JavaMissing:
+        raise                                    # 409, see java_missing() below
     except (manager.TemplateError, manager.DependencyError, manager.ServerError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
