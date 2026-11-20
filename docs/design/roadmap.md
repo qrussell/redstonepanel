@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.13.1 and the 1.14 performance plan · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.13.2 and the 1.14 performance plan · Author: Quentin Russell
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -20,12 +20,12 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.13.1)
+## What already exists (1.13.2)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar browser with updates, Java installed per server on demand, a host dashboard, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar browser with updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (phase 1), the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
@@ -303,6 +303,29 @@ Tested in the systemd container: a fresh install had no Java; creating a 1.21.4 
 409, installed Java 21 and created it; an imported server needing Java 25 was moved onto
 it when 25 was installed; switching Java and the too-old refusal; removing 25, then the
 last Java with `java-common` and `ca-certificates-java`, leaving the panel installed.
+
+### 1.13.2: Phantom from the panel *(Nov 2026)*
+
+Asked for after 1.13.1: install, uninstall, start, stop and check Phantom LAN proxies for
+Bedrock servers, managed like add-ons. 1.11 already found Phantom units and their mistakes
+(`core/proxies.py`); this makes them.
+
+**As built:** `core/phantom.py`. The binary is jhead/phantom v0.5.4 (the last release, 2021),
+downloaded through `core/sources.download` from github.com and its asset hosts only, and
+checked against SHA-256 values pinned per architecture (x86_64, aarch64, armv7l), since the
+project publishes none. It goes in `/usr/local/lib/redstonepanel/phantom/` because the panel's
+data folder is root-only and the unit runs as `minecraft`. One unit per server,
+`phantom-<server>.service`, marked `X-RedstonePanel-Server=` so only the panel's own units are
+rewritten; `-server 127.0.0.1:<port> -bind_port <19300..19399>` so ufw can allow a fixed
+port. Phantom binds 19132 with SO_REUSEPORT, so several share it, but a Bedrock server on 19132
+doesn't: install is refused while one exists. Units made by hand that point at the server
+or hold its port can be started, stopped and removed (unit file only). Removing a server
+removes its Phantom; the last Phantom closes 19132 unless a server uses it.
+
+Tested in the systemd container with the real download: two Phantoms on 19132 with proxy
+ports 19300 and 19301 under the minecraft user, ufw rules opened and closed, a server on
+19132 blocking install, a hand-made loop unit removed, purge removing a server's Phantom,
+and non-admins refused.
 
 ### 1.14: server performance and tuning
 

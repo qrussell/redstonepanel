@@ -29,6 +29,8 @@ them from a browser:
 - notifications to Discord or any webhook when a server crashes, starts or stops, and when a
   backup finishes or fails
 - scheduled restarts that warn players in game first
+- Phantom LAN proxies for Bedrock servers (**Add-ons → Server tools**): install, start, stop
+  and remove one per server, so a server on another port shows up under LAN Games
 - a panel activity log
 - a dashboard for the machine: CPU, memory, disks, network, each server's CPU, memory,
   players and disk use, supporting services (Java, firewall, timers, certificates,
