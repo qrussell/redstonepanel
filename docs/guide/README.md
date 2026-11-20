@@ -50,8 +50,11 @@ The package doesn't install Java. The first time you create a Java Edition serve
 offers to install the Java that Minecraft version needs (see [Java versions](#java-versions)),
 so a machine that only runs Bedrock never gets Java.
 
-Install `ufw` too if you want the panel to open each game server's port in the firewall for
-you. It closes the port again when the server is removed.
+Install `ufw` too if you want the panel to open each game server's ports in the firewall for
+you: TCP for Java, UDP for Bedrock, and for a Bedrock server using the NetherNet transport
+(`transport=nethernet`) TCP on its port, UDP on its `server-udp-ports` and UDP 7551 for LAN
+discovery. It follows port and transport changes you make in Configuration, and closes the
+ports again when the server is removed (7551 stays open while another NetherNet server needs it).
 
 **Updating.** When a new version is out, the dashboard's **Needs attention** says so and the
 **Host** card shows **Update now** (admins). Click it: the panel updates its package with apt,
@@ -167,7 +170,7 @@ The panel then:
 - accepts the Minecraft EULA for you (`eula=true`), so by deploying a server you agree to it;
 - creates a systemd service that runs as the `minecraft` user and restarts the server if it
   crashes;
-- opens the port in `ufw`, if `ufw` is installed;
+- opens its ports in `ufw`, if `ufw` is installed;
 - starts the server.
 
 Watch the progress in **🖥️ Console**. A Java server is ready in about a minute; most of that
@@ -301,7 +304,7 @@ network, don't see these two sections.
 - **Danger Zone → Purge Data**: removes the service and deletes the server's folder,
   world included. This can't be undone. Backups in `/var/backups/redstonepanel` are kept.
 
-Both also remove the server's backup and restart timers, close its game port in `ufw`, and
+Both also remove the server's backup and restart timers, close its game ports in `ufw`, and
 clear it from systemd's list of failed units. Failed units left behind by servers removed
 with older versions are cleared the next time the dashboard loads.
 
@@ -478,6 +481,10 @@ on any other port and forwards players to it. The Add-ons tab of a Bedrock serve
 - Several servers can each have a Phantom: they share UDP 19132. A Bedrock server on 19132
   can't share it, so Install is refused while one is on this machine (move it to another port
   in Configuration). A server on 19132 needs no Phantom anyway.
+- A server using the NetherNet transport (`transport=nethernet`) gets no Phantom: Phantom only
+  relays the older RakNet protocol. It doesn't need one either: it announces itself to
+  consoles on the same network on UDP 7551, which the panel opens in ufw, and it doesn't hold
+  UDP 19132 (its `server-port` is TCP), so other servers' Phantoms can run next to it.
 - Phantom services you made yourself that point at the server or use its port are listed too,
   with what's wrong with them, Start / Stop and **Remove unit**, which deletes only the unit
   file, never the program. If yours is called `phantom-<server>.service`, remove it before
@@ -742,7 +749,9 @@ admins in the sidebar.
 
 - the server is green in the sidebar;
 - players use the port shown on **Overview**;
-- the port is open in the firewall (`sudo ufw status`): TCP for Java, UDP for Bedrock;
+- the port is open in the firewall (`sudo ufw status`): TCP for Java, UDP for Bedrock, and for a
+  NetherNet Bedrock server TCP on its port plus UDP on `server-udp-ports` and 7551. The
+  dashboard's **Needs attention** lists any that are missing, with the command to open them;
 - if players connect from the internet, your router forwards that port.
 
 **Live Chat says RCON isn't answering.** The server is probably still starting; wait a moment.

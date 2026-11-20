@@ -13,8 +13,11 @@ How the panel runs it:
   SHA-256 below (Phantom publishes no checksums), into /usr/local/lib/redstonepanel/phantom/
   (root-owned, readable by the minecraft user; the panel's data folder is root-only).
 - Every Phantom also listens on 19132. Several Phantoms share it (they set SO_REUSEPORT), but a
-  Bedrock server on 19132 doesn't, so a Phantom can't run while one does, and the reverse.
-  Install refuses in that case and says which server holds the port.
+  RakNet Bedrock server on 19132 doesn't, so a Phantom can't run while one does, and the
+  reverse. Install refuses in that case and says which server holds the port.
+- Phantom 0.5.4 speaks RakNet only. A server with transport=nethernet takes connections over
+  TCP (signaling) and WebRTC, which Phantom can't relay, and announces itself to consoles on
+  UDP 7551 on its own, so Install refuses for it and says so.
 - Units that run phantom but weren't made by the panel (core/proxies.py finds those) can be
   stopped, started and removed here too; their binaries are left alone.
 """
@@ -76,13 +79,25 @@ def _bedrock(server, servers=None):
     return s, port
 
 
+MAX_RANGE = 2000
+
+
 def _server_ports(servers=None):
-    """UDP ports Bedrock servers on this host use: {port: server}."""
+    """UDP ports Bedrock servers on this host use: {port: server}. RakNet servers listen on
+    server-port and server-portv6; NetherNet servers on server-udp-ports (their server-port is
+    TCP) and the shared LAN port 7551."""
     out = {}
     for s in (manager.list_servers() if servers is None else servers):
         if s["edition"] != "Bedrock":
             continue
         props = manager.read_properties(s["directory"])
+        if manager.is_nethernet(props):
+            for spec in manager._udp_port_specs(props.get("server-udp-ports")):
+                lo, _, hi = spec.partition(":")
+                for p in range(int(lo), min(int(hi or lo), int(lo) + MAX_RANGE) + 1):
+                    out.setdefault(p, s["name"])
+            out.setdefault(manager.NETHERNET_LAN_PORT, s["name"])
+            continue
         for key in ("server-port", "server-portv6"):
             if str(props.get(key, "")).isdigit():
                 out[int(props[key])] = s["name"]
@@ -143,7 +158,8 @@ def status(server):
     """The panel's Phantom for this server, other Phantom units that point at it or hold its
     port, and whether one can be installed."""
     servers = manager.list_servers()
-    _, port = _bedrock(server, servers)
+    s, port = _bedrock(server, servers)
+    nethernet = manager.is_nethernet(manager.read_properties(s["directory"]))
     phantoms = _phantoms()
     local_ips = _local_ips()
     unit = unit_name(server)
@@ -161,7 +177,13 @@ def status(server):
         elif p["unit"] == unit or proxies.related_to(p, port, local_ips):
             others.append(entry)
     blocker = None
-    if port == LAN_PORT:
+    if nethernet:
+        blocker = (f"{server} uses the NetherNet transport (transport=nethernet), and Phantom only relays the "
+                   f"older RakNet protocol, so it can't carry this server's players. A NetherNet server "
+                   f"announces itself to consoles on your network by itself, on UDP "
+                   f"{manager.NETHERNET_LAN_PORT}, which the panel opens in ufw. If it doesn't show under "
+                   f"LAN Games, check that the consoles are on the same network as this machine.")
+    elif port == LAN_PORT:
         blocker = (f"{server} uses port {LAN_PORT}, so it already shows up as a LAN game and Phantom "
                    f"can't run next to it. Phantom is for servers on other ports.")
     elif not mine and _read_unit(unit) is not None:
@@ -175,6 +197,7 @@ def status(server):
     if mine:
         mine["logs"] = _journal(unit)
     return {"server": server, "port": port, "version": VERSION, "phantom": mine, "others": others,
+            "transport": "nethernet" if nethernet else "raknet",
             "can_install": blocker is None and machine_supported(), "blocker": blocker or (
                 None if machine_supported() else f"Phantom has no build for this machine ({platform.machine()}).")}
 
@@ -324,6 +347,7 @@ def _remove_unit(unit, bind_port=None):
 def _close(port):
     if shutil.which("ufw"):
         manager.run_and_log(["ufw", "delete", "allow", f"{port}/udp"])
+        manager._firewall_changed()
 
 
 def on_server_removed(server):

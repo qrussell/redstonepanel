@@ -20,7 +20,7 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.14.0)
+## What already exists (1.14.1)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
@@ -349,6 +349,22 @@ Tested against the live APIs in the systemd container: Fabric "Server essentials
 six jars (Fabric API and Fabric Language Kotlin as dependencies) after a backup, and running it
 again installed nothing and took no backup; on Paper, "Build protection" brought WorldEdit for
 WorldGuard.
+
+### 1.14.1: NetherNet-aware firewall and Phantom *(Nov 2026)*
+
+Found on a live host: a Bedrock server switched to `transport=nethernet` listens on TCP
+server-port (signaling), UDP `server-udp-ports` (gameplay) and UDP 7551 (LAN discovery), but
+the panel only ever opened UDP server-port, and the Phantom card offered a RakNet proxy that
+can't carry NetherNet players.
+
+**As built:** `manager.firewall_rules(edition, props)` derives the rules from
+server.properties; `list_servers` reports them. Deploy, import and restore open them; saving
+properties (form, raw editor, template) opens what's new and closes what's gone; removal closes
+only rules no remaining server needs (7551 is shared). The dashboard checks each rule (port
+ranges included) and names the missing ones with the ufw command. Every ufw change clears the
+host cache so the dashboard is current at once. Phantom refuses NetherNet servers with the
+reason, and its port bookkeeping treats them as holding their UDP ports and 7551, not 19132.
+Existing servers aren't changed on upgrade; the dashboard lists what's missing.
 
 ### 1.15: manage every node from the master
 

@@ -1,3 +1,22 @@
+redstonepanel (1.14.1) noble; urgency=medium
+
+  * Firewall rules follow each server's network settings: Bedrock servers
+    using the NetherNet transport get TCP server-port (signaling), UDP
+    server-udp-ports (gameplay) and UDP 7551 (LAN discovery, shared by all
+    NetherNet servers) instead of UDP server-port. Changing the port or
+    transport in Configuration, or applying a template, opens the new rules
+    and closes the old ones; removing a server closes only rules no other
+    server needs.
+  * The dashboard checks every rule a server needs and says which are
+    missing, with the ufw command to open them; a closed 7551 is reported
+    as consoles not finding the server under LAN Games.
+  * Phantom refuses NetherNet servers and says why: it only relays RakNet,
+    and NetherNet servers announce themselves on the LAN by themselves. A
+    NetherNet server on port 19132 no longer stops Phantoms for RakNet
+    servers (its 19132 is TCP), and proxy ports skip its UDP ports.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Fri, 20 Nov 2026 18:00:00 +0000
+
 redstonepanel (1.14.0) noble; urgency=medium
 
   * A catalog of mods and plugins: Find mods / Find plugins opens on

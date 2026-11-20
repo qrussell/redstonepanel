@@ -26,6 +26,7 @@ class Host:
         self.dir = tempfile.mkdtemp(dir=TMP)
         self.bin = tempfile.mkdtemp(dir=TMP)
         self.servers = servers
+        self.props = {}          # name -> extra server.properties
         self.cmds = []
         self.active = {}
         patches = [
@@ -39,7 +40,8 @@ class Host:
             mock.patch.object(phantom.shutil, "which", lambda name: "/usr/sbin/" + name),
             mock.patch.object(manager, "_check_server", self.check),
             mock.patch.object(manager, "list_servers", self.list_servers),
-            mock.patch.object(manager, "read_properties", lambda d: {"server-port": str(self.servers[d])}),
+            mock.patch.object(manager, "read_properties",
+                              lambda d: {"server-port": str(self.servers[d]), **self.props.get(d, {})}),
             mock.patch.object(manager, "run_and_log", self.run),
             mock.patch.object(manager, "write_log", lambda m: None),
             mock.patch.object(manager, "open_firewall", lambda port, proto: self.cmds.append(["ufw", "allow", f"{port}/{proto}"])),
@@ -193,6 +195,30 @@ class Refusals(unittest.TestCase):
             st = phantom.status("minecraft-island")
         self.assertFalse(st["can_install"])
         self.assertIn("riscv64", st["blocker"])
+
+
+class NetherNet(unittest.TestCase):
+    def test_nethernet_server_gets_no_phantom(self):
+        h = Host(self, {"minecraft-bedrock": 19132})
+        h.props["minecraft-bedrock"] = {"transport": "nethernet", "server-udp-ports": "19141"}
+        st = phantom.status("minecraft-bedrock")
+        self.assertFalse(st["can_install"])
+        self.assertEqual(st["transport"], "nethernet")
+        self.assertIn("NetherNet", st["blocker"])
+        self.assertIn("UDP 7551", st["blocker"])
+        with self.assertRaises(phantom.PhantomError):
+            phantom.install("minecraft-bedrock")
+
+    def test_nethernet_server_on_19132_doesnt_block_raknet_phantoms(self):
+        # its 19132 is TCP; it holds UDP 19141 and 7551
+        h = Host(self, {"minecraft-bedrock": 19132, "minecraft-island": 19140})
+        h.props["minecraft-bedrock"] = {"transport": "nethernet", "server-udp-ports": "19300-19301"}
+        st = phantom.status("minecraft-island")
+        self.assertTrue(st["can_install"], st["blocker"])
+        with mock.patch("core.sources.download", side_effect=fake_download):
+            phantom.install("minecraft-island")
+        # the proxy port skips the NetherNet server's UDP ports
+        self.assertIn("-bind_port 19302", h.unit("phantom-minecraft-island.service"))
 
 
 class HandMade(unittest.TestCase):
