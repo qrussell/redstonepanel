@@ -1057,7 +1057,7 @@ const ServerApp = {
         const whereHtml = nodes.length ? `
             <div class="mb-4">
                 <label class="block text-sm text-gray-400 mb-1">Where</label>
-                <select id="deploy-where" onchange="ServerApp.onDeployWhereChange(this.value)" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white">
+                <select id="deploy-where" onchange="ServerApp.onDeployWhereChange(this.value)" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
                     <option value="">${esc(this.panelName || 'This panel')} (this panel, the master)</option>
                     ${nodes.map(n => `<option value="${esc(n.id)}" ${n.id === where ? 'selected' : ''}>🌐 ${esc(n.name)}</option>`).join('')}
                 </select>
@@ -1069,7 +1069,7 @@ const ServerApp = {
 
             <div class="mb-4">
                 <label class="block text-sm text-gray-400 mb-1">Engine Edition</label>
-                <select id="deploy-edition" onchange="ServerApp.onDeployEditionChange(this.value)" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                <select id="deploy-edition" onchange="ServerApp.onDeployEditionChange(this.value)" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                     <option value="java">Java Edition (Auto-Port)</option>
                     <option value="bedrock">Bedrock Edition (Auto-Port)</option>
                 </select>
@@ -1078,7 +1078,7 @@ const ServerApp = {
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="block text-sm text-gray-400 mb-1">Server Type</label>
-                            <select id="deploy-loader" onchange="ServerApp.loadDeployVersions()" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                            <select id="deploy-loader" onchange="ServerApp.loadDeployVersions()" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                                 <option value="vanilla">Vanilla (Mojang)</option>
                                 <option value="paper">Paper (plugins)</option>
                                 <option value="fabric">Fabric (mods)</option>
@@ -1086,7 +1086,7 @@ const ServerApp = {
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-1">Minecraft Version</label>
-                            <select id="deploy-version" onchange="ServerApp.showJavaRequirement(this.value || this.dataset.newest, 'deploy-java-note')" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                            <select id="deploy-version" onchange="ServerApp.showJavaRequirement(this.value || this.dataset.newest, 'deploy-java-note')" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                                 <option value="">Loading…</option>
                             </select>
                         </div>
@@ -1095,21 +1095,21 @@ const ServerApp = {
                 </div>
                 
                 <label class="block text-sm text-gray-400 mb-1">Base Template (Optional)</label>
-                <select id="deploy-template" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                <select id="deploy-template" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                     ${templateOptions}
                 </select>
                 
                 <button onclick="ServerApp.executeDeploy()" class="mt-2 w-full bg-green-600 hover:bg-green-700 py-2 rounded text-white font-bold transition">Deploy Fresh Server</button>
             </div>
-            <hr class="border-gray-700 my-4" />
+            <hr class="border-gray-200 dark:border-gray-700 my-4" />
             <div class="mb-6">
                 <label class="block text-sm text-gray-400 mb-1">Import Existing (.zip, .tar.gz, .tar)</label>
-                <input type="file" id="import-file" accept=".zip,.tar.gz,.tgz,.tar,application/zip,application/gzip,application/x-tar" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white text-sm mb-2" />
+                <input type="file" id="import-file" accept=".zip,.tar.gz,.tgz,.tar,application/zip,application/gzip,application/x-tar" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white text-sm mb-2" />
                 <p class="text-xs text-gray-500 mb-2">A backup wrapped in a single folder is fine; its contents are used.</p>
                 <button onclick="ServerApp.executeImport()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-white font-bold transition">Upload & Import</button>
             </div>
             <div id="removed-servers" class="mb-6">${this.removedServersHtml()}</div>
-            <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white transition">Cancel</button>
+            <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white transition">Cancel</button>
         `;
         modal.classList.remove('hidden');
         this.loadDeployVersions();
@@ -2533,26 +2533,26 @@ const ServerApp = {
             const when = s.removed_at ? ` • removed ${new Date(s.removed_at * 1000).toLocaleDateString()}` : '';
             const masterAdmin = this.isMaster() && this.currentUser.role === 'admin' && this.removedNode() && s.moved_to;
             return `
-                <div class="border border-gray-700 rounded p-2 mb-2">
+                <div class="border border-gray-200 dark:border-gray-700 rounded p-2 mb-2">
                     <div class="flex items-center justify-between gap-2">
                         <div class="min-w-0">
-                            <div class="font-bold text-white truncate">${esc(s.name)}</div>
+                            <div class="font-bold text-gray-900 dark:text-white truncate">${esc(s.name)}</div>
                             <div class="text-xs text-gray-400 truncate" title="${esc(s.directory)}">${details}${when}</div>
                         </div>
                         <div class="flex gap-1 shrink-0">
                             <button onclick="ServerApp.restoreRemoved('${esc(s.name)}', this)" ${s.can_restore ? '' : 'disabled'}
                                 class="px-3 py-1 rounded text-sm font-bold text-white ${s.can_restore ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 cursor-not-allowed'}">Restore</button>
                             ${isAdmin ? `<button onclick="ServerApp.deleteRemoved('${esc(s.name)}')" title="Delete its files permanently"
-                                class="px-2 py-1 rounded text-sm bg-gray-700 hover:bg-red-700 text-white">🗑</button>` : ''}
+                                class="px-2 py-1 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-red-700 text-gray-900 dark:text-white hover:text-white">🗑</button>` : ''}
                             ${masterAdmin ? `<button onclick="ServerApp.deleteMovedCopy(${this.jsArg(this.removedNode())}, ${this.jsArg(s.name)}, this)" title="Delete the files this move left behind"
-                                class="px-2 py-1 rounded text-sm bg-gray-700 hover:bg-red-700 text-white">🗑</button>` : ''}
+                                class="px-2 py-1 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-red-700 text-gray-900 dark:text-white hover:text-white">🗑</button>` : ''}
                         </div>
                     </div>
                     ${note}
                 </div>`;
         }).join('');
         return `
-            <hr class="border-gray-700 my-4" />
+            <hr class="border-gray-200 dark:border-gray-700 my-4" />
             <label class="block text-sm text-gray-400 mb-1">Removed servers</label>
             <p class="text-xs text-gray-500 mb-2">Uninstalled with "Keep World". Their files are still on this machine; restoring gives them a new service under the same name.</p>
             ${rows}`;
