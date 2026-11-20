@@ -128,9 +128,21 @@ def properties_changed(server_name, before):
         open_firewall_rules(after - before)
         close_firewall_rules(before - after)
 
+# Never part of a template: each server keeps its own RCON password. Templates saved before
+# 1.15.1 may still hold one; it's left out when they're read.
+TEMPLATE_SKIP = ("rcon.password",)
+
+def template_properties(props):
+    """A server's properties as a template keeps them: without the server's own secrets."""
+    return {k: v for k, v in (props or {}).items() if k not in TEMPLATE_SKIP}
+
 def load_templates():
     if not os.path.exists(TEMPLATE_FILE): return []
-    with open(TEMPLATE_FILE, 'r') as f: return json.load(f)
+    with open(TEMPLATE_FILE, 'r') as f: data = json.load(f)
+    for t in data:
+        if isinstance(t, dict) and isinstance(t.get("properties"), dict):
+            t["properties"] = template_properties(t["properties"])
+    return data
 
 def save_templates(data):
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -138,7 +150,7 @@ def save_templates(data):
 
 def save_server_as_template(server_name, template_name):
     templates = load_templates()
-    props = read_properties(get_server_dir(server_name))
+    props = template_properties(read_properties(get_server_dir(server_name)))
     perms = read_permissions(server_name)
     
     exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"], capture_output=True, text=True).stdout.strip()
@@ -181,7 +193,8 @@ def apply_template_to_server(server_name, template_id, edition=None):
     rcon_port = current_props.get("rcon.port")
     query_port = current_props.get("query.port")  # Extract existing query port
     
-    merged = {**current_props, **temp["properties"]}
+    # The server keeps its own RCON password (template_properties leaves it out)
+    merged = {**current_props, **template_properties(temp["properties"])}
     
     # Re-apply the unique ports so the template does not cause conflicts
     if port: merged["server-port"] = port
@@ -197,7 +210,7 @@ def update_template(template_id, properties, permissions):
     templates = load_templates()
     for t in templates:
         if t["id"] == template_id:
-            t["properties"] = properties
+            t["properties"] = template_properties(properties)
             t["permissions"] = permissions
     save_templates(templates)
 
