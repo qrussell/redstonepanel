@@ -105,6 +105,19 @@ class Shooter:
     def everything(self):
         page, step, shot = self.page, self.step, self.shot
         self.sign_in()
+
+        # The setup guide (1.16.1): the demo has servers, backups and cluster HTTPS but no webhook,
+        # so it shows 3 of 4. It's hidden again afterwards so the other dashboard pictures don't
+        # change with it.
+        def setup_guide():
+            self.ctx.request.put(BASE + "/api/settings/setup", data={"dismissed": False})
+            page.evaluate("ServerApp.showDashboard()")
+            page.wait_for_selector("section:has-text('Set up RedstonePanel')", timeout=15000)
+            shot("setup-guide", element="section:has-text('Set up RedstonePanel')")
+        step("setup guide", setup_guide)
+        self.ctx.request.put(BASE + "/api/settings/setup", data={"dismissed": True})
+        page.evaluate("ServerApp.showDashboard()")
+        page.wait_for_timeout(2500)
         step("dashboard", lambda: shot("dashboard", full=True))
         step("hero", lambda: shot("hero"))
 

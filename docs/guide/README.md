@@ -1,7 +1,7 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.16.0**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.16.1**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
 "Creative Lab" running a Fabric server with mods.
 
@@ -139,6 +139,8 @@ it back. It refreshes every 10 seconds while the page is open.
      the step instead.
   4. **Get told when something breaks**: opens Panel Settings at
      [Notifications](#notifications).
+
+  <picture><source media="(prefers-color-scheme: light)" srcset="images/light/setup-guide.png"><img src="images/setup-guide.png" alt="The setup guide on the dashboard, three of four steps done"></picture>
 
   Steps tick themselves from what the panel can see, so a step done from the command line or by
   another admin counts too. On a cluster node, joining the cluster ticks the HTTPS step; on a

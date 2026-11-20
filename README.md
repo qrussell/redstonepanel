@@ -25,7 +25,8 @@ curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install
 
 Then open **http://&lt;your-server&gt;:8080/** and sign in with your Linux account (any member
 of the `sudo` group). The script adds the signed qrussell-repo apt repository and runs
-`apt install redstonepanel`, so `apt upgrade` keeps the panel current. Prefer to do it by hand,
+`apt install redstonepanel`, so `apt upgrade` keeps the panel current. A setup guide on the
+dashboard then walks you through your first server, backups, HTTPS and alerts. Prefer to do it by hand,
 or to use a `.deb`? See [Install](#install) below or the
 [installation page](docs/wiki/Installation.md).
 
@@ -82,6 +83,12 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**A setup guide for new panels** *(1.16.1)*. The dashboard of a new panel opens with four
+steps to a safe setup: your first server, a backup schedule for every server, HTTPS (or plain
+HTTP on a network you trust) and crash alerts in Discord or any webhook. Each step opens the
+place where it's done and ticks itself when it is. Read the
+[1.16.1 release notes](release-notes/v1.16.1.md).
+
 **Move a server to another machine.** On a cluster master's 🌐 Cluster page, **Move…** stops a
 server, streams its whole folder to another machine of the cluster (checked byte for byte), and
 starts it there with the same name and ports when they're free, the Java it needs, and its
@@ -123,6 +130,8 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   and remove one per server, so a server on another port shows up under LAN Games
 - a panel activity log, and a player access log per server: who joined, left or was turned away
   (names and IDs only), with whitelist/allowlist editing (**Configuration → Whitelist & Access**)
+- a setup guide on a new panel's dashboard: first server, backup schedules, HTTPS and alerts,
+  each step ticked from what the panel can see
 - a dashboard for the machine: CPU, memory, disks, network, each server's CPU, memory,
   players and disk use, supporting services (Java, firewall, timers, certificates,
   Phantom proxies), a list of what needs attention, and on a cluster master each node's

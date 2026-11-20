@@ -5,7 +5,7 @@ Hi everyone 👋
 RedstonePanel is a web panel for running Minecraft servers on your own Ubuntu machine. Each
 Java or Bedrock server is a plain systemd service, there's no Docker and no database, and the
 panel installs from a signed apt repository. This post is a tour of what the panel already
-does (as of **1.16.0**) and what's planned next. Your feedback decides the order, so please
+does (as of **1.16.1**) and what's planned next. Your feedback decides the order, so please
 reply with what you'd use, what's missing, or what gets in your way.
 
 ---
@@ -68,6 +68,8 @@ reply with what you'd use, what's missing, or what gets in your way.
 - **Bedrock connection diagnostics.**
 
 ### The panel itself
+- **A setup guide** on a new panel's dashboard *(new in 1.16.1)*: first server, backups,
+  HTTPS and alerts, each step ticked from what the panel can see.
 - **HTTPS:** self-signed (with its own CA), your own certificate, or plain HTTP on a
   trusted LAN.
 - **Sign-in** with Linux accounts (through PAM) or panel-only accounts with admin/user
@@ -89,18 +91,17 @@ reply with what you'd use, what's missing, or what gets in your way.
 Version numbers are targets, not promises. The guiding rule stays the same: **protect
 people's worlds first**, and use systemd rather than reinventing it.
 
-### Just shipped: 1.16 moves servers between machines
+### Just shipped: 1.16.1 adds a setup guide
+- **A Setup card on a new panel's dashboard:** your first server, a backup schedule for every
+  server, HTTPS or HTTP on purpose, and a Discord or webhook alert. Each step opens the place
+  where it's done and ticks itself when it is.
+
+### Also new: 1.16 moves servers between machines
 - **Move** a server to another cluster member. The world is streamed and checksummed, and
   the server keeps its name, ports, Java, backup and restart schedules, mods and Phantom.
   **Nothing is deleted on the old machine until you say so.**
 - **Copy** a server, to another machine or the same one, without stopping it.
 - **Templates** copied between the master and its nodes.
-
-### 1.16.1: a first-run setup guide
-- **A Setup card on the dashboard** for new installs: create your first server, turn on
-  backups, choose HTTP or HTTPS, and add a Discord or webhook alert.
-- **Each step opens the existing dialog** and ticks itself from what the panel can see.
-- **Dismiss it** when you're done, and reopen it from Panel Settings.
 
 ### 1.16.2: kick and ban from the panel
 - **Kick** from the players list or the access log, with an optional reason.
