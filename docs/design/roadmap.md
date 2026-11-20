@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.1 (20 Nov 2026): moving servers between cluster members and a first-run setup guide shipped; kick and ban (1.16.2), two-factor sign-in (1.16.3), backups on another node (1.16.4), Debian and ARM64 (1.16.5), a phone-friendly panel (1.16.6), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.2 (20 Nov 2026): moving servers between cluster members, a first-run setup guide, and kick and ban with the redstone branding shipped; two-factor sign-in (1.16.3), backups on another node (1.16.4), Debian and ARM64 (1.16.5), a phone-friendly panel (1.16.6), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -23,14 +23,14 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.16.1)
+## What already exists (1.16.2)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
 zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (managing every node's servers from the master, with real
-certificates for a master on the internet, and moving or copying servers between members), a first-run setup guide, the signed apt repository, and Bedrock connection
+certificates for a master on the internet, and moving or copying servers between members), a first-run setup guide, kick, ban and unban, the redstone logo and theme, the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
 
@@ -501,7 +501,7 @@ refused joins, so those are Java only.
 
     **Size:** a few days. Wording, and the screenshots for the manual, are most of it.
 
-### 1.16.2: kick and ban from the panel
+### 1.16.2: kick and ban from the panel *(Nov 2026)*
 
 14. **Kick, ban and unban without typing commands.** Added after 1.16.0 from the comparison
     with other panels: every other panel has buttons for these, and here they need `/kick` and
@@ -523,6 +523,11 @@ refused joins, so those are Java only.
     `POST /api/servers/{name}/players/kick|ban|unban`, allowed for the cluster master.
 
     **Size:** a few days.
+
+    **Shipped in 1.16.2**, in `core/moderation.py`. A running Java server without RCON is
+    refused rather than having its ban file edited, since it would overwrite the change. The
+    release also brought the RedstonePanel logo and a stone-and-redstone theme, with Redstone
+    Red as the default accent.
 
 ### 1.16.3: two-factor sign-in
 
@@ -755,6 +760,29 @@ until it's agreed.
 **Security**
 
 - ~~**Two-factor sign-in (TOTP).**~~ *Scheduled as 1.16.3 (item 15 above).*
+- **Reach the master panel through a Cloudflare Tunnel** (opt-in). Today a panel on the
+  internet needs a port opened or forwarded to 8443 and a certificate (1.15.0). With
+  `cloudflared`, the machine makes an outbound connection to Cloudflare, and the panel is
+  served at a hostname like `panel.example.com` with Cloudflare's certificate. No inbound port
+  is opened and the home IP address stays hidden. Suggested after 1.16.3, so admins have a
+  second sign-in step before the panel is reachable from anywhere.
+  - **Panel Settings → Connection → Cloudflare Tunnel:** paste the tunnel token from the
+    Cloudflare dashboard. The panel writes a token-based `cloudflared` service pointing at
+    `http://127.0.0.1:8080`, starts it, and shows the tunnel's state and public hostname on
+    the dashboard. Turn off stops and removes the service. CLI: `redstonepanel tunnel on|off|status`.
+  - **cloudflared isn't in Ubuntu's archive**, so it stays optional (a Suggests, not a
+    Depends). The panel tells the admin how to install it from Cloudflare's apt repository
+    and detects it; it doesn't download binaries itself.
+  - **Security:** tunnel visitors must never count as the trusted LAN. The current check
+    already refuses them, because `cloudflared` adds `X-Forwarded-For` and the Host is the
+    public name; keep a test for it. Everything through the tunnel arrives from 127.0.0.1, so
+    the sign-in rate limit and the activity log must use `Cf-Connecting-IP`, but only for
+    requests from the local `cloudflared`. Suggest Cloudflare Access (an email or SSO check
+    in front of the panel) in the setting's help text.
+  - **The master only.** Nodes keep talking to the master over the cluster's own HTTPS.
+    Players' game traffic doesn't go through the tunnel: a free Cloudflare Tunnel carries
+    HTTP to the panel, not Minecraft's TCP/UDP, so game ports are unchanged.
+  - *Size: about a week, mostly the service handling, the IP handling and the manual.*
 
 **Getting started**
 
@@ -762,7 +790,7 @@ until it's agreed.
 
 **Day-to-day management**
 
-- ~~**Player actions:** kick, ban and unban with a ban list per server~~ *(scheduled as
+- ~~**Player actions:** kick, ban and unban with a ban list per server~~ *(shipped in
   1.16.2, item 14 above)*. Still proposed: on a cluster master, apply a whitelist change to
   several servers at once.
 - **Scheduled commands and announcements:** a list of commands per server on a schedule

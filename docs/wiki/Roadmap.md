@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.1**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.2**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,13 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.2: kick and ban from the panel
-
-- **Kick** a player, with an optional reason, from the players list or the access log.
-- **Ban and unban** on Java servers, running or stopped, with a **Banned** list beside the
-  whitelist. Bedrock has no ban list, so it gets kick only.
-- By name only, never by IP address.
 
 ### 1.16.3: two-factor sign-in
 
@@ -77,6 +70,7 @@ close the gaps people most often notice when choosing a panel.
 | --- | --- |
 | ⭐ **Backups to SFTP/rsync or S3-compatible storage**, on the same schedule, for panels without a cluster (1.16.4 copies to another cluster node). | A backup on the same disk doesn't survive losing the disk. |
 | ⭐ **Automatic Bedrock updates** (opt-in), with a backup first and a player warning. | Bedrock players' clients update themselves, and then can't join an older server. |
+| **Cloudflare Tunnel for the master panel** (opt-in): paste a tunnel token in Panel Settings and reach the panel at your own hostname, with no port opened or forwarded on your router. Game traffic is unchanged. | Reaching the panel from outside today means opening a port and handling a certificate. A tunnel needs neither, and keeps your home IP address private. |
 | **Whitelist kept in step across servers** from the cluster master. | Today each server's whitelist is changed on its own. |
 | **Scheduled commands and announcements** (for example a daily message or `/save-all`). | Common on other panels, and a natural use of the same systemd timers as restarts. |
 | **Version update alerts:** "a new Paper build / Minecraft release is available" per server. | Updating is one click already; knowing when to is the missing half. |
@@ -103,5 +97,6 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.1** adds a setup guide to a new panel's
+See [What's New](Whats-New.md). The latest: **1.16.2** adds kick, ban and unban, and gives the
+panel its own logo and a redstone theme; **1.16.1** adds a setup guide to a new panel's
 dashboard, and **1.16.0** moves and copies servers between the machines of a cluster.
