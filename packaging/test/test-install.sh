@@ -69,7 +69,7 @@ check "panel.log in /var/log"             test -s /var/log/redstonepanel/panel.l
 # --- missing Java gives a clear error instead of a broken deploy
 if ! command -v java >/dev/null; then
     c=$(code -b $L -X POST $B/api/servers/deploy -H "$J" -H "$O" -d '{"edition":"java"}')
-    [ "$c" = 400 ] && grep -q openjdk-25-jre-headless /tmp/body && ok "Java deploy without Java -> clear 400" || bad "Java deploy without Java ($c $(cat /tmp/body))"
+    [ "$c" = 409 ] && grep -q '"package":"openjdk-25-jre-headless"' /tmp/body && ok "Java deploy without Java -> 409 naming the package" || bad "Java deploy without Java ($c $(cat /tmp/body))"
 fi
 
 # --- import server backups: .tar.gz and .zip, each wrapped in a folder; hostile archives refused

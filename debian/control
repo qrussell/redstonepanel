@@ -25,8 +25,8 @@ Depends: ${misc:Depends},
          unzip,
          screen,
          sudo
-Recommends: openjdk-25-jre-headless,
-            ufw
+Recommends: ufw
+Suggests: openjdk-25-jre-headless
 Description: web panel to install and manage Minecraft servers
  RedstonePanel deploys and manages Minecraft Java Edition and Bedrock Dedicated
  Server instances as systemd services on this host: start/stop, updates, live
@@ -37,5 +37,7 @@ Description: web panel to install and manage Minecraft servers
  panel accounts managed in the panel. HTTPS and optional sign-in on the local
  network can be enabled by an admin in Panel Settings.
  .
- Java Edition servers need a Java runtime: current Minecraft releases need
- Java 25 (openjdk-25-jre-headless, recommended). Bedrock-only hosts can skip it.
+ Java Edition servers need a Java runtime, and each Minecraft version needs a
+ particular one (Java 25 for current releases, 21 for 1.20.5 to 1.21.x). The
+ panel installs the openjdk-N-jre-headless a server needs when it's created,
+ so hosts that only run Bedrock never get Java.

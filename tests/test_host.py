@@ -105,6 +105,18 @@ class Parsers(unittest.TestCase):
         self.assertEqual(H.parse_apt_policy(text), ("1.10.0", "1.11.0"))
         self.assertEqual(H.parse_apt_policy("redstonepanel:\n  Installed: (none)\n"), ("(none)", None))
 
+    def test_failed_units_skip_removed_servers(self):
+        out = ("minecraft-java-2.service    not-found failed failed minecraft-java-2.service\n"
+               "minecraft-paper.service     loaded    failed failed Minecraft Server (minecraft-paper)\n"
+               "minecraft-bedrock-2.service not-found failed failed minecraft-bedrock-2.service\n")
+        calls = []
+        def run(cmd, **kw):
+            calls.append(cmd)
+            return SimpleNamespace(returncode=0, stdout=out if "list-units" in cmd else "", stderr="")
+        with mock.patch.object(H.subprocess, "run", run):
+            self.assertEqual(H.failed_units(), ["minecraft-paper.service"])
+        self.assertEqual(calls[-1], ["systemctl", "reset-failed", "minecraft-java-2.service", "minecraft-bedrock-2.service"])
+
     def test_ufw(self):
         self.assertTrue(H.ufw_allows(UFW, 25565, "tcp"))
         self.assertFalse(H.ufw_allows(UFW, 25565, "udp"))
@@ -159,6 +171,8 @@ class Report(unittest.TestCase):
             mock.patch.object(H, "failed_units", lambda: self.failed),
             mock.patch.object(H.proxies, "find_phantoms", lambda: []),
             mock.patch.object(H.javaservers, "installed_javas", lambda: {21: "/usr/lib/jvm/java-21/bin/java"}),
+            mock.patch.object(H.runtimes, "owner", lambda path: "openjdk-21-jre-headless"),
+            mock.patch.object(H.runtimes, "_default_major", lambda: 21),
             mock.patch.object(H, "panel_update", lambda: None),
             mock.patch.object(H, "java_players", lambda server, d: (2, 20)),
             mock.patch.object(H, "cached_size", lambda path: (12345, 1)),
@@ -190,8 +204,20 @@ class Report(unittest.TestCase):
         self.assertIsNone(s["next_restart"])                     # timer not loaded
         self.assertTrue(s["firewall_open"])
         self.assertEqual(r["services"]["java"], [{"major": 21, "path": "/usr/lib/jvm/java-21/bin/java",
-                                                  "servers": ["minecraft-java"]}])
+                                                  "package": "openjdk-21-jre-headless", "servers": ["minecraft-java"],
+                                                  "default": True, "removable": False,
+                                                  "why_not": "used by minecraft-java"}])
+        self.assertEqual(r["services"]["java_needed"], [])
+        self.assertEqual([i["major"] for i in r["services"]["java_installable"]], [8, 11, 17, 25])
         self.assertEqual(r["attention"], [])
+
+    def test_unused_java(self):
+        self.servers = [_server("minecraft-bedrock", edition="Bedrock", port="19140", java_required=None,
+                                java_installed=None)]
+        r = self.report()
+        self.assertTrue(r["services"]["java"][0]["removable"])
+        unused = [a for a in r["attention"] if "isn't used by any server" in a["text"]]
+        self.assertEqual([a["level"] for a in unused], ["info"])
 
     def test_attention(self):
         self.disk_percent = 96.0
@@ -204,6 +230,8 @@ class Report(unittest.TestCase):
         self.assertTrue(any("96% full" in t for t in texts))
         self.assertTrue(any("minecraft-other.service has failed" in t for t in texts))
         self.assertTrue(any("needs Java 25" in t and "openjdk-25-jre-headless" in t for t in texts))
+        self.assertEqual(r["services"]["java_needed"], [{"major": 25, "servers": ["minecraft-java"],
+                                                         "package": "openjdk-25-jre-headless"}])
         self.assertTrue(any("doesn't allow minecraft-bedrock's port 19140" in t for t in texts))
         failed = next(a for a in r["attention"] if "has failed" in a["text"])
         self.assertEqual(failed["server"], "minecraft-other")

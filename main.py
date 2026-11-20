@@ -9,6 +9,8 @@ import core.manager as manager
 import core.files as files
 import core.mods as mods
 import core.catalog as catalog
+import core.runtimes as runtimes
+import core.selfupdate as selfupdate
 import core.host as host
 import urllib.parse
 import core.javaservers as javaservers
@@ -33,7 +35,43 @@ app = FastAPI(title="RedstonePanel API", version=panel_version())
 class RawPropertiesUpdate(BaseModel):
     content: str
 
-app.mount("/static", StaticFiles(directory=os.path.join(panel_settings.APP_DIR, "static")), name="static")
+# The panel's own pages and files. Browsers must check them on every load (no-cache: a quick 304
+# when nothing changed), or after an update they can keep running the old app.js for days. The
+# two pages also link app.js and the stylesheet with ?v=<version>, so an update always fetches
+# the new files, even in a browser that cached them before this header existed.
+STATIC_DIR = os.path.join(panel_settings.APP_DIR, "static")
+PAGES = ("index.html", "login.html")
+_page_cache = {}
+
+def _page(name):
+    path = os.path.join(STATIC_DIR, name)
+    mtime = os.path.getmtime(path)
+    hit = _page_cache.get(name)
+    if not hit or hit[0] != mtime:
+        with open(path, encoding="utf-8") as f:
+            html = f.read()
+        v = urllib.parse.quote(panel_version(), safe="")
+        for asset in ("/static/js/app.js", "/static/css/tailwind.css"):
+            html = html.replace(f'"{asset}"', f'"{asset}?v={v}"')
+        hit = _page_cache[name] = (mtime, html)
+    return hit[1]
+
+@app.get("/static/index.html", include_in_schema=False)
+def index_page():
+    return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
+
+@app.get("/static/login.html", include_in_schema=False)
+def login_page():
+    return HTMLResponse(_page("login.html"), headers={"Cache-Control": "no-cache"})
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.middleware("http")
+async def no_stale_static(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/") and "cache-control" not in response.headers:
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 # ---------------------------------------------------------------------------
 # Access control for every /api/ call
@@ -339,6 +377,8 @@ def set_player_role(server_name: str, player: str = Body(...), role: str = Body(
 def update_server(server_name: str, req: Optional[ServerUpdateRequest] = None):
     try:
         manager.update_server_binary(server_name, req.version if req else None)
+    except manager.JavaMissing:
+        raise                                    # 409, see java_missing() below
     except (manager.DependencyError, manager.ServerError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
@@ -360,6 +400,67 @@ def java_requirement(version: str):
         return javaservers.requirement(version)
     except javaservers.JavaServerError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# Java runtimes (admins): which are installed and used by which server, install one a server
+# needs, remove one no server uses, and choose the Java a server runs on
+@app.exception_handler(manager.JavaMissing)
+async def java_missing(request: Request, e: manager.JavaMissing):
+    """A server needs a Java that isn't installed: 409 with what to install, so an admin's
+    browser can offer to install it and try again."""
+    return JSONResponse({"detail": str(e), "java": {"required": e.required, "package": e.package}},
+                        status_code=409)
+
+class JavaChoice(BaseModel):
+    major: int
+
+def _runtime_call(request: Request, fn, *args, **kw):
+    _require_admin(request, "install, remove or choose Java")
+    try:
+        return fn(*args, **kw)
+    except runtimes.RuntimeJobError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/api/java/runtimes")
+def java_runtimes(request: Request):
+    return _runtime_call(request, runtimes.status)
+
+@app.get("/api/java/runtimes/job")
+def java_runtime_job(request: Request):
+    return _runtime_call(request, lambda: {"job": runtimes.job()})
+
+@app.post("/api/java/runtimes/install")
+def install_java_runtime(request: Request, req: JavaChoice):
+    return _runtime_call(request, runtimes.install, req.major, actor=request.state.user["username"])
+
+@app.post("/api/java/runtimes/remove")
+def remove_java_runtime(request: Request, req: JavaChoice):
+    return _runtime_call(request, runtimes.remove, req.major, actor=request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/java")
+def choose_server_java(request: Request, server_name: str, req: JavaChoice):
+    return _runtime_call(request, runtimes.use, server_name, req.major, actor=request.state.user["username"])
+
+# Updating RedstonePanel itself (admins): see core/selfupdate.py for why it runs in its own unit
+def _update_call(request: Request, fn, *args, **kw):
+    _require_admin(request, "update RedstonePanel")
+    try:
+        return fn(*args, **kw)
+    except selfupdate.UpdateError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+@app.get("/api/panel/update")
+def panel_update_status(request: Request):
+    return _update_call(request, selfupdate.status)
+
+@app.post("/api/panel/update/check")
+def check_panel_update(request: Request):
+    return _update_call(request, selfupdate.check)
+
+@app.post("/api/panel/update")
+def start_panel_update(request: Request):
+    return _update_call(request, selfupdate.start, actor=request.state.user["username"])
 
 @app.post("/api/servers/{server_name}/action")
 def control_server(server_name: str, req: ServerActionRequest):
@@ -649,6 +750,8 @@ def list_removed_servers():
 def restore_server(server_name: str):
     try:
         result = manager.restore_server(server_name)
+    except manager.JavaMissing:
+        raise                                    # 409, see java_missing() below
     except (manager.ServerError, manager.DependencyError) as e:
         manager.write_log(f"[RESTORE] Refused: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -676,6 +779,8 @@ def deploy_server(req: ServerDeployRequest):
     # This executes the native python deployment and logs output to the web console
     try:
         manager.deploy_server(req.edition, req.template_id, req.loader, req.version)
+    except manager.JavaMissing:
+        raise                                    # 409, see java_missing() below
     except (manager.TemplateError, manager.DependencyError, manager.ServerError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
