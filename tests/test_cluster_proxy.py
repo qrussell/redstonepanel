@@ -20,7 +20,7 @@ try:
     import fastapi  # noqa: F401
     from fastapi.testclient import TestClient
     HAVE_FASTAPI = True
-except ImportError:
+except (ImportError, RuntimeError):     # RuntimeError: starlette's test client without its HTTP client
     HAVE_FASTAPI = False
 
 NODE = {"id": "n-abc123", "name": "Basement", "url": "https://192.168.1.20:8443", "token": "rpn_" + "x" * 43,
