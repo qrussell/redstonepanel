@@ -119,6 +119,11 @@ people's worlds first**, and use systemd rather than reinventing it.
 ### 1.16.5: Debian and ARM64
 - **Debian 12 and 13**, and **ARM64** machines such as a Raspberry Pi for Java servers.
 
+### 1.16.6: a panel that works on a phone
+- **Every page fits a phone:** a ☰ menu instead of the sidebar, cards instead of tables,
+  and big Start, Restart and Stop buttons.
+- **Install it as an app** from your phone's browser (over HTTPS).
+
 ### 1.16.x: less downtime for big worlds
 - An optional **pre-copy** while the server keeps running.
 - **Find panels on your network** and add them to the cluster.
@@ -142,7 +147,6 @@ people's worlds first**, and use systemd rather than reinventing it.
 
 ### Groundwork along the way
 - More tests and a security review of sign-in, imports and path handling.
-- A **mobile pass** on the dashboard, server list and console.
 - ✅ Done: a one-line installer (`curl … install.sh | sudo sh`), screenshots in the README and
   a wiki. Still to do: a short GIF.
 
