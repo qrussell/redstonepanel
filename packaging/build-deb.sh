@@ -12,7 +12,9 @@ cd /src
 cp -r main.py run.py https_redirect.py core static packaging debian /build/redstonepanel/
 cd /build/redstonepanel
 rm -rf core/__pycache__
-find . -type f -exec sed -i 's/\r$//' {} +          # sources may come from a Windows checkout
+# Sources may come from a Windows checkout: drop CRs from text files only. grep -I skips binary
+# files, which this would corrupt (every PNG's header contains \r\n).
+{ grep -rIl $'\r' . || true; } | xargs -r sed -i 's/\r$//'
 find . -type d -exec chmod 755 {} + && find . -type f -exec chmod 644 {} +   # Windows mounts mark everything executable
 chmod +x debian/rules packaging/redstonepanel
 

@@ -1,4 +1,4 @@
-# RedstonePanel
+<h1><picture><source media="(prefers-color-scheme: dark)" srcset="static/img/redstonepanel-logo-dark.svg"><img src="static/img/redstonepanel-logo.svg" alt="RedstonePanel" width="328" height="64"></picture></h1>
 
 **A free, self-hosted web panel for Minecraft Java and Bedrock servers on your own Ubuntu
 machine.** Create servers in a couple of clicks, add mods and plugins from a catalog, keep
