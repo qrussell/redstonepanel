@@ -17,6 +17,7 @@ import urllib.parse
 import core.javaservers as javaservers
 import core.playerlog as playerlog
 import core.whitelist as whitelist
+import core.moderation as moderation
 import core.backups as backups
 import core.notify as notify
 import core.setup as setup_guide
@@ -447,6 +448,42 @@ def whitelist_remove(request: Request, server_name: str, change: WhitelistChange
     manager.write_log(f"[PLAYERS] {request.state.user['username']} removed {change.player.strip()} "
                       f"from {server_name}'s whitelist.")
     return result
+
+# Kick, ban and unban (1.16.2): anyone who may manage the server, like the console.
+# Bans are Java only (Bedrock has no ban list); by name and UUID, never IP address.
+class ModerationAction(BaseModel):
+    player: str
+    reason: Optional[str] = ""
+
+def _moderate(request: Request, server_name: str, what: str, fn, *args):
+    _known_server(server_name)
+    try:
+        result = fn(server_name, *args)
+    except (moderation.ModerationError, whitelist.WhitelistError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[PLAYERS] {request.state.user['username']} {what} on {server_name}.")
+    return result
+
+@app.get("/api/servers/{server_name}/moderation")
+def get_moderation(server_name: str):
+    _known_server(server_name)
+    return moderation.info(server_name)
+
+@app.post("/api/servers/{server_name}/players/kick")
+def kick_player(request: Request, server_name: str, req: ModerationAction):
+    reason = moderation._clean_reason(req.reason)
+    return _moderate(request, server_name, f"kicked {req.player.strip()}" + (f" ({reason})" if reason else ""),
+                     moderation.kick, req.player, reason)
+
+@app.post("/api/servers/{server_name}/players/ban")
+def ban_player(request: Request, server_name: str, req: ModerationAction):
+    reason = moderation._clean_reason(req.reason)
+    return _moderate(request, server_name, f"banned {req.player.strip()}" + (f" ({reason})" if reason else ""),
+                     moderation.ban, req.player, reason, request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/players/unban")
+def unban_player(request: Request, server_name: str, req: ModerationAction):
+    return _moderate(request, server_name, f"unbanned {req.player.strip()}", moderation.unban, req.player)
 
 @app.post("/api/servers/{server_name}/update")
 def update_server(server_name: str, req: Optional[ServerUpdateRequest] = None):

@@ -194,6 +194,13 @@
                 <div id="config-access" class="hidden-tab flex-1 space-y-6 pb-10">
                     <section>
                         <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                            <h3 class="text-lg font-bold text-gray-900 dark:text-white">Online now</h3>
+                            <span id="mod-online-note" class="text-xs text-gray-500 dark:text-gray-400"></span>
+                        </div>
+                        <div id="mod-online" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded divide-y divide-gray-100 dark:divide-gray-700"></div>
+                    </section>
+                    <section>
+                        <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
                             <h3 class="text-lg font-bold text-gray-900 dark:text-white">Whitelist</h3>
                             <span id="wl-state" class="text-sm"></span>
                         </div>
@@ -204,6 +211,18 @@
                             <button type="submit" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold">Allow</button>
                         </form>
                         <div id="wl-list" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded divide-y divide-gray-100 dark:divide-gray-700"></div>
+                    </section>
+                    <section id="mod-ban-section">
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1">Banned</h3>
+                        <p id="mod-ban-help" class="text-sm text-gray-500 dark:text-gray-400 mb-3"></p>
+                        <form id="mod-ban-form" onsubmit="event.preventDefault(); ServerApp.modBanFromForm()" class="flex flex-wrap gap-2 mb-3">
+                            <input id="mod-ban-name" type="text" maxlength="16" autocomplete="off" placeholder="Player name"
+                                   class="flex-1 min-w-[10rem] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
+                            <input id="mod-ban-reason" type="text" maxlength="100" autocomplete="off" placeholder="Reason (optional)"
+                                   class="flex-[2] min-w-[12rem] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
+                            <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold">Ban</button>
+                        </form>
+                        <div id="mod-banned" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded divide-y divide-gray-100 dark:divide-gray-700"></div>
                     </section>
                     <section id="wl-away-section" class="hidden">
                         <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1">Turned away in the last 7 days</h3>
@@ -225,7 +244,7 @@
                         </div>
                         <div class="overflow-x-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded">
                             <table class="w-full text-sm">
-                                <thead><tr class="text-left text-gray-500 dark:text-gray-400"><th class="p-2">Time</th><th class="p-2">Player</th><th class="p-2">Event</th></tr></thead>
+                                <thead><tr class="text-left text-gray-500 dark:text-gray-400"><th class="p-2">Time</th><th class="p-2">Player</th><th class="p-2">Event</th><th class="p-2"></th></tr></thead>
                                 <tbody id="al-rows"></tbody>
                             </table>
                         </div>
