@@ -20,7 +20,7 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.14.1)
+## What already exists (1.14.2)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
@@ -365,6 +365,21 @@ ranges included) and names the missing ones with the ufw command. Every ufw chan
 host cache so the dashboard is current at once. Phantom refuses NetherNet servers with the
 reason, and its port bookkeeping treats them as holding their UDP ports and 7551, not 19132.
 Existing servers aren't changed on upgrade; the dashboard lists what's missing.
+
+### 1.14.2: who joined, who was turned away *(Nov 2026)*
+
+Asked for after the whitelist was turned on on every server: see who has been joining and who
+the whitelist keeps out, without SSH. The panel had no whitelist editing at all (Player Roles
+only sets ops/permissions).
+
+**As built:** `core/playerlog.py` parses join, leave and refused-login lines (vanilla, Paper and
+Fabric prefixes; Bedrock "Player connected/disconnected") from the journal and the server's log
+files, keeps names and UUIDs/XUIDs (never the address in the line) as JSON lines per server,
+90 days, and scans every 30 s from a thread run.py starts. The first scan reads rotated logs too.
+`core/whitelist.py` edits whitelist.json / allowlist.json, through RCON or screen when the server
+runs. Configuration gains **Whitelist & Access**; Needs attention lists players turned away in the
+last 24 h; webhooks gain Player joined / Player turned away (off by default). Bedrock doesn't log
+refused joins, so those are Java only.
 
 ### 1.15: manage every node from the master
 

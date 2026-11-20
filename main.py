@@ -15,6 +15,8 @@ import core.phantom as phantom
 import core.host as host
 import urllib.parse
 import core.javaservers as javaservers
+import core.playerlog as playerlog
+import core.whitelist as whitelist
 import core.backups as backups
 import core.notify as notify
 import core.restarts as restarts
@@ -378,6 +380,56 @@ def set_player_role(server_name: str, player: str = Body(...), role: str = Body(
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success", "message": f"Set {player} to {role}."}
 
+# Player access log and whitelist (Configuration → Whitelist & Access)
+def _known_server(server_name):
+    try:
+        manager._check_server(server_name)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+class WhitelistChange(BaseModel):
+    player: str
+
+@app.get("/api/servers/{server_name}/players/log")
+def player_log(server_name: str, player: str = "", event: str = "", days: int = 7, limit: int = 500):
+    _known_server(server_name)
+    if event not in ("", "join", "leave", "refused"):
+        raise HTTPException(status_code=400, detail="Unknown event type.")
+    days = max(1, min(int(days), playerlog.RETENTION_DAYS))
+    limit = max(1, min(int(limit), 2000))
+    return {"events": playerlog.history(server_name, player, event or None, days, limit),
+            "reasons": playerlog.REASONS, "retention_days": playerlog.RETENTION_DAYS}
+
+@app.get("/api/servers/{server_name}/whitelist")
+def get_whitelist(server_name: str):
+    _known_server(server_name)
+    data = whitelist.info(server_name)
+    data["turned_away"] = [{"name": n, "count": c, "reason": r}
+                           for n, c, r in playerlog.turned_away(server_name, [p["name"] for p in data["players"]],
+                                                                hours=24 * 7)]
+    return data
+
+@app.post("/api/servers/{server_name}/whitelist/add")
+def whitelist_add(request: Request, server_name: str, change: WhitelistChange):
+    _known_server(server_name)
+    try:
+        result = whitelist.add(server_name, change.player)
+    except whitelist.WhitelistError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[PLAYERS] {request.state.user['username']} allowed {change.player.strip()} on {server_name}.")
+    return result
+
+@app.post("/api/servers/{server_name}/whitelist/remove")
+def whitelist_remove(request: Request, server_name: str, change: WhitelistChange):
+    _known_server(server_name)
+    try:
+        result = whitelist.remove(server_name, change.player)
+    except whitelist.WhitelistError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[PLAYERS] {request.state.user['username']} removed {change.player.strip()} "
+                      f"from {server_name}'s whitelist.")
+    return result
+
 @app.post("/api/servers/{server_name}/update")
 def update_server(server_name: str, req: Optional[ServerUpdateRequest] = None):
     try:
@@ -524,6 +576,8 @@ def uninstall_server(request: Request, server_name: str, keep_world: bool = True
         manager.remove_server(server_name, keep_world)
     except manager.ServerError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if not keep_world:
+        playerlog.forget(server_name)
     return {"status": "success"}
 
 # Backups: /var/backups/redstonepanel/<server>/, scheduled by a systemd timer per server

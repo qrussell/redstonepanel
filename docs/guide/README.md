@@ -14,7 +14,7 @@ For installation details, file locations and the security model, see the main
 4. [Create or import a server](#4-create-or-import-a-server)
 5. [Overview](#5-overview)
 6. [Live Chat](#6-live-chat)
-7. [Configuration and player roles](#7-configuration-and-player-roles)
+7. [Configuration, player roles and the whitelist](#7-configuration-player-roles-and-the-whitelist)
 8. [Maintenance: templates, export, update, uninstall](#8-maintenance-templates-export-update-uninstall)
 9. [Backups](#9-backups)
    - [Scheduled restarts](#scheduled-restarts)
@@ -219,7 +219,7 @@ RCON, the panel turns it on with a random password and restarts the server once;
 message again when it's back. The RCON port is shown top right. Bedrock servers have no RCON;
 the panel types into the server's own console instead.
 
-## 7. Configuration and player roles
+## 7. Configuration, player roles and the whitelist
 
 **Visual Editor**: every setting in `server.properties`, as a form.
 
@@ -246,6 +246,29 @@ permissions file, with a role for each:
 Changing a role takes effect at the next restart.
 
 ![Player roles](images/player-roles.png)
+
+**Whitelist & Access** shows who may join and who has tried:
+
+- **Whitelist** (Java `whitelist.json`, Bedrock `allowlist.json`): whether it's on
+  (`white-list` or `allow-list` in `server.properties`; turn it on in the Visual Editor), each
+  player on it with their last join, **Allow** to add a player and **Remove**. While the server
+  runs, changes go through its console (RCON for Java, screen for Bedrock) and apply at once;
+  otherwise the panel edits the file and the server reads it when it starts. A Java player
+  needs a UUID, which the panel takes from its access log, `usercache.json`, the offline-mode
+  formula or Mojang, in that order.
+- **Turned away in the last 7 days**: players the server refused who still aren't allowed,
+  how often, and why. **Allow** puts one on the whitelist.
+- **Access log**: who joined, left or was turned away (not on the whitelist, banned, wrong game
+  version, server full). Filter by player name or ID, event and period (24 hours to 90 days).
+
+The access log comes from the server's own console and log files, which the panel reads every
+30 seconds, so it covers players who joined before the panel was installed too, as far back as
+the logs go. Only names and IDs are kept, never addresses, in
+`/var/lib/redstonepanel/players/`, for 90 days. Purging a server deletes its log. Bedrock
+doesn't log refused joins, so on Bedrock the log shows joins and leaves only.
+
+The dashboard's **Needs attention** lists players turned away in the last 24 hours who still
+aren't allowed, and **Notifications** can send a message when a player joins or is turned away.
 
 **Permissions (Raw)** edits `ops.json` (Java) or `permissions.json` (Bedrock) directly.
 
@@ -653,6 +676,9 @@ Get a message in Discord, or any service that takes a webhook, when something ha
    - **Server started** / **Server stopped**: every start and stop, including your own.
    - **Scheduled restart**: a [scheduled restart](#scheduled-restarts) happened, or failed.
    - **Backup finished** / **Backup failed**.
+   - **Player joined** / **Player turned away**: from the access log (see
+     [Whitelist & Access](#7-configuration-player-roles-and-the-whitelist)), within about 30 seconds.
+     Turned-away messages are sent at most once a minute per server.
 3. Click **Save notifications**, then **Send a test**.
 
 By default only crashes, failed backups and scheduled restarts are sent. A server that keeps

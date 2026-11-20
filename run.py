@@ -94,6 +94,9 @@ def main():
         port = s["http_port"]
 
     from main import app
+    from core import playerlog
+    playerlog.on_new_events(playerlog.notify_events)
+    playerlog.start()
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 
