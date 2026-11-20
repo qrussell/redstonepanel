@@ -102,6 +102,22 @@ people's worlds first**, and use systemd rather than reinventing it.
 - **Each step opens the existing dialog** and ticks itself from what the panel can see.
 - **Dismiss it** when you're done, and reopen it from Panel Settings.
 
+### 1.16.2: kick and ban from the panel
+- **Kick** from the players list or the access log, with an optional reason.
+- **Ban and unban** on Java servers, running or stopped, with a **Banned** list. Bedrock
+  gets kick only, as it has no ban list.
+
+### 1.16.3: two-factor sign-in
+- **Authenticator app codes** at sign-in, with recovery codes, and an option to require them
+  for every admin.
+
+### 1.16.4: backups on another cluster node
+- **A copy of each backup on another cluster member**, checked as it's copied, that you can
+  restore from even if the original machine is gone.
+
+### 1.16.5: Debian and ARM64
+- **Debian 12 and 13**, and **ARM64** machines such as a Raspberry Pi for Java servers.
+
 ### 1.16.x: less downtime for big worlds
 - An optional **pre-copy** while the server keeps running.
 - **Find panels on your network** and add them to the cluster.
@@ -130,16 +146,15 @@ people's worlds first**, and use systemd rather than reinventing it.
   a wiki. Still to do: a short GIF.
 
 ### Ideas we're considering (tell us which matter to you)
-- **Off-machine backups:** to another cluster node, rsync/SFTP or S3-compatible storage.
+- **Off-machine backups** to rsync/SFTP or S3-compatible storage, for panels without a
+  cluster.
 - **Automatic Bedrock updates**, so players on new clients can always join.
-- **Two-factor sign-in** for admins.
-- **Kick, ban and a ban list** on each server, and whitelist changes across servers.
+- **Whitelist changes across servers** from the cluster master.
 - **Scheduled commands and announcements.**
 - **Update alerts** when a new Minecraft release or Paper/Fabric build is out.
 - **World tools:** upload a world, new world with a seed, pre-generate with Chunky.
 - **Per-server CPU and memory limits.**
 - **A read-only status page** for players, and a **Discord chat bridge**.
-- **Debian and Raspberry Pi (ARM64)** for Java servers.
 
 ### Later, when someone asks for it
 - Backup retention by age, and off-machine copies (rsync/S3).
