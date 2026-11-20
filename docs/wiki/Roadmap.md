@@ -10,6 +10,14 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 
 ## Next up
 
+### 1.16.1: a first-run setup guide
+
+- A **Setup** card on the dashboard for new installs: create your first server, put its world
+  on a backup schedule, choose HTTP or HTTPS, and add a Discord or webhook alert.
+- Each step opens the dialog that already does it, and ticks itself from what the panel can
+  see, so steps done from the command line or by another admin count too.
+- Dismiss it when you're done; reopen it from Panel Settings.
+
 ### 1.16.x: less downtime for big worlds
 
 - An optional **pre-copy** for moves: copy the world while the server keeps running, then only
@@ -43,7 +51,6 @@ close the gaps people most often notice when choosing a panel.
 | ⭐ **Off-machine backups:** copy backups to another cluster node, an SFTP/rsync target or S3-compatible storage, on the same schedule. | A backup on the same disk doesn't survive losing the disk. Clusters make "copy to another node" nearly free. |
 | ⭐ **Automatic Bedrock updates** (opt-in), with a backup first and a player warning. | Bedrock players' clients update themselves, and then can't join an older server. |
 | ⭐ **Two-factor sign-in** (TOTP) for admin accounts. | Admins are effectively root; a password alone is a thin wall for a public-facing panel. |
-| ⭐ **A first-run setup guide:** create your first server, turn on backups, HTTPS and notifications. | Gets new owners to a safe setup in minutes, without reading the manual. |
 | **Player actions:** kick, ban, unban and a ban list on each server; whitelist kept in step across servers. | Today these need `/` commands in Live Chat. |
 | **Scheduled commands and announcements** (for example a daily message or `/save-all`). | Common on other panels, and a natural use of the same systemd timers as restarts. |
 | **Version update alerts:** "a new Paper build / Minecraft release is available" per server. | Updating is one click already; knowing when to is the missing half. |
