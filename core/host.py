@@ -578,6 +578,22 @@ def _needs_attention(rep, failed, phantoms):
         if j.get("removable"):
             out.append(_attention("info", f"Java {j['major']} isn't used by any server. Remove it under Supporting "
                                           f"services → Java if nothing else on this machine needs it.", where="java"))
+    for s in rep.get("servers", []):
+        try:
+            from core import playerlog
+            d = s.get("directory") or ""
+            allowed = [e.get("name", "") for f in ("whitelist.json", "allowlist.json")
+                       for e in manager._load_json_list(os.path.join(d, f)) if isinstance(e, dict)]
+            away = playerlog.turned_away(s["name"], allowed)
+        except Exception:
+            away = []
+        if away:
+            names = ", ".join(f"{n} ({c}×)" if c > 1 else n for n, c, _ in away[:5])
+            more = f" and {len(away) - 5} more" if len(away) > 5 else ""
+            out.append(_attention("info", f"{len(away)} player{'s were' if len(away) != 1 else ' was'} turned away "
+                                          f"from {s['name']} in the last 24 hours: {names}{more}. Allow them "
+                                          f"under Configuration → Whitelist & Access.",
+                                  server=s["name"], where="access"))
     if rep["services"]["screen"] is False and any(s["edition"] == "Bedrock" for s in rep["servers"]):
         out.append(_attention("warn", "screen isn't installed; Bedrock chat and consistent backups need it. "
                                       "Install it with: sudo apt install screen", where="services"))

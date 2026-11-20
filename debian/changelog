@@ -1,3 +1,22 @@
+redstonepanel (1.14.2) noble; urgency=medium
+
+  * Player access log: the panel reads each server's console and logs and
+    keeps who joined, left or was turned away (not whitelisted, banned,
+    wrong version, server full), with names and UUIDs/XUIDs only; player
+    addresses are never stored. The first scan reads older logs, so last-
+    seen dates go back as far as the logs do. Events are kept 90 days.
+  * Configuration -> Whitelist & Access: see and edit the whitelist
+    (Java) or allowlist (Bedrock), with each player's last join. A running
+    server is changed through its console (RCON or screen), so changes
+    apply at once; otherwise the file is edited. Players turned away in
+    the last 7 days are listed with an Allow button, and the access log
+    can be filtered by player, event and period.
+  * Needs attention lists players turned away in the last 24 hours who
+    still aren't allowed.
+  * New webhook events, off by default: Player joined, Player turned away.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Fri, 20 Nov 2026 19:00:00 +0000
+
 redstonepanel (1.14.1) noble; urgency=medium
 
   * Firewall rules follow each server's network settings: Bedrock servers

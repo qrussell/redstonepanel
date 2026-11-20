@@ -32,7 +32,8 @@ them from a browser:
 - scheduled restarts that warn players in game first
 - Phantom LAN proxies for Bedrock servers (**Add-ons → Server tools**): install, start, stop
   and remove one per server, so a server on another port shows up under LAN Games
-- a panel activity log
+- a panel activity log, and a player access log per server: who joined, left or was turned away
+  (names and IDs only), with whitelist/allowlist editing (**Configuration → Whitelist & Access**)
 - a dashboard for the machine: CPU, memory, disks, network, each server's CPU, memory,
   players and disk use, supporting services (Java, firewall, timers, certificates,
   Phantom proxies), a list of what needs attention, and on a cluster master each node's

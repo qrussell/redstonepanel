@@ -30,10 +30,12 @@ EVENTS = {
     "restarted": "Scheduled restart",
     "backup_ok": "Backup finished",
     "backup_failed": "Backup failed",
+    "player_joined": "Player joined",
+    "player_refused": "Player turned away",
 }
 DEFAULT_EVENTS = ["crashed", "backup_failed", "restarted"]
 # A server stuck in a crash loop restarts every 20 s; one message per event per server is enough
-QUIET_SECONDS = {"crashed": 300, "started": 60, "stopped": 60}
+QUIET_SECONDS = {"crashed": 300, "started": 60, "stopped": 60, "player_refused": 60}
 TIMEOUT = 5
 DISCORD_HOSTS = {"discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com"}
 NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.-]*$")

@@ -479,7 +479,7 @@ const ServerApp = {
     },
 
     switchConfigSubTab(subId) {
-		['visual', 'raw', 'players', 'permissions'].forEach(t => {
+		['visual', 'raw', 'players', 'access', 'permissions'].forEach(t => {
 			document.getElementById(`config-${t}`).classList.add('hidden-tab');
 			document.getElementById(`subtab-${t}`).classList.remove('subtab-active');
 			document.getElementById(`subtab-${t}`).classList.add('text-gray-600', 'dark:text-gray-400');
@@ -491,6 +491,7 @@ const ServerApp = {
 		if (subId === 'visual') this.loadProperties(this.activeServer.name);
 		if (subId === 'raw') this.loadRawProperties();
 		if (subId === 'players') this.loadPlayers();
+		if (subId === 'access') this.loadAccess();
 		if (subId === 'permissions') {
 			// Dynamically change the editor title based on edition
 			const titleEl = document.getElementById('permissions-editor-title');
@@ -658,6 +659,127 @@ const ServerApp = {
 				</select>
 			</div>`;
 		}).join('');
+	},
+
+    // Whitelist & Access: the whitelist/allowlist, players turned away, and the access log
+    fmtAgo(ts) {
+		if (!ts) return 'never seen';
+		const s = Math.max(0, Date.now() / 1000 - ts);
+		if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min ago`;
+		if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+		const d = Math.round(s / 86400);
+		return `${d} day${d === 1 ? '' : 's'} ago`;
+	},
+
+    async loadAccess() {
+		const server = this.activeServer.name, esc = t => this.escapeHtml(t === null || t === undefined ? '' : t);
+		const list = document.getElementById('wl-list');
+		list.innerHTML = `<p class="p-3 text-gray-400">Loading...</p>`;
+		let d;
+		try {
+			const res = await fetch(`/api/servers/${encodeURIComponent(server)}/whitelist`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			d = await res.json();
+		} catch (e) {
+			list.innerHTML = `<p class="p-3 text-red-500">Could not load the whitelist (${esc(e.message)}).</p>`;
+			return;
+		}
+		if (!this.activeServer || this.activeServer.name !== server) return;
+		this.accessData = d;
+		const word = d.edition === 'java' ? 'whitelist' : 'allowlist';
+		document.getElementById('wl-state').innerHTML = d.enabled
+			? `<span class="text-green-600 dark:text-green-400 font-bold">On</span> <span class="text-gray-500 dark:text-gray-400">(${esc(d.setting)}=true)</span>`
+			: `<span class="text-yellow-600 dark:text-yellow-400 font-bold">Off</span> <span class="text-gray-500 dark:text-gray-400">(anyone can join; turn on ${esc(d.setting)} in the Visual Editor)</span>`;
+		document.getElementById('wl-help').innerText = `Players in ${d.file}. ` + (d.live
+			? 'The server is running, so changes apply at once.'
+			: d.running ? (d.edition === 'java' ? "RCON isn't set up, so changes apply when the server restarts. Open Live Chat once to set it up."
+				: "Changes apply when the server restarts.")
+			: 'Changes apply when the server starts.');
+		list.innerHTML = d.players.length ? d.players.map(p => `
+			<div class="flex items-center justify-between gap-3 p-3">
+				<div class="min-w-0">
+					<div class="font-bold text-gray-900 dark:text-white">${esc(p.name)}</div>
+					<div class="text-xs text-gray-500 dark:text-gray-400">${p.last_join ? `last joined ${esc(this.fmtAgo(p.last_join))}` : 'no join in the log'}${p.id ? ` · <span class="font-mono">${esc(p.id)}</span>` : ''}</div>
+				</div>
+				<button onclick="ServerApp.accessRemove(${this.jsArg(p.name)})" class="text-sm text-red-600 dark:text-red-400 hover:underline">Remove</button>
+			</div>`).join('') : `<p class="p-3 text-gray-500 dark:text-gray-400">Nobody is on the ${word}${d.enabled ? ", so nobody can join" : ''}.</p>`;
+		const away = d.turned_away || [];
+		document.getElementById('wl-away-section').classList.toggle('hidden', !away.length);
+		const reasons = { not_whitelisted: `not on the ${word}`, banned: 'banned', wrong_version: 'wrong game version', server_full: 'server full' };
+		document.getElementById('wl-away').innerHTML = away.map(a => `
+			<div class="flex items-center justify-between gap-3 p-3">
+				<div><span class="font-bold text-gray-900 dark:text-white">${esc(a.name)}</span>
+					<span class="text-xs text-gray-500 dark:text-gray-400">${a.count}× · ${esc(reasons[a.reason] || a.reason || 'refused')}</span></div>
+				${a.reason === 'not_whitelisted' ? `<button onclick="ServerApp.accessAdd(${this.jsArg(a.name)})" class="text-sm text-theme hover:underline">Allow</button>` : ''}
+			</div>`).join('');
+		this.loadAccessLog();
+	},
+
+    async accessAdd(name) {
+		name = (name || '').trim();
+		if (!name) return;
+		await this.accessChange('add', name);
+	},
+
+    async accessRemove(name) {
+		const word = this.accessData && this.accessData.edition === 'java' ? 'whitelist' : 'allowlist';
+		if (!confirm(`Remove ${name} from the ${word}?`)) return;
+		await this.accessChange('remove', name);
+	},
+
+    async accessChange(action, player) {
+		let msg;
+		try {
+			const res = await fetch(`/api/servers/${encodeURIComponent(this.activeServer.name)}/whitelist/${action}`, {
+				method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player })
+			});
+			const j = await res.json().catch(() => ({}));
+			msg = res.ok ? j.message : `Not changed: ${j.detail || `HTTP ${res.status}`}`;
+		} catch (e) {
+			msg = `Not changed: ${e.message}`;
+		}
+		if (action === 'add') document.getElementById('wl-add-name').value = '';
+		this.loadAccess();
+		alert(msg);
+	},
+
+    accessLogSoon() {
+		clearTimeout(this._accessLogTimer);
+		this._accessLogTimer = setTimeout(() => this.loadAccessLog(), 300);
+	},
+
+    async loadAccessLog() {
+		const server = this.activeServer.name, esc = t => this.escapeHtml(t === null || t === undefined ? '' : t);
+		const q = new URLSearchParams({
+			player: document.getElementById('al-player').value.trim(),
+			event: document.getElementById('al-event').value,
+			days: document.getElementById('al-days').value,
+		});
+		const rows = document.getElementById('al-rows');
+		let d;
+		try {
+			const res = await fetch(`/api/servers/${encodeURIComponent(server)}/players/log?${q}`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			d = await res.json();
+		} catch (e) {
+			rows.innerHTML = `<tr><td colspan="3" class="p-2 text-red-500">Could not load the access log (${esc(e.message)}).</td></tr>`;
+			return;
+		}
+		if (!this.activeServer || this.activeServer.name !== server) return;
+		const word = this.accessData && this.accessData.edition === 'bedrock' ? 'allowlist' : 'whitelist';
+		const reasons = Object.assign({}, d.reasons, { not_whitelisted: `not on the ${word}` });
+		const label = e => e.ev === 'join' ? '<span class="text-green-600 dark:text-green-400">Joined</span>'
+			: e.ev === 'leave' ? '<span class="text-gray-500 dark:text-gray-400">Left</span>'
+			: `<span class="text-red-600 dark:text-red-400">Turned away</span> <span class="text-gray-500 dark:text-gray-400">(${esc(reasons[e.reason] || e.reason || 'refused')})</span>`;
+		rows.innerHTML = d.events.length ? d.events.map(e => `
+			<tr class="border-t border-gray-100 dark:border-gray-700">
+				<td class="p-2 whitespace-nowrap text-gray-600 dark:text-gray-300">${esc(new Date(e.ts * 1000).toLocaleString())}</td>
+				<td class="p-2 font-bold text-gray-900 dark:text-white">${esc(e.name)}</td>
+				<td class="p-2">${label(e)}</td>
+			</tr>`).join('') : `<tr><td colspan="3" class="p-2 text-gray-500 dark:text-gray-400">Nothing in this period.</td></tr>`;
+		document.getElementById('al-count').innerText = d.events.length >= 500
+			? 'Showing the newest 500; narrow the filter to see more.'
+			: `${d.events.length} event${d.events.length === 1 ? '' : 's'}. Kept for ${d.retention_days} days.`;
 	},
 
     async setPlayerRole(select) {
@@ -2877,7 +2999,10 @@ const ServerApp = {
 		const srv = this.servers.find(s => s.name === name);
 		if (!srv) return;
 		this.openWorkspace(srv);
-		if (tab) this.switchTab(tab);
+		if (tab === 'access') {
+			this.switchTab('properties');
+			this.switchConfigSubTab('access');
+		} else if (tab) this.switchTab(tab);
 	},
 
 	renderDashboard() {
@@ -2903,7 +3028,7 @@ const ServerApp = {
 			<section class="${card} p-4">
 				<h3 class="${h3} mb-2">Needs attention</h3>
 				<div class="space-y-2">${attention.map(a => {
-					const tab = a.where === 'backups' ? 'backups' : '';
+					const tab = a.where === 'backups' ? 'backups' : a.where === 'access' ? 'access' : '';
 					const link = a.server ? ` <button onclick="ServerApp.openServerByName(${this.jsArg(a.server)}, ${this.jsArg(tab)})" class="underline text-theme whitespace-nowrap">Open ${esc(a.server)}</button>`
 						: a.where === 'update' && this.isAdmin() ? ` <button onclick="ServerApp.startPanelUpdate()" class="underline text-theme whitespace-nowrap">Update now</button>` : '';
 					return `<div class="text-sm p-2 rounded border ${tone[a.level] || tone.warn} text-gray-900 dark:text-gray-100">${icon[a.level] || '⚠️'} ${esc(a.text)}${link}</div>`;
