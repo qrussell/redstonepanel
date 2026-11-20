@@ -2579,7 +2579,8 @@ const ServerApp = {
 				<h3 class="${h3} mb-2">Needs attention</h3>
 				<div class="space-y-2">${attention.map(a => {
 					const tab = a.where === 'backups' ? 'backups' : '';
-					const link = a.server ? ` <button onclick="ServerApp.openServerByName(${this.jsArg(a.server)}, ${this.jsArg(tab)})" class="underline text-theme whitespace-nowrap">Open ${esc(a.server)}</button>` : '';
+					const link = a.server ? ` <button onclick="ServerApp.openServerByName(${this.jsArg(a.server)}, ${this.jsArg(tab)})" class="underline text-theme whitespace-nowrap">Open ${esc(a.server)}</button>`
+						: a.where === 'update' && this.isAdmin() ? ` <button onclick="ServerApp.startPanelUpdate()" class="underline text-theme whitespace-nowrap">Update now</button>` : '';
 					return `<div class="text-sm p-2 rounded border ${tone[a.level] || tone.warn} text-gray-900 dark:text-gray-100">${icon[a.level] || '⚠️'} ${esc(a.text)}${link}</div>`;
 				}).join('')}</div>
 			</section>` : `
@@ -2654,7 +2655,10 @@ const ServerApp = {
 				${row('Up', this.fmtDuration(d.host.uptime))}
 				${row('Time zone', esc(d.host.timezone))}
 				${d.host.ips ? row('Addresses', d.host.ips.map(esc).join('<br>') || '—') : ''}
-				${d.host.version ? row('RedstonePanel', esc(d.host.version) + (d.host.update ? ` <span class="text-blue-500">(${esc(d.host.update)} available)</span>` : '')) : ''}
+				${d.host.version ? row('RedstonePanel', esc(d.host.version) + (d.host.update ? ` <span class="text-blue-500">(${esc(d.host.update)} available)</span>` : '')
+					+ (this.isAdmin() && !d.redacted ? (d.host.update
+						? ` <button onclick="ServerApp.startPanelUpdate()" class="ml-1 px-2 py-0.5 rounded text-xs bg-theme hover-bg-theme text-white font-bold">Update now</button>`
+						: `<br><button onclick="ServerApp.checkPanelUpdate(this)" class="underline text-xs text-theme">Check for updates</button>`) : '')) : ''}
 				${net.length ? row('Network', net.map(n => `${esc(n.name)} ↓ ${this.fmtRate(n.rx)} ↑ ${this.fmtRate(n.tx)}`).join('<br>')) : ''}
 			</section>`;
 		const disks = `
@@ -2729,6 +2733,83 @@ const ServerApp = {
 			lines.push(`<span class="${note}">Install: ${svc.java_installable.map(i => `<button onclick="ServerApp.installJava(${i.major})" class="${link}">${esc(i.major)}</button>`).join(' · ')}</span>`);
 		}
 		return lines.join('<br>');
+	},
+
+	// --- Updating RedstonePanel itself (admins). The upgrade runs in its own systemd unit
+	// because the package restarts the panel; this page waits for it to come back, then reloads.
+	async checkPanelUpdate(button) {
+		if (button) { button.disabled = true; button.innerText = 'Checking…'; }
+		const res = await fetch('/api/panel/update/check', { method: 'POST' });
+		if (!res.ok) {
+			alert(`Couldn't check for updates: ${await this.apiError(res)}`);
+		} else {
+			const st = await res.json();
+			alert(st.available ? `RedstonePanel ${st.available} is available.` : `RedstonePanel ${st.version} is the newest version.`);
+		}
+		await this.loadDashboard();
+	},
+
+	async startPanelUpdate() {
+		const h = (this.dashData && this.dashData.host) || {};
+		if (!confirm(`Update RedstonePanel ${h.version || ''} to ${h.update || 'the newest version'}?\n\n`
+			+ `The panel restarts during the update; this page reconnects and reloads by itself, usually within a minute. `
+			+ `Game servers keep running.`)) return;
+		const res = await fetch('/api/panel/update', { method: 'POST' });
+		if (!res.ok) return alert(`The update didn't start: ${await this.apiError(res)}`);
+		const st = await res.json();
+		await this.watchPanelUpdate((st.upgrade && st.upgrade.to) || h.update);
+	},
+
+	// A box over the page with the update's progress and apt's last lines
+	panelUpdateBox(message, lines, closable) {
+		let el = document.getElementById('panel-update-overlay');
+		if (!el) {
+			el = document.createElement('div');
+			el.id = 'panel-update-overlay';
+			el.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4';
+			document.body.appendChild(el);
+		}
+		const esc = t => this.escapeHtml(String(t));
+		el.innerHTML = `
+			<div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full p-5 text-sm text-gray-800 dark:text-gray-200">
+				<h3 class="font-bold text-lg mb-2 text-gray-900 dark:text-white">Updating RedstonePanel</h3>
+				<p class="mb-3">${closable ? '' : '⏳ '}${esc(message)}</p>
+				${lines && lines.length ? `<pre class="text-xs bg-gray-100 dark:bg-gray-900 rounded p-2 max-h-64 overflow-auto whitespace-pre-wrap break-all">${lines.map(esc).join('\n')}</pre>` : ''}
+				${closable ? `<div class="mt-3 text-right"><button onclick="document.getElementById('panel-update-overlay').remove()" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold">Close</button></div>` : ''}
+			</div>`;
+	},
+
+	async watchPanelUpdate(target) {
+		const started = Date.now();
+		let lines = [];
+		let wentAway = false;
+		this.panelUpdateBox(`Updating to ${target || 'the newest version'}…`, lines);
+		while (Date.now() - started < 15 * 60 * 1000) {
+			await new Promise(r => setTimeout(r, 2000));
+			let st = null;
+			try {
+				const r = await fetch('/api/panel/update', { cache: 'no-store' });
+				if (r.ok) st = await r.json();
+			} catch (e) { /* restarting */ }
+			if (!st) {
+				wentAway = true;
+				this.panelUpdateBox('The panel is restarting with the new version…', lines);
+				continue;
+			}
+			const u = st.upgrade || {};
+			lines = u.lines || lines;
+			if (u.state === 'failed') {
+				this.panelUpdateBox(`The update failed: ${u.error || 'see the log below'}. RedstonePanel ${st.version} is still running.`, lines, true);
+				return;
+			}
+			if (u.state === 'done' && st.version === (u.to || target)) {
+				this.panelUpdateBox(`Updated to ${st.version}. Reloading…`, lines);
+				setTimeout(() => location.reload(), 1500);
+				return;
+			}
+			this.panelUpdateBox(wentAway ? 'Finishing the update…' : `Updating ${u.from || ''} → ${u.to || target}…`, lines);
+		}
+		this.panelUpdateBox('The update is taking longer than expected. Reload this page later, or check with: sudo redstonepanel status', lines, true);
 	},
 
 	// One panel of the cluster: the few numbers core.host.summary() gives

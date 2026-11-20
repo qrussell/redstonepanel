@@ -10,6 +10,7 @@ import core.files as files
 import core.mods as mods
 import core.catalog as catalog
 import core.runtimes as runtimes
+import core.selfupdate as selfupdate
 import core.host as host
 import urllib.parse
 import core.javaservers as javaservers
@@ -404,6 +405,26 @@ def remove_java_runtime(request: Request, req: JavaChoice):
 @app.post("/api/servers/{server_name}/java")
 def choose_server_java(request: Request, server_name: str, req: JavaChoice):
     return _runtime_call(request, runtimes.use, server_name, req.major, actor=request.state.user["username"])
+
+# Updating RedstonePanel itself (admins): see core/selfupdate.py for why it runs in its own unit
+def _update_call(request: Request, fn, *args, **kw):
+    _require_admin(request, "update RedstonePanel")
+    try:
+        return fn(*args, **kw)
+    except selfupdate.UpdateError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+@app.get("/api/panel/update")
+def panel_update_status(request: Request):
+    return _update_call(request, selfupdate.status)
+
+@app.post("/api/panel/update/check")
+def check_panel_update(request: Request):
+    return _update_call(request, selfupdate.check)
+
+@app.post("/api/panel/update")
+def start_panel_update(request: Request):
+    return _update_call(request, selfupdate.start, actor=request.state.user["username"])
 
 @app.post("/api/servers/{server_name}/action")
 def control_server(server_name: str, req: ServerActionRequest):

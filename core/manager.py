@@ -50,6 +50,15 @@ def open_firewall(port, proto):
     if shutil.which("ufw"):
         run_and_log(["ufw", "allow", f"{port}/{proto}"])
 
+def close_firewall(port, proto):
+    """Removes the rule open_firewall added, unless another server still uses that port."""
+    if not shutil.which("ufw") or not str(port).isdigit():
+        return
+    for s in list_servers():
+        if str(s.get("port")) == str(port):
+            return
+    run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
+
 def load_templates():
     if not os.path.exists(TEMPLATE_FILE): return []
     with open(TEMPLATE_FILE, 'r') as f: return json.load(f)
@@ -714,12 +723,17 @@ def remove_server(server_name, keep_world):
     d = get_server_dir(server_name)
     exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
                                 capture_output=True, text=True).stdout.strip()
+    port = read_properties(d).get("server-port")
     run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
     run_and_log(["sudo", "systemctl", "disable", f"{server_name}.service"])
 
     if os.path.exists(_unit_path(server_name)):
         os.remove(_unit_path(server_name))
     run_and_log(["sudo", "systemctl", "daemon-reload"])
+    # If it had failed, systemd would keep listing it as a failed unit with no unit file
+    subprocess.run(["systemctl", "reset-failed", f"{server_name}.service"], capture_output=True)
+    # Its game port is closed again (restoring it opens the port it gets then)
+    close_firewall(port, "tcp" if "java" in exec_start else "udp")
     # Its backup and restart timers go too; the backups themselves stay in /var/backups/redstonepanel
     from core import backups, restarts
     backups.on_server_removed(server_name, purged=not keep_world)

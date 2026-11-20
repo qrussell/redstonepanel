@@ -26,6 +26,8 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .br
 .B redstonepanel notify-test
 .br
+.B redstonepanel upgrade
+.br
 .B redstonepanel cluster
 .RB { create
 .IR NAME | status | join-code
@@ -98,6 +100,12 @@ warning time before the restart time shown in the panel.
 .TP
 .B notify-test
 Send a test message to the webhook set under Panel Settings > Notifications.
+.TP
+.B upgrade
+Run apt-get update, then upgrade only the redstonepanel package, keeping changed
+configuration files. The dashboard's Update now button runs this as the transient unit
+\fBredstonepanel-upgrade.service\fR, so it carries on while the panel restarts; its output is
+in \fI/var/lib/redstonepanel/upgrade.log\fR and the outcome in \fIupgrade.json\fR.
 .SH NOTIFICATIONS
 The package installs a systemd drop-in for every
 .BR minecraft-*.service ,

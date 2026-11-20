@@ -205,12 +205,25 @@ def systemctl_show(units, props=UNIT_PROPS):
 
 
 def failed_units():
+    """Failed panel and game server units. A unit whose file is gone (a removed server that
+    had failed before) is only systemd's memory of the failure: it's cleared, not reported."""
     try:
         r = subprocess.run(["systemctl", "list-units", "--failed", "--all", "--plain", "--no-legend",
                             "minecraft*", "redstonepanel*"], capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return []
-    return [line.split()[0] for line in r.stdout.splitlines() if line.split()]
+    failed, gone = [], []
+    for line in r.stdout.splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        (gone if len(parts) > 1 and parts[1] == "not-found" else failed).append(parts[0])
+    if gone:
+        try:
+            subprocess.run(["systemctl", "reset-failed", *gone], capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return failed
 
 
 def _unit_uptime(props):
@@ -384,6 +397,13 @@ def panel_update():
     return _cached("apt", 600, compute)
 
 
+def forget_panel_update():
+    """After `apt-get update`: look again instead of answering from the 10-minute cache."""
+    with _lock:
+        _cache.pop("apt", None)
+        _cache.pop("report", None)
+
+
 def ufw_allows(status_text, port, proto):
     """Whether `ufw status` text has an ALLOW rule covering port/proto."""
     for line in status_text.splitlines():
@@ -555,7 +575,7 @@ def _needs_attention(rep, failed, phantoms):
         out.append(_attention("error", f"HTTPS isn't working: {rep['services']['https']['error']}", where="settings"))
     if rep["host"].get("update"):
         out.append(_attention("info", f"RedstonePanel {rep['host']['update']} is available. "
-                                      "Update with: sudo apt upgrade redstonepanel", where="update"))
+                                      "Update it with Update now, or: sudo apt upgrade redstonepanel", where="update"))
     order = {"error": 0, "warn": 1, "info": 2}
     return sorted(out, key=lambda a: order[a["level"]])
 

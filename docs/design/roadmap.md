@@ -291,6 +291,14 @@ already waiting). Binding stays the full path in each root-owned unit: no symlin
 server folder, which the game user and the file manager can change and which a backup or
 import would carry to a host where it points nowhere.
 
+Also in 1.13.1, asked for alongside it: **Update now** on the dashboard. The upgrade can't run
+inside the panel's process, because the package's postinst restarts `redstonepanel.service` and
+systemd would kill apt mid-dpkg, so the panel starts `redstonepanel upgrade` as a transient
+unit (`systemd-run --unit=redstonepanel-upgrade`) that writes its outcome to
+`/var/lib/redstonepanel/upgrade.json`; the page polls through the restart and reloads. And
+removing a server now closes its ufw port and resets its failed state; failed units with no
+unit file are cleared instead of shown.
+
 Tested in the systemd container: a fresh install had no Java; creating a 1.21.4 server got
 409, installed Java 21 and created it; an imported server needing Java 25 was moved onto
 it when 25 was installed; switching Java and the too-old refusal; removing 25, then the

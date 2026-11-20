@@ -51,7 +51,14 @@ offers to install the Java that Minecraft version needs (see [Java versions](#ja
 so a machine that only runs Bedrock never gets Java.
 
 Install `ufw` too if you want the panel to open each game server's port in the firewall for
-you.
+you. It closes the port again when the server is removed.
+
+**Updating.** When a new version is out, the dashboard's **Needs attention** says so and the
+**Host** card shows **Update now** (admins). Click it: the panel updates its package with apt,
+restarts, and the page reloads by itself, usually within a minute. Game servers keep running.
+**Check for updates** on the Host card asks apt straight away instead of waiting for the daily
+check. From a terminal, `sudo redstonepanel upgrade` does the same, or use
+`sudo apt update && sudo apt upgrade`.
 
 The panel then runs as the `redstonepanel` service on port **8080**. Open
 `http://<server>:8080/` in a browser.
@@ -293,6 +300,10 @@ network, don't see these two sections.
   [restored](#15-restore-a-removed-server).
 - **Danger Zone → Purge Data**: removes the service and deletes the server's folder,
   world included. This can't be undone. Backups in `/var/backups/redstonepanel` are kept.
+
+Both also remove the server's backup and restart timers, close its game port in `ufw`, and
+clear it from systemd's list of failed units. Failed units left behind by servers removed
+with older versions are cleared the next time the dashboard loads.
 
 ## 9. Backups
 

@@ -15,6 +15,7 @@
     redstonepanel restart-server NAME warn players, then restart a game server (its restart timer
                                       runs this)
     redstonepanel notify-test         send a test message to the notification webhook
+    redstonepanel upgrade             update the redstonepanel package (apt), as the panel's Update button does
 
   Clusters (one master panel controls the game servers of other panels, its nodes):
     redstonepanel cluster create "NAME"   make this panel a cluster master
@@ -357,6 +358,12 @@ def restore_cmd(name):
           + (f" (port {r['old_port']} is used by another server)" if r["old_port"] else "") + ".")
 
 
+def upgrade_cmd():
+    """Upgrades the redstonepanel package (the panel's Update button runs this in its own unit)."""
+    from core import selfupdate
+    sys.exit(selfupdate.run(echo=sys.stdout.isatty()))
+
+
 if __name__ == "__main__":
     cmd, rest = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else (None, [])
     if cmd is None:
@@ -387,6 +394,8 @@ if __name__ == "__main__":
         join_cmd(rest[0])
     elif cmd == "leave" and not rest:
         leave_cmd()
+    elif cmd == "upgrade" and not rest:
+        upgrade_cmd()
     elif cmd == "cluster-https" and not rest:
         cluster_https()
     elif cmd in ("-h", "--help", "help"):

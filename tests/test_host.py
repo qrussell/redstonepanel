@@ -105,6 +105,18 @@ class Parsers(unittest.TestCase):
         self.assertEqual(H.parse_apt_policy(text), ("1.10.0", "1.11.0"))
         self.assertEqual(H.parse_apt_policy("redstonepanel:\n  Installed: (none)\n"), ("(none)", None))
 
+    def test_failed_units_skip_removed_servers(self):
+        out = ("minecraft-java-2.service    not-found failed failed minecraft-java-2.service\n"
+               "minecraft-paper.service     loaded    failed failed Minecraft Server (minecraft-paper)\n"
+               "minecraft-bedrock-2.service not-found failed failed minecraft-bedrock-2.service\n")
+        calls = []
+        def run(cmd, **kw):
+            calls.append(cmd)
+            return SimpleNamespace(returncode=0, stdout=out if "list-units" in cmd else "", stderr="")
+        with mock.patch.object(H.subprocess, "run", run):
+            self.assertEqual(H.failed_units(), ["minecraft-paper.service"])
+        self.assertEqual(calls[-1], ["systemctl", "reset-failed", "minecraft-java-2.service", "minecraft-bedrock-2.service"])
+
     def test_ufw(self):
         self.assertTrue(H.ufw_allows(UFW, 25565, "tcp"))
         self.assertFalse(H.ufw_allows(UFW, 25565, "udp"))
