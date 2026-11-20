@@ -781,6 +781,37 @@ you choose is copied to the node first, ports are picked on the node, and if the
 the Java that Minecraft version needs, you're asked to install it there. **Save as Template** on a
 node's server adds the template to the master's list.
 
+**Moving a server to another machine** *(1.16)*: on the **🌐 Cluster** page, admins have
+**Move…** and **Copy…** next to every server. Choose where it goes:
+
+![Moving a server to another cluster member](images/cluster-move.png)
+
+A move stops the server, packs its whole folder (world, server software, mods and settings),
+streams it through the master to the other machine, where every byte is checked, and starts it
+there. It keeps its name and ports when they're free on the new machine; if not, it gets others
+and the window tells you which. The Java it needs is installed there, and its memory, backup and
+restart schedules and Phantom come along. A progress bar follows the copy, and both consoles log
+each step (`[MOVE] …`).
+
+![A finished move, with the old copy still kept](images/cluster-moved.png)
+
+The old machine keeps the files as a removed server marked **moved to …**. Check the server on
+its new machine, then click **Delete the old copy** (or 🗑 next to it in **New Server → Removed
+servers** with that machine chosen under **Where**). Until then you can restore it there like any
+removed server. If anything fails along the way, the new copy is removed and the server starts
+again where it was. While a move runs, the server can't be started on the old machine.
+
+**Copy…** works the same way without stopping the server (its world is saved first, as backups
+do) and without removing anything. Copying to the same machine always gives the copy a new name;
+you choose whether to start it. Schedules and Phantom stay with the original.
+
+Both machines need RedstonePanel 1.16 or later. Older backups and the player history stay on the
+old machine.
+
+**Templates between machines:** in the template manager, **Copy to node** sends one of the
+master's templates to a node. Templates a node made on its own panel are listed under its name,
+with **Copy to this panel**.
+
 **Who can do what:** admins on the master are admins on the nodes; users on the master have a
 user's rights there (no file manager, Java or Phantom). Both panels' consoles log each change
 with the master user's name, e.g. `[CLUSTER] alex@Main: …`. The master can never change a node's

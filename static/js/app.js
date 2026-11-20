@@ -978,11 +978,12 @@ const ServerApp = {
             const isActive = this.editingTemplateId === t.id ? 'bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
             aside.innerHTML += `
                 <div onclick="ServerApp.openTemplateEditor('${t.id}')" class="p-3 mb-1 rounded cursor-pointer transition ${isActive}">
-                    <div class="font-bold text-gray-900 dark:text-gray-200">${t.name}</div>
-                    <div class="text-xs text-gray-500">${t.edition} Template</div>
+                    <div class="font-bold text-gray-900 dark:text-gray-200">${this.escapeHtml(t.name)}</div>
+                    <div class="text-xs text-gray-500">${this.escapeHtml(t.edition)} Template</div>
                 </div>
             `;
         });
+        this.renderNodeTemplates(aside);
     },
 
     openTemplateEditor(id) {
@@ -994,6 +995,7 @@ const ServerApp = {
         
         document.getElementById('template-editor-main').classList.remove('hidden');
         document.getElementById('editing-temp-title').innerText = `Edit Template: ${temp.name}`;
+        this.renderTemplateCopy(temp);
         
         // Build properties editor
         const editor = document.getElementById('temp-properties-editor');
@@ -2525,7 +2527,11 @@ const ServerApp = {
             } else if (!s.has_binary) {
                 note = `<p class="text-xs text-yellow-500 mt-1">The server binary is missing; the latest ${esc(s.edition)} release will be downloaded.${s.edition === 'Java' ? ' A world from an older version is upgraded and can\'t go back, so export it first.' : ''}</p>`;
             }
+            if (s.moved_to) {
+                note += `<p class="text-xs text-gray-400 mt-1">Left behind by a move to ${esc(s.moved_to)}. Restore it only if the move went wrong.</p>`;
+            }
             const when = s.removed_at ? ` • removed ${new Date(s.removed_at * 1000).toLocaleDateString()}` : '';
+            const masterAdmin = this.isMaster() && this.currentUser.role === 'admin' && this.removedNode() && s.moved_to;
             return `
                 <div class="border border-gray-700 rounded p-2 mb-2">
                     <div class="flex items-center justify-between gap-2">
@@ -2537,6 +2543,8 @@ const ServerApp = {
                             <button onclick="ServerApp.restoreRemoved('${esc(s.name)}', this)" ${s.can_restore ? '' : 'disabled'}
                                 class="px-3 py-1 rounded text-sm font-bold text-white ${s.can_restore ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 cursor-not-allowed'}">Restore</button>
                             ${isAdmin ? `<button onclick="ServerApp.deleteRemoved('${esc(s.name)}')" title="Delete its files permanently"
+                                class="px-2 py-1 rounded text-sm bg-gray-700 hover:bg-red-700 text-white">🗑</button>` : ''}
+                            ${masterAdmin ? `<button onclick="ServerApp.deleteMovedCopy(${this.jsArg(this.removedNode())}, ${this.jsArg(s.name)}, this)" title="Delete the files this move left behind"
                                 class="px-2 py-1 rounded text-sm bg-gray-700 hover:bg-red-700 text-white">🗑</button>` : ''}
                         </div>
                     </div>
@@ -3494,8 +3502,10 @@ const ServerApp = {
 							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}</div>
 						</div>
 					</div>
-					<div class="flex gap-2">
+					<div class="flex flex-wrap justify-end gap-2">
 						${ok && (n.local || (n.cluster_api || 1) >= 2) ? `<button onclick="ServerApp.openClusterServer(${this.jsArg(n.local ? '' : n.id)}, ${this.jsArg(s.name)})" class="${btn} bg-gray-500 hover:bg-gray-600">Open</button>` : ''}
+						${this.canMoveFrom(n) ? `<button onclick="ServerApp.openMoveDialog('move', ${this.jsArg(n.id)}, ${this.jsArg(s.name)})" title="Move it to another cluster member" class="${btn} bg-gray-500 hover:bg-gray-600">Move…</button>
+						<button onclick="ServerApp.openMoveDialog('copy', ${this.jsArg(n.id)}, ${this.jsArg(s.name)})" title="Copy it, to another member or this one" class="${btn} bg-gray-500 hover:bg-gray-600">Copy…</button>` : ''}
 						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'start', this)" class="${btn} bg-green-600 hover:bg-green-700">Start</button>
 						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'restart', this)" class="${btn} bg-theme hover-bg-theme">Restart</button>
 						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'stop', this)" class="${btn} bg-red-600 hover:bg-red-700">Stop</button>
@@ -3518,6 +3528,166 @@ const ServerApp = {
 					${rows || (ok ? '<p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">No Minecraft servers on this panel yet.</p>' : '')}
 				</div>`;
 		}).join('');
+	},
+
+	// --- 1.16: move or copy a server to another cluster member (master admins) ---
+	canMoveFrom(n) {
+		return this.currentUser && this.currentUser.role === 'admin' && n.state === 'ok'
+			&& (n.local || (n.cluster_api || 1) >= 3);
+	},
+
+	moveTargets(kind, from) {
+		return (this.clusterData ? this.clusterData.nodes : [])
+			.filter(n => n.state === 'ok' && (n.local || (n.cluster_api || 1) >= 3) && (kind === 'copy' || n.id !== from));
+	},
+
+	openMoveDialog(kind, from, server) {
+		const esc = t => this.escapeHtml(t);
+		const targets = this.moveTargets(kind, from);
+		if (!targets.length) {
+			return alert('No other cluster member can take it. Each one needs RedstonePanel 1.16 or later and must be reachable from the master.');
+		}
+		const src = this.clusterData.nodes.find(n => n.id === from) || { name: '?' };
+		const move = kind === 'move';
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		document.getElementById('modal-content').innerHTML = `
+			<h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">${move ? 'Move' : 'Copy'} ${esc(server)}</h2>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">${move
+				? `From <b>${esc(src.name)}</b>. The server stops while its folder is copied, then starts on the new member with the same name and ports if they're free there. Its memory, Java, backup and restart schedules and Phantom come along. The files on ${esc(src.name)} stay as a removed server until you delete them, so nothing is lost if something goes wrong.`
+				: `From <b>${esc(src.name)}</b>, without stopping it (the world is saved first, as backups do). The copy gets its own name and ports where needed, and no schedules.`}</p>
+			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">To</label>
+			<select id="move-to" class="${field} mb-3">${targets.map(n =>
+				`<option value="${esc(n.id)}">${esc(n.name)}${n.local ? ' (this panel)' : ''}${n.id === from ? ' (same panel)' : ''}</option>`).join('')}</select>
+			${move ? '' : `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-start"> Start the copy when it's ready</label>`}
+			<div class="flex gap-2">
+				<button id="move-go" onclick="ServerApp.startMove(${this.jsArg(kind)}, ${this.jsArg(from)}, ${this.jsArg(server)})" class="flex-1 px-4 py-2 bg-theme hover-bg-theme text-white rounded font-bold">${move ? 'Move' : 'Copy'}</button>
+				<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>
+			</div>`;
+		document.getElementById('modal-overlay').classList.remove('hidden');
+	},
+
+	async startMove(kind, from, server) {
+		const to = document.getElementById('move-to').value;
+		const startBox = document.getElementById('move-start');
+		document.getElementById('move-go').disabled = true;
+		const res = await fetch('/api/cluster/moves', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ kind, server, from_node: from, to_node: to, start: !!(startBox && startBox.checked) })
+		});
+		if (!res.ok) {
+			document.getElementById('move-go').disabled = false;
+			return alert(await this.apiError(res));
+		}
+		this.watchMove(await res.json());
+	},
+
+	async watchMove(job) {
+		this.renderMoveJob(job);
+		if (job.state !== 'running') {
+			this.loadCluster();
+			this.loadServers();             // the sidebar lists servers under their member
+			return;
+		}
+		setTimeout(async () => {
+			const res = await fetch(`/api/cluster/moves/${encodeURIComponent(job.id)}`);
+			if (res.ok) this.watchMove(await res.json());
+		}, 1500);
+	},
+
+	renderMoveJob(job) {
+		const esc = t => this.escapeHtml(t);
+		const box = document.getElementById('modal-content');
+		if (!box) return;
+		const move = job.kind === 'move';
+		const pct = job.total ? Math.min(100, Math.round(job.bytes * 100 / job.total)) : null;
+		let body;
+		if (job.state === 'running') {
+			body = `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">${esc(job.step)}…</p>
+				${pct !== null ? `<div class="w-full h-2 rounded bg-gray-200 dark:bg-gray-700 mb-1"><div class="h-2 rounded bg-theme" style="width:${pct}%"></div></div>
+				<p class="text-xs text-gray-500 dark:text-gray-400 mb-3">${this.fmtBytes(job.bytes)} of ${this.fmtBytes(job.total)}</p>` : ''}
+				<p class="text-xs text-gray-500 dark:text-gray-400">You can close this; it carries on, and the console shows each step.</p>`;
+		} else if (job.state === 'done') {
+			const r = job.result || {};
+			const changes = [r.renamed ? `its name was taken there, so it's now <b>${esc(r.name)}</b>` : '',
+				r.old_port ? `port ${esc(r.old_port)} was taken there, so it now uses port <b>${esc(r.port)}</b>` : ''].filter(Boolean);
+			body = `<p class="text-sm text-green-600 dark:text-green-400 font-bold mb-2">${move ? 'Moved' : 'Copied'} to ${esc(job.to.name)} as ${esc(r.name)} (port ${esc(r.port)}).</p>
+				${changes.length ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">Note: ${changes.join('; ')}.</p>` : ''}
+				${job.warning ? `<p class="text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 mb-2">⚠️ ${esc(job.warning)}</p>` : ''}
+				${move && !job.warning ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">The old files on ${esc(job.from.name)} are kept as a removed server, ${esc(job.server)}. Once the server works on ${esc(job.to.name)}, delete them to free the space.</p>
+				<button onclick="ServerApp.deleteMovedCopy(${this.jsArg(job.from.id)}, ${this.jsArg(job.server)}, this)" class="w-full mb-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold">Delete the old copy on ${esc(job.from.name)}</button>` : ''}`;
+		} else {
+			body = `<p class="text-sm text-red-500 font-bold mb-2">${move ? 'Moving' : 'Copying'} failed: ${esc(job.error)}</p>
+				<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">${esc(job.step)}</p>`;
+		}
+		box.innerHTML = `
+			<h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">${move ? 'Moving' : 'Copying'} ${esc(job.server)}</h2>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-3">${esc(job.from.name)} → ${esc(job.to.name)}</p>
+			${body}
+			<button onclick="ServerApp.closeModal()" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Close</button>`;
+	},
+
+	async deleteMovedCopy(member, name, button) {
+		if (!confirm(`Permanently delete the old copy of ${name} (the files the move left behind)? This can't be undone.`)) return;
+		if (button) button.disabled = true;
+		const res = await fetch(`/api/cluster/moved/${encodeURIComponent(member || 'local')}/${encodeURIComponent(name)}`, { method: 'DELETE' });
+		if (!res.ok) {
+			if (button) button.disabled = false;
+			return alert(`Not deleted: ${await this.apiError(res)}`);
+		}
+		if (button) { button.innerText = 'Deleted'; }
+		if (document.getElementById('removed-servers')) await this.loadRemovedServers();
+	},
+
+	// The master's template manager: copy a template to a node, or a node's template here
+	async renderTemplateCopy(temp) {
+		const box = document.getElementById('temp-copy');
+		if (!box) return;
+		const nodes = this.isMaster() ? this.clusterNodes.filter(n => n.state === 'ok' && (n.cluster_api || 1) >= 2) : [];
+		box.innerHTML = nodes.length ? `
+			<select id="temp-copy-to" class="bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white">
+				${nodes.map(n => `<option value="${this.escapeHtml(n.id)}">${this.escapeHtml(n.name)}</option>`).join('')}</select>
+			<button onclick="ServerApp.copyTemplateTo(${this.jsArg(temp.id)})" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded font-bold">Copy to node</button>` : '';
+	},
+
+	async copyTemplateTo(id) {
+		const node = document.getElementById('temp-copy-to').value;
+		if (await this.pushTemplate(node, id)) {
+			const n = this.clusterNodes.find(x => x.id === node);
+			alert(`Copied to ${n ? n.name : 'the node'}.`);
+		}
+	},
+
+	async renderNodeTemplates(aside) {
+		if (!this.isMaster()) return;
+		const esc = t => this.escapeHtml(t);
+		const nodes = this.clusterNodes.filter(n => n.state === 'ok' && (n.cluster_api || 1) >= 3);
+		const lists = await Promise.all(nodes.map(async n => {
+			try {
+				const r = await fetch(`/api/cluster/nodes/${encodeURIComponent(n.id)}/proxy/api/templates`);
+				return { n, list: r.ok ? await r.json() : [] };
+			} catch (e) { return { n, list: [] }; }
+		}));
+		const mine = new Set(this.templates.map(t => t.id));
+		const html = lists.map(({ n, list }) => {
+			const own = (Array.isArray(list) ? list : []).filter(t => t && !t.from_master && !mine.has(t.id));
+			if (!own.length) return '';
+			return `<h3 class="font-bold text-gray-500 mt-4 mb-2">On ${esc(n.name)}</h3>` + own.map(t => `
+				<div class="p-3 mb-1 rounded border border-gray-200 dark:border-gray-800">
+					<div class="font-bold text-gray-900 dark:text-gray-200">${esc(t.name)}</div>
+					<div class="text-xs text-gray-500 mb-1">${esc(t.edition)} Template</div>
+					<button onclick="ServerApp.copyTemplateHere(${this.jsArg(n.id)}, ${this.jsArg(t.id)})" class="text-xs underline text-theme">Copy to this panel</button>
+				</div>`).join('');
+		}).join('');
+		if (html && document.getElementById('template-list-aside') === aside) aside.insertAdjacentHTML('beforeend', html);
+	},
+
+	async copyTemplateHere(node, id) {
+		const res = await fetch('/api/cluster/nodes/local/templates', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template_id: id, from_node: node })
+		});
+		if (!res.ok) return alert(`Not copied: ${await this.apiError(res)}`);
+		await this.fetchTemplates();
+		this.renderTemplateSidebar();
 	},
 
 	// "CPU 12% · 3.1 GB memory free · 40 GB disk free" for a node on the cluster page

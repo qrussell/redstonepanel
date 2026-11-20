@@ -484,13 +484,19 @@ class RouteCoverage(unittest.TestCase):
                 ("POST", "/api/cluster/templates"),
                 ("GET", "/api/java/versions"), ("GET", "/api/java/requirement"), ("GET", "/api/java/runtimes"),
                 ("GET", "/api/java/runtimes/job"), ("POST", "/api/java/runtimes/install"),
-                ("POST", "/api/java/runtimes/remove")}
+                ("POST", "/api/java/runtimes/remove"),
+                # 1.16: moving servers (cluster plumbing, see core/transfer.py)
+                ("POST", "/api/cluster/transfers/export"), ("POST", "/api/cluster/transfers/import"),
+                ("GET", "/api/cluster/transfers/{tid}/archive"), ("PUT", "/api/cluster/transfers/{tid}/archive"),
+                ("POST", "/api/cluster/transfers/{tid}/finish"), ("POST", "/api/cluster/transfers/{tid}/install"),
+                ("POST", "/api/cluster/transfers/{tid}/confirm"), ("DELETE", "/api/cluster/transfers/{tid}"),
+                ("DELETE", "/api/cluster/transfers/moved/{server_name}")}
     NEVER = ("/api/users", "/api/settings", "/api/auth", "/api/panel", "/api/cluster/overview",
              "/api/cluster/nodes", "/api/cluster/join", "/api/templates/")
 
     @staticmethod
     def _sample(path):
-        return (path.replace("{server_name}", "minecraft-x").replace("{path:path}", "x")
+        return (path.replace("{server_name}", "minecraft-x").replace("{path:path}", "x").replace("{tid}", "a" * 32)
                 .replace("{", "").replace("}", ""))
 
     def _reachable(self):

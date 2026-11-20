@@ -82,6 +82,14 @@ with sync_playwright() as p:
         shot(page, "cluster")
     step("cluster", cluster)
 
+    def cluster_move():
+        # The Move dialog only (cluster-moved.png, a finished move, isn't retaken: it would
+        # change the demo)
+        page.locator("button", has_text="Move…").first.click()
+        shot(page, "cluster-move")
+        page.evaluate("ServerApp.closeModal()")
+    step("cluster-move", cluster_move)
+
     def master_java():
         open_server(page, "minecraft-java")
         shot(page, "overview")

@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.15.0**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.0**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -10,14 +10,11 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 
 ## Next up
 
-### 1.16: move a server to another node
+### 1.16.x: less downtime for big worlds
 
-- **Move** a server between cluster members. The world is streamed and checksummed, and the
-  server keeps its name, port, backup and restart schedules, mods and Phantom.
-  **Nothing is deleted on the old node until the new one is running.**
-- **Copy** a server under a new name, for a test copy of a world.
-- An optional **pre-copy** cuts downtime for big worlds.
-- Templates can be copied between cluster members.
+- An optional **pre-copy** for moves: copy the world while the server keeps running, then only
+  what changed after it stops.
+- **Find panels on your network** and offer to add them to the cluster.
 
 ### 1.17: server performance and tuning
 
@@ -75,5 +72,5 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.15.0** manages every node's servers from the
-cluster master.
+See [What's New](Whats-New.md). The latest: **1.16.0** moves and copies servers between the
+machines of a cluster, and **1.15.0** manages every node's servers from the master.

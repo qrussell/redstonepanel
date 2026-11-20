@@ -5,7 +5,7 @@ Hi everyone 👋
 RedstonePanel is a web panel for running Minecraft servers on your own Ubuntu machine. Each
 Java or Bedrock server is a plain systemd service, there's no Docker and no database, and the
 panel installs from a signed apt repository. This post is a tour of what the panel already
-does (as of **1.15.0**) and what's planned next. Your feedback decides the order, so please
+does (as of **1.16.0**) and what's planned next. Your feedback decides the order, so please
 reply with what you'd use, what's missing, or what gets in your way.
 
 ---
@@ -75,7 +75,8 @@ reply with what you'd use, what's missing, or what gets in your way.
 - **Clusters:** one panel is the master and manages every node's servers with all their tabs,
   creates servers on any node, and can use a real (certbot) certificate on the internet. There
   are join codes, a cluster CA with automatic renewal, and encrypted cluster backups (also
-  nightly) that let you promote another panel if the master is lost.
+  nightly) that let you promote another panel if the master is lost. **Move or copy** a
+  server to another machine of the cluster *(new in 1.16)*.
 - **Dark and light themes.** A CLI (`sudo redstonepanel …`) covers status, backups,
   restores and cluster tasks.
 - **Installs with `apt install redstonepanel`** from the signed qrussell-repo repository.
@@ -88,18 +89,16 @@ reply with what you'd use, what's missing, or what gets in your way.
 Version numbers are targets, not promises. The guiding rule stays the same: **protect
 people's worlds first**, and use systemd rather than reinventing it.
 
-### Just shipped: 1.15 manages every node from the master
-- **Every tab for every server**, even on other machines, from the master's sidebar.
-- **Create a server on any node** with the new **Where** choice. Templates and Java follow.
-- **Real certificates for a master on the internet**, automatic renewal, nightly cluster
-  backups.
+### Just shipped: 1.16 moves servers between machines
+- **Move** a server to another cluster member. The world is streamed and checksummed, and
+  the server keeps its name, ports, Java, backup and restart schedules, mods and Phantom.
+  **Nothing is deleted on the old machine until you say so.**
+- **Copy** a server, to another machine or the same one, without stopping it.
+- **Templates** copied between the master and its nodes.
 
-### 1.16: move a server to another node
-- **Move** a server between cluster members. The world is streamed and checksummed, and
-  the server keeps its name, port, backup and restart schedules, mods and Phantom.
-  **Nothing is deleted on the old node until the new one is running.**
-- **Copy** a server under a new name, for a test copy of a world.
-- An optional **pre-copy** cuts downtime for big worlds.
+### 1.16.x: less downtime for big worlds
+- An optional **pre-copy** while the server keeps running.
+- **Find panels on your network** and add them to the cluster.
 
 ### 1.17: server performance and tuning
 - **Tick health** (TPS/MSPT) for Paper, Vanilla and Fabric 1.20.3+.
