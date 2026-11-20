@@ -9,6 +9,23 @@ the dashboard.
 
 ---
 
+## 1.16.0: move a server to another machine *(November 2026)*
+
+Move a server to another machine in your cluster, or copy it, from the master's cluster page.
+Nothing is deleted until you say so.
+
+- **Move…** on every server of the 🌐 Cluster page (admins). The server stops, its whole folder
+  is streamed to the other machine and checked byte for byte, and it starts there with the same
+  name and ports when they're free, the Java it needs, its memory, backup and restart schedules
+  and Phantom.
+- **Nothing is lost.** The old machine keeps its files as a removed server marked "moved to …"
+  until you click **Delete the old copy**. A move that fails undoes itself and starts the server
+  where it was.
+- **Copy…** a server, to another machine or the same one, without stopping it.
+- **Templates** can be copied from the master to a node and from a node to the master.
+
+[Release notes](../../release-notes/v1.16.0.md)
+
 ## 1.15.0: manage every node from the master *(November 2026)*
 
 Manage every node's servers from the cluster master: every tab, new servers on any node, and

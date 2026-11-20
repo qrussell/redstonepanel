@@ -1,3 +1,28 @@
+redstonepanel (1.16.0) noble; urgency=medium
+
+  * Move a server to another cluster member: on the master's cluster page,
+    admins get Move and Copy for every server. A move stops the server,
+    packs its whole folder, streams it through the master to the other
+    member (checked against its SHA-256, no size cap), installs it there
+    under the same name and ports when they're free, installs the Java it
+    needs, carries over its memory, backup and restart schedules and
+    Phantom, starts it and checks it keeps running. Only then does the old
+    member take it off the panel, keeping its files as a removed server
+    marked "moved to", until an admin deletes them. Any failure undoes the
+    new copy and starts the server where it was.
+  * Copy a server, to another member or the same one, without stopping it
+    (the world is saved first, as backups do), under a new name where
+    needed, started or not.
+  * Templates between members: copy one of the master's templates to a
+    node, or a node's own template to the master.
+  * While a server is being moved it can't be started on the old member.
+  * Cluster contract 3: nodes accept /api/cluster/transfers/... from their
+    master (a master admin only, never through the proxy). The only files a
+    master can delete on a node are those a move left behind.
+  * Template names are escaped in the template manager.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Fri, 20 Nov 2026 23:59:00 +0000
+
 redstonepanel (1.15.0) noble; urgency=medium
 
   * Clusters phase 2: manage every node's servers from the master. The

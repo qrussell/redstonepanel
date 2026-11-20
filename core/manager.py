@@ -750,6 +750,10 @@ def control_server(server_name, action):
     if not SERVICE_NAME_RE.match(server_name or "") or \
             not os.path.isfile(f"/etc/systemd/system/{server_name}.service"):
         raise ServerError(f"No Minecraft server called '{server_name}' on this panel.")
+    if action != "stop":
+        from core import transfer
+        if transfer.is_moving(server_name):
+            raise ServerError(f"{server_name} is being moved to another cluster member; it can't be started here.")
     run_and_log(["sudo", "systemctl", action, f"{server_name}.service"])
 
 def _unit_path(server_name):
@@ -800,10 +804,11 @@ def _release_name(name):
     with _busy_lock:
         _busy.discard(name)
 
-def remove_server(server_name, keep_world):
+def remove_server(server_name, keep_world, note=None):
     """Stops the server and deletes its systemd unit, so it leaves the panel.
     keep_world=True keeps the whole folder (server binary included), so it can be restored
-    later; keep_world=False deletes the folder too."""
+    later; keep_world=False deletes the folder too. note: more fields for the removed-server
+    note (a move adds moved_to)."""
     _check_server(server_name)
     d = get_server_dir(server_name)
     exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
@@ -835,6 +840,7 @@ def remove_server(server_name, keep_world):
             info = {"edition": "java" if "java" in exec_start else "bedrock" if "bedrock" in exec_start else None,
                     "removed_at": int(time.time())}
             info.update(unit_heap(exec_start))
+            info.update(note or {})
             try:
                 with open(os.path.join(d, REMOVED_INFO), "w") as f:
                     json.dump(info, f)
@@ -921,6 +927,8 @@ def list_removed_servers():
             "has_binary": bool(edition) and os.path.isfile(os.path.join(d, binary)),
             "removed_at": removed_at if isinstance(removed_at, int) else None,
             "can_restore": edition is not None,
+            # Left behind by a move to another cluster member (1.16): its name there
+            "moved_to": info["moved_to"][:100] if isinstance(info.get("moved_to"), str) else None,
         })
     return removed
 
@@ -1097,6 +1105,64 @@ def _import_unpacked(staging, root):
         return svc_name
     finally:
         _release_name(svc_name)
+
+def _reserve_exact(name):
+    """Holds this exact name if no server, folder or deploy has it. True if it's now ours."""
+    if not (SERVICE_NAME_RE.match(name or "") and name.startswith("minecraft-")):
+        return False
+    with _busy_lock:
+        if name in _busy or os.path.lexists(os.path.join(SERVERS_ROOT, name)) or os.path.exists(_unit_path(name)):
+            return False
+        _busy.add(name)
+        return True
+
+def import_transferred(root, edition, prefer_name=None, heap=None, java=None, start=True, on_placed=None):
+    """A server folder moved or copied from another cluster member (1.16), unpacked at root.
+    Keeps prefer_name and the server's ports when they're free here, else picks others.
+    on_placed(name) is called once the folder is in place, so a failure after it can be undone.
+    Returns {name, port, old_port, renamed}."""
+    name = prefer_name if prefer_name and _reserve_exact(prefer_name) else None
+    if not name:
+        name, _ = _reserve_name(edition)
+    try:
+        mc_dir = os.path.join(SERVERS_ROOT, name)
+        os.rename(root, mc_dir)
+        if on_placed:
+            on_placed(name)
+        if os.path.exists(os.path.join(mc_dir, REMOVED_INFO)):
+            os.remove(os.path.join(mc_dir, REMOVED_INFO))
+        port, old_port = _restore_ports(mc_dir, edition)
+        if edition == "bedrock":
+            run_and_log(["chmod", "+x", f"{mc_dir}/bedrock_server"])
+            write_screenrc(mc_dir)
+        else:
+            java = java or java_for_folder(mc_dir)
+            eula = os.path.join(mc_dir, "eula.txt")
+            if not os.path.exists(eula):
+                with open(eula, "w") as f:
+                    f.write("eula=true\n")
+        heap = {k: v for k, v in (heap or {}).items() if k in ("xms", "xmx") and HEAP_RE.match(str(v))}
+        open_firewall_rules(firewall_rules(edition, read_properties(mc_dir)))
+        ensure_minecraft_user(mc_dir)
+        run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+        _write_unit(name, mc_dir, edition, **heap, **({"java": java} if java else {}))
+        run_and_log(["systemctl", "enable", f"{name}.service"])
+        if start:
+            run_and_log(["systemctl", "start", f"{name}.service"])
+        write_log(f"[MOVE] Installed {name} here (port {port}"
+                  + (f", was {old_port}" if old_port else "") + ").")
+        return {"name": name, "port": port, "old_port": old_port, "renamed": bool(prefer_name) and name != prefer_name}
+    finally:
+        _release_name(name)
+
+def discard_server(name):
+    """Undoes import_transferred: its unit, timers, firewall rules and folder go."""
+    if os.path.exists(_unit_path(name)):
+        remove_server(name, keep_world=False)
+        return
+    d = os.path.realpath(os.path.join(SERVERS_ROOT, name))
+    if SERVICE_NAME_RE.match(name or "") and os.path.dirname(d) == os.path.realpath(SERVERS_ROOT) and os.path.isdir(d):
+        run_and_log(["rm", "-rf", d])
 
 def deploy_server(edition, template_id=None, loader="vanilla", version=None):
     """A new server. Java: loader is vanilla, paper or fabric and version a Minecraft release

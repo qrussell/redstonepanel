@@ -38,7 +38,7 @@ or to use a `.deb`? See [Install](#install) below or the
 | **Worlds that are safe** | Scheduled and on-demand backups that copy running servers consistently, one-click restore (with an undo), a backup before mod updates, and uninstalled servers you can bring back. |
 | **To know what's going on** | A dashboard of the machine and every server, a **Needs attention** list, Discord or webhook alerts for crashes and backups, and a log of who joined and who was turned away. |
 | **Everything from the browser** | Live chat and console, a `server.properties` editor, player roles and whitelists, a file manager with an editor, scheduled restarts that warn players, world downloads. |
-| **More than one machine** | **Clusters** *(new in 1.15)*: one master panel manages every node's servers with all their tabs, creates servers on any node, and renews the cluster's certificates for you. |
+| **More than one machine** | **Clusters**: one master panel manages every node's servers with all their tabs, creates servers on any node, **moves or copies a server to another machine** *(new in 1.16)*, and renews the cluster's certificates for you. |
 | **Something that stays out of the way** | Plain systemd services that keep running, and keep backing up, even while the panel is stopped. Servers live in `/opt` and backups in `/var/backups`: no containers to dig through. |
 | **Security you can reason about** | Linux (PAM) or panel accounts with admin and user roles, HTTPS (self-signed, certbot or the cluster's own CA), optional trusted-LAN access, a signed apt repository. |
 | **No cost, no lock-in** | MIT licensed, no paid tier, no account to create, no telemetry. |
@@ -54,15 +54,16 @@ or to use a `.deb`? See [Install](#install) below or the
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
-## What's new in 1.15
+## What's new in 1.16
 
-**Manage every node from the master.** On a cluster master, each node's servers are listed in
-the sidebar under the node's name and open with every tab: configuration, backups, files, mods,
-Java and Phantom. **New Server** has a **Where** choice to create a server on any node, and its
-template and Java follow automatically. A master on the internet can use a real certbot
-certificate, the master renews every node's certificate before it expires, and nightly
-encrypted cluster backups keep a way back if the master is lost. Read the
-[release notes](release-notes/v1.15.0.md), or [every release's highlights](docs/wiki/Whats-New.md).
+**Move a server to another machine.** On a cluster master's 🌐 Cluster page, **Move…** stops a
+server, streams its whole folder to another machine of the cluster (checked byte for byte), and
+starts it there with the same name and ports when they're free, the Java it needs, and its
+memory, backup and restart schedules and Phantom. The old machine keeps its files as a removed
+server until you click **Delete the old copy**, and a move that fails undoes itself. **Copy…**
+makes a second copy without stopping the server, and templates can be copied between the master
+and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
+[every release's highlights](docs/wiki/Whats-New.md).
 
 ## All features
 
@@ -102,7 +103,8 @@ encrypted cluster backups keep a way back if the master is lost. Read the
   resources
 
 - clusters: one master panel manages the servers of other RedstonePanels with every tab,
-  creates servers on them, renews their certificates and backs the cluster up every night
+  creates servers on them, moves or copies servers between them, renews their certificates and
+  backs the cluster up every night
 
 The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as an
 `Architecture: all` Debian package for **Ubuntu 24.04 and 25.04**.
@@ -389,8 +391,20 @@ it off the master. **Nightly backups** (Panel Settings → Cluster, or
 `sudo redstonepanel cluster nightly on`) also keep the last 7 on the master itself. `sudo redstonepanel cluster promote FILE` on any other panel makes that panel
 the master. Nodes accept it straight away and refuse the old master from then on.
 
+**Moving a server to another machine:** on the master's **🌐 Cluster** page, click **Move…**
+next to the server and pick where it goes. The server stops, its whole folder is streamed
+through the master to the other machine and checked against a SHA-256 checksum, and it starts
+there under the same name and ports when they're free. The Java it needs is installed there, and
+its memory, backup and restart schedules and Phantom come along. The old machine keeps the files
+as a removed server marked "moved to …" until you click **Delete the old copy**; if anything goes
+wrong, the move undoes itself and the server starts where it was. **Copy…** does the same without
+stopping the server or removing anything. Both machines need RedstonePanel 1.16 or later; only
+admins on the master can move servers. Older backups and the player history stay on the old
+machine.
+
 `sudo redstonepanel leave` takes a node out of the cluster (remove it on the master too). The
-design is in [docs/design/fleet.md](docs/design/fleet.md).
+design is in [docs/design/fleet.md](docs/design/fleet.md) and
+[docs/design/move.md](docs/design/move.md).
 
 ## Exposing the panel to the internet
 

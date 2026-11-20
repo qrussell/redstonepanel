@@ -58,6 +58,11 @@ def _request(url, method, path, ctx, headers=None, body=None, timeout=TIMEOUT):
         raise NodeError("unreachable", str(e) or e.__class__.__name__)
     finally:
         conn.close()
+    return _answer(res.status, raw)
+
+
+def _answer(status, raw):
+    """A node's JSON answer, or the NodeError its status means."""
     if len(raw) > MAX_BODY:
         raise NodeError("error", "The answer was too large.")
     try:
@@ -65,13 +70,13 @@ def _request(url, method, path, ctx, headers=None, body=None, timeout=TIMEOUT):
     except ValueError:
         payload = {}
     detail = payload.get("detail") if isinstance(payload, dict) else None
-    if res.status == 401:
+    if status == 401:
         raise NodeError("rejected", detail or "Not accepted (token revoked, node left the cluster, or a newer master).",
-                        res.status, payload)
-    if res.status == 403:
-        raise NodeError("too_old", detail or "Refused: this node may need a newer RedstonePanel.", res.status, payload)
-    if res.status >= 400:
-        raise NodeError("error", detail or f"HTTP {res.status}", res.status, payload)
+                        status, payload)
+    if status == 403:
+        raise NodeError("too_old", detail or "Refused: this node may need a newer RedstonePanel.", status, payload)
+    if status >= 400:
+        raise NodeError("error", detail or f"HTTP {status}", status, payload)
     return payload
 
 
@@ -164,6 +169,31 @@ def open_proxy(node, method, path, body=None, length=None, content_type=None, ac
         conn.close()
         raise NodeError("unreachable", str(e) or e.__class__.__name__)
     return Proxied(conn, res)
+
+
+def upload(node, path, chunks, length, actor=None, role=None):
+    """PUTs `length` bytes from the iterable `chunks` to a node as they come (moving a server,
+    1.16), without holding them in memory or on disk. Returns the node's JSON answer."""
+    host, port = _split(node["url"])
+    headers = _node_headers(node, actor, role)
+    headers.update({"Accept": "application/json", "Content-Type": "application/octet-stream",
+                    "Content-Length": str(length)})
+    conn = http.client.HTTPSConnection(host, port, context=node_ctx(node), timeout=TIMEOUT)
+    try:
+        conn.connect()
+        conn.sock.settimeout(PROXY_TIMEOUT)
+        conn.request("PUT", path, body=chunks, headers=headers)
+        res = conn.getresponse()
+        raw = res.read(MAX_BODY + 1)
+    except ssl.SSLCertVerificationError as e:
+        raise NodeError("cert_error", f"Certificate problem: {e.verify_message or e}")
+    except ssl.SSLError as e:
+        raise NodeError("cert_error", f"TLS problem: {e.reason or e}")
+    except (OSError, socket.timeout, http.client.HTTPException) as e:
+        raise NodeError("unreachable", str(e) or e.__class__.__name__)
+    finally:
+        conn.close()
+    return _answer(res.status, raw)
 
 
 def _node_servers(node):

@@ -37,7 +37,7 @@ from core.version import panel_version
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
-CLUSTER_API = 2                 # the master<->node contract version (see hello())
+CLUSTER_API = 3                 # the master<->node contract version (see hello()); 3: moving servers (1.16)
 MIN_JOIN_API = 1                # oldest node contract a master still lets join (phase 1 nodes)
 PROXY_API = 2                   # a node needs this for the master's proxy (phase 2, 1.15)
 JOIN_TTL = 3600                 # join codes are single-use and valid for an hour
@@ -80,6 +80,12 @@ NODE_ROUTES = (
     ("POST", r"/api/cluster/templates"),
     ("GET", r"/api/java/(versions|requirement|runtimes|runtimes/job)"),
     ("POST", r"/api/java/runtimes/(install|remove)"),
+    # 1.16: moving and copying servers between members (cluster plumbing: never proxied)
+    ("POST", r"/api/cluster/transfers/(export|import)"),
+    ("GET|PUT", r"/api/cluster/transfers/[0-9a-f]{32}/archive"),
+    ("POST", r"/api/cluster/transfers/[0-9a-f]{32}/(finish|install|confirm)"),
+    ("DELETE", r"/api/cluster/transfers/[0-9a-f]{32}"),
+    ("DELETE", r"/api/cluster/transfers/moved/minecraft[A-Za-z0-9_.@-]*"),
 )
 # What the master's proxy (/api/cluster/nodes/{id}/proxy/...) passes on for its users: the node
 # routes except the cluster's own plumbing, which only the master itself calls.
