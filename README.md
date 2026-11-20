@@ -9,7 +9,7 @@ every game server is a plain systemd service, and the panel installs and updates
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![Ubuntu 24.04 and 25.04](https://img.shields.io/badge/Ubuntu-24.04%20%7C%2025.04-E95420?logo=ubuntu&logoColor=white)
 
-![The RedstonePanel dashboard on a cluster master](docs/guide/images/hero.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/hero.png"><img src="docs/guide/images/hero.png" alt="The RedstonePanel dashboard on a cluster master"></picture>
 
 **[⬇️ Install](#install)** · **[📖 User manual](docs/guide/README.md)** ·
 **[✨ What's new](docs/wiki/Whats-New.md)** · **[❓ Is it right for me?](docs/wiki/FAQ.md)** ·
@@ -47,10 +47,36 @@ or to use a `.deb`? See [Install](#install) below or the
 
 | | |
 | --- | --- |
-| [![Dashboard](docs/guide/images/dashboard.png)](docs/guide/README.md#3-the-dashboard) **Dashboard:** the machine, every server and what needs attention | [![Server overview](docs/guide/images/overview.png)](docs/guide/README.md#5-overview) **Each server:** start, stop, restart, and a tab for everything |
-| [![Mods](docs/guide/images/mods.png)](docs/guide/README.md#12-mods-plugins-and-add-ons) **Mods and plugins:** what's installed, a catalog, updates | [![Backups](docs/guide/images/backups.png)](docs/guide/README.md#9-backups) **Backups:** schedules, restore, download |
-| [![Files](docs/guide/images/files.png)](docs/guide/README.md#11-files) **Files:** browse, upload, edit configs | [![Live chat](docs/guide/images/live-chat.png)](docs/guide/README.md#6-live-chat) **Live chat** and server commands |
-| [![New Server](docs/guide/images/new-server.png)](docs/guide/README.md#4-create-or-import-a-server) **New Server:** edition, type, version and, on a cluster, where | [![Cluster](docs/guide/images/cluster.png)](docs/guide/README.md#18-clusters) **Cluster:** every panel and its servers on one page |
+| <a href="docs/guide/README.md#3-the-dashboard"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/dashboard.png"><img src="docs/guide/images/dashboard.png" alt="Dashboard"></picture></a> **Dashboard:** the machine, every server and what needs attention | <a href="docs/guide/README.md#5-overview"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/overview.png"><img src="docs/guide/images/overview.png" alt="Server overview"></picture></a> **Each server:** start, stop, restart, and a tab for everything |
+| <a href="docs/guide/README.md#12-mods-plugins-and-add-ons"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/mods.png"><img src="docs/guide/images/mods.png" alt="Mods"></picture></a> **Mods and plugins:** what's installed, a catalog, updates | <a href="docs/guide/README.md#9-backups"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/backups.png"><img src="docs/guide/images/backups.png" alt="Backups"></picture></a> **Backups:** schedules, restore, download |
+| <a href="docs/guide/README.md#11-files"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/files.png"><img src="docs/guide/images/files.png" alt="Files"></picture></a> **Files:** browse, upload, edit configs | <a href="docs/guide/README.md#6-live-chat"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/live-chat.png"><img src="docs/guide/images/live-chat.png" alt="Live chat"></picture></a> **Live chat** and server commands |
+| <a href="docs/guide/README.md#4-create-or-import-a-server"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/new-server.png"><img src="docs/guide/images/new-server.png" alt="New Server"></picture></a> **New Server:** edition, type, version and, on a cluster, where | <a href="docs/guide/README.md#18-clusters"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/cluster.png"><img src="docs/guide/images/cluster.png" alt="Cluster"></picture></a> **Cluster:** every panel and its servers on one page |
+
+The screenshots follow your light or dark theme (on GitHub; GitLab shows the dark ones). To
+see them in the other theme:
+
+<details>
+<summary>🌙 <b>Show the tour in the dark theme</b></summary>
+
+<table>
+<tr><td><a href="docs/guide/README.md#3-the-dashboard"><img src="docs/guide/images/dashboard.png" width="420" alt="Dashboard (dark theme)"></a><br>Dashboard</td><td><a href="docs/guide/README.md#5-overview"><img src="docs/guide/images/overview.png" width="420" alt="Each server (dark theme)"></a><br>Each server</td></tr>
+<tr><td><a href="docs/guide/README.md#12-mods-plugins-and-add-ons"><img src="docs/guide/images/mods.png" width="420" alt="Mods and plugins (dark theme)"></a><br>Mods and plugins</td><td><a href="docs/guide/README.md#9-backups"><img src="docs/guide/images/backups.png" width="420" alt="Backups (dark theme)"></a><br>Backups</td></tr>
+<tr><td><a href="docs/guide/README.md#11-files"><img src="docs/guide/images/files.png" width="420" alt="Files (dark theme)"></a><br>Files</td><td><a href="docs/guide/README.md#6-live-chat"><img src="docs/guide/images/live-chat.png" width="420" alt="Live chat (dark theme)"></a><br>Live chat</td></tr>
+<tr><td><a href="docs/guide/README.md#4-create-or-import-a-server"><img src="docs/guide/images/new-server.png" width="420" alt="New Server (dark theme)"></a><br>New Server</td><td><a href="docs/guide/README.md#18-clusters"><img src="docs/guide/images/cluster.png" width="420" alt="Cluster (dark theme)"></a><br>Cluster</td></tr>
+</table>
+
+</details>
+<details>
+<summary>☀️ <b>Show the tour in the light theme</b></summary>
+
+<table>
+<tr><td><a href="docs/guide/README.md#3-the-dashboard"><img src="docs/guide/images/light/dashboard.png" width="420" alt="Dashboard (light theme)"></a><br>Dashboard</td><td><a href="docs/guide/README.md#5-overview"><img src="docs/guide/images/light/overview.png" width="420" alt="Each server (light theme)"></a><br>Each server</td></tr>
+<tr><td><a href="docs/guide/README.md#12-mods-plugins-and-add-ons"><img src="docs/guide/images/light/mods.png" width="420" alt="Mods and plugins (light theme)"></a><br>Mods and plugins</td><td><a href="docs/guide/README.md#9-backups"><img src="docs/guide/images/light/backups.png" width="420" alt="Backups (light theme)"></a><br>Backups</td></tr>
+<tr><td><a href="docs/guide/README.md#11-files"><img src="docs/guide/images/light/files.png" width="420" alt="Files (light theme)"></a><br>Files</td><td><a href="docs/guide/README.md#6-live-chat"><img src="docs/guide/images/light/live-chat.png" width="420" alt="Live chat (light theme)"></a><br>Live chat</td></tr>
+<tr><td><a href="docs/guide/README.md#4-create-or-import-a-server"><img src="docs/guide/images/light/new-server.png" width="420" alt="New Server (light theme)"></a><br>New Server</td><td><a href="docs/guide/README.md#18-clusters"><img src="docs/guide/images/light/cluster.png" width="420" alt="Cluster (light theme)"></a><br>Cluster</td></tr>
+</table>
+
+</details>
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
@@ -498,7 +524,8 @@ Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which
    `release-notes/v1.0.1.md`. Add the release's highlights to the top of
    `docs/wiki/Whats-New.md`, update `docs/wiki/Roadmap.md` and the user manual for what
    changed, and retake the screenshots if the UI changed
-   (`bash packaging/screenshots/demo.sh`). Merge it through a merge request.
+   (`bash packaging/screenshots/demo.sh`: it takes each one in the dark theme, in
+   `docs/guide/images/`, and the light theme, in `docs/guide/images/light/`). Merge it through a merge request.
 2. Tag `main` as `v1.0.1` and push the tag to GitLab.
 
 The tag reaching GitHub runs `.github/workflows/release.yml`. It builds the .deb, runs

@@ -52,7 +52,7 @@ echo "=== move test with $(basename "$DEB")"
 docker build -q -t "$IMG" packaging/test >/dev/null
 docker rm -f mvm mvn >/dev/null 2>&1
 docker network rm "$NET" >/dev/null 2>&1
-docker network create --subnet 172.30.79.0/24 "$NET" >/dev/null
+docker network create --subnet 172.30.80.0/24 "$NET" >/dev/null
 for c in mvm mvn; do
     docker run -d --privileged --cgroupns=private --name "$c" --hostname "$c" --network "$NET" \
         -v "$HOST_PWD/dist:/dist:ro" "$IMG" >/dev/null
