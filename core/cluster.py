@@ -1089,5 +1089,6 @@ def clean_template(t, master_name):
         raise ClusterError("Bad template properties.")
     if not (isinstance(perms, str) and len(perms) <= 1 << 20):
         raise ClusterError("Bad template permissions.")
+    props = {k: v for k, v in props.items() if k != "rcon.password"}     # never a server's own secret
     return {"id": tid, "name": name.strip(), "edition": edition, "properties": props, "permissions": perms,
             "from_master": master_name}

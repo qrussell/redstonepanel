@@ -1281,7 +1281,7 @@ def cluster_save_template_api(node_id: str, server_name: str, request: Request, 
     templates = manager.load_templates()
     templates.append({"id": str(uuid.uuid4()), "name": str(name).strip()[:100],
                       "edition": "Java" if srv.get("edition") == "Java" else "Bedrock",
-                      "properties": props if isinstance(props, dict) else {},
+                      "properties": manager.template_properties(props) if isinstance(props, dict) else {},
                       "permissions": perms.get("content", "") if isinstance(perms, dict) else ""})
     manager.save_templates(templates)
     manager.write_log(f"[CLUSTER] {user['username']}@{panel_settings.display_name()}: saved {server_name} on "
