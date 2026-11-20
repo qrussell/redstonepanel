@@ -87,7 +87,7 @@ class FakeAPIs:
                 return p
         return None
 
-    def get_json(self, url, body=None, cache=True):
+    def get_json(self, url, body=None, cache=True, ttl=None):
         self.calls.append(url)
         parts = urllib.parse.urlsplit(url)
         q = {k: v[0] for k, v in urllib.parse.parse_qs(parts.query).items()}
@@ -100,14 +100,19 @@ class FakeAPIs:
                         if q.get("query", "") in p["slug"]]
                 return {"total_hits": len(hits), "hits": hits}
             if path == "/projects":
-                return [{"id": p["id"], "slug": p["slug"], "title": p["title"]} for p in self.projects.values()
-                        if p["id"] in json.loads(q["ids"])]
+                wanted = json.loads(q["ids"])
+                return [{"id": p["id"], "slug": p["slug"], "title": p["title"], "downloads": 7,
+                         "loaders": sorted({l for v in p["versions"] for l in v["loaders"]}),
+                         "game_versions": sorted({g for v in p["versions"] for g in v["game_versions"]}),
+                         "categories": ["fabric", "optimization"]}
+                        for p in self.projects.values() if p["id"] in wanted or p["slug"] in wanted]
             if path.startswith("/project/") and path.endswith("/version"):
                 p = self._find(path.split("/")[2])
                 return self._versions(p["id"], json.loads(q.get("loaders", "[]")), json.loads(q.get("game_versions", "[]")))
             if path.startswith("/project/"):
                 p = self._find(path.split("/")[2])
-                return p and {"id": p["id"], "slug": p["slug"], "title": p["title"]}
+                return p and {"id": p["id"], "slug": p["slug"], "title": p["title"], "license": {"name": "MIT"},
+                              "source_url": "https://example.org/src", "loaders": ["fabric"]}
             all_versions = [v for p in self.projects.values() for v in p["versions"]]
             by_hash = {v["files"][0]["hashes"]["sha512"]: v for v in all_versions}
             if path == "/version_files":
@@ -315,6 +320,106 @@ class HangarInstall(Base):
         self.assertTrue(os.path.isfile(self.path("plugins", "ViaBackwards-5.2.jar")))
 
 
+@unittest.skipUnless(LINUX, "needs Linux (openat)")
+class Catalog(Base):
+    """The starter set, details and bundles (core/featured.py lists are replaced by small ones)."""
+
+    def setUp(self):
+        super().setUp()
+        a = self.api
+        a.mproject("P7dR8mSH", "fabric-api")
+        a.mversion("P7dR8mSH", "fa1", "0.119.4", fabric_jar("fabric-api", "0.119.4"))
+        a.mproject("gvQqBUqZ", "lithium")
+        a.mversion("gvQqBUqZ", "li1", "0.14.0", fabric_jar("lithium", "0.14.0"), deps=["P7dR8mSH"])
+        a.mproject("sp1", "spark")
+        a.mversion("sp1", "s1", "1.10", fabric_jar("spark", "1.10"))
+        a.mproject("old1", "old-mod")
+        a.mversion("old1", "o1", "1.0", fabric_jar("old-mod", "1.0", "1.20"), mc=("1.20.1",))
+        a.mproject("pl1", "a-plugin")
+        a.mversion("pl1", "p1", "2.0", plugin_jar("APlugin", "2.0"), loaders=("paper",))
+        from core import featured as F
+        groups = {"fabric": [("perf", "Performance", ["lithium", "old-mod", "a-plugin", "gone"]),
+                             ("admin", "Admin tools", ["spark"])]}
+        bundles = {"fabric": [("ess", "Essentials", "d", ["lithium", "spark", "old-mod"])]}
+        for p in (mock.patch.object(F, "GROUPS", groups), mock.patch.object(F, "BUNDLES", bundles)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_home_cards(self):
+        C.install("minecraft-java", "modrinth", "spark")
+        h = C.home("minecraft-java")
+        perf = {c["slug"]: c for c in h["groups"][0]["items"]}
+        self.assertEqual(sorted(perf), ["lithium", "old-mod"])   # no Fabric build, or unknown: left out
+        self.assertTrue(perf["lithium"]["fits"])
+        self.assertEqual(perf["old-mod"]["not_fit"], "Not for 1.21.4 yet")
+        self.assertEqual(perf["lithium"]["categories"], ["optimization"])     # loaders aren't categories
+        self.assertTrue(h["groups"][1]["items"][0]["installed"])
+        b = h["bundles"][0]
+        self.assertEqual(b["missing"], ["Lithium"])
+        self.assertEqual(b["unavailable"], ["Old Mod"])
+        self.assertEqual(len([u for u in self.api.calls if "/v2/projects?" in u]), 1)   # one request for all
+
+    def test_details_say_what_install_does(self):
+        d = C.details("minecraft-java", "modrinth", "lithium")
+        self.assertEqual(d["install"]["version"], "0.14.0")
+        self.assertEqual(d["install"]["file"], "lithium-0.14.0.jar")
+        self.assertEqual(d["install"]["also"], [{"title": "Fabric Api", "version": "0.119.4"}])
+        self.assertEqual(d["license"], "MIT")
+        self.assertEqual(d["links"], {"source_url": "https://example.org/src"})
+        self.assertFalse(os.path.exists(self.path("mods")))            # only looked
+        d = C.details("minecraft-java", "modrinth", "old-mod")
+        self.assertIn("no release or beta build", d["install"]["error"])
+
+    def test_bundle_installs_whats_missing_after_a_backup(self):
+        C.install("minecraft-java", "modrinth", "spark")
+        with mock.patch.object(C.backups, "run_backup", return_value={"file": "w-pre-change.tar.gz"}) as bk:
+            r = C.install_bundle("minecraft-java", "ess", backup=True, actor="alex")
+        bk.assert_called_once_with("minecraft-java", "pre-change")
+        self.assertEqual([i["id"] for i in r["installed"]], ["fabric-api", "lithium"])
+        self.assertEqual(r["skipped"], ["Spark"])
+        self.assertEqual([f["project"] for f in r["failed"]], ["old-mod"])  # didn't stop the others
+        self.assertEqual(r["backup"], "w-pre-change.tar.gz")
+        self.assertTrue(any("installed the Essentials bundle" in m for m in self.logs))
+        with mock.patch.object(C.backups, "run_backup") as bk:
+            r = C.install_bundle("minecraft-java", "ess", backup=True)
+        bk.assert_not_called()                                           # nothing new: no backup
+        self.assertEqual(r["installed"], [])
+        with self.assertRaises(X.ModError):
+            C.install_bundle("minecraft-java", "nope")
+
+    def test_search_filters(self):
+        C.search("minecraft-java", "modrinth", "", category="optimization", sort="follows")
+        url = urllib.parse.unquote(self.api.calls[-1])
+        self.assertIn('["categories:optimization"]', url)
+        self.assertIn("index=follows", url)
+        C.search("minecraft-java", "modrinth", "lith")
+        self.assertIn("index=relevance", self.api.calls[-1])
+        for bad in ({"category": "../x"}, {"sort": "random"}, {"category": "admin_tools"}):   # Hangar's, not Modrinth's
+            with self.assertRaises(X.ModError):
+                C.search("minecraft-java", "modrinth", "", **bad)
+
+
+class HangarFilters(unittest.TestCase):
+    def test_category_and_sort(self):
+        seen = []
+        with mock.patch.object(H, "get_json", lambda url, **kw: seen.append(url) or {}):
+            H.search("1.21.4", "", category="protection", sort="follows")
+            H.search("1.21.4", "worldguard")
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(seen[0]).query)
+        self.assertEqual((q["category"], q["sort"]), (["protection"], ["-stars"]))
+        self.assertNotIn("sort", urllib.parse.parse_qs(urllib.parse.urlsplit(seen[1]).query))
+
+
+class Featured(unittest.TestCase):
+    def test_lists_are_consistent(self):
+        from core import featured as F
+        for kind in ("fabric", "paper"):
+            grouped = {s for _, _, items in F.GROUPS[kind] for s in items}
+            for _, _, _, items in F.BUNDLES[kind]:
+                self.assertTrue(set(items) <= grouped, (kind, set(items) - grouped))
+        self.assertNotIn("spark", F.slugs("paper"))                   # Paper has spark built in
+
+
 class Kinds(unittest.TestCase):
     def test_bedrock_and_vanilla_have_no_catalog(self):
         for kind in (("bedrock", None), ("vanilla", "1.21.4")):
@@ -364,12 +469,15 @@ class AdminOnly(unittest.TestCase):
     def test_users_cannot_use_the_catalog(self):
         import main
         req = SimpleNamespace(state=SimpleNamespace(user={"username": "alex", "role": "user", "source": "panel"}))
-        for call in (lambda: main.search_addons(req, "minecraft-java", "modrinth", "", 0),
+        for call in (lambda: main.search_addons(req, "minecraft-java", "modrinth", "", 0, "", ""),
                      lambda: main.install_from_catalog(req, "minecraft-java", main.CatalogInstall(source="modrinth", project="x")),
                      lambda: main.addon_updates(req, "minecraft-java"),
                      lambda: main.update_addons(req, "minecraft-java", main.CatalogUpdate()),
                      lambda: main.undo_addon_update(req, "minecraft-java"),
-                     lambda: main.addon_compatibility(req, "minecraft-java", "1.21.5")):
+                     lambda: main.addon_compatibility(req, "minecraft-java", "1.21.5"),
+                     lambda: main.addon_catalog(req, "minecraft-java"),
+                     lambda: main.addon_details(req, "minecraft-java", "modrinth", "x"),
+                     lambda: main.install_addon_bundle(req, "minecraft-java", main.CatalogBundle(bundle="x"))):
             with self.assertRaises(main.HTTPException) as cm:
                 call()
             self.assertEqual(cm.exception.status_code, 403)

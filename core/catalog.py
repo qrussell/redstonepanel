@@ -7,6 +7,9 @@
     dependencies that aren't installed yet are installed the same way first.
   * Where each jar came from is kept in <server>/.redstonepanel-mods.json, so the list can say
     which have updates. Jars added by hand are recognised by their SHA-512 on Modrinth.
+  * The catalog's home page is a hand-picked starter set and bundles (core/featured.py), checked
+    against the server's loader and Minecraft version from Modrinth's project data. Search can
+    filter by category and sort by downloads, follows or date.
   * Updating renames the old jar to <file>.previous (which neither loader loads) before
     installing the new one; "Undo" puts the last batch back. Optionally takes a world backup
     first (kind "pre-change").
@@ -18,7 +21,7 @@ import re
 import threading
 import time
 
-from core import backups, files, hangar, manager, modrinth, mods
+from core import backups, featured, files, hangar, manager, modrinth, mods
 from core.sources import SourceError, download
 
 TRACK_FILE = ".redstonepanel-mods.json"
@@ -139,16 +142,128 @@ def _is_installed(pick_or_ref, projects, ids):
 # ---------------------------------------------------------------------------
 # Search
 # ---------------------------------------------------------------------------
-def search(server, source="modrinth", query="", offset=0):
+def _filters(source):
+    return {"categories": [{"id": i, "label": l} for i, l in featured.CATEGORIES[source]],
+            "sorts": [{"id": i, "label": l} for i, l in featured.SORTS]}
+
+
+def search(server, source="modrinth", query="", offset=0, category="", sort=""):
     kind, minecraft = _java_kind(server)
     _check_source(kind, source)
     query = (query or "").strip()[:100]
-    out = modrinth.search(kind, minecraft, query, offset) if source == "modrinth" else \
-        hangar.search(minecraft, query, offset)
+    category = category or None
+    if category and category not in {c for c, _ in featured.CATEGORIES[source]}:
+        raise mods.ModError(f"Unknown category '{category}'.")
+    sort = sort or None
+    if sort and sort not in {s for s, _ in featured.SORTS}:
+        raise mods.ModError(f"Unknown sort order '{sort}'.")
+    out = modrinth.search(kind, minecraft, query, offset, category=category, sort=sort) if source == "modrinth" \
+        else hangar.search(minecraft, query, offset, category=category, sort=sort)
     _, _, projects, ids = _installed(server)
     for h in out["hits"]:
         h["installed"] = _is_installed(h, projects, ids)
-    return {"source": source, "sources": SOURCES[kind], "kind": kind, "minecraft": minecraft, **out}
+    return {"source": source, "sources": SOURCES[kind], "kind": kind, "minecraft": minecraft,
+            "category": category, "sort": sort, **_filters(source), **out}
+
+
+# ---------------------------------------------------------------------------
+# The catalog: starter set, bundles, details
+# ---------------------------------------------------------------------------
+def home(server):
+    """The hand-picked groups and bundles for this server, each project as a card that says
+    whether it's installed and whether it has a build for this server."""
+    kind, minecraft = _java_kind(server)
+    cards = {}
+    for p in modrinth.catalog_projects(featured.slugs(kind)):
+        cards[p.get("slug")] = modrinth.card(p, kind, minecraft)
+    _, _, projects, ids = _installed(server)
+    for c in cards.values():
+        c["installed"] = _is_installed(c, projects, ids)
+    groups = []
+    for gid, title, slugs in featured.GROUPS.get(kind, []):
+        items = [cards[s] for s in slugs if s in cards]
+        # a project with no build for this loader at all isn't shown; one not updated for this
+        # Minecraft version yet is, marked
+        items = [c for c in items if c["fits"] or c["not_fit"] and not c["not_fit"].startswith("No ")]
+        if items:
+            groups.append({"id": gid, "title": title, "items": items})
+    bundles = []
+    for bid, title, desc, slugs in featured.BUNDLES.get(kind, []):
+        items = [cards[s] for s in slugs if s in cards]
+        bundles.append({"id": bid, "title": title, "description": desc, "items": items,
+                        "missing": [c["title"] for c in items if not c["installed"] and c["fits"]],
+                        "unavailable": [c["title"] for c in items if not c["fits"]]})
+    return {"kind": kind, "minecraft": minecraft, "sources": SOURCES[kind], "groups": groups,
+            "bundles": bundles, **_filters("modrinth")}
+
+
+def details(server, source, project):
+    """A project's page in short, and exactly what Install would put on this server: the build,
+    and the dependencies it would add."""
+    kind, minecraft = _java_kind(server)
+    _check_source(kind, source)
+    if not project or len(str(project)) > 100:
+        raise mods.ModError("Choose a project.")
+    info = modrinth.details(str(project), kind) if source == "modrinth" else hangar.details(str(project))
+    _, _, projects, ids = _installed(server)
+    info["installed"] = _is_installed(info, projects, ids)
+    try:
+        pick = _resolve(source, str(project), kind, minecraft)
+        plan, notes = _plan(kind, minecraft, pick, projects, ids)
+    except SourceError as e:
+        info["install"] = {"error": str(e)}
+        return info
+    f = pick.get("file") or {}
+    info["install"] = {"version": pick.get("version"), "channel": pick.get("channel"),
+                       "file": f.get("filename"), "size": f.get("size"),
+                       "also": [{"title": p.get("title") or p.get("slug") or p["project"], "version": p.get("version")}
+                                for p in plan if p is not pick],
+                       "notes": notes}
+    return info
+
+
+def install_bundle(server, bundle, backup=False, actor="?"):
+    """Installs every project of a bundle that isn't installed yet (with what each needs), after
+    an optional world backup. One that can't be installed doesn't stop the others."""
+    kind, minecraft = _java_kind(server)
+    found = next((b for b in featured.BUNDLES.get(kind, []) if b[0] == bundle), None)
+    if not found:
+        raise mods.ModError(f"No bundle '{bundle}' for {'Fabric' if kind == 'fabric' else 'Paper'} servers.")
+    _, title, _, slugs = found
+    with _lock:
+        _, _, projects, ids = _installed(server)
+        todo, skipped, failed, notes = [], [], [], []
+        for slug in slugs:
+            try:
+                pick = _resolve("modrinth", slug, kind, minecraft)
+            except SourceError as e:
+                failed.append({"project": slug, "error": str(e)})
+                continue
+            if _is_installed(pick, projects, ids):
+                skipped.append(pick.get("title") or slug)
+                continue
+            todo.append(pick)
+        if not todo:
+            return {"bundle": title, "installed": [], "skipped": skipped, "failed": failed, "notes": notes,
+                    "backup": None, "restart": False}
+        pre = backups.run_backup(server, "pre-change")["file"] if backup else None
+        done = []
+        for pick in todo:
+            _, _, projects, ids = _installed(server)
+            if _is_installed(pick, projects, ids):      # came in as another one's dependency
+                continue
+            try:
+                plan, more = _plan(kind, minecraft, pick, projects, ids)
+                notes.extend(more)
+                for p in plan:
+                    done.append(_install_pick(server, p, actor))
+            except (SourceError, files.FileError, OSError) as e:
+                failed.append({"project": pick.get("title") or pick["project"], "error": str(e)})
+    manager.write_log(f"[MODS] {actor} installed the {title} bundle on {server}: "
+                      + (", ".join(d.get("name") or d["file"] for d in done) or "nothing new")
+                      + (f"; {len(failed)} failed" if failed else "") + (f"; world backup {pre}" if pre else "") + ".")
+    return {"bundle": title, "installed": done, "skipped": skipped, "failed": failed, "notes": notes,
+            "backup": pre, "restart": bool(done)}
 
 
 # ---------------------------------------------------------------------------

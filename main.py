@@ -720,6 +720,10 @@ class CatalogInstall(BaseModel):
     source: str
     project: str
 
+class CatalogBundle(BaseModel):
+    bundle: str
+    backup: bool = False
+
 class CatalogUpdate(BaseModel):
     files: list[str] = []
     backup: bool = False
@@ -732,8 +736,22 @@ def _catalog_call(request: Request, fn, *args, **kw):
                                                     f"was changed: {e}")
 
 @app.get("/api/servers/{server_name}/addons/search")
-def search_addons(request: Request, server_name: str, source: str = "modrinth", q: str = "", offset: int = 0):
-    return _catalog_call(request, catalog.search, server_name, source, q, offset)
+def search_addons(request: Request, server_name: str, source: str = "modrinth", q: str = "", offset: int = 0,
+                  category: str = "", sort: str = ""):
+    return _catalog_call(request, catalog.search, server_name, source, q, offset, category, sort)
+
+@app.get("/api/servers/{server_name}/addons/catalog")
+def addon_catalog(request: Request, server_name: str):
+    return _catalog_call(request, catalog.home, server_name)
+
+@app.get("/api/servers/{server_name}/addons/details")
+def addon_details(request: Request, server_name: str, source: str, project: str):
+    return _catalog_call(request, catalog.details, server_name, source, project)
+
+@app.post("/api/servers/{server_name}/addons/bundle")
+def install_addon_bundle(request: Request, server_name: str, req: CatalogBundle):
+    return _catalog_call(request, catalog.install_bundle, server_name, req.bundle, req.backup,
+                         actor=request.state.user["username"])
 
 @app.post("/api/servers/{server_name}/addons/install")
 def install_from_catalog(request: Request, server_name: str, req: CatalogInstall):

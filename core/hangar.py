@@ -13,12 +13,19 @@ def _slug(s):
     return urllib.parse.quote(str(s), safe="")
 
 
-def search(minecraft, query="", offset=0, limit=20):
+SORTS = {"downloads": "-downloads", "follows": "-stars", "updated": "-updated", "newest": "-newest"}
+
+
+def search(minecraft, query="", offset=0, limit=20, category=None, sort=None):
     params = {"q": query or "", "platform": "PAPER", "limit": max(1, min(int(limit), 25)),
               "offset": max(0, int(offset))}
     if minecraft:
         params["version"] = minecraft
-    if not query:
+    if category:
+        params["category"] = category
+    if sort in SORTS:
+        params["sort"] = SORTS[sort]
+    elif not query:
         params["sort"] = "-downloads"
     d = get_json(f"{API}/projects?{urllib.parse.urlencode(params)}") or {}
     hits = []
@@ -26,8 +33,10 @@ def search(minecraft, query="", offset=0, limit=20):
         ns = h.get("namespace") or {}
         hits.append({"source": "hangar", "project": ns.get("slug") or h.get("name"), "slug": ns.get("slug"),
                      "title": h.get("name"), "author": ns.get("owner"), "description": h.get("description"),
-                     "downloads": (h.get("stats") or {}).get("downloads"), "updated": h.get("lastUpdated"),
-                     "icon": h.get("avatarUrl"), "url": f"{SITE}/{ns.get('owner')}/{ns.get('slug')}"})
+                     "downloads": (h.get("stats") or {}).get("downloads"),
+                     "follows": (h.get("stats") or {}).get("stars"), "updated": h.get("lastUpdated"),
+                     "icon": h.get("avatarUrl"), "categories": [h["category"]] if h.get("category") else [],
+                     "url": f"{SITE}/{ns.get('owner')}/{ns.get('slug')}"})
     return {"total": (d.get("pagination") or {}).get("count", len(hits)), "hits": hits}
 
 
@@ -71,6 +80,30 @@ def slug_of(project):
     if not p:
         raise SourceError(f"Hangar has no project {project}.", 404)
     return (p.get("namespace") or {}).get("slug") or p.get("name")
+
+
+def details(project):
+    slug = slug_of(project)
+    p = get_json(f"{API}/projects/{_slug(slug)}")
+    if not p:
+        raise SourceError(f"Hangar has no project '{slug}'.", 404)
+    ns, st, settings = p.get("namespace") or {}, p.get("stats") or {}, p.get("settings") or {}
+    links = {}
+    for section in settings.get("links") or []:
+        for link in section.get("links") or []:
+            name, url = str(link.get("name") or "").lower(), link.get("url")
+            if url and str(url).startswith("https://"):
+                key = "source_url" if "source" in name else "issues_url" if "issue" in name else \
+                    "wiki_url" if "wiki" in name or "doc" in name else "discord_url" if "discord" in name else None
+                if key and key not in links:
+                    links[key] = url
+    return {"source": "hangar", "project": ns.get("slug") or slug, "slug": ns.get("slug") or slug,
+            "title": p.get("name"), "description": p.get("description"), "downloads": st.get("downloads"),
+            "follows": st.get("stars"), "updated": p.get("lastUpdated"), "icon": p.get("avatarUrl"),
+            "categories": [p["category"]] if p.get("category") else [],
+            "url": f"{SITE}/{ns.get('owner')}/{ns.get('slug')}", "fits": True, "not_fit": None,
+            "license": (settings.get("license") or {}).get("name"), "links": links,
+            "game_versions": [], "published": p.get("createdAt"), "gallery": []}
 
 
 def resolve(project, minecraft):

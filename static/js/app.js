@@ -1450,6 +1450,8 @@ const ServerApp = {
             this.addonsView = 'installed';
             this.addonUpdates = null;
             this.addonSearch = null;
+            this.addonCatalog = null;
+            this.addonDetail = null;
         }
         if (this.addonsView === 'browse') return this.renderAddonBrowser();
         this.renderAddons();
@@ -1704,17 +1706,41 @@ const ServerApp = {
         await this.loadAddons();
     },
 
+    // --- The catalog (Fabric and Paper): starter set and bundles, search with category and sort, details
+    addonApi(path, params) {
+        const q = new URLSearchParams(params || {}).toString();
+        return `/api/servers/${encodeURIComponent(this.activeServer.name)}/addons/${path}${q ? '?' + q : ''}`;
+    },
+
+    async loadAddonCatalog() {
+        const server = this.activeServer.name;
+        this.addonCatalog = { loading: true, for: server };
+        const res = await fetch(this.addonApi('catalog'));
+        const data = res.ok ? await res.json() : { error: await this.apiError(res) };
+        if (!this.activeServer || this.activeServer.name !== server) return;
+        this.addonCatalog = { ...data, for: server };
+        if (this.addonsView === 'browse') this.renderAddonBrowser();
+    },
+
+    addonHome() {
+        const s = this.addonSearch;
+        return !s || (!s.q && !s.category && !s.sort);
+    },
+
     async searchAddons(more) {
         const d = this.addonsData;
-        const s = this.addonSearch || { source: 'modrinth', q: '', hits: [], total: 0 };
-        const input = document.getElementById('addon-q'), sel = document.getElementById('addon-source');
-        if (input) s.q = input.value.trim();
-        if (sel) s.source = sel.value;
+        const s = this.addonSearch || { source: 'modrinth', q: '', category: '', sort: '', hits: [], total: 0 };
+        const val = id => { const el = document.getElementById(id); return el ? el.value : null; };
+        if (val('addon-q') !== null) s.q = val('addon-q').trim();
+        if (val('addon-source') !== null && val('addon-source') !== s.source) { s.source = val('addon-source'); s.category = ''; s.categories = null; }
+        else if (val('addon-category') !== null) s.category = val('addon-category');
+        if (val('addon-sort') !== null) s.sort = val('addon-sort');
         if (!more) s.hits = [];
         s.loading = true; s.error = null;
         this.addonSearch = s;
+        if (!this.addonCatalog || this.addonCatalog.for !== this.activeServer.name) this.loadAddonCatalog();
         this.renderAddonBrowser();
-        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/search?' + new URLSearchParams({ source: s.source, q: s.q, offset: s.hits.length }));
+        const res = await fetch(this.addonApi('search', { source: s.source, q: s.q, offset: s.hits.length, category: s.category, sort: s.sort }));
         s.loading = false;
         if (!res.ok) s.error = await this.apiError(res);
         else {
@@ -1722,65 +1748,264 @@ const ServerApp = {
             s.hits = s.hits.concat(r.hits);
             s.total = r.total;
             s.sources = r.sources;
+            s.categories = r.categories;
+            s.sorts = r.sorts;
         }
         if (this.addonsView === 'browse' && this.addonsData === d) this.renderAddonBrowser();
     },
 
+    addonFilter(category) {
+        const el = document.getElementById('addon-category');
+        if (el) el.value = category;
+        this.searchAddons();
+    },
+
+    clearAddonSearch() {
+        const s = this.addonSearch;
+        if (s) { s.q = ''; s.category = ''; s.sort = ''; }
+        ['addon-q', 'addon-category', 'addon-sort'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        this.searchAddons();
+    },
+
+    // Projects with an update waiting, from the Installed view's update check
+    addonUpdateKeys() {
+        const keys = new Set();
+        Object.values((this.addonUpdates && this.addonUpdates.items) || {}).forEach(u => {
+            if (u.update) { keys.add(`${u.source}:${u.project}`); if (u.slug) keys.add(`${u.source}:${u.slug}`); }
+        });
+        return keys;
+    },
+
+    addonBadge(h, updates) {
+        const pill = (cls, text) => `<span class="text-xs px-2 py-0.5 rounded whitespace-nowrap ${cls}">${text}</span>`;
+        if (h.installed && (updates.has(`${h.source}:${h.project}`) || updates.has(`${h.source}:${h.slug}`)))
+            return pill('bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200', 'Update available');
+        if (h.installed) return pill('bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200', 'Installed');
+        if (h.fits === false) return pill('bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300', this.escapeHtml(h.not_fit || 'Not for this version'));
+        return '';
+    },
+
+    addonCard(h, updates, compact) {
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const fmt = n => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n || 0);
+        const icon = h.icon && /^https:\/\//.test(h.icon)
+            ? `<img src="${esc(h.icon)}" alt="" loading="lazy" referrerpolicy="no-referrer" class="w-10 h-10 rounded shrink-0 bg-gray-100 dark:bg-gray-700">`
+            : '<div class="w-10 h-10 rounded shrink-0 bg-gray-100 dark:bg-gray-700"></div>';
+        const open = `ServerApp.openAddonDetail(${this.jsArg(h.source)}, ${this.jsArg(h.slug || h.project)})`;
+        const badge = this.addonBadge(h, updates);
+        const action = h.installed || h.fits === false ? badge
+            : `<button onclick="event.stopPropagation(); ServerApp.installFromCatalog(${this.jsArg(h.source)}, ${this.jsArg(h.project)}, ${this.jsArg(h.title || h.project)})" class="px-3 py-1 rounded text-sm bg-theme hover-bg-theme text-white whitespace-nowrap">Install</button>`;
+        const cats = (h.categories || []).slice(0, 3).map(c => `<span class="px-1.5 rounded bg-gray-100 dark:bg-gray-700">${esc(this.addonCategoryLabel(c, h.source))}</span>`).join(' ');
+        return `<div onclick="${open}" class="flex items-start gap-3 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 ${compact ? 'rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800' : 'border-t border-gray-200 dark:border-gray-700 first:border-t-0'} ${h.fits === false ? 'opacity-70' : ''}">
+            ${icon}
+            <div class="min-w-0 flex-1">
+                <p class="font-bold text-gray-900 dark:text-white break-words">${esc(h.title)}${h.author ? ` <span class="${note} font-normal">by ${esc(h.author)}</span>` : ''}</p>
+                <p class="text-xs text-gray-600 dark:text-gray-300 mt-0.5 ${compact ? 'line-clamp-2' : ''}">${esc(String(h.description || '').slice(0, 220))}</p>
+                <p class="${note} mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">${fmt(h.downloads)} downloads${h.updated ? ` · updated ${esc(String(h.updated).slice(0, 10))}` : ''} ${cats}</p>
+            </div>
+            <div class="flex flex-col items-end gap-1">${action}</div>
+        </div>`;
+    },
+
+    addonCategoryLabel(id, source) {
+        const lists = [this.addonSearch && this.addonSearch.categories, this.addonCatalog && this.addonCatalog.categories];
+        for (const l of lists) { const c = (l || []).find(c => c.id === id); if (c) return c.label; }
+        return String(id).replace(/[-_]/g, ' ');
+    },
+
+    async openAddonDetail(source, project) {
+        const server = this.activeServer.name;
+        this.addonDetail = { source, project, loading: true };
+        this.renderAddonBrowser();
+        const el = document.getElementById('addon-detail');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        const res = await fetch(this.addonApi('details', { source, project }));
+        const data = res.ok ? await res.json() : { error: await this.apiError(res) };
+        if (!this.activeServer || this.activeServer.name !== server || !this.addonDetail || this.addonDetail.project !== project) return;
+        this.addonDetail = { source, project, data };
+        if (this.addonsView === 'browse') this.renderAddonBrowser();
+    },
+
+    closeAddonDetail() {
+        this.addonDetail = null;
+        this.renderAddonBrowser();
+    },
+
+    addonDetailCard() {
+        const det = this.addonDetail;
+        if (!det) return '';
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const safeUrl = u => /^https:\/\//.test(String(u || '')) ? esc(u) : '#';
+        const close = `<button onclick="ServerApp.closeAddonDetail()" class="px-2 py-1 rounded text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Close</button>`;
+        const box = inner => `<div id="addon-detail" class="p-4 rounded border-2 border-theme bg-white dark:bg-gray-800 space-y-3">${inner}</div>`;
+        if (det.loading) return box(`<div class="flex justify-between"><p class="${note}">Loading ${esc(det.project)}…</p>${close}</div>`);
+        const h = det.data;
+        if (h.error) return box(`<div class="flex justify-between gap-2"><p class="text-sm text-red-500">${esc(h.error)}</p>${close}</div>`);
+        const fmt = n => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n || 0);
+        const site = h.source === 'hangar' ? 'Hangar' : 'Modrinth';
+        const linkNames = { source_url: 'Source code', issues_url: 'Issues', wiki_url: 'Wiki', discord_url: 'Discord' };
+        const links = [`<a href="${safeUrl(h.url)}" target="_blank" rel="noopener noreferrer" class="underline">${site} page</a>`]
+            .concat(Object.entries(h.links || {}).map(([k, u]) => `<a href="${safeUrl(u)}" target="_blank" rel="noopener noreferrer" class="underline">${linkNames[k] || k}</a>`)).join(' · ');
+        const ins = h.install || {};
+        let plan;
+        if (ins.error) plan = `<p class="text-sm text-yellow-700 dark:text-yellow-300">⚠️ ${esc(ins.error)}</p>`;
+        else plan = `<div class="text-sm text-gray-800 dark:text-gray-200 space-y-1">
+                <p>Install puts <b>${esc(ins.version)}</b>${ins.channel && ins.channel !== 'release' ? ` (${esc(ins.channel)})` : ''} on this server: <span class="font-mono text-xs">${esc(ins.file)}</span>${ins.size ? ` · ${esc(this.formatSize(ins.size))}` : ''}</p>
+                ${(ins.also || []).length ? `<p>It also installs what it needs: ${ins.also.map(a => `<b>${esc(a.title)}</b> ${esc(a.version || '')}`).join(', ')}</p>` : ''}
+                ${(ins.notes || []).map(n => `<p class="text-yellow-700 dark:text-yellow-300">⚠️ ${esc(n)}</p>`).join('')}
+            </div>`;
+        const button = h.installed ? this.addonBadge(h, this.addonUpdateKeys())
+            : ins.error ? '' : `<button onclick="ServerApp.installFromCatalog(${this.jsArg(h.source)}, ${this.jsArg(h.project)}, ${this.jsArg(h.title || h.project)})" class="px-4 py-2 rounded text-sm bg-theme hover-bg-theme text-white">Install</button>`;
+        return box(`
+            <div class="flex items-start gap-3">
+                ${h.icon && /^https:\/\//.test(h.icon) ? `<img src="${esc(h.icon)}" alt="" referrerpolicy="no-referrer" class="w-14 h-14 rounded shrink-0 bg-gray-100 dark:bg-gray-700">` : ''}
+                <div class="min-w-0 flex-1">
+                    <p class="text-lg font-bold text-gray-900 dark:text-white">${esc(h.title)}</p>
+                    <p class="text-sm text-gray-700 dark:text-gray-300">${esc(h.description)}</p>
+                    <p class="${note} mt-1">${fmt(h.downloads)} downloads · ${fmt(h.follows)} ${h.source === 'hangar' ? 'stars' : 'followers'}${h.updated ? ` · updated ${esc(String(h.updated).slice(0, 10))}` : ''}${h.license ? ` · ${esc(h.license)}` : ''}</p>
+                    <p class="${note} mt-1">${links}</p>
+                </div>
+                ${close}
+            </div>
+            ${plan}
+            <div class="flex justify-end">${button}</div>`);
+    },
+
+    addonBundles() {
+        const c = this.addonCatalog;
+        if (!c || !(c.bundles || []).length) return '';
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const cards = c.bundles.map(b => {
+            const chips = b.items.map(i => `<span class="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded ${i.installed ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200' : i.fits ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 line-through'}">${i.installed ? '✓ ' : ''}${esc(i.title)}</span>`).join(' ');
+            const n = b.missing.length;
+            const action = n
+                ? `<button onclick="ServerApp.installBundle(${this.jsArg(b.id)}, ${this.jsArg(b.title)})" class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white whitespace-nowrap">Install ${n === b.items.length ? 'all' : n} </button>`
+                : `<span class="${note}">${b.items.length ? 'All installed' : 'Nothing for this version'}</span>`;
+            return `<div class="p-3 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col gap-2">
+                <p class="font-bold text-gray-900 dark:text-white">${esc(b.title)}</p>
+                <p class="text-xs text-gray-600 dark:text-gray-300 flex-1">${esc(b.description)}</p>
+                <div class="flex flex-wrap gap-1">${chips}</div>
+                ${b.unavailable.length ? `<p class="${note}">Not available for ${esc(c.minecraft)} yet: ${b.unavailable.map(esc).join(', ')}.</p>` : ''}
+                <div class="flex justify-end">${action}</div>
+            </div>`;
+        }).join('');
+        return `<div class="space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2"><h4 class="font-bold text-gray-900 dark:text-white">Bundles</h4>
+            <label class="text-xs flex items-center gap-1 text-gray-700 dark:text-gray-300"><input type="checkbox" id="bundle-backup" ${this.bundleBackup === false ? '' : 'checked'} onchange="ServerApp.bundleBackup = this.checked"> Back up the world before installing a bundle</label></div>
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">${cards}</div></div>`;
+    },
+
+    addonGroups(updates) {
+        const c = this.addonCatalog;
+        if (!c) return '';
+        if (c.loading) return `<p class="text-xs text-gray-500 dark:text-gray-400">Loading the catalog…</p>`;
+        if (c.error) return `<p class="text-xs text-yellow-700 dark:text-yellow-300">Couldn't load the catalog: ${this.escapeHtml(c.error)}</p>`;
+        return (c.groups || []).map(g => `<div class="space-y-2">
+            <h4 class="font-bold text-gray-900 dark:text-white">${this.escapeHtml(g.title)}</h4>
+            <div class="grid gap-2 md:grid-cols-2">${g.items.map(h => this.addonCard(h, updates, true)).join('')}</div></div>`).join('');
+    },
+
     renderAddonBrowser(messages) {
-        const d = this.addonsData, s = this.addonSearch || { source: 'modrinth', q: '', hits: [] };
+        const d = this.addonsData, s = this.addonSearch || { source: 'modrinth', q: '', category: '', sort: '', hits: [] };
         const esc = t => this.escapeHtml(String(t ?? ''));
         const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
         const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const field = 'bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white';
         const noun = d.kind === 'paper' ? 'plugins' : 'mods';
         const loader = d.kind === 'paper' ? 'Paper' : 'Fabric';
         const sources = s.sources || (d.kind === 'paper' ? ['modrinth', 'hangar'] : ['modrinth']);
-        const fmt = n => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n || 0);
-        const safeUrl = u => /^https:\/\//.test(String(u || '')) ? esc(u) : '#';
-        const rows = s.hits.map(h => `<div class="flex items-start gap-3 p-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0">
-                ${h.icon && /^https:\/\//.test(h.icon) ? `<img src="${esc(h.icon)}" alt="" loading="lazy" referrerpolicy="no-referrer" class="w-10 h-10 rounded shrink-0 bg-gray-100 dark:bg-gray-700">` : '<div class="w-10 h-10 rounded shrink-0 bg-gray-100 dark:bg-gray-700"></div>'}
-                <div class="min-w-0 flex-1">
-                    <p class="font-bold text-gray-900 dark:text-white break-words"><a href="${safeUrl(h.url)}" target="_blank" rel="noopener noreferrer" class="hover:underline">${esc(h.title)}</a> <span class="${note} font-normal">by ${esc(h.author)}</span></p>
-                    <p class="text-xs text-gray-600 dark:text-gray-300 mt-0.5">${esc(String(h.description || '').slice(0, 220))}</p>
-                    <p class="${note} mt-0.5">${fmt(h.downloads)} downloads${h.updated ? ` · updated ${esc(String(h.updated).slice(0, 10))}` : ''}</p>
-                </div>
-                ${h.installed ? `<span class="text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 whitespace-nowrap">Installed</span>`
-                : `<button onclick="ServerApp.installFromCatalog(${esc(JSON.stringify(h.source))}, ${esc(JSON.stringify(h.project))}, ${esc(JSON.stringify(h.title || h.project))})" class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white whitespace-nowrap">Install</button>`}
-            </div>`).join('');
+        const cat = this.addonCatalog && this.addonCatalog.for === this.activeServer.name ? this.addonCatalog : null;
+        const categories = s.categories || (s.source === 'modrinth' && cat ? cat.categories : null) || [];
+        const sorts = s.sorts || (cat && cat.sorts) || [];
+        const updates = this.addonUpdateKeys();
+        const home = this.addonHome();
+        const rows = s.hits.map(h => this.addonCard(h, updates, false)).join('');
+        const site = s.source === 'hangar' ? 'Hangar' : 'Modrinth';
+        const sortLabel = (sorts.find(x => x.id === s.sort) || {}).label;
+        const catLabel = (categories.find(x => x.id === s.category) || {}).label;
+        const resultsTitle = home ? `Most downloaded on ${site}`
+            : [s.q ? `“${esc(s.q)}”` : '', catLabel ? esc(catLabel) : '', sortLabel ? esc(sortLabel.toLowerCase()) : ''].filter(Boolean).join(' · ') + ` on ${site}`;
         const changed = this.addonsChanged[this.activeServer.name];
+        const chips = home && categories.length ? `<div class="flex flex-wrap gap-1">${categories.slice(0, 10).map(c => `<button onclick="ServerApp.addonFilter(${this.jsArg(c.id)})" class="px-2 py-1 rounded-full text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">${esc(c.label)}</button>`).join('')}</div>` : '';
         document.getElementById('addons-content').innerHTML = `
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-lg font-bold text-gray-900 dark:text-white">Find ${noun} <span class="text-sm font-normal text-gray-500">for ${loader} ${esc(d.minecraft || '')}</span></h3>
             </div>
             ${this.addonViewSwitch()}
             <form class="flex flex-wrap gap-2" onsubmit="event.preventDefault(); ServerApp.searchAddons()">
-                <input id="addon-q" type="search" value="${esc(s.q)}" placeholder="Search ${noun}" class="flex-1 min-w-[12rem] bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-3 py-1.5 text-sm text-gray-900 dark:text-white">
-                ${sources.length > 1 ? `<select id="addon-source" onchange="ServerApp.searchAddons()" class="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white">
+                <input id="addon-q" type="search" value="${esc(s.q)}" placeholder="Search ${noun}" class="flex-1 min-w-[12rem] ${field} px-3">
+                ${sources.length > 1 ? `<select id="addon-source" onchange="ServerApp.searchAddons()" class="${field}" aria-label="Site">
                     ${sources.map(x => `<option value="${x}" ${x === s.source ? 'selected' : ''}>${x === 'hangar' ? 'Hangar' : 'Modrinth'}</option>`).join('')}</select>` : ''}
+                <select id="addon-category" onchange="ServerApp.searchAddons()" class="${field}" aria-label="Category">
+                    <option value="">All categories</option>
+                    ${categories.map(c => `<option value="${esc(c.id)}" ${c.id === s.category ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select>
+                <select id="addon-sort" onchange="ServerApp.searchAddons()" class="${field}" aria-label="Sort">
+                    <option value="">${s.q ? 'Best match' : 'Most downloaded'}</option>
+                    ${sorts.filter(x => s.q || x.id !== 'downloads').map(x => `<option value="${esc(x.id)}" ${x.id === s.sort ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select>
                 <button class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white">Search</button>
+                ${home ? '' : `<button type="button" onclick="ServerApp.clearAddonSearch()" class="px-3 py-1.5 rounded text-sm bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white">Back to the catalog</button>`}
             </form>
+            ${chips}
             ${(messages || []).length ? `<div class="${card} p-3 text-sm space-y-1 text-gray-800 dark:text-gray-200">${messages.map(m => `<p>${esc(m)}</p>`).join('')}</div>` : ''}
             ${changed ? `<div class="p-3 rounded text-sm bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-800 text-gray-900 dark:text-gray-100">Restart the server to load your changes. <button onclick="ServerApp.sendPower('restart')" class="underline text-theme">Restart now</button></div>` : ''}
+            ${this.addonDetailCard()}
+            ${home ? this.addonBundles() + this.addonGroups(updates) : ''}
+            <h4 class="font-bold text-gray-900 dark:text-white">${resultsTitle}${s.total && !home ? ` <span class="${note} font-normal">${s.total} found</span>` : ''}</h4>
             ${s.error ? `<p class="text-sm text-red-500">${esc(s.error)}</p>` : ''}
             <div class="${card}">${rows || `<p class="p-4 text-sm text-gray-500 dark:text-gray-400">${s.loading ? 'Searching…' : `No ${noun} found for this Minecraft version.`}</p>`}</div>
             ${s.hits.length && s.hits.length < (s.total || 0) ? `<button onclick="ServerApp.searchAddons(true)" class="px-3 py-1.5 rounded text-sm bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white" ${s.loading ? 'disabled' : ''}>${s.loading ? 'Loading…' : 'More'}</button>` : ''}
-            <p class="${note}">Only ${noun} with a build for ${loader} ${esc(d.minecraft || '')} that run on a server are shown. Install picks the newest release build, checks its hash, and installs what it needs${d.kind === 'fabric' ? ' (such as Fabric API)' : ''} too.</p>`;
+            <p class="${note}">Only ${noun} with a build for ${loader} ${esc(d.minecraft || '')} that run on a server are listed (the starter set marks the ones not updated yet). Click one for details. Install picks the newest release build, checks its hash, and installs what it needs${d.kind === 'fabric' ? ' (such as Fabric API)' : ''} too.</p>`;
+    },
+
+    // After an install, every view that shows "Installed" is out of date
+    addonsInstalled() {
+        this.addonsChanged[this.activeServer.name] = true;
+        this.addonUpdates = null;
+        if (this.addonDetail && this.addonDetail.data) this.openAddonDetail(this.addonDetail.source, this.addonDetail.project);
+        this.loadAddonCatalog();
     },
 
     async installFromCatalog(source, project, title) {
         const s = this.addonSearch;
         this.renderAddonBrowser([`Installing ${title}…`]);
-        const res = await fetch(this.addonsUrl().replace(/\?.*$/, '') + '/install', {
+        const res = await fetch(this.addonApi('install'), {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, project })
         });
         let messages;
         if (!res.ok) messages = [`⛔ ${title}: ${await this.apiError(res)}`];
         else {
             const r = await res.json();
-            this.addonsChanged[this.activeServer.name] = true;
             messages = r.installed.map(i => `✅ ${i.name || i.file} ${i.version || ''}${i.channel && i.channel !== 'release' ? ` (${i.channel})` : ''}`
                 + (i.fits === false ? ' — made for a different Minecraft version' : '')).concat(r.notes.map(n => `⚠️ ${n}`));
             if (s) s.hits.forEach(h => { if (h.project === project || r.installed.some(i => i.project === h.project)) h.installed = true; });
-            this.addonUpdates = null;
+            this.addonsInstalled();
+        }
+        this.renderAddonBrowser(messages);
+    },
+
+    async installBundle(bundle, title) {
+        const backup = this.bundleBackup !== false;
+        if (!confirm(`Install the ${title} bundle on ${this.activeServer.name}?${backup ? ' The world is backed up first.' : ''} `
+            + `Restart the server afterwards to load them.`)) return;
+        this.renderAddonBrowser([`Installing ${title}${backup ? ' (backing up the world first)' : ''}…`]);
+        const res = await fetch(this.addonApi('bundle'), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bundle, backup })
+        });
+        let messages;
+        if (!res.ok) messages = [`⛔ ${title}: ${await this.apiError(res)}`];
+        else {
+            const r = await res.json();
+            messages = [];
+            if (r.backup) messages.push(`💾 World backed up (${r.backup}).`);
+            messages = messages.concat(r.installed.map(i => `✅ ${i.name || i.file} ${i.version || ''}`))
+                .concat(r.skipped.length ? [`Already installed: ${r.skipped.join(', ')}`] : [])
+                .concat(r.failed.map(f => `⛔ ${f.project}: ${f.error}`))
+                .concat(r.notes.map(n => `⚠️ ${n}`));
+            if (!r.installed.length && !r.failed.length) messages.push('Nothing to install: everything in it is already here.');
+            if (r.installed.length) this.addonsInstalled();
         }
         this.renderAddonBrowser(messages);
     },
@@ -1859,7 +2084,7 @@ const ServerApp = {
         const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
         const freqOptions = Object.entries(info.frequencies)
             .map(([id, label]) => `<option value="${esc(id)}" ${id === s.frequency ? 'selected' : ''}>${esc(label)}</option>`).join('');
-        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod update' };
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes' };
 
         let last = '';
         if (info.last) {

@@ -343,7 +343,7 @@ The time is the **server's clock**, and the form shows its time zone (UTC on mos
 - **⬇️**: downloads a backup.
 - **Restore** (admins): stops the server, replaces its world with the one in the backup, and
   starts it again. The world being replaced is saved first as a **Before restore** backup, so
-  you can undo a restore by restoring that one. **Before mod update** backups are taken by
+  you can undo a restore by restoring that one. **Before mod changes** backups are taken by
   **Update all** on the Mods / Plugins tab.
 - **🗑**: deletes a backup (admins).
 
@@ -487,11 +487,41 @@ Removing a server removes its Phantom as well.
 
 ### Finding mods and plugins
 
-On Fabric and Paper servers, **Find mods** (or **Find plugins**) searches
+On Fabric and Paper servers, **Find mods** (or **Find plugins**) is a catalog of
 [Modrinth](https://modrinth.com) and, for Paper, [Hangar](https://hangar.papermc.io), PaperMC's
-plugin site. Only projects with a build for the server's loader and Minecraft version, and
-that run on a server, are shown, so client-only mods such as Sodium don't appear. With an
-empty search you see the most downloaded.
+plugin site. It opens on:
+
+- **Bundles**: a few mods or plugins that belong together, installed with one click.
+  - Fabric: **Performance pack** (Lithium, FerriteCore, Krypton, C2ME, ScalableLux), **Server
+    essentials** (spark, Chunky, LuckPerms, Ledger) and **Bedrock players** (Geyser,
+    Floodgate).
+  - Paper: **Server essentials** (Chunky, LuckPerms, EssentialsX, CoreProtect), **Build
+    protection** (WorldEdit, WorldGuard, CoreProtect) and **Bedrock players** (Geyser).
+
+  A bundle installs only what's missing, with what each one needs, after a world backup
+  (**Back up the world before installing a bundle**, on by default; skipped when there's
+  nothing to install). One that can't be installed is named and doesn't stop the others.
+- **A starter set** of popular server mods or plugins, picked for RedstonePanel and grouped
+  as Performance, Admin tools, For players and Libraries. One that hasn't been updated for the
+  server's Minecraft version yet is shown greyed out as **Not for 1.21.x yet**.
+- **Most downloaded**, below that, and category buttons to browse by (Optimization,
+  Management, Economy, …).
+
+Each card shows downloads, when it was last updated, its categories, and **Installed** or
+**Update available** when it's on the server. Search by name, pick a **category**, and sort by
+**most downloaded**, **most followed**, **recently updated** or **newest**; **Back to the
+catalog** clears them. Only projects with a build for the server's loader and Minecraft
+version, and that run on a server, are listed, so client-only mods such as Sodium don't
+appear. Paper has spark built in, so it's only offered for Fabric.
+
+**Click a mod or plugin** for its details: description, downloads, followers, licence, links
+to its page and source code, and exactly what Install would do: the version and file it
+picks, and the mods or plugins it needs that would be installed with it (for example
+WorldGuard brings WorldEdit).
+
+![Details of a mod before installing it](images/mods-details.png)
+
+![The mod catalog on a Fabric server](images/mods-catalog.png)
 
 ![Finding mods on Modrinth](images/mods-browse.png)
 
@@ -514,7 +544,7 @@ something newer.
 ![Mods with an update available](images/mods-updates.png)
 
 - **Update all** updates every one, and can back up the world first (ticked by default): the
-  backup shows on the Backups tab as **Before mod update**.
+  backup shows on the Backups tab as **Before mod changes**.
 - An update keeps the old file as `….jar.previous`, which the server doesn't load, and
   **Undo** puts the last update's old files back. They're kept until the next update.
 - Restart the server to load the new versions.
