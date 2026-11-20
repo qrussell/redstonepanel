@@ -184,7 +184,7 @@ The sidebar on the left holds everything that isn't about one server:
 | **📋 Templates** | Saved server settings to reuse. |
 | **⚙️** | Appearance: dark or light mode and the accent colour. Saved in your browser. |
 | **Sort by** | Name A–Z, Z–A, or online servers first. |
-| Server list | Every server, grouped by edition: green dot = running, with its version and port. Click one to open it. On a cluster master, each node's servers follow in their own 🌐 group under the node's name. |
+| Server list | Every server, grouped by edition: green dot = running, grey = stopped, with its version and port. Click one to open it. On a cluster master, each node's servers follow under the node's 🌐 name, grouped by edition the same way. Click a heading to fold it; a folded heading shows how many of its servers are online, and the panel remembers what you folded in this browser. |
 | **♻️ N removed servers: restore** | Shown when servers were uninstalled with **Keep World**. |
 | **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts). |
 
