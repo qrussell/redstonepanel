@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.0 (20 Nov 2026): moving servers between cluster members shipped; a first-run setup guide (1.16.1), kick and ban (1.16.2), two-factor sign-in (1.16.3), backups on another node (1.16.4), Debian and ARM64 (1.16.5), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.1 (20 Nov 2026): moving servers between cluster members and a first-run setup guide shipped; kick and ban (1.16.2), two-factor sign-in (1.16.3), backups on another node (1.16.4), Debian and ARM64 (1.16.5), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -23,14 +23,14 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.16.0)
+## What already exists (1.16.1)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
 zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (managing every node's servers from the master, with real
-certificates for a master on the internet, and moving or copying servers between members), the signed apt repository, and Bedrock connection
+certificates for a master on the internet, and moving or copying servers between members), a first-run setup guide, the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
 
@@ -461,7 +461,7 @@ refused joins, so those are Java only.
     **Size:** one to two weeks; the streaming import and the rollback on failure are the
     careful parts.
 
-### 1.16.1: a first-run setup guide
+### 1.16.1: a first-run setup guide *(Nov 2026)*
 
 13. **Get a new owner to a safe setup without reading the manual.** Added to the plan after
     1.16.0 from a comparison with other panels: installing is already one command, but the

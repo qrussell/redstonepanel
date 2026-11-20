@@ -2848,7 +2848,7 @@ const ServerApp = {
 	},
 
 	// --- Panel Settings: connection (HTTP/HTTPS) and sign-in (admins only) ---
-	async openPanelSettings() {
+	async openPanelSettings(section) {
 		const overlay = document.getElementById('settings-overlay');
 		const box = document.getElementById('settings-content');
 		box.innerHTML = '<p class="text-gray-500">Loading settings...</p>';
@@ -2881,13 +2881,16 @@ const ServerApp = {
 			<input id="set-panel-name" maxlength="40" value="${esc(s.panel_name)}" placeholder="${esc(d.defaults.panel_name)}" class="${field} mb-1">
 			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">Tells this server's panel apart from others: shown in the sidebar, the browser tab and on the sign-in page (visible before signing in). Leave empty to use the server's host name, <b>${esc(d.defaults.panel_name)}</b>.</p>
 
-			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Notifications</h4>
+			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Setup guide</h4>
+			${this.setupSettingsRow()}
+
+			<h4 id="set-section-notifications" class="font-bold text-gray-900 dark:text-white mb-2">Notifications</h4>
 			<div id="set-notifications" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
-			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
+			<h4 id="set-section-connection" class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
 			<div class="space-y-2 mb-3">
 				${clusterRole === 'master'
 					? `${radio('https_mode', 'cluster', s.https_mode, 'HTTPS from the cluster', 'The cluster CA\'s certificate. Browsers warn until each device imports the cluster CA.')}
@@ -2937,6 +2940,18 @@ const ServerApp = {
 		document.getElementById('set-https-port').disabled = clusterRole !== 'standalone';
 		this.loadClusterSettings();
 		this.loadNotificationSettings();
+		this.loadSetupSettings();
+		const target = section && document.getElementById(`set-section-${section}`);
+		if (target) target.scrollIntoView({ block: 'start' });
+	},
+
+	async loadSetupSettings() {
+		try {
+			const r = await fetch('/api/settings/setup');
+			if (r.ok) this.setupData = await r.json();
+		} catch (e) { return; }
+		const el = document.getElementById('set-setup-guide');
+		if (el) el.outerHTML = this.setupSettingsRow();
 	},
 
 	async loadNotificationSettings() {
@@ -3066,6 +3081,7 @@ const ServerApp = {
 	dashTimer: null,
 	dashData: null,
 	dashHosts: null,
+	setupData: null,
 
 	showDashboard() {
 		if (this.fileEditor && this.fileEditor.dirty
@@ -3105,6 +3121,14 @@ const ServerApp = {
 			} catch (e) { /* keep the last answer */ }
 		} else {
 			this.dashHosts = null;
+		}
+		if (this.isAdmin() && !this.dashData.redacted) {
+			try {
+				const r = await fetch('/api/settings/setup');
+				this.setupData = r.ok ? await r.json() : null;
+			} catch (e) { /* keep the last answer */ }
+		} else {
+			this.setupData = null;
 		}
 		if (!document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard();
 	},
@@ -3296,7 +3320,7 @@ const ServerApp = {
 				</section>`;
 		}
 
-		document.getElementById('dash-body').innerHTML = attentionHtml + tiles + serverTable
+		document.getElementById('dash-body').innerHTML = this.setupCard() + attentionHtml + tiles + serverTable
 			+ `<section class="grid grid-cols-1 lg:grid-cols-3 gap-4">${host}${disks}${services}</section>` + nodes
 			+ (d.redacted ? `<p class="${note}">You're on the trusted local network without signing in, so addresses, versions and settings are hidden.</p>` : '');
 	},
@@ -3405,6 +3429,104 @@ const ServerApp = {
 			this.panelUpdateBox(wentAway ? 'Finishing the update…' : `Updating ${u.from || ''} → ${u.to || target}…`, lines);
 		}
 		this.panelUpdateBox('The update is taking longer than expected. Reload this page later, or check with: sudo redstonepanel status', lines, true);
+	},
+
+	// First-run setup guide (admins): four steps, each ticked from the panel's real state
+	// (GET /api/settings/setup) and each opening the dialog that already does the job
+	setupCard() {
+		const g = this.setupData;
+		if (!g || g.dismissed) return '';
+		const esc = t => this.escapeHtml(t === null || t === undefined ? '' : String(t));
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const btn = 'px-3 py-1 rounded text-xs bg-theme hover-bg-theme text-white font-bold';
+		const link = 'underline text-xs text-theme';
+		const step = Object.fromEntries(g.steps.map(x => [x.id, { ...x }]));
+		// On a cluster master, servers on the nodes count too; each node's own guide covers their backups
+		const nodeServers = (this.dashHosts ? this.dashHosts.nodes : []).filter(n => !n.local && n.summary)
+			.reduce((a, n) => a + (n.summary.servers_total || 0), 0);
+		if (!step.server.servers && nodeServers) {
+			step.server.done = true;
+			step.backups.done = true;
+			step.backups.onNodes = true;
+		}
+		const done = Object.values(step).filter(x => x.done).length;
+		if (done === g.total) return '';
+
+		const fw = step.server.firewall;
+		const unscheduled = step.backups.unscheduled || [];
+		const plural = n => n === 1 ? '' : 's';
+		const items = [
+			{ s: step.server, title: 'Create your first server',
+			  body: step.server.done
+				? (step.server.servers ? `${step.server.servers} server${plural(step.server.servers)} on this panel.` : `${nodeServers} server${plural(nodeServers)} on the cluster's nodes.`)
+				: `Java (Vanilla, Paper or Fabric) or Bedrock, on the version you pick. The panel installs the Java it needs.`
+				  + (fw === 'missing' ? `<br><span class="text-yellow-700 dark:text-yellow-300">⚠️ The firewall ufw isn't installed, so the panel can't open game ports for you. If this machine has another firewall, open each server's port in it.</span>`
+				   : fw === 'off' ? `<br><span class="text-yellow-700 dark:text-yellow-300">ℹ️ The firewall ufw is installed but off. The panel adds a rule for each server's ports, which takes effect when you turn ufw on.</span>` : ''),
+			  action: step.server.done ? '' : `<button onclick="ServerApp.openDeployModal()" class="${btn}">➕ New Server</button>` },
+			{ s: step.backups, title: 'Back up your worlds',
+			  body: step.backups.onNodes ? `Backups of the nodes' servers are set on each node.`
+				: step.backups.done ? 'Every server has a backup schedule.'
+				: !step.server.done ? 'Once you have a server, give it a backup schedule.'
+				: `Give each server a schedule on its <b>Backups</b> tab. Daily at 04:00, keeping 7, is a good start. Backups run even while the panel is stopped.`,
+			  action: step.server.done && !step.backups.done ? `<div class="flex flex-wrap gap-2">${unscheduled.map(n =>
+				`<button onclick="ServerApp.openServerByName(${this.jsArg(n)}, 'backups')" class="${btn}">${esc(n)}</button>`).join('')}</div>` : '' },
+			{ s: step.connection, title: 'Choose how the panel is reached',
+			  body: step.connection.cluster_role === 'node' ? 'HTTPS comes from the cluster.'
+				: step.connection.https_mode !== 'off' ? 'The panel uses HTTPS.'
+				: step.connection.http_ok ? 'You chose plain HTTP on a network you trust.'
+				: `The panel uses plain HTTP, so anyone who can watch your network can read passwords as you sign in. That's usually fine on a home network you trust. Elsewhere, turn on HTTPS.`,
+			  action: step.connection.done ? ''
+				: `<div class="flex flex-wrap gap-3 items-center"><button onclick="ServerApp.openPanelSettings('connection')" class="${btn}">Turn on HTTPS</button>
+				   <button onclick="ServerApp.setupAnswer({ http_ok: true })" class="${link}">Keep HTTP, this is my home network</button></div>` },
+			{ s: step.notifications, title: 'Get told when something breaks',
+			  body: step.notifications.done ? 'Crash and backup alerts go to your webhook.'
+				: `Send crashes and failed backups to a Discord channel or any webhook, even while the panel is stopped.`,
+			  action: step.notifications.done ? '' : `<button onclick="ServerApp.openPanelSettings('notifications')" class="${btn}">Set up alerts</button>` },
+		];
+		const next = items.findIndex(i => !i.s.done);
+		return `
+			<section class="bg-white dark:bg-gray-800 rounded-lg border-2 border-theme shadow p-4">
+				<div class="flex justify-between items-start gap-3 mb-3">
+					<div>
+						<h3 class="font-bold text-gray-900 dark:text-white">🚀 Set up RedstonePanel</h3>
+						<p class="${note}">${done} of ${g.total} done. Each step opens the place where it's done, and ticks itself when it is.</p>
+					</div>
+					<button onclick="ServerApp.setupAnswer({ dismissed: true })" class="${note} underline whitespace-nowrap" title="Reopen it from Panel Settings">Hide guide</button>
+				</div>
+				<ol class="space-y-2">${items.map((i, n) => `
+					<li class="flex gap-3 p-2 rounded ${n === next ? 'bg-gray-50 dark:bg-gray-900/50' : ''}">
+						<span class="text-lg leading-6">${i.s.done ? '✅' : n === next ? '👉' : '⬜'}</span>
+						<div class="min-w-0 flex-1">
+							<p class="font-bold text-sm ${i.s.done ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-white'}">${n + 1}. ${i.title}</p>
+							<p class="${note} mt-0.5">${i.body}</p>
+							${i.action ? `<div class="mt-2">${i.action}</div>` : ''}
+						</div>
+					</li>`).join('')}
+				</ol>
+			</section>`;
+	},
+
+	async setupAnswer(changes) {
+		const res = await fetch('/api/settings/setup', {
+			method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes)
+		});
+		if (!res.ok) return alert(await this.apiError(res));
+		this.setupData = await res.json();
+		if (this.dashData && !document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard();
+		const el = document.getElementById('set-setup-guide');
+		if (el) el.outerHTML = this.setupSettingsRow();
+	},
+
+	// Panel Settings: reopen (or close) the guide, and take back "keep HTTP"
+	setupSettingsRow() {
+		const g = this.setupData;
+		const note = 'text-xs text-gray-500 dark:text-gray-400 mb-6';
+		if (!g) return `<p id="set-setup-guide" class="${note}">Loading...</p>`;
+		const conn = g.steps.find(x => x.id === 'connection') || {};
+		const http = conn.http_ok ? ` You chose to keep plain HTTP: <button onclick="ServerApp.setupAnswer({ http_ok: false })" class="underline text-theme">ask again</button>.` : '';
+		return g.dismissed
+			? `<p id="set-setup-guide" class="${note}">The setup guide is hidden (${g.done} of ${g.total} steps done). <button onclick="ServerApp.setupAnswer({ dismissed: false })" class="underline text-theme">Show it on the dashboard</button>.${http}</p>`
+			: `<p id="set-setup-guide" class="${note}">${g.complete ? 'All setup steps are done.' : `The setup guide is on the dashboard (${g.done} of ${g.total} steps done). <button onclick="ServerApp.setupAnswer({ dismissed: true })" class="underline text-theme">Hide it</button>.`}${http}</p>`;
 	},
 
 	// One panel of the cluster: the few numbers core.host.summary() gives

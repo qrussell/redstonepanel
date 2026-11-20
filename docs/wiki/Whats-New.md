@@ -9,6 +9,19 @@ the dashboard.
 
 ---
 
+## 1.16.1: a setup guide for new panels *(November 2026)*
+
+A new panel now shows you how to get to a safe setup, right on the dashboard.
+
+- **Set up RedstonePanel** (admins): four steps to create your first server, put every server on
+  a backup schedule, choose HTTPS (or keep HTTP on a network you trust) and get crash alerts in
+  Discord or any webhook. Each step opens the place where it's done.
+- **Steps tick themselves** from what the panel can see, so work done elsewhere counts, and an
+  upgraded panel only shows what's missing.
+- **Hide guide** when you're done; **Panel Settings → Setup guide** brings it back.
+
+[Release notes](../../release-notes/v1.16.1.md)
+
 ## 1.16.0: move a server to another machine *(November 2026)*
 
 Move a server to another machine in your cluster, or copy it, from the master's cluster page.

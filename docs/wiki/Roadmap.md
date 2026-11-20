@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.0**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.1**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,14 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.1: a first-run setup guide
-
-- A **Setup** card on the dashboard for new installs: create your first server, put its world
-  on a backup schedule, choose HTTP or HTTPS, and add a Discord or webhook alert.
-- Each step opens the dialog that already does it, and ticks itself from what the panel can
-  see, so steps done from the command line or by another admin count too.
-- Dismiss it when you're done; reopen it from Panel Settings.
 
 ### 1.16.2: kick and ban from the panel
 
@@ -104,5 +96,5 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.0** moves and copies servers between the
-machines of a cluster, and **1.15.0** manages every node's servers from the master.
+See [What's New](Whats-New.md). The latest: **1.16.1** adds a setup guide to a new panel's
+dashboard, and **1.16.0** moves and copies servers between the machines of a cluster.

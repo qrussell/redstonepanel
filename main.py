@@ -19,6 +19,7 @@ import core.playerlog as playerlog
 import core.whitelist as whitelist
 import core.backups as backups
 import core.notify as notify
+import core.setup as setup_guide
 import core.restarts as restarts
 import core.auth as auth
 import core.settings as panel_settings
@@ -704,6 +705,26 @@ def test_notifications():
     if not ok:
         raise HTTPException(status_code=400, detail=err)
     return {"status": "success"}
+
+# The first-run setup guide on the dashboard (admins: under /api/settings). Steps are worked out
+# from the panel's state; only "dismissed" and "keep HTTP" are stored.
+class SetupAnswers(BaseModel):
+    dismissed: Optional[bool] = None
+    http_ok: Optional[bool] = None
+
+@app.get("/api/settings/setup")
+def get_setup():
+    return setup_guide.status()
+
+@app.put("/api/settings/setup")
+def set_setup(request: Request, req: SetupAnswers):
+    setup_guide.save_state(dismissed=req.dismissed, http_ok=req.http_ok)
+    me = request.state.user["username"]
+    if req.dismissed is not None:
+        manager.write_log(f"[SETTINGS] {me} {'closed' if req.dismissed else 'reopened'} the setup guide.")
+    if req.http_ok is not None:
+        manager.write_log(f"[SETTINGS] {me} {'chose to keep' if req.http_ok else 'no longer keeps'} plain HTTP.")
+    return setup_guide.status()
 
 # File manager (admins only): everything goes through core/files.py, which never follows symlinks
 class TextFile(BaseModel):

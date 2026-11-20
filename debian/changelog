@@ -1,3 +1,23 @@
+redstonepanel (1.16.1) noble; urgency=medium
+
+  * First-run setup guide: a Set up RedstonePanel card at the top of the
+    dashboard (admins) with four steps: create your first server, give
+    every server a backup schedule, choose HTTPS or keep plain HTTP on a
+    network you trust, and send crash and backup alerts to a webhook. Each
+    step opens the dialog that already does the job.
+  * Steps are ticked from the panel's real state, so work done from the
+    command line or by another admin counts, and an upgraded panel only
+    shows what's still missing. The card says when ufw is missing or off,
+    since the panel opens game ports only through it.
+  * Hide guide hides it for every admin; Panel Settings > Setup guide shows
+    it again, and takes back "keep HTTP". Only those two answers are stored,
+    in setup.json.
+  * On a cluster node joining the cluster ticks the HTTPS step; a master
+    counts its nodes' servers.
+  * GET/PUT /api/settings/setup (admins).
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Fri, 20 Nov 2026 23:59:59 +0000
+
 redstonepanel (1.16.0) noble; urgency=medium
 
   * Move a server to another cluster member: on the master's cluster page,

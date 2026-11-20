@@ -1,7 +1,7 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.16.0**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.16.1**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
 "Creative Lab" running a Fabric server with mods.
 
@@ -129,6 +129,24 @@ it back. It refreshes every 10 seconds while the page is open.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/dashboard.png"><img src="images/dashboard.png" alt="The dashboard on a cluster master"></picture>
 
+- **Set up RedstonePanel** (admins) comes first on a new panel: four steps to a safe setup.
+  1. **Create your first server**: opens **➕ New Server**. If the firewall `ufw` is missing or
+     off, it says so here, because the panel opens game ports only through `ufw`.
+  2. **Back up your worlds**: a button for each server without a backup schedule, which opens
+     its **Backups** tab ([Backups](#9-backups)).
+  3. **Choose how the panel is reached**: **Turn on HTTPS** opens Panel Settings at
+     **Connection**. On a home network you trust, **Keep HTTP, this is my home network** ticks
+     the step instead.
+  4. **Get told when something breaks**: opens Panel Settings at
+     [Notifications](#notifications).
+
+  <picture><source media="(prefers-color-scheme: light)" srcset="images/light/setup-guide.png"><img src="images/setup-guide.png" alt="The setup guide on the dashboard, three of four steps done"></picture>
+
+  Steps tick themselves from what the panel can see, so a step done from the command line or by
+  another admin counts too. On a cluster node, joining the cluster ticks the HTTPS step; on a
+  master, servers on the nodes count for the first step. The card goes away when every step is
+  done. **Hide guide** hides it for every admin; Panel Settings → **Setup guide** shows it again,
+  and is also where you can take back **Keep HTTP**.
 - **Needs attention** comes first, and only lists what's wrong: a disk over 90% full, memory
   or swap nearly full, a failed or crash-looping server, a failed backup, a Java server whose
   Java isn't installed, a game port the firewall (ufw) blocks, a stopped Phantom proxy, a
@@ -694,6 +712,9 @@ An admin account controls a service that runs as root, so treat it like `sudo` a
 
 **Panel name**: shown in the sidebar, the browser tab and on the sign-in page. It defaults to
 the machine's host name and helps when you run several panels.
+
+**Setup guide**: how many of the dashboard's setup steps are done, with **Show it on the
+dashboard** or **Hide it** (see [The dashboard](#3-the-dashboard)).
 
 **Connection**:
 
