@@ -1,10 +1,14 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.15.0**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.16.0**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
-"Creative Lab" running a Fabric server with mods. A few close-ups are from earlier versions
-where nothing in them has changed.
+"Creative Lab" running a Fabric server with mods.
+
+**About the screenshots:** each one was taken in the panel's dark and light theme, and on GitHub
+you see the one that matches your browser or system theme (GitLab shows the dark one). To
+compare, open the [screenshot gallery](#screenshot-gallery) at the end, in either theme. The
+close-up of mod updates is from an earlier version.
 
 New to RedstonePanel? Start with [Install](#1-install), then
 [Create or import a server](#4-create-or-import-a-server) and [Backups](#9-backups). For file
@@ -59,6 +63,8 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 19. [Command line](#19-command-line)
 20. [Troubleshooting](#20-troubleshooting)
 
+At the end: the [screenshot gallery](#screenshot-gallery), every screenshot in the light and the dark theme.
+
 ---
 
 ## 1. Install
@@ -102,7 +108,7 @@ The panel then runs as the `redstonepanel` service on port **8080**. Open
 
 ## 2. Sign in
 
-![Sign-in page](images/sign-in.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/sign-in.png"><img src="images/sign-in.png" alt="Sign-in page"></picture>
 
 There are two kinds of account:
 
@@ -121,7 +127,7 @@ When no server is selected, the right side shows the state of this machine and e
 panel relies on. It's what you see after signing in, and **📊 Dashboard** in the sidebar brings
 it back. It refreshes every 10 seconds while the page is open.
 
-![The dashboard on a cluster master](images/dashboard.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/dashboard.png"><img src="images/dashboard.png" alt="The dashboard on a cluster master"></picture>
 
 - **Needs attention** comes first, and only lists what's wrong: a disk over 90% full, memory
   or swap nearly full, a failed or crash-looping server, a failed backup, a Java server whose
@@ -146,7 +152,7 @@ it back. It refreshes every 10 seconds while the page is open.
 Visitors from a trusted local network who haven't signed in see the dashboard without
 addresses, versions, certificates or settings.
 
-![Dashboard with a Java server selected](images/overview.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/overview.png"><img src="images/overview.png" alt="Dashboard with a Java server selected"></picture>
 
 The sidebar on the left holds everything that isn't about one server:
 
@@ -172,7 +178,7 @@ with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Be
 
 Click **➕ New Server**.
 
-![New Server dialog](images/new-server.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/new-server.png"><img src="images/new-server.png" alt="New Server dialog"></picture>
 
 **Deploy a fresh server**
 
@@ -233,14 +239,14 @@ The **Overview** tab (shown in [The dashboard](#3-the-dashboard)) shows quick st
 
 For Java servers it also shows which Java version the server needs and which one is installed.
 
-![Bedrock server overview](images/overview-bedrock.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/overview-bedrock.png"><img src="images/overview-bedrock.png" alt="Bedrock server overview"></picture>
 
 Players connect to `<server address>:<port>`. On Bedrock, use the port shown here; the
 default 19132 belongs to the first Bedrock server.
 
 ## 6. Live Chat
 
-![Live Chat](images/live-chat.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/live-chat.png"><img src="images/live-chat.png" alt="Live Chat"></picture>
 
 The chat players see in game. Type in the box and click **Send**:
 
@@ -259,19 +265,19 @@ the panel types into the server's own console instead.
 
 **Visual Editor**: every setting in `server.properties`, as a form.
 
-![Configuration, visual editor](images/configuration.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/configuration.png"><img src="images/configuration.png" alt="Configuration, visual editor"></picture>
 
 Type in the filter box to find a setting quickly, for example `difficulty`, `pvp`, `rcon` or
 `port`.
 
-![Filtering properties](images/configuration-filter.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/configuration-filter.png"><img src="images/configuration-filter.png" alt="Filtering properties"></picture>
 
 Click **Save Changes**, then **Restart** the server so it reads the new settings.
 
 **Raw Text** is the same file as plain text, for pasting a whole configuration or editing
 settings the form doesn't know.
 
-![Raw server.properties](images/configuration-raw.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/configuration-raw.png"><img src="images/configuration-raw.png" alt="Raw server.properties"></picture>
 
 **Player Roles** lists players seen in the server's logs plus everyone already in the
 permissions file, with a role for each:
@@ -281,7 +287,7 @@ permissions file, with a role for each:
 
 Changing a role takes effect at the next restart.
 
-![Player roles](images/player-roles.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/player-roles.png"><img src="images/player-roles.png" alt="Player roles"></picture>
 
 **Whitelist & Access** shows who may join and who has tried:
 
@@ -310,7 +316,7 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
 
 ## 8. Maintenance: templates, export, update, uninstall
 
-![Maintenance tab](images/maintenance.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/maintenance.png"><img src="images/maintenance.png" alt="Maintenance tab"></picture>
 
 - **Save as Template**: saves this server's properties and permissions as a reusable
   template.
@@ -369,7 +375,7 @@ with older versions are cleared the next time the dashboard loads.
 
 ## 9. Backups
 
-![Backups tab, Java server](images/backups.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/backups.png"><img src="images/backups.png" alt="Backups tab, Java server"></picture>
 
 **Set up automatic backups**
 
@@ -411,7 +417,7 @@ The time is the **server's clock**, and the form shows its time zone (UTC on mos
 
 Bedrock servers work the same way:
 
-![Backups tab, Bedrock server](images/backups-bedrock.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/backups-bedrock.png"><img src="images/backups-bedrock.png" alt="Backups tab, Bedrock server"></picture>
 
 From the command line, `sudo redstonepanel backup minecraft-java` takes a backup.
 
@@ -420,7 +426,7 @@ From the command line, `sudo redstonepanel backup minecraft-java` takes a backup
 **Maintenance → Scheduled Restarts** restarts the server every day, every 6 or 12 hours, or
 every Sunday, at the time you pick (the server's clock).
 
-![Scheduled restarts](images/scheduled-restarts.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/scheduled-restarts.png"><img src="images/scheduled-restarts.png" alt="Scheduled restarts"></picture>
 
 1. Tick **On**.
 2. Choose how often and the time.
@@ -439,7 +445,7 @@ and the restart happens at the time you chose. Things to know:
 
 ## 10. World & Maps
 
-![World & Maps](images/world.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/world.png"><img src="images/world.png" alt="World &amp; Maps"></picture>
 
 - **Download World**: only the world folder, as a zip. Use it to open the world in
   single-player or a map viewer.
@@ -451,7 +457,7 @@ and the restart happens at the time you chose. Things to know:
 **Files** (admins only) shows the server's folder in `/opt/minecraft-…`, so you can change
 things the other tabs don't cover: plugin and mod settings, `ops.json`, `bukkit.yml`, and so on.
 
-![Files tab](images/files.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/files.png"><img src="images/files.png" alt="Files tab"></picture>
 
 - Click a folder to open it; the path at the top goes back up.
 - **Upload**, or drag files from your computer onto the tab, adds them to the folder you're
@@ -469,7 +475,7 @@ things the other tabs don't cover: plugin and mod settings, `ops.json`, `bukkit.
   after you opened it, saving stops and asks you to reload it, so neither change is lost
   silently.
 
-![Editing a plugin's config.yml](images/file-editor.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/file-editor.png"><img src="images/file-editor.png" alt="Editing a plugin&#x27;s config.yml"></picture>
 
 Most servers read their files when they start, so **Restart** after changing settings.
 Some plugins have a reload command; check the plugin's documentation.
@@ -487,9 +493,9 @@ Safety:
 Admins see a **Mods** tab on Fabric servers, **Plugins** on Paper servers and **Add-ons** on
 Bedrock servers. Vanilla servers can't load mods or plugins, so they don't have one.
 
-![Mods tab on a Fabric server](images/mods.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/mods.png"><img src="images/mods.png" alt="Mods tab on a Fabric server"></picture>
 
-![Plugins tab on a Paper server](images/plugins.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/plugins.png"><img src="images/plugins.png" alt="Plugins tab on a Paper server"></picture>
 
 **Adding:** drag `.jar` files (Fabric, Paper) or `.mcpack` / `.mcaddon` files (Bedrock) onto
 the tab, or click the box to choose them. Each one is checked before it's installed:
@@ -520,7 +526,7 @@ a restart. **Disable** takes a pack out of the world and keeps its files; **Remo
 it. Players download resource packs only if they accept server packs. Skin packs and world
 templates are refused.
 
-![Add-ons tab on a Bedrock server](images/addons-bedrock.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/addons-bedrock.png"><img src="images/addons-bedrock.png" alt="Add-ons tab on a Bedrock server"></picture>
 
 ### Server tools: Phantom (Bedrock)
 
@@ -587,11 +593,11 @@ to its page and source code, and exactly what Install would do: the version and 
 picks, and the mods or plugins it needs that would be installed with it (for example
 WorldGuard brings WorldEdit).
 
-![Details of a mod before installing it](images/mods-details.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/mods-details.png"><img src="images/mods-details.png" alt="Details of a mod before installing it"></picture>
 
-![The mod catalog on a Fabric server](images/mods-catalog.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/mods-catalog.png"><img src="images/mods-catalog.png" alt="The mod catalog on a Fabric server"></picture>
 
-![Finding mods on Modrinth](images/mods-browse.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/mods-browse.png"><img src="images/mods-browse.png" alt="Finding mods on Modrinth"></picture>
 
 **Install** picks the newest release build (a beta only when there's no release, never an
 alpha), downloads it from the site's own download server, checks it against the checksum the
@@ -599,7 +605,7 @@ site gives, and then installs it like a dropped file. Mods and plugins it needs 
 first, for example Fabric API. A dependency that isn't on the same site, or a Hangar plugin
 that's downloaded from somewhere else, is named so you can get it yourself.
 
-![Plugins from Hangar on a Paper server](images/plugins-hangar.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/plugins-hangar.png"><img src="images/plugins-hangar.png" alt="Plugins from Hangar on a Paper server"></picture>
 
 ### Updates
 
@@ -623,7 +629,7 @@ Every install, change and removal goes in the activity log (`[MODS] alex install
 
 ## 13. Console
 
-![Console](images/console.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/console.png"><img src="images/console.png" alt="Console"></picture>
 
 **🖥️ Console** opens the panel's activity log at the bottom of the screen: deploys, updates,
 service starts and stops, firewall changes, backups, and who signed in. Lines are coloured by
@@ -636,7 +642,7 @@ purple, commands the panel runs grey. The same log is in
 **📋 Templates** opens the template manager. A template is a set of `server.properties`
 values plus an operators/permissions list, for one edition.
 
-![Template manager](images/templates.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/templates.png"><img src="images/templates.png" alt="Template manager"></picture>
 
 - Create one from a server you've set up: **Maintenance → Save as Template**.
 - Edit its properties and permissions here, then click **Save All Updates**.
@@ -668,7 +674,7 @@ sudo redstonepanel restore minecraft-java-2
 
 **👥 Users** (admins) manages panel accounts.
 
-![Panel users](images/users.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/users.png"><img src="images/users.png" alt="Panel users"></picture>
 
 - **Add user**: a username, a password of at least 8 characters, and a role:
   - **User** can manage servers;
@@ -684,14 +690,14 @@ An admin account controls a service that runs as root, so treat it like `sudo` a
 
 **🛡️ Settings** (admins).
 
-![Panel Settings: name, notifications and cluster](images/panel-settings.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/panel-settings.png"><img src="images/panel-settings.png" alt="Panel Settings: name, notifications and cluster"></picture>
 
 **Panel name**: shown in the sidebar, the browser tab and on the sign-in page. It defaults to
 the machine's host name and helps when you run several panels.
 
 **Connection**:
 
-![Panel Settings on a cluster master: connection and sign-in](images/panel-settings-1.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/panel-settings-1.png"><img src="images/panel-settings-1.png" alt="Panel Settings on a cluster master: connection and sign-in"></picture>
 
 - **HTTP (simple)**: port 8080, fine on a trusted home network.
 - **HTTPS with a self-signed certificate**: the panel makes its own certificate authority.
@@ -708,7 +714,7 @@ own certificate**. See [Clusters](#18-clusters).
 
 Get a message in Discord, or any service that takes a webhook, when something happens.
 
-![Notification settings](images/notifications.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/notifications.png"><img src="images/notifications.png" alt="Notification settings"></picture>
 
 1. In Discord, open the channel's settings → **Integrations** → **Webhooks** → **New
    Webhook**, then **Copy Webhook URL**.
@@ -759,13 +765,13 @@ master. The **🌐 Cluster** page shows every panel at once, with start, stop, r
 for each server, and each panel's CPU, memory and free disk. The master's dashboard has a card
 per panel.
 
-![The Cluster page](images/cluster.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster.png"><img src="images/cluster.png" alt="The Cluster page"></picture>
 
 **A node's server, opened on the master.** The header says which machine it's on
 (🌐 Creative Lab), and every tab works as it does on the master: changes go through the master
 to the node.
 
-![A node's Fabric server opened from the master](images/node-server.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/node-server.png"><img src="images/node-server.png" alt="A node&#x27;s Fabric server opened from the master"></picture>
 
 **Setting up a cluster**
 
@@ -784,7 +790,7 @@ node's server adds the template to the master's list.
 **Moving a server to another machine** *(1.16)*: on the **🌐 Cluster** page, admins have
 **Move…** and **Copy…** next to every server. Choose where it goes:
 
-![Moving a server to another cluster member](images/cluster-move.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster-move.png"><img src="images/cluster-move.png" alt="Moving a server to another cluster member"></picture>
 
 A move stops the server, packs its whole folder (world, server software, mods and settings),
 streams it through the master to the other machine, where every byte is checked, and starts it
@@ -793,7 +799,7 @@ and the window tells you which. The Java it needs is installed there, and its me
 restart schedules and Phantom come along. A progress bar follows the copy, and both consoles log
 each step (`[MOVE] …`).
 
-![A finished move, with the old copy still kept](images/cluster-moved.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster-moved.png"><img src="images/cluster-moved.png" alt="A finished move, with the old copy still kept"></picture>
 
 The old machine keeps the files as a removed server marked **moved to …**. Check the server on
 its new machine, then click **Delete the old copy** (or 🗑 next to it in **New Server → Removed
@@ -826,7 +832,7 @@ under **Settings → Cluster** it shows as checked with "the system's trust stor
 how the master checks it (the cluster CA or the system's trust store), **Renew** and **Remove**,
 plus join codes, the cluster backup and **Nightly backups**.
 
-![Cluster settings on the master: the node list](images/panel-settings.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/panel-settings.png"><img src="images/panel-settings.png" alt="Cluster settings on the master: the node list"></picture>
 
 **Nightly backups** write an encrypted cluster backup after 3:00 every night to
 `/var/lib/redstonepanel/cluster/backups/` and keep the last 7. Turning them on asks for a
@@ -836,7 +842,7 @@ it's what lets `sudo redstonepanel cluster promote FILE` make another panel the 
 Below them, **Connection** lets a master choose between the cluster's HTTPS and its own
 certificate.
 
-![Nightly backups and the master's HTTPS choices](images/panel-settings-1.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/panel-settings-1.png"><img src="images/panel-settings-1.png" alt="Nightly backups and the master&#x27;s HTTPS choices"></picture>
 
 Each node keeps its own dashboard, and its game servers keep running if the master is down.
 Download an encrypted **cluster backup** after adding or removing nodes, or turn on **Nightly
@@ -910,3 +916,46 @@ tab once; the panel sets RCON up and later backups are consistent.
 | Panel settings, accounts, templates | `/var/lib/redstonepanel` |
 | Activity log | `/var/log/redstonepanel/panel.log` |
 | Panel service | `systemctl status redstonepanel` |
+
+## Screenshot gallery
+
+Every screenshot in this manual, in the theme you pick:
+
+<details>
+<summary>🌙 <b>Show every screenshot in the dark theme</b></summary>
+
+<table>
+<tr><td><img src="images/sign-in.png" width="280" alt="Sign-in page (dark theme)"><br>Sign-in page</td><td><img src="images/dashboard.png" width="280" alt="The dashboard on a cluster master (dark theme)"><br>The dashboard on a cluster master</td><td><img src="images/overview.png" width="280" alt="Dashboard with a Java server selected (dark theme)"><br>Dashboard with a Java server selected</td></tr>
+<tr><td><img src="images/new-server.png" width="280" alt="New Server dialog (dark theme)"><br>New Server dialog</td><td><img src="images/overview-bedrock.png" width="280" alt="Bedrock server overview (dark theme)"><br>Bedrock server overview</td><td><img src="images/live-chat.png" width="280" alt="Live Chat (dark theme)"><br>Live Chat</td></tr>
+<tr><td><img src="images/configuration.png" width="280" alt="Configuration, visual editor (dark theme)"><br>Configuration, visual editor</td><td><img src="images/configuration-filter.png" width="280" alt="Filtering properties (dark theme)"><br>Filtering properties</td><td><img src="images/configuration-raw.png" width="280" alt="Raw server.properties (dark theme)"><br>Raw server.properties</td></tr>
+<tr><td><img src="images/player-roles.png" width="280" alt="Player roles (dark theme)"><br>Player roles</td><td><img src="images/maintenance.png" width="280" alt="Maintenance tab (dark theme)"><br>Maintenance tab</td><td><img src="images/backups.png" width="280" alt="Backups tab, Java server (dark theme)"><br>Backups tab, Java server</td></tr>
+<tr><td><img src="images/backups-bedrock.png" width="280" alt="Backups tab, Bedrock server (dark theme)"><br>Backups tab, Bedrock server</td><td><img src="images/scheduled-restarts.png" width="280" alt="Scheduled restarts (dark theme)"><br>Scheduled restarts</td><td><img src="images/world.png" width="280" alt="World & Maps (dark theme)"><br>World & Maps</td></tr>
+<tr><td><img src="images/files.png" width="280" alt="Files tab (dark theme)"><br>Files tab</td><td><img src="images/file-editor.png" width="280" alt="Editing a plugin's config.yml (dark theme)"><br>Editing a plugin's config.yml</td><td><img src="images/mods.png" width="280" alt="Mods tab on a Fabric server (dark theme)"><br>Mods tab on a Fabric server</td></tr>
+<tr><td><img src="images/plugins.png" width="280" alt="Plugins tab on a Paper server (dark theme)"><br>Plugins tab on a Paper server</td><td><img src="images/addons-bedrock.png" width="280" alt="Add-ons tab on a Bedrock server (dark theme)"><br>Add-ons tab on a Bedrock server</td><td><img src="images/mods-details.png" width="280" alt="Details of a mod before installing it (dark theme)"><br>Details of a mod before installing it</td></tr>
+<tr><td><img src="images/mods-catalog.png" width="280" alt="The mod catalog on a Fabric server (dark theme)"><br>The mod catalog on a Fabric server</td><td><img src="images/mods-browse.png" width="280" alt="Finding mods on Modrinth (dark theme)"><br>Finding mods on Modrinth</td><td><img src="images/plugins-hangar.png" width="280" alt="Plugins from Hangar on a Paper server (dark theme)"><br>Plugins from Hangar on a Paper server</td></tr>
+<tr><td><img src="images/console.png" width="280" alt="Console (dark theme)"><br>Console</td><td><img src="images/templates.png" width="280" alt="Template manager (dark theme)"><br>Template manager</td><td><img src="images/users.png" width="280" alt="Panel users (dark theme)"><br>Panel users</td></tr>
+<tr><td><img src="images/panel-settings.png" width="280" alt="Panel Settings: name, notifications and cluster (dark theme)"><br>Panel Settings: name, notifications and cluster</td><td><img src="images/panel-settings-1.png" width="280" alt="Panel Settings on a cluster master: connection and sign-in (dark theme)"><br>Panel Settings on a cluster master: connection and sign-in</td><td><img src="images/notifications.png" width="280" alt="Notification settings (dark theme)"><br>Notification settings</td></tr>
+<tr><td><img src="images/cluster.png" width="280" alt="The Cluster page (dark theme)"><br>The Cluster page</td><td><img src="images/node-server.png" width="280" alt="A node's Fabric server opened from the master (dark theme)"><br>A node's Fabric server opened from the master</td><td><img src="images/cluster-move.png" width="280" alt="Moving a server to another cluster member (dark theme)"><br>Moving a server to another cluster member</td></tr>
+<tr><td><img src="images/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (dark theme)"><br>A finished move, with the old copy still kept</td></tr>
+</table>
+
+</details>
+<details>
+<summary>☀️ <b>Show every screenshot in the light theme</b></summary>
+
+<table>
+<tr><td><img src="images/light/sign-in.png" width="280" alt="Sign-in page (light theme)"><br>Sign-in page</td><td><img src="images/light/dashboard.png" width="280" alt="The dashboard on a cluster master (light theme)"><br>The dashboard on a cluster master</td><td><img src="images/light/overview.png" width="280" alt="Dashboard with a Java server selected (light theme)"><br>Dashboard with a Java server selected</td></tr>
+<tr><td><img src="images/light/new-server.png" width="280" alt="New Server dialog (light theme)"><br>New Server dialog</td><td><img src="images/light/overview-bedrock.png" width="280" alt="Bedrock server overview (light theme)"><br>Bedrock server overview</td><td><img src="images/light/live-chat.png" width="280" alt="Live Chat (light theme)"><br>Live Chat</td></tr>
+<tr><td><img src="images/light/configuration.png" width="280" alt="Configuration, visual editor (light theme)"><br>Configuration, visual editor</td><td><img src="images/light/configuration-filter.png" width="280" alt="Filtering properties (light theme)"><br>Filtering properties</td><td><img src="images/light/configuration-raw.png" width="280" alt="Raw server.properties (light theme)"><br>Raw server.properties</td></tr>
+<tr><td><img src="images/light/player-roles.png" width="280" alt="Player roles (light theme)"><br>Player roles</td><td><img src="images/light/maintenance.png" width="280" alt="Maintenance tab (light theme)"><br>Maintenance tab</td><td><img src="images/light/backups.png" width="280" alt="Backups tab, Java server (light theme)"><br>Backups tab, Java server</td></tr>
+<tr><td><img src="images/light/backups-bedrock.png" width="280" alt="Backups tab, Bedrock server (light theme)"><br>Backups tab, Bedrock server</td><td><img src="images/light/scheduled-restarts.png" width="280" alt="Scheduled restarts (light theme)"><br>Scheduled restarts</td><td><img src="images/light/world.png" width="280" alt="World & Maps (light theme)"><br>World & Maps</td></tr>
+<tr><td><img src="images/light/files.png" width="280" alt="Files tab (light theme)"><br>Files tab</td><td><img src="images/light/file-editor.png" width="280" alt="Editing a plugin's config.yml (light theme)"><br>Editing a plugin's config.yml</td><td><img src="images/light/mods.png" width="280" alt="Mods tab on a Fabric server (light theme)"><br>Mods tab on a Fabric server</td></tr>
+<tr><td><img src="images/light/plugins.png" width="280" alt="Plugins tab on a Paper server (light theme)"><br>Plugins tab on a Paper server</td><td><img src="images/light/addons-bedrock.png" width="280" alt="Add-ons tab on a Bedrock server (light theme)"><br>Add-ons tab on a Bedrock server</td><td><img src="images/light/mods-details.png" width="280" alt="Details of a mod before installing it (light theme)"><br>Details of a mod before installing it</td></tr>
+<tr><td><img src="images/light/mods-catalog.png" width="280" alt="The mod catalog on a Fabric server (light theme)"><br>The mod catalog on a Fabric server</td><td><img src="images/light/mods-browse.png" width="280" alt="Finding mods on Modrinth (light theme)"><br>Finding mods on Modrinth</td><td><img src="images/light/plugins-hangar.png" width="280" alt="Plugins from Hangar on a Paper server (light theme)"><br>Plugins from Hangar on a Paper server</td></tr>
+<tr><td><img src="images/light/console.png" width="280" alt="Console (light theme)"><br>Console</td><td><img src="images/light/templates.png" width="280" alt="Template manager (light theme)"><br>Template manager</td><td><img src="images/light/users.png" width="280" alt="Panel users (light theme)"><br>Panel users</td></tr>
+<tr><td><img src="images/light/panel-settings.png" width="280" alt="Panel Settings: name, notifications and cluster (light theme)"><br>Panel Settings: name, notifications and cluster</td><td><img src="images/light/panel-settings-1.png" width="280" alt="Panel Settings on a cluster master: connection and sign-in (light theme)"><br>Panel Settings on a cluster master: connection and sign-in</td><td><img src="images/light/notifications.png" width="280" alt="Notification settings (light theme)"><br>Notification settings</td></tr>
+<tr><td><img src="images/light/cluster.png" width="280" alt="The Cluster page (light theme)"><br>The Cluster page</td><td><img src="images/light/node-server.png" width="280" alt="A node's Fabric server opened from the master (light theme)"><br>A node's Fabric server opened from the master</td><td><img src="images/light/cluster-move.png" width="280" alt="Moving a server to another cluster member (light theme)"><br>Moving a server to another cluster member</td></tr>
+<tr><td><img src="images/light/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (light theme)"><br>A finished move, with the old copy still kept</td></tr>
+</table>
+
+</details>

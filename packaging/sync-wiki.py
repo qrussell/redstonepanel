@@ -10,7 +10,8 @@ for the wiki on the way:
 
 - `Installation.md#x` (another wiki page)   -> `Installation#x`
 - `../guide/images/a.png`, `images/a.png`  -> the image on raw.githubusercontent.com (GitLab:
-                                               the project's /-/raw/ URL)
+                                               the project's /-/raw/ URL), in Markdown links and
+                                               in `src="…"`/`srcset="…"` of <img>/<source> tags
 - `../../README.md#x`, `../design/x.md`    -> the file on github.com (GitLab: /-/blob/)
 
 On GitLab the home page is `home` and the sidebar `_sidebar`. GITHUB_REPOSITORY (owner/name),
@@ -31,6 +32,8 @@ GITLAB_NAMES = {"Home": "home", "_Sidebar": "_sidebar"}
 SPECIAL = ("_Sidebar", "_Footer")
 
 LINK = re.compile(r"(\]\()([^)\s]+)(\))")
+# <img src="…"> and <source srcset="…"> in the <picture> tags that pick the theme's screenshot
+ATTR = re.compile(r"""(\b(?:src|srcset)=")([^"\s]+)(")""")
 
 
 def pages():
@@ -68,7 +71,7 @@ def rewrite(text, src_dir, names, raw, blob, rename=None, gitlab=False):
             return f"{m.group(1)}{page(os.path.basename(rel)[:-3])}{anchor}{m.group(3)}"
         base = raw if re.search(r"\.(png|jpe?g|gif|svg|webp)$", rel, re.I) else blob
         return f"{m.group(1)}{base}/{rel}{anchor}{m.group(3)}"
-    return LINK.sub(fix, text)
+    return ATTR.sub(fix, LINK.sub(fix, text))
 
 
 def build(out, gitlab=False):
