@@ -11,6 +11,7 @@ import core.mods as mods
 import core.catalog as catalog
 import core.runtimes as runtimes
 import core.selfupdate as selfupdate
+import core.phantom as phantom
 import core.host as host
 import urllib.parse
 import core.javaservers as javaservers
@@ -441,6 +442,38 @@ def remove_java_runtime(request: Request, req: JavaChoice):
 @app.post("/api/servers/{server_name}/java")
 def choose_server_java(request: Request, server_name: str, req: JavaChoice):
     return _runtime_call(request, runtimes.use, server_name, req.major, actor=request.state.user["username"])
+
+# Phantom LAN proxies for Bedrock servers (admins): see core/phantom.py
+class PhantomUnit(BaseModel):
+    unit: str | None = None
+
+def _phantom_call(request: Request, fn, *args, **kw):
+    _require_admin(request, "manage Phantom")
+    try:
+        return fn(*args, **kw)
+    except phantom.PhantomError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except files.FileError as e:          # download failures (core/sources.py)
+        raise HTTPException(status_code=getattr(e, "status", 502), detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/api/servers/{server_name}/phantom")
+def phantom_status(request: Request, server_name: str):
+    return _phantom_call(request, phantom.status, server_name)
+
+@app.post("/api/servers/{server_name}/phantom/install")
+def phantom_install(request: Request, server_name: str):
+    return _phantom_call(request, phantom.install, server_name, actor=request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/phantom/{action}")
+def phantom_control(request: Request, server_name: str, action: str, req: PhantomUnit):
+    return _phantom_call(request, phantom.control, server_name, req.unit or phantom.unit_name(server_name),
+                         action, actor=request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/phantom-remove")
+def phantom_remove(request: Request, server_name: str, req: PhantomUnit):
+    return _phantom_call(request, phantom.uninstall, server_name, req.unit, actor=request.state.user["username"])
 
 # Updating RedstonePanel itself (admins): see core/selfupdate.py for why it runs in its own unit
 def _update_call(request: Request, fn, *args, **kw):

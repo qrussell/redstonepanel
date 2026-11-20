@@ -1454,6 +1454,102 @@ const ServerApp = {
         if (this.addonsView === 'browse') return this.renderAddonBrowser();
         this.renderAddons();
         if (['fabric', 'paper'].includes(this.addonsData.kind)) this.loadAddonUpdates();
+        if (this.addonsData.kind === 'bedrock') this.loadPhantom();
+    },
+
+    // --- Server tools (Bedrock): Phantom, which makes a server on another port show up as a LAN game
+    phantomUrl(tail) {
+        return `/api/servers/${encodeURIComponent(this.activeServer.name)}/phantom${tail || ''}`;
+    },
+
+    async loadPhantom() {
+        const server = this.activeServer && this.activeServer.name;
+        if (!server) return;
+        const res = await fetch(this.phantomUrl());
+        const data = res.ok ? await res.json() : { error: await this.apiError(res) };
+        if (!this.activeServer || this.activeServer.name !== server) return;
+        this.phantomData = { ...data, for: server };
+        this.renderPhantom();
+    },
+
+    renderPhantom() {
+        const box = document.getElementById('phantom-card');
+        if (box) box.innerHTML = this.phantomCard();
+    },
+
+    phantomCard() {
+        const p = this.phantomData, esc = t => this.escapeHtml(String(t ?? ''));
+        const small = 'px-2 py-1 rounded text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white disabled:opacity-50';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        if (!p || p.for !== this.activeServer.name) return `<p class="p-3 ${note}">Checking Phantom…</p>`;
+        if (p.error) return `<p class="p-3 text-xs text-red-500">${esc(p.error)}</p>`;
+        const busy = this.phantomBusy ? 'disabled' : '';
+        const state = u => {
+            const on = u.active === 'active';
+            const color = on ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                : u.active === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+            return `<span class="text-xs px-1.5 py-0.5 rounded ${color}">${esc(u.active)}</span>`
+                + (u.enabled === 'enabled' ? ` <span class="${note}">starts at boot</span>` : '');
+        };
+        const buttons = (u, removeLabel) => {
+            const on = u.active === 'active';
+            const b = (action, label) => `<button ${busy} onclick="ServerApp.phantomAction('${action}', ${this.jsArg(u.unit)})" class="${small}">${label}</button>`;
+            return [on ? b('stop', 'Stop') : b('start', 'Start'), on ? b('restart', 'Restart') : '',
+                `<button ${busy} onclick="ServerApp.phantomAction('remove', ${this.jsArg(u.unit)}, ${u.managed ? 'true' : 'false'})" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white disabled:opacity-50">${removeLabel}</button>`].join(' ');
+        };
+        const problems = u => (u.problems || []).map(t => `<p class="text-xs mt-1 text-yellow-700 dark:text-yellow-300">⚠️ ${esc(t)}</p>`).join('');
+        const unitRow = (u, removeLabel, extra) => `
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm text-gray-900 dark:text-white"><span class="font-mono">${esc(u.unit)}</span> ${state(u)}</p>
+                    <p class="${note}">Forwards to ${esc(u.target)} · listens on UDP ${(u.listens || []).map(esc).join(' and ')}${u.managed ? '' : ' · made outside the panel'}</p>
+                    ${problems(u)}${extra || ''}
+                </div>
+                <div class="flex gap-2 whitespace-nowrap">${buttons(u, removeLabel)}</div>
+            </div>`;
+        let body;
+        if (p.phantom) {
+            const logs = (p.phantom.logs || []).length
+                ? `<details class="mt-2"><summary class="${note} cursor-pointer">Recent log</summary><pre class="mt-1 p-2 rounded bg-gray-100 dark:bg-gray-900 text-xs overflow-x-auto max-h-48">${p.phantom.logs.map(esc).join('\n')}</pre></details>` : '';
+            const repair = p.phantom.target_port !== p.port || p.phantom.active === 'failed'
+                ? `<p class="mt-2"><button ${busy} onclick="ServerApp.phantomAction('install')" class="${small}">Repair</button></p>` : '';
+            body = unitRow(p.phantom, 'Uninstall', logs + repair);
+        } else if (p.can_install) {
+            body = `<div class="flex flex-wrap items-center justify-between gap-3">
+                <p class="${note} flex-1">Not installed. Install downloads Phantom ${esc(p.version)} from GitHub (checked against a pinned SHA-256), runs it as the service phantom-${esc(p.server)}, and opens UDP 19132 and a proxy port in ufw.</p>
+                <button ${busy} onclick="ServerApp.phantomAction('install')" class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white disabled:opacity-50">${this.phantomBusy === 'install' ? 'Installing…' : 'Install'}</button></div>`;
+        } else {
+            body = `<p class="text-xs text-gray-600 dark:text-gray-300">${esc(p.blocker)}</p>`;
+        }
+        const others = (p.others || []).map(u => `<div class="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700">${unitRow(u, 'Remove unit')}</div>`).join('');
+        return `<div class="p-3">
+            <p class="font-bold text-gray-900 dark:text-white">Phantom <span class="text-xs font-normal text-gray-500">LAN proxy · jhead/phantom ${esc(p.version)}</span></p>
+            <p class="${note} mb-3">Makes this server (port ${esc(p.port)}) appear under Friends → LAN Games on consoles and phones on your network. Only a server on port 19132 shows up there on its own.</p>
+            ${body}${others}
+        </div>`;
+    },
+
+    async phantomAction(action, unit, managed) {
+        const server = this.activeServer.name;
+        let url;
+        if (action === 'remove') {
+            const msg = managed
+                ? `Uninstall Phantom for ${server}? Its service is stopped and deleted, and its ports are closed in ufw. The game server is not touched.`
+                : `Remove ${unit}? It was made outside the panel. The service is stopped and its unit file deleted; the phantom program it runs stays where it is.`;
+            if (!confirm(msg)) return;
+            url = `/api/servers/${encodeURIComponent(server)}/phantom-remove`;
+        } else url = this.phantomUrl(`/${action}`);
+        this.phantomBusy = action;
+        this.renderPhantom();
+        try {
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit: unit || null }) });
+            if (!res.ok) alert(`Phantom: ${await this.apiError(res)}`);
+            else if (this.activeServer && this.activeServer.name === server) this.phantomData = { ...(await res.json()), for: server };
+        } finally {
+            this.phantomBusy = null;
+            if (this.activeServer && this.activeServer.name === server) this.renderPhantom();
+        }
     },
 
     renderAddons(messages) {
@@ -1508,6 +1604,8 @@ const ServerApp = {
             ${(messages || []).length ? `<div class="${card} p-3 text-sm space-y-1 text-gray-800 dark:text-gray-200">${messages.map(m => `<p>${esc(m)}</p>`).join('')}</div>` : ''}
             ${changed ? `<div class="p-3 rounded text-sm bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-800 text-gray-900 dark:text-gray-100">Restart the server to load your changes. <button onclick="ServerApp.sendPower('restart')" class="underline text-theme">Restart now</button></div>` : ''}
             <div class="${card}">${items || `<p class="p-4 text-sm text-gray-500 dark:text-gray-400">No ${esc(title.toLowerCase())} yet.</p>`}</div>
+            ${d.kind === 'bedrock' ? `<h3 class="text-lg font-bold text-gray-900 dark:text-white pt-2">Server tools</h3>
+            <div id="phantom-card" class="${card}">${this.phantomCard()}</div>` : ''}
             <p class="${note}">${d.kind === 'bedrock'
                 ? 'Packs are unpacked into the server folder and added to the active world. Disable takes a pack out of the world; Remove deletes it. Resource packs reach players only if they accept server packs.'
                 : `Disable renames the file to .jar.disabled, which the server skips. Files are read, never run, to check they suit this server.`}</p>`;

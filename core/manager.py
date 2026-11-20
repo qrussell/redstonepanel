@@ -738,6 +738,12 @@ def remove_server(server_name, keep_world):
     from core import backups, restarts
     backups.on_server_removed(server_name, purged=not keep_world)
     restarts.on_server_removed(server_name, purged=not keep_world)
+    # Its Phantom LAN proxy goes too (Phantom units made by hand stay)
+    from core import phantom
+    try:
+        phantom.on_server_removed(server_name)
+    except Exception as e:      # never block removing the server
+        write_log(f"[PHANTOM] Couldn't remove the Phantom of {server_name}: {e}")
 
     if keep_world:
         if os.path.isdir(d):

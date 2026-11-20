@@ -458,6 +458,33 @@ templates are refused.
 
 ![Add-ons tab on a Bedrock server](images/addons-bedrock.png)
 
+### Server tools: Phantom (Bedrock)
+
+Consoles and phones list a Bedrock server under **Friends → LAN Games** only when it runs on
+port 19132. [Phantom](https://github.com/jhead/phantom) answers those LAN pings for a server
+on any other port and forwards players to it. The Add-ons tab of a Bedrock server has a
+**Server tools** card for it (admins):
+
+- **Install** downloads Phantom 0.5.4 from GitHub once, checks it against a SHA-256 built into
+  the panel (Phantom publishes none), and keeps it in `/usr/local/lib/redstonepanel/phantom/`.
+  It then creates `phantom-<server>.service`, which runs as the `minecraft` user, forwards to
+  the server on this machine and starts at boot, and opens UDP 19132 and the Phantom's own
+  port (19300 and up, one per server) in ufw.
+- The card shows whether it's running, where it forwards, the UDP ports it listens on and its
+  recent log, with **Stop** / **Start**, **Restart** and **Uninstall**. Uninstall stops and
+  deletes the service and closes the ports no other Phantom needs.
+- If you change the server's port, the card says the Phantom points at the old one; **Repair**
+  points it at the new port.
+- Several servers can each have a Phantom: they share UDP 19132. A Bedrock server on 19132
+  can't share it, so Install is refused while one is on this machine (move it to another port
+  in Configuration). A server on 19132 needs no Phantom anyway.
+- Phantom services you made yourself that point at the server or use its port are listed too,
+  with what's wrong with them, Start / Stop and **Remove unit**, which deletes only the unit
+  file, never the program. If yours is called `phantom-<server>.service`, remove it before
+  installing the panel's.
+
+Removing a server removes its Phantom as well.
+
 ### Finding mods and plugins
 
 On Fabric and Paper servers, **Find mods** (or **Find plugins**) searches

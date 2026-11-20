@@ -1,3 +1,19 @@
+redstonepanel (1.13.2) noble; urgency=medium
+
+  * Phantom LAN proxies for Bedrock servers, managed like add-ons (admins):
+    Add-ons -> Server tools -> Phantom installs, starts, stops, restarts and
+    uninstalls a Phantom (jhead/phantom 0.5.4, checked against a pinned
+    SHA-256) that makes a server on a port other than 19132 show up under
+    Friends -> LAN Games. It runs as phantom-<server>.service under the
+    minecraft user, with a proxy port from 19300 up, and opens UDP 19132
+    and that port in ufw. Install refuses while a Bedrock server holds
+    19132, and explains why.
+  * The tab also lists Phantom units made outside the panel that point at
+    the server or hold its port, with their problems, Start / Stop and
+    Remove unit (the unit file only). Removing a server removes its Phantom.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Thu, 19 Nov 2026 23:59:00 +0000
+
 redstonepanel (1.13.1) noble; urgency=medium
 
   * Java is installed when a server needs it, not with the package: Java

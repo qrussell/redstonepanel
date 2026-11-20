@@ -1,4 +1,4 @@
-.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.13.1" "System Administration"
+.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.13.2" "System Administration"
 .SH NAME
 redstonepanel \- manage the RedstonePanel Minecraft server panel
 .SH SYNOPSIS
@@ -194,6 +194,13 @@ the channel).
 .TP
 .I /var/lib/redstonepanel/restarts.json
 Scheduled restart times and warnings.
+.TP
+.I /usr/local/lib/redstonepanel/phantom/
+The Phantom LAN proxy program (jhead/phantom, SHA\-256 checked) that Bedrock servers' Add\-ons
+tab installs. Each server's proxy runs as
+.BI phantom\- NAME .service
+under the minecraft user. Removing or purging the package leaves them; Uninstall in the tab
+or removing the server deletes a proxy.
 .SH SEE ALSO
 .BR systemctl (1),
 .BR journalctl (1)
