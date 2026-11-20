@@ -50,6 +50,9 @@ class Member(unittest.TestCase):
             with open(M._unit_path(name), "w") as f:
                 f.write(f"WorkingDirectory={d}\nExecStart={java} -Xms{xms} -Xmx{xmx} -jar server.jar\n")
         patches = [
+            # Another test module may have imported core.backups first, with the real
+            # /var/backups, which only root can create (the GitHub runner isn't root)
+            mock.patch.object(backups, "BACKUP_ROOT", os.path.join(self.root, "backups")),
             mock.patch.object(T, "TRANSFER_DIR", self.transfers),
             mock.patch.object(M, "SERVERS_ROOT", self.opt["A"]),
             mock.patch.object(M, "_unit_path", lambda n: os.path.join(self.root, self.member, "units", f"{n}.service")),
