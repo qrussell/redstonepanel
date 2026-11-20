@@ -1,0 +1,51 @@
+# Publishes docs/wiki/*.md and the user manual (docs/guide/README.md, as User-Manual) to the
+# project's GitHub wiki whenever they change on main, after every release build, and by hand.
+# It always publishes main's pages.
+# The wiki must be enabled (Settings → Features → Wikis) and have one page saved once by hand
+# before its git repository exists; until then this job says so and does nothing.
+name: wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/wiki/**', 'docs/guide/**', 'packaging/sync-wiki.py', '.github/workflows/wiki.yml']
+  workflow_run:                  # after each release build, so the wiki matches the release
+    workflows: [release]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Check out the wiki
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki; then
+            echo "::warning::No wiki repository yet: enable the wiki and save its first page by hand, then run this again."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+      - name: Copy the pages
+        if: env.SKIP != '1'
+        run: python3 packaging/sync-wiki.py wiki
+      - name: Commit and push
+        if: env.SKIP != '1'
+        run: |
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Wiki already up to date."; exit 0; fi
+          git commit -m "Update from ${GITHUB_SHA::7}"
+          git push

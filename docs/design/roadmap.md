@@ -1,6 +1,9 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.14.0, with clusters (1.15), moving servers (1.16) and performance (1.17) planned · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.15.0 (20 Nov 2026): clusters phase 2 shipped; moving servers (1.16) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
+
+The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
+step when either changes.
 
 This is the working plan for what to build next and in what order. It replaces an earlier
 generic draft. Each item says why it matters, how it fits the panel's design (Ubuntu package,
@@ -559,10 +562,74 @@ refused joins, so those are Java only.
 - **Security review** of sign-in, import (archive unpacking) and anything that builds paths.
 - **Mobile pass** on the dashboard, server list and console (there are very few responsive
   classes today).
-- **README screenshots and a short GIF.**
-- **`install.sh`.** About 20 lines: add the qrussell-repo key and source, `apt install
-  redstonepanel`. Hosted on GitHub Pages. It uses the repository that already exists, so it
-  doesn't need a panel release.
+- ~~**README screenshots**~~ *(done with 1.15.0: a screenshot tour in the README, retaken by
+  `packaging/screenshots/demo.sh`)*. A short GIF is still to do.
+- ~~**`install.sh`**~~ *(done with 1.15.0: `install.sh` in the repository root, served from
+  raw.githubusercontent.com; it checks the key's fingerprint)*.
+- ~~**A wiki**~~ *(done with 1.15.0: `docs/wiki/`, published to the GitHub wiki by
+  `.github/workflows/wiki.yml`)*. Each release adds its highlights to `Whats-New.md`.
+
+## Proposed additions (suggested after 1.15, not scheduled)
+
+A review of what people choosing a panel look for, against what RedstonePanel has. Each
+fits the guiding rules. Suggested slots are only suggestions; nothing here moves the plan above
+until it's agreed.
+
+**Protect worlds (first, per the guiding rules)**
+
+- **Off-machine backups.** Copy each finished backup to another cluster node (over the
+  existing cluster HTTPS and token, so no new credentials), to an rsync/SFTP target, or to
+  S3-compatible storage. Same retention, a `Needs attention` item when a copy fails.
+  *Suggested: 1.16.x or 1.18, before 2.0.* Takes "copying backups off the machine" out of Later.
+- **Automatic Bedrock updates** (opt-in per server). Bedrock clients update themselves and
+  can't join an older server, so owners update by hand within hours of every release. A daily
+  timer checks the download-links API; when there's a new version it warns players, backs up,
+  updates and restarts. *Small: a few days.*
+
+**Security**
+
+- **Two-factor sign-in (TOTP)** for panel accounts, required for admins when the panel isn't
+  on HTTP-only LAN mode. Python's standard library does HOTP/TOTP with `hmac`; no new
+  dependency. Recovery: `sudo redstonepanel reset-2fa NAME`. *Small.*
+
+**Getting started**
+
+- **First-run setup guide.** When there are no servers, the dashboard offers: create a
+  server, turn on backups, choose HTTPS, add a webhook. Each step is the existing dialog.
+  *Small; pairs with the mobile pass.*
+
+**Day-to-day management**
+
+- **Player actions:** kick, ban and unban with a ban list per server (Java `banned-players.json`,
+  over RCON while running; Bedrock has no ban list, so kick only), next to Whitelist & Access.
+  On a cluster master, apply a whitelist change to several servers at once.
+- **Scheduled commands and announcements:** a list of commands per server on a schedule
+  (`redstonepanel-command@.timer`), for messages, `save-all` or event toggles.
+- **Version update alerts:** the dashboard and a notification say when a newer Minecraft
+  release or Paper/Fabric build exists for a server, with the existing **Update** one click away.
+- **World tools:** upload a world zip into a stopped server (with a backup first), start a new
+  world with a seed, and pre-generate with Chunky from a button (it's already in the catalog).
+
+**More servers and machines**
+
+- **Modrinth modpacks (`.mrpack`)** and **Forge/NeoForge**, already in Later; move them up when
+  asked, as they're the most common reason a Java owner can't use the panel.
+- **Per-server resource limits** with systemd `MemoryMax=`/`CPUQuota=`, beside 1.17's Memory
+  setting, so one server can't starve the rest.
+- **Debian 12/13 and ARM64** for Java servers (package is `all` already; needs the install
+  tests on those and Bedrock hidden on ARM).
+
+**For players**
+
+- **A read-only status page** (opt-in, no sign-in): each chosen server's name, address, state,
+  version and players online. Nothing else from the panel is exposed.
+- **Discord two-way chat bridge** on top of the 1.8 webhooks, using a bot token stored like the
+  webhook URL.
+
+**Docs and reach**
+
+- A short GIF for the README, the mobile pass, and a GitHub Pages site built from `docs/wiki/`
+  if the wiki proves hard to find.
 
 ## Later (only when asked for)
 

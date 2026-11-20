@@ -88,6 +88,12 @@ reply with what you'd use, what's missing, or what gets in your way.
 Version numbers are targets, not promises. The guiding rule stays the same: **protect
 people's worlds first**, and use systemd rather than reinventing it.
 
+### Just shipped: 1.15 manages every node from the master
+- **Every tab for every server**, even on other machines, from the master's sidebar.
+- **Create a server on any node** with the new **Where** choice. Templates and Java follow.
+- **Real certificates for a master on the internet**, automatic renewal, nightly cluster
+  backups.
+
 ### 1.16: move a server to another node
 - **Move** a server between cluster members. The world is streamed and checksummed, and
   the server keeps its name, port, backup and restart schedules, mods and Phantom.
@@ -115,7 +121,21 @@ people's worlds first**, and use systemd rather than reinventing it.
 ### Groundwork along the way
 - More tests and a security review of sign-in, imports and path handling.
 - A **mobile pass** on the dashboard, server list and console.
-- A one-line `install.sh`, plus screenshots and a short GIF in the README.
+- ✅ Done: a one-line installer (`curl … install.sh | sudo sh`), screenshots in the README and
+  a wiki. Still to do: a short GIF.
+
+### Ideas we're considering (tell us which matter to you)
+- **Off-machine backups:** to another cluster node, rsync/SFTP or S3-compatible storage.
+- **Automatic Bedrock updates**, so players on new clients can always join.
+- **Two-factor sign-in** for admins.
+- **A first-run setup guide** for new installs.
+- **Kick, ban and a ban list** on each server, and whitelist changes across servers.
+- **Scheduled commands and announcements.**
+- **Update alerts** when a new Minecraft release or Paper/Fabric build is out.
+- **World tools:** upload a world, new world with a seed, pre-generate with Chunky.
+- **Per-server CPU and memory limits.**
+- **A read-only status page** for players, and a **Discord chat bridge**.
+- **Debian and Raspberry Pi (ARM64)** for Java servers.
 
 ### Later, when someone asks for it
 - Backup retention by age, and off-machine copies (rsync/S3).

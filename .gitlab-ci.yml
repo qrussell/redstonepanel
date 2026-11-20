@@ -35,7 +35,7 @@ stages:
 python:
   stage: check
   script:
-    - python -m py_compile main.py run.py https_redirect.py core/*.py tests/*.py
+    - python -m py_compile main.py run.py https_redirect.py core/*.py tests/*.py packaging/*.py packaging/screenshots/*.py
     # fastapi lets tests/test_cluster.py check every API route against the node-token allowlist
     - pip install --quiet --disable-pip-version-check fastapi python-multipart
     - python -m unittest discover -s tests -v
@@ -57,8 +57,9 @@ package:
     # Every core module must be installed by the package
     - for f in core/*.py; do grep -q "$f" debian/redstonepanel.install || { echo "$f missing from debian/redstonepanel.install"; exit 1; }; done
     # Shell scripts must parse and keep LF line endings (CRLF breaks them on Linux)
-    - for f in packaging/*.sh packaging/test/*.sh deploy/*.sh packaging/redstonepanel; do bash -n "$f" || exit 1; done
-    - if grep -l $'\r' packaging/*.sh packaging/test/*.sh deploy/*.sh packaging/redstonepanel debian/*; then echo "CRLF line endings found"; exit 1; fi
+    - for f in packaging/*.sh packaging/test/*.sh packaging/screenshots/*.sh deploy/*.sh packaging/redstonepanel; do bash -n "$f" || exit 1; done
+    - sh -n install.sh
+    - if grep -l $'\r' install.sh packaging/*.sh packaging/test/*.sh packaging/screenshots/*.sh deploy/*.sh packaging/redstonepanel debian/*; then echo "CRLF line endings found"; exit 1; fi
     - echo "package files OK"
 
 workflows:

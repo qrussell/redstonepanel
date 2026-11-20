@@ -1,10 +1,38 @@
-# RedstonePanel user guide
+# RedstonePanel user manual
 
-How to set up RedstonePanel and use each of its features. The screenshots come from a demo
-panel called "Survival Box" running version 1.7.0 with one Java and one Bedrock server.
+How to set up RedstonePanel and use each of its features, step by step. It's written for
+version **1.15.0**. The screenshots come from a demo cluster: a panel called "Survival Box"
+(the master) running a Paper server with plugins and a Bedrock server, and a node called
+"Creative Lab" running a Fabric server with mods. A few close-ups are from earlier versions
+where nothing in them has changed.
 
-For installation details, file locations and the security model, see the main
-[README](../../README.md). For every command-line option, run `man redstonepanel`.
+New to RedstonePanel? Start with [Install](#1-install), then
+[Create or import a server](#4-create-or-import-a-server) and [Backups](#9-backups). For file
+locations and the security model, see the main [README](../../README.md); for every
+command-line option, run `man redstonepanel`. This manual is also published as the
+[User Manual](https://github.com/qrussell/redstonepanel/wiki/User-Manual) page of the wiki.
+
+**How do I…**
+
+| …? | Where |
+| --- | --- |
+| Install or update the panel | [Install](#1-install) |
+| Create a Java or Bedrock server | [Create or import a server](#4-create-or-import-a-server) |
+| Bring in a server I already have | [Import](#4-create-or-import-a-server) |
+| Talk to players or run a command | [Live Chat](#6-live-chat) |
+| Change difficulty, game mode, ports… | [Configuration](#7-configuration-player-roles-and-the-whitelist) |
+| Make someone an operator, or whitelist them | [Player roles and the whitelist](#7-configuration-player-roles-and-the-whitelist) |
+| Back up a world, or put one back | [Backups](#9-backups) |
+| Restart a server every night | [Scheduled restarts](#scheduled-restarts) |
+| Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
+| Add mods, plugins or Bedrock add-ons | [Mods, plugins and add-ons](#12-mods-plugins-and-add-ons) |
+| Let Bedrock players join a Java server | [Finding mods and plugins](#finding-mods-and-plugins) (the **Bedrock players** bundle) |
+| Edit a plugin's config file | [Files](#11-files) |
+| Get a Discord message when a server crashes | [Notifications](#notifications) |
+| Give a friend access without full control | [Users](#16-users) |
+| Turn on HTTPS | [Panel Settings](#17-panel-settings-name-https-sign-in) |
+| Manage servers on several machines | [Clusters](#18-clusters) |
+| Fix "players can't connect" or a lock-out | [Troubleshooting](#20-troubleshooting) |
 
 **Contents**
 
@@ -35,8 +63,14 @@ For installation details, file locations and the security model, see the main
 
 ## 1. Install
 
-RedstonePanel runs on **Ubuntu 24.04 or 25.04**. Install it from the signed qrussell-repo apt
-repository, so that `apt upgrade` brings each new version:
+RedstonePanel runs on **Ubuntu 24.04 or 25.04**. The quickest way is the installer, which adds
+the signed qrussell-repo apt repository (checking its key) and installs the panel:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install.sh | sudo sh
+```
+
+Or do the same by hand, so that `apt upgrade` brings each new version:
 
 ```bash
 sudo apt install -y curl ca-certificates
@@ -118,7 +152,7 @@ The sidebar on the left holds everything that isn't about one server:
 
 | Item | What it does |
 | --- | --- |
-| **RedstonePanel v1.7.0 / Survival Box** | The version, and the panel's name, so you can tell several panels apart. |
+| **RedstonePanel v1.15.0 / Survival Box** | The version, and the panel's name, so you can tell several panels apart. |
 | **➕ New Server** | Create a server, import one, or restore a removed one. |
 | **📊 Dashboard** | This machine's resources, services and what needs attention (above). |
 | **🌐 Cluster** | On a cluster master: every panel's servers (see [Clusters](#18-clusters)). |
@@ -126,7 +160,7 @@ The sidebar on the left holds everything that isn't about one server:
 | **📋 Templates** | Saved server settings to reuse. |
 | **⚙️** | Appearance: dark or light mode and the accent colour. Saved in your browser. |
 | **Sort by** | Name A–Z, Z–A, or online servers first. |
-| Server list | Every server, grouped by edition: green dot = running, with its version and port. Click one to open it. |
+| Server list | Every server, grouped by edition: green dot = running, with its version and port. Click one to open it. On a cluster master, each node's servers follow in their own 🌐 group under the node's name. |
 | **♻️ N removed servers: restore** | Shown when servers were uninstalled with **Keep World**. |
 | **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts). |
 
@@ -157,7 +191,9 @@ Click **➕ New Server**.
      (`openjdk-21-jre-headless`, for example).
 3. Optionally pick a **Base Template** (see [Templates](#14-templates)) to start from saved
    settings.
-4. Click **Deploy Fresh Server**.
+4. On a cluster master, choose **Where**: this panel or one of its nodes. The Java line and
+   ports then come from that machine. See [Clusters](#18-clusters).
+5. Click **Deploy Fresh Server**.
 
 The panel then:
 
@@ -453,6 +489,8 @@ Bedrock servers. Vanilla servers can't load mods or plugins, so they don't have 
 
 ![Mods tab on a Fabric server](images/mods.png)
 
+![Plugins tab on a Paper server](images/plugins.png)
+
 **Adding:** drag `.jar` files (Fabric, Paper) or `.mcpack` / `.mcaddon` files (Bedrock) onto
 the tab, or click the box to choose them. Each one is checked before it's installed:
 
@@ -646,14 +684,14 @@ An admin account controls a service that runs as root, so treat it like `sudo` a
 
 **🛡️ Settings** (admins).
 
-![Panel Settings, name and cluster](images/panel-settings.png)
+![Panel Settings: name, notifications and cluster](images/panel-settings.png)
 
 **Panel name**: shown in the sidebar, the browser tab and on the sign-in page. It defaults to
 the machine's host name and helps when you run several panels.
 
 **Connection**:
 
-![Panel Settings, connection and sign-in](images/panel-settings-1.png)
+![Panel Settings on a cluster master: connection and sign-in](images/panel-settings-1.png)
 
 - **HTTP (simple)**: port 8080, fine on a trusted home network.
 - **HTTPS with a self-signed certificate**: the panel makes its own certificate authority.
@@ -661,6 +699,10 @@ the machine's host name and helps when you run several panels.
   the browser warning.
 - **HTTPS with my own certificate**: point it at a certificate and key you already have, for
   example from certbot.
+
+In a cluster, the choices are different (as in the screenshot): a node always uses the
+cluster's HTTPS, and a master chooses between **HTTPS from the cluster** and **HTTPS with my
+own certificate**. See [Clusters](#18-clusters).
 
 ### Notifications
 
@@ -719,6 +761,14 @@ per panel.
 
 ![The Cluster page](images/cluster.png)
 
+**A node's server, opened on the master.** The header says which machine it's on
+(🌐 Creative Lab), and every tab works as it does on the master: changes go through the master
+to the node.
+
+![A node's Fabric server opened from the master](images/node-server.png)
+
+**Setting up a cluster**
+
 1. On the master: **Settings → Cluster → Make this panel a master**, give the cluster a name,
    and click **Create cluster**. The panel restarts on HTTPS (port 8443).
 2. On the master: make a **join code**. Codes work once and expire after an hour.
@@ -740,6 +790,22 @@ users, settings or HTTPS, or erase a server's files.
 expire. A master on the internet can serve its own certificate (certbot) to browsers: **Settings →
 Connection → HTTPS with my own certificate**. A node with its own public certificate can join too;
 under **Settings → Cluster** it shows as checked with "the system's trust store".
+
+**Settings → Cluster on the master** lists every node with its address, version and certificate,
+how the master checks it (the cluster CA or the system's trust store), **Renew** and **Remove**,
+plus join codes, the cluster backup and **Nightly backups**.
+
+![Cluster settings on the master: the node list](images/panel-settings.png)
+
+**Nightly backups** write an encrypted cluster backup after 3:00 every night to
+`/var/lib/redstonepanel/cluster/backups/` and keep the last 7. Turning them on asks for a
+passphrase, which is stored on the master (readable only by root) so the backup can run
+unattended; turning them off forgets it. Download one now and then and keep it off the master:
+it's what lets `sudo redstonepanel cluster promote FILE` make another panel the master.
+Below them, **Connection** lets a master choose between the cluster's HTTPS and its own
+certificate.
+
+![Nightly backups and the master's HTTPS choices](images/panel-settings-1.png)
 
 Each node keeps its own dashboard, and its game servers keep running if the master is down.
 Download an encrypted **cluster backup** after adding or removing nodes, or turn on **Nightly

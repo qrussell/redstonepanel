@@ -1,8 +1,70 @@
 # RedstonePanel
 
-A web panel for running Minecraft servers on your own Ubuntu machine. It installs Java
-Edition and Bedrock Dedicated Server instances as systemd services and lets you manage
-them from a browser:
+**A free, self-hosted web panel for Minecraft Java and Bedrock servers on your own Ubuntu
+machine.** Create servers in a couple of clicks, add mods and plugins from a catalog, keep
+your worlds backed up, and manage several machines from one place. No Docker, no database:
+every game server is a plain systemd service, and the panel installs and updates with `apt`.
+
+[![Latest release](https://img.shields.io/github/v/release/qrussell/redstonepanel?label=latest)](https://github.com/qrussell/redstonepanel/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Ubuntu 24.04 and 25.04](https://img.shields.io/badge/Ubuntu-24.04%20%7C%2025.04-E95420?logo=ubuntu&logoColor=white)
+
+![The RedstonePanel dashboard on a cluster master](docs/guide/images/hero.png)
+
+**[⬇️ Install](#install)** · **[📖 User manual](docs/guide/README.md)** ·
+**[✨ What's new](docs/wiki/Whats-New.md)** · **[❓ Is it right for me?](docs/wiki/FAQ.md)** ·
+**[🛣️ Roadmap](docs/wiki/Roadmap.md)** · **[📚 Wiki](docs/wiki/Home.md)**
+
+## Install in one line
+
+On Ubuntu 24.04 or 25.04:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install.sh | sudo sh
+```
+
+Then open **http://&lt;your-server&gt;:8080/** and sign in with your Linux account (any member
+of the `sudo` group). The script adds the signed qrussell-repo apt repository and runs
+`apt install redstonepanel`, so `apt upgrade` keeps the panel current. Prefer to do it by hand,
+or to use a `.deb`? See [Install](#install) below or the
+[installation page](docs/wiki/Installation.md).
+
+## Why RedstonePanel
+
+| You want… | RedstonePanel gives you… |
+| --- | --- |
+| **Java and Bedrock** | Both, side by side. Java as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft version you pick, each with the Java it needs installed for you. |
+| **Mods and plugins without the hassle** | A catalog from **Modrinth** and **Hangar** with one-click bundles (performance, essentials, Geyser for Bedrock players), dependencies installed for you, update checks and one-click undo. Or drop `.jar`, `.mcpack` and `.mcaddon` files on the server. |
+| **Worlds that are safe** | Scheduled and on-demand backups that copy running servers consistently, one-click restore (with an undo), a backup before mod updates, and uninstalled servers you can bring back. |
+| **To know what's going on** | A dashboard of the machine and every server, a **Needs attention** list, Discord or webhook alerts for crashes and backups, and a log of who joined and who was turned away. |
+| **Everything from the browser** | Live chat and console, a `server.properties` editor, player roles and whitelists, a file manager with an editor, scheduled restarts that warn players, world downloads. |
+| **More than one machine** | **Clusters** *(new in 1.15)*: one master panel manages every node's servers with all their tabs, creates servers on any node, and renews the cluster's certificates for you. |
+| **Something that stays out of the way** | Plain systemd services that keep running, and keep backing up, even while the panel is stopped. Servers live in `/opt` and backups in `/var/backups`: no containers to dig through. |
+| **Security you can reason about** | Linux (PAM) or panel accounts with admin and user roles, HTTPS (self-signed, certbot or the cluster's own CA), optional trusted-LAN access, a signed apt repository. |
+| **No cost, no lock-in** | MIT licensed, no paid tier, no account to create, no telemetry. |
+
+## A quick tour
+
+| | |
+| --- | --- |
+| [![Dashboard](docs/guide/images/dashboard.png)](docs/guide/README.md#3-the-dashboard) **Dashboard:** the machine, every server and what needs attention | [![Server overview](docs/guide/images/overview.png)](docs/guide/README.md#5-overview) **Each server:** start, stop, restart, and a tab for everything |
+| [![Mods](docs/guide/images/mods.png)](docs/guide/README.md#12-mods-plugins-and-add-ons) **Mods and plugins:** what's installed, a catalog, updates | [![Backups](docs/guide/images/backups.png)](docs/guide/README.md#9-backups) **Backups:** schedules, restore, download |
+| [![Files](docs/guide/images/files.png)](docs/guide/README.md#11-files) **Files:** browse, upload, edit configs | [![Live chat](docs/guide/images/live-chat.png)](docs/guide/README.md#6-live-chat) **Live chat** and server commands |
+| [![New Server](docs/guide/images/new-server.png)](docs/guide/README.md#4-create-or-import-a-server) **New Server:** edition, type, version and, on a cluster, where | [![Cluster](docs/guide/images/cluster.png)](docs/guide/README.md#18-clusters) **Cluster:** every panel and its servers on one page |
+
+The [user manual](docs/guide/README.md) walks through every feature with screenshots.
+
+## What's new in 1.15
+
+**Manage every node from the master.** On a cluster master, each node's servers are listed in
+the sidebar under the node's name and open with every tab: configuration, backups, files, mods,
+Java and Phantom. **New Server** has a **Where** choice to create a server on any node, and its
+template and Java follow automatically. A master on the internet can use a real certbot
+certificate, the master renews every node's certificate before it expires, and nightly
+encrypted cluster backups keep a way back if the master is lost. Read the
+[release notes](release-notes/v1.15.0.md), or [every release's highlights](docs/wiki/Whats-New.md).
+
+## All features
 
 - create, start, stop and update servers
 - Java servers as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft
@@ -39,13 +101,37 @@ them from a browser:
   Phantom proxies), a list of what needs attention, and on a cluster master each node's
   resources
 
-**New here?** The [user guide](docs/guide/README.md) walks through setting it up and every
-feature, with screenshots.
+- clusters: one master panel manages the servers of other RedstonePanels with every tab,
+  creates servers on them, renews their certificates and backs the cluster up every night
 
 The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as an
 `Architecture: all` Debian package for **Ubuntu 24.04 and 25.04**.
 
+## Documentation
+
+| | |
+| --- | --- |
+| [User manual](docs/guide/README.md) | How to use every feature, step by step, with screenshots. |
+| [Installation](docs/wiki/Installation.md) | Requirements, the one-line installer, apt by hand, the `.deb`, upgrading and removing. |
+| [What's new](docs/wiki/Whats-New.md) | Every release's highlights, newest first. Full notes are in [release-notes/](release-notes). |
+| [FAQ](docs/wiki/FAQ.md) | Is RedstonePanel right for you, and common questions. |
+| [Roadmap](docs/wiki/Roadmap.md) | What's planned next, and ideas under consideration. |
+| `man redstonepanel` | Every command-line option. |
+
+The same pages are published to the project's [wiki](https://github.com/qrussell/redstonepanel/wiki)
+whenever they change on `main`.
+
 ## Install
+
+### One command
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install.sh | sudo sh
+```
+
+[`install.sh`](install.sh) checks that this is Ubuntu 24.04 or 25.04, adds the repository's key
+(refusing it unless its fingerprint matches the one below) and source, and installs the panel.
+It does what the next section does by hand.
 
 ### From the qrussell-repo apt repository (recommended)
 
@@ -394,7 +480,10 @@ Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which
 
 1. On a branch, add a `debian/changelog` entry (`dch -v 1.0.1`), update the version in
    `packaging/redstonepanel.8`, and write the release description in
-   `release-notes/v1.0.1.md`. Merge it through a merge request.
+   `release-notes/v1.0.1.md`. Add the release's highlights to the top of
+   `docs/wiki/Whats-New.md`, update `docs/wiki/Roadmap.md` and the user manual for what
+   changed, and retake the screenshots if the UI changed
+   (`bash packaging/screenshots/demo.sh`). Merge it through a merge request.
 2. Tag `main` as `v1.0.1` and push the tag to GitLab.
 
 The tag reaching GitHub runs `.github/workflows/release.yml`. It builds the .deb, runs
@@ -402,6 +491,10 @@ the install tests on Ubuntu 24.04 and 25.04 (with and without recommends), and p
 a GitHub Release with the .deb, using `release-notes/<tag>.md` as its description (or
 GitHub's generated notes if the file is missing). The tag must match the version in
 `debian/changelog`. The qrussell-repo apt repository picks up the release within 4 hours.
+
+`.github/workflows/wiki.yml` publishes `docs/wiki/` and the user manual to the GitHub wiki
+whenever they change on `main`, and on every release (`packaging/sync-wiki.sh` does the
+copying, and can be run by hand on a checkout of the wiki).
 
 On GitLab the same tag runs `.gitlab-ci.yml`. Its checks run first. Then `build-deb`
 builds the .deb in `ubuntu:24.04` (it runs on every merge request and on `main` too, with
