@@ -307,8 +307,11 @@ Changing a role takes effect at the next restart.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/player-roles.png"><img src="images/player-roles.png" alt="Player roles"></picture>
 
-**Whitelist & Access** shows who may join and who has tried:
+**Whitelist & Access** shows who is on, who may join and who has tried:
 
+- **Online now**: the players on the server, each with **Kick** and, on Java, **Ban**. Java
+  servers with RCON answer straight away; otherwise the list comes from the server's log and
+  can be up to 30 seconds behind.
 - **Whitelist** (Java `whitelist.json`, Bedrock `allowlist.json`): whether it's on
   (`white-list` or `allow-list` in `server.properties`; turn it on in the Visual Editor), each
   player on it with their last join, **Allow** to add a player and **Remove**. While the server
@@ -316,10 +319,22 @@ Changing a role takes effect at the next restart.
   otherwise the panel edits the file and the server reads it when it starts. A Java player
   needs a UUID, which the panel takes from its access log, `usercache.json`, the offline-mode
   formula or Mojang, in that order.
+- **Banned** (Java, `banned-players.json`): each banned player with the reason, when, and who
+  banned them, and **Unban**. Type a name and an optional reason to ban someone who isn't
+  online. Bedrock has no ban list: keep someone out with the allowlist, or remove them now
+  with **Kick**.
 - **Turned away in the last 7 days**: players the server refused who still aren't allowed,
-  how often, and why. **Allow** puts one on the whitelist.
+  how often, and why. **Allow** puts one on the whitelist, and **Unban** lifts a ban.
 - **Access log**: who joined, left or was turned away (not on the whitelist, banned, wrong game
   version, server full). Filter by player name or ID, event and period (24 hours to 90 days).
+  Each row has **Kick** while that player is online and, on Java, **Ban**.
+
+**Kick** removes a player, with an optional reason they see; they can join again straight away.
+**Ban** also removes them if they're online, and keeps them out until you **Unban** them. A kick
+needs the server running. On a running Java server, kicking, banning and unbanning go through
+RCON: open **Live Chat** once to set it up. A stopped Java server's ban list is edited directly,
+and the server reads it when it starts. Bans are by name and UUID, never by address. Users and admins may kick and ban,
+as with the console, and each one goes in the activity log with who did it.
 
 The access log comes from the server's own console and log files, which the panel reads every
 30 seconds, so it covers players who joined before the panel was installed too, as far back as

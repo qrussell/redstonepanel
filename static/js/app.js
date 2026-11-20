@@ -749,6 +749,7 @@ const ServerApp = {
 		}
 		if (!this.activeServer || this.activeServer.name !== server) return;
 		this.accessData = d;
+		await this.loadModeration();
 		const word = d.edition === 'java' ? 'whitelist' : 'allowlist';
 		document.getElementById('wl-state').innerHTML = d.enabled
 			? `<span class="text-green-600 dark:text-green-400 font-bold">On</span> <span class="text-gray-500 dark:text-gray-400">(${esc(d.setting)}=true)</span>`
@@ -773,7 +774,8 @@ const ServerApp = {
 			<div class="flex items-center justify-between gap-3 p-3">
 				<div><span class="font-bold text-gray-900 dark:text-white">${esc(a.name)}</span>
 					<span class="text-xs text-gray-500 dark:text-gray-400">${a.count}× · ${esc(reasons[a.reason] || a.reason || 'refused')}</span></div>
-				${a.reason === 'not_whitelisted' ? `<button onclick="ServerApp.accessAdd(${this.jsArg(a.name)})" class="text-sm text-theme hover:underline">Allow</button>` : ''}
+				${a.reason === 'not_whitelisted' ? `<button onclick="ServerApp.accessAdd(${this.jsArg(a.name)})" class="text-sm text-theme hover:underline">Allow</button>`
+				  : a.reason === 'banned' && this.modBanned(a.name) ? `<button onclick="ServerApp.modUnban(${this.jsArg(a.name)})" class="text-sm text-theme hover:underline">Unban</button>` : ''}
 			</div>`).join('');
 		this.loadAccessLog();
 	},
@@ -825,7 +827,7 @@ const ServerApp = {
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			d = await res.json();
 		} catch (e) {
-			rows.innerHTML = `<tr><td colspan="3" class="p-2 text-red-500">Could not load the access log (${esc(e.message)}).</td></tr>`;
+			rows.innerHTML = `<tr><td colspan="4" class="p-2 text-red-500">Could not load the access log (${esc(e.message)}).</td></tr>`;
 			return;
 		}
 		if (!this.activeServer || this.activeServer.name !== server) return;
@@ -839,10 +841,113 @@ const ServerApp = {
 				<td class="p-2 whitespace-nowrap text-gray-600 dark:text-gray-300">${esc(new Date(e.ts * 1000).toLocaleString())}</td>
 				<td class="p-2 font-bold text-gray-900 dark:text-white">${esc(e.name)}</td>
 				<td class="p-2">${label(e)}</td>
-			</tr>`).join('') : `<tr><td colspan="3" class="p-2 text-gray-500 dark:text-gray-400">Nothing in this period.</td></tr>`;
+				<td class="p-2 text-right whitespace-nowrap">${this.modActions(e.name, 'text-xs')}</td>
+			</tr>`).join('') : `<tr><td colspan="4" class="p-2 text-gray-500 dark:text-gray-400">Nothing in this period.</td></tr>`;
 		document.getElementById('al-count').innerText = d.events.length >= 500
 			? 'Showing the newest 500; narrow the filter to see more.'
 			: `${d.events.length} event${d.events.length === 1 ? '' : 's'}. Kept for ${d.retention_days} days.`;
+	},
+
+    // Kick, ban and unban (1.16.2). Bans are Java only: Bedrock has no ban list.
+    async loadModeration() {
+		const server = this.activeServer.name, esc = t => this.escapeHtml(t === null || t === undefined ? '' : t);
+		this.modData = null;
+		let m;
+		try {
+			const res = await api(`/api/servers/${encodeURIComponent(server)}/moderation`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			m = await res.json();
+		} catch (e) {
+			document.getElementById('mod-online').innerHTML = `<p class="p-3 text-red-500">Could not load who's online (${esc(e.message)}).</p>`;
+			return;
+		}
+		if (!this.activeServer || this.activeServer.name !== server) return;
+		this.modData = m;
+		document.getElementById('mod-online-note').innerText = !m.running ? 'The server is stopped.'
+			: m.online_source === 'rcon' ? 'Live, from the server.'
+			: 'From the server log; it can be up to 30 seconds behind.';
+		document.getElementById('mod-online').innerHTML = m.online.length ? m.online.map(n => `
+			<div class="flex items-center justify-between gap-3 p-3">
+				<span class="font-bold text-gray-900 dark:text-white min-w-0 truncate"><span class="text-green-500">●</span> ${esc(n)}</span>
+				<span class="flex gap-3 whitespace-nowrap">${this.modActions(n, 'text-sm')}</span>
+			</div>`).join('') : `<p class="p-3 text-gray-500 dark:text-gray-400">${m.running ? 'Nobody is online.' : 'Nobody is online while the server is stopped.'}</p>`;
+
+		document.getElementById('mod-ban-form').classList.toggle('hidden', !m.bans);
+		document.getElementById('mod-banned').classList.toggle('hidden', !m.bans);
+		document.getElementById('mod-ban-help').innerText = !m.bans
+			? "Bedrock servers have no ban list. To keep someone out, turn on the allowlist and leave them off it; to remove someone now, use Kick."
+			: `Players in banned-players.json can't join. ` + (m.live ? 'The server is running, so changes apply at once.'
+				: m.running ? "RCON isn't set up, so bans can't change while the server runs. Open Live Chat once to set it up."
+				: 'Changes apply when the server starts.');
+		document.getElementById('mod-banned').innerHTML = m.banned.length ? m.banned.map(b => `
+			<div class="flex items-center justify-between gap-3 p-3">
+				<div class="min-w-0">
+					<div class="font-bold text-gray-900 dark:text-white">${esc(b.name)}</div>
+					<div class="text-xs text-gray-500 dark:text-gray-400">${esc(b.reason || 'No reason given')}${b.created ? ` · ${esc(b.created)}` : ''}${b.source ? ` · ${b.source === 'Rcon' ? 'from the panel or another RCON tool' : b.source === 'Server' ? 'from the server console' : `by ${esc(b.source)}`}` : ''}${b.expires && b.expires !== 'forever' ? ` · until ${esc(b.expires)}` : ''}</div>
+				</div>
+				<button onclick="ServerApp.modUnban(${this.jsArg(b.name)})" class="text-sm text-theme hover:underline">Unban</button>
+			</div>`).join('') : `<p class="p-3 text-gray-500 dark:text-gray-400">Nobody is banned.</p>`;
+	},
+
+    modBanned(name) {
+		const m = this.modData;
+		return !!(m && m.banned.some(b => b.name.toLowerCase() === String(name).toLowerCase()));
+	},
+
+    // Kick (if online) and Ban (Java, if not banned) buttons for one player
+    modActions(name, size) {
+		const m = this.modData;
+		if (!m) return '';
+		const online = m.online.some(n => n.toLowerCase() === String(name).toLowerCase());
+		const out = [];
+		if (online) out.push(`<button onclick="ServerApp.modKick(${this.jsArg(name)})" class="${size} text-yellow-700 dark:text-yellow-400 hover:underline">Kick</button>`);
+		if (m.bans && !this.modBanned(name)) out.push(`<button onclick="ServerApp.modBan(${this.jsArg(name)})" class="${size} text-red-600 dark:text-red-400 hover:underline">Ban</button>`);
+		return out.join(' ');
+	},
+
+    async modKick(name) {
+		const reason = prompt(`Kick ${name}? They can join again straight away.\n\nReason shown to them (optional):`, '');
+		if (reason === null) return;
+		await this.modAction('kick', name, reason);
+	},
+
+    async modBan(name) {
+		const reason = prompt(`Ban ${name}? They're removed if online and can't join until you unban them.\n\nReason (optional):`, '');
+		if (reason === null) return;
+		await this.modAction('ban', name, reason);
+	},
+
+    async modBanFromForm() {
+		const name = document.getElementById('mod-ban-name').value.trim();
+		if (!name) return;
+		if (!confirm(`Ban ${name}?`)) return;
+		const ok = await this.modAction('ban', name, document.getElementById('mod-ban-reason').value);
+		if (ok) {
+			document.getElementById('mod-ban-name').value = '';
+			document.getElementById('mod-ban-reason').value = '';
+		}
+	},
+
+    async modUnban(name) {
+		if (!confirm(`Unban ${name}? They'll be able to join again.`)) return;
+		await this.modAction('unban', name, '');
+	},
+
+    async modAction(action, player, reason) {
+		let msg, ok = false;
+		try {
+			const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/players/${action}`, {
+				method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player, reason: reason || '' })
+			});
+			const j = await res.json().catch(() => ({}));
+			ok = res.ok;
+			msg = res.ok ? j.message : `Not done: ${j.detail || `HTTP ${res.status}`}`;
+		} catch (e) {
+			msg = `Not done: ${e.message}`;
+		}
+		await this.loadAccess();
+		alert(msg);
+		return ok;
 	},
 
     async setPlayerRole(select) {
