@@ -1527,7 +1527,9 @@ const ServerApp = {
         const others = (p.others || []).map(u => `<div class="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700">${unitRow(u, 'Remove unit')}</div>`).join('');
         return `<div class="p-3">
             <p class="font-bold text-gray-900 dark:text-white">Phantom <span class="text-xs font-normal text-gray-500">LAN proxy · jhead/phantom ${esc(p.version)}</span></p>
-            <p class="${note} mb-3">Makes this server (port ${esc(p.port)}) appear under Friends → LAN Games on consoles and phones on your network. Only a server on port 19132 shows up there on its own.</p>
+            <p class="${note} mb-3">${p.transport === 'nethernet'
+                ? 'Phantom makes a RakNet server on a port other than 19132 appear under Friends → LAN Games. This server uses NetherNet, which does that by itself.'
+                : `Makes this server (port ${esc(p.port)}) appear under Friends → LAN Games on consoles and phones on your network. Only a RakNet server on port 19132 shows up there on its own.`}</p>
             ${body}${others}
         </div>`;
     },

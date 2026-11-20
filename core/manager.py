@@ -49,15 +49,84 @@ def open_firewall(port, proto):
     """Opens the game port in ufw when ufw is installed (it's optional)."""
     if shutil.which("ufw"):
         run_and_log(["ufw", "allow", f"{port}/{proto}"])
+        _firewall_changed()
 
-def close_firewall(port, proto):
-    """Removes the rule open_firewall added, unless another server still uses that port."""
-    if not shutil.which("ufw") or not str(port).isdigit():
+
+def _firewall_changed():
+    """The dashboard re-reads ufw and the servers on its next load instead of showing a cached
+    report from before the change."""
+    try:
+        from core import host
+        for key in ("ufw", "report"):
+            host._cache.pop(key, None)
+    except Exception:
+        pass
+
+# NetherNet Bedrock servers announce themselves to consoles on the LAN on this UDP port (all of
+# them share it); RakNet servers answer LAN pings on their own UDP server-port instead.
+NETHERNET_LAN_PORT = 7551
+
+
+def _udp_port_specs(value):
+    """server-udp-ports -> the ports this machine listens on, as ufw port specs: '19141',
+    '21200:21300'. The address form (IP:public:local) listens on the local part."""
+    out = []
+    for part in bedrock_net.plain_udp_ports(value or "").split(","):
+        local = part.strip().split(":")[-1]
+        lo, _, hi = local.partition("-")
+        if lo.isdigit() and (hi.isdigit() if hi else True) and (not hi or int(lo) <= int(hi)):
+            out.append(f"{lo}:{hi}" if hi else lo)
+    return out
+
+
+def is_nethernet(props):
+    return str(props.get("transport") or "").strip().lower() == "nethernet"
+
+
+def firewall_rules(edition, props):
+    """The ufw rules (port spec, proto) a server needs, from its server.properties.
+    Java: TCP server-port. Bedrock over RakNet: UDP server-port. Bedrock over NetherNet: TCP
+    server-port (signaling), UDP server-udp-ports (gameplay) and UDP 7551 (LAN discovery)."""
+    port = str(props.get("server-port", "")).strip()
+    if not port.isdigit():
+        return set()
+    if str(edition).lower() == "java":
+        return {(port, "tcp")}
+    if is_nethernet(props):
+        return {(port, "tcp"), (str(NETHERNET_LAN_PORT), "udp")} | \
+            {(p, "udp") for p in _udp_port_specs(props.get("server-udp-ports"))}
+    return {(port, "udp")}
+
+
+def server_firewall_rules(server_name):
+    return firewall_rules("java" if _is_java(server_name) else "bedrock", read_properties(get_server_dir(server_name)))
+
+
+def open_firewall_rules(rules):
+    for port, proto in sorted(rules):
+        open_firewall(port, proto)
+
+
+def close_firewall_rules(rules):
+    """Removes rules no server on the panel needs any more (another server may share one, as
+    every NetherNet server shares 7551)."""
+    if not rules or not shutil.which("ufw"):
         return
+    needed = set()
     for s in list_servers():
-        if str(s.get("port")) == str(port):
-            return
-    run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
+        needed |= {tuple(r) for r in s.get("firewall_rules") or []}
+    for port, proto in sorted(set(rules) - needed):
+        run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
+    _firewall_changed()
+
+
+def properties_changed(server_name, before):
+    """After server.properties changed: opens the rules the server needs now and closes the
+    ones it no longer needs (a new port, or a switch between RakNet and NetherNet)."""
+    after = server_firewall_rules(server_name)
+    if after != before:
+        open_firewall_rules(after - before)
+        close_firewall_rules(before - after)
 
 def load_templates():
     if not os.path.exists(TEMPLATE_FILE): return []
@@ -405,6 +474,9 @@ def list_servers():
                                      and start and start["started"] and not start["accepting"]),
             # Phantom proxies on this machine that point at this server or hold its port
             "proxies": proxy_list,
+            # ufw rules it needs: [[port spec, proto], ...]
+            "firewall_rules": sorted([list(r) for r in firewall_rules(
+                "java" if "java" in exec_start else "bedrock", props)]),
         })
     return servers
 
@@ -723,7 +795,7 @@ def remove_server(server_name, keep_world):
     d = get_server_dir(server_name)
     exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
                                 capture_output=True, text=True).stdout.strip()
-    port = read_properties(d).get("server-port")
+    rules = firewall_rules("java" if "java" in exec_start else "bedrock", read_properties(d))
     run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
     run_and_log(["sudo", "systemctl", "disable", f"{server_name}.service"])
 
@@ -732,8 +804,8 @@ def remove_server(server_name, keep_world):
     run_and_log(["sudo", "systemctl", "daemon-reload"])
     # If it had failed, systemd would keep listing it as a failed unit with no unit file
     subprocess.run(["systemctl", "reset-failed", f"{server_name}.service"], capture_output=True)
-    # Its game port is closed again (restoring it opens the port it gets then)
-    close_firewall(port, "tcp" if "java" in exec_start else "udp")
+    # Its ports are closed again unless another server uses them (restoring opens them again)
+    close_firewall_rules(rules)
     # Its backup and restart timers go too; the backups themselves stay in /var/backups/redstonepanel
     from core import backups, restarts
     backups.on_server_removed(server_name, purged=not keep_world)
@@ -914,7 +986,7 @@ def restore_server(name):
         info = _read_removed_info(d)
         heap = {k: info[k] for k in ("xms", "xmx") if isinstance(info.get(k), str) and HEAP_RE.match(info[k])}
 
-        open_firewall(port, "tcp" if edition == "java" else "udp")
+        open_firewall_rules(firewall_rules(edition, read_properties(d)))
         ensure_minecraft_user(d)
         run_and_log(["chown", "-R", "minecraft:minecraft", d])
         _write_unit(name, d, edition, **heap, **({"java": java} if java else {}))
@@ -1003,7 +1075,7 @@ def _import_unpacked(staging, root):
                 write_log(f"[WARNING] {e} The server was imported, but won't start until it is.")
                 java = "/usr/bin/java"
 
-        open_firewall(port, proto)
+        open_firewall_rules(firewall_rules(edition, read_properties(mc_dir)))
         ensure_minecraft_user(mc_dir)
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
         _write_unit(svc_name, mc_dir, edition, **({"java": java} if java else {}))
@@ -1035,7 +1107,6 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
         mc_dir = os.path.join(SERVERS_ROOT, svc_name)
 
         # Java isn't part of the package: a missing one raises JavaMissing, and the panel offers to install it
-        open_firewall(port, proto)
         ensure_minecraft_user(mc_dir)
         os.makedirs(mc_dir, exist_ok=True)
 
@@ -1062,6 +1133,8 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
         if template_id:
             # After daemon-reload, so systemd already knows the new unit's working directory
             apply_template_to_server(svc_name, template_id, edition=edition)
+        # The ports it needs, from what server.properties says now (a template may set the transport)
+        open_firewall_rules(firewall_rules(edition, read_properties(mc_dir)))
         run_and_log(["systemctl", "enable", f"{svc_name}.service"])
         run_and_log(["systemctl", "start", f"{svc_name}.service"])
         return svc_name

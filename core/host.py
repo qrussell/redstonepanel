@@ -420,6 +420,15 @@ def ufw_allows(status_text, port, proto):
     return False
 
 
+def ufw_allows_spec(status_text, spec, proto):
+    """Whether every port of a spec ('19141' or '21200:21300') is allowed."""
+    lo, _, hi = str(spec).partition(":")
+    if not lo.isdigit():
+        return False
+    ports = range(int(lo), int(hi or lo) + 1)
+    return all(ufw_allows(status_text, p, proto) for p in (ports if len(ports) <= 50 else (ports[0], ports[-1])))
+
+
 def firewall():
     def compute():
         if not shutil.which("ufw"):
@@ -493,7 +502,10 @@ def _servers(listed, shown, unit_cpu, fw):
         if next_restart:
             next_restart += restarts.get_schedule(name)["warn"] * 60
         port = s.get("port")
-        proto = "tcp" if s["edition"] == "Java" or s.get("transport") == "nethernet" else "udp"
+        missing = None
+        if fw["active"]:
+            missing = [f"{p}/{proto}" for p, proto in s.get("firewall_rules") or []
+                       if not ufw_allows_spec(fw["rules"], p, proto)]
         rows.append({
             "name": name, "edition": s["edition"], "version": s.get("version"), "status": s["status"],
             "state": u.get("ActiveState"), "sub_state": u.get("SubState"), "restarts": _int(u.get("NRestarts")),
@@ -507,8 +519,8 @@ def _servers(listed, shown, unit_cpu, fw):
             "next_backup": _unix(bt.get("NextElapseUSecRealtime")) if bt.get("LoadState") == "loaded" else None,
             "next_restart": next_restart,
             "java_required": s.get("java_required"), "java_installed": s.get("java_installed"),
-            "firewall_open": (ufw_allows(fw["rules"], int(port), proto) if fw["active"] and str(port).isdigit()
-                              else None),
+            "firewall_open": None if missing is None else not missing,
+            "firewall_missing": missing or [],
             "problems": bool(s.get("signaling_closed") or s.get("transport_rejected")
                              or any(p.get("problems") for p in s.get("proxies") or [])),
         })
@@ -547,8 +559,15 @@ def _needs_attention(rep, failed, phantoms):
                                            f"sudo apt install {javaservers.java_package(s['java_required'])}",
                                   server=s["name"], where="java"))
         if s["firewall_open"] is False:
-            out.append(_attention("warn", f"The firewall (ufw) doesn't allow {s['name']}'s port {s['port']}, so players "
-                                          "outside this machine can't connect.", server=s["name"], where="services"))
+            miss = s["firewall_missing"]
+            lan = f"{manager.NETHERNET_LAN_PORT}/udp" in miss
+            why = ("consoles on your network won't find it under LAN Games" if lan and len(miss) == 1
+                   else "players outside this machine can't connect"
+                   + (", and consoles won't find it under LAN Games" if lan else ""))
+            out.append(_attention("warn", f"The firewall (ufw) doesn't allow {', '.join(miss)} for {s['name']}, so "
+                                          f"{why}. Open {'them' if len(miss) > 1 else 'it'} with: "
+                                          + " && ".join(f"sudo ufw allow {m}" for m in miss),
+                                  server=s["name"], where="services"))
         if s["problems"]:
             out.append(_attention("warn", f"Players may not be able to connect to {s['name']}: see its Overview.",
                                   server=s["name"]))

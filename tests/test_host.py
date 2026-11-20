@@ -151,6 +151,10 @@ def _server(name="minecraft-java", **kw):
          "directory": os.path.join(TMP, name), "ram": "2G", "java_required": 21, "java_installed": 21,
          "proxies": [], "transport": None}
     s.update(kw)
+    if "firewall_rules" not in kw:          # as list_servers works them out
+        props = {"server-port": s["port"], "transport": s.get("transport") or "",
+                 "server-udp-ports": s.get("udp_ports") or ""}
+        s["firewall_rules"] = sorted(map(list, H.manager.firewall_rules(s["edition"], props)))
     return s
 
 
@@ -232,9 +236,23 @@ class Report(unittest.TestCase):
         self.assertTrue(any("needs Java 25" in t and "openjdk-25-jre-headless" in t for t in texts))
         self.assertEqual(r["services"]["java_needed"], [{"major": 25, "servers": ["minecraft-java"],
                                                          "package": "openjdk-25-jre-headless"}])
-        self.assertTrue(any("doesn't allow minecraft-bedrock's port 19140" in t for t in texts))
+        self.assertTrue(any("doesn't allow 19140/udp for minecraft-bedrock" in t and "sudo ufw allow 19140/udp" in t
+                            for t in texts))
         failed = next(a for a in r["attention"] if "has failed" in a["text"])
         self.assertEqual(failed["server"], "minecraft-other")
+
+    def test_nethernet_lan_port(self):
+        self.servers = [_server("minecraft-bedrock", edition="Bedrock", port="19132", java_required=None,
+                                transport="nethernet", udp_ports="19141")]
+        self.fw = {"installed": True, "active": True,
+                   "rules": "Status: active\n19132/tcp ALLOW Anywhere\n19141/udp ALLOW Anywhere\n"}
+        r = self.report()
+        row = r["servers"][0]
+        self.assertFalse(row["firewall_open"])
+        self.assertEqual(row["firewall_missing"], ["7551/udp"])
+        text = next(a["text"] for a in r["attention"] if "ufw" in a["text"])
+        self.assertIn("consoles on your network won't find it under LAN Games", text)
+        self.assertIn("sudo ufw allow 7551/udp", text)
 
     def test_crash_loop_and_failed_backup(self):
         show = SHOW.replace("ActiveState=active\nSubState=running\nNRestarts=0",

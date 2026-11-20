@@ -349,7 +349,9 @@ def update_raw_permissions(server_name: str, update: RawPropertiesUpdate):
 
 @app.post("/api/servers/{server_name}/properties")
 def update_properties(server_name: str, update: ServerPropertiesUpdate):
+    before = manager.server_firewall_rules(server_name)
     manager.write_properties(manager.get_server_dir(server_name), update.properties)
+    manager.properties_changed(server_name, before)
     return {"status": "success"}
 
 @app.get("/api/servers/{server_name}/properties/raw")
@@ -358,7 +360,9 @@ def get_raw_properties(server_name: str):
 
 @app.post("/api/servers/{server_name}/properties/raw")
 def update_raw_properties(server_name: str, update: RawPropertiesUpdate):
+    before = manager.server_firewall_rules(server_name)
     manager.write_raw_properties(manager.get_server_dir(server_name), update.content)
+    manager.properties_changed(server_name, before)
     return {"status": "success"}
 
 @app.get("/api/servers/{server_name}/players")
@@ -880,7 +884,9 @@ def save_template_api(server_name: str, name: str = Body(..., embed=True)):
 @app.post("/api/servers/{server_name}/template/apply")
 def apply_template_api(server_name: str, template_id: str = Body(..., embed=True)):
     try:
+        before = manager.server_firewall_rules(server_name)
         manager.apply_template_to_server(server_name, template_id)
+        manager.properties_changed(server_name, before)
     except manager.TemplateError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
