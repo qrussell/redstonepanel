@@ -4,7 +4,8 @@
 # seed, world type and name, settings, whitelist and ops), a Fabric server with a pinned loader,
 # and a Vanilla snapshot when Mojang has one out. Each must start ("Done (" in its log).
 # Needs the internet (Mojang, PaperMC, Fabric meta) and about 3 GB of free memory.
-# One throwaway systemd container, installing the .deb from dist/ and Java 21 from apt.
+# One throwaway systemd container, installing the .deb from dist/ and, from apt, the Java the
+# newest Paper release needs (the panel's own /api/java/requirement says which).
 # Run from the repository root on a machine with Docker, after building the .deb:
 #   docker run --rm -v "$PWD:/src:ro" -v "$PWD/dist:/out" ubuntu:24.04 bash /src/packaging/build-deb.sh
 #   bash packaging/test/test-advanced-deploy.sh      (KEEP=1 leaves the container running)
@@ -42,18 +43,21 @@ docker build -q -t "$IMG" packaging/test >/dev/null
 docker rm -f "$C" >/dev/null 2>&1
 docker run -d --privileged --cgroupns=private --name "$C" -v "$HOST_PWD/dist:/dist:ro" "$IMG" >/dev/null
 sleep 3
-dx "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends /dist/$(basename "$DEB") openjdk-21-jre-headless curl >/tmp/install.log 2>&1" \
+dx "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends /dist/$(basename "$DEB") curl >/tmp/install.log 2>&1" \
     || { echo "install failed"; dx "tail -20 /tmp/install.log"; exit 1; }
-check "panel and Java 21 installed" wait_http
+check "panel installed" wait_http
 dx "echo '$PASS_ADMIN' | redstonepanel add-user admin --role admin" >/dev/null
 login
+PAPER=$(dx "curl -s https://fill.papermc.io/v3/projects/paper" | $PY -c "import json,sys,re; d=json.load(sys.stdin); v=[x for g in d['versions'].values() for x in g if re.match(r'^[0-9]+(\.[0-9]+)+$', x)]; print(sorted(v, key=lambda s: tuple(map(int, s.split('.'))))[-1])")
+JAVA=$(dx "curl -s -b /tmp/jar 'http://127.0.0.1:8080/api/java/requirement?version=$PAPER'" | $PY -c "import json,sys; print(json.load(sys.stdin)['package_major'])")
+dx "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openjdk-$JAVA-jre-headless >>/tmp/install.log 2>&1" \
+    && ok "Java $JAVA installed (what Minecraft $PAPER needs)" || { bad "installing Java $JAVA"; exit 1; }
 
 # --- Paper with every option
-PAPER=$(dx "curl -s https://fill.papermc.io/v3/projects/paper" | $PY -c "import json,sys,re; d=json.load(sys.stdin); v=[x for g in d['versions'].values() for x in g if re.match(r'^[0-9]+(\.[0-9]+)+$', x)]; print(sorted(v, key=lambda s: tuple(map(int, s.split('.'))))[-1])")
 BUILDS=$(dx "curl -s -b /tmp/jar 'http://127.0.0.1:8080/api/java/builds?loader=paper&version=$PAPER'")
 BUILD=$(echo "$BUILDS" | $PY -c "import json,sys; b=[x['build'] for x in json.load(sys.stdin)['builds'] if '(' not in x['label']]; print(b[1] if len(b) > 1 else b[0])")
 [ -n "$BUILD" ] && ok "Paper $PAPER builds listed; pinning $BUILD (not the newest)" || bad "Paper builds ($BUILDS)"
-c=$(deploy "{\"edition\":\"java\",\"loader\":\"paper\",\"version\":\"$PAPER\",\"advanced\":{\"name\":\"survival\",\"port\":25700,\"build\":\"$BUILD\",\"java\":21,\"heap\":\"1G\",\"flags\":{\"preset\":\"aikar\",\"extra\":[\"-Dfile.encoding=UTF-8\"]},\"seed\":\"8675309\",\"level_type\":\"flat\",\"level_name\":\"main\",\"motd\":\"Advanced test\",\"gamemode\":\"creative\",\"difficulty\":\"hard\",\"max_players\":7,\"online_mode\":true,\"whitelist_players\":\"Notch\",\"ops\":\"Notch\"}}")
+c=$(deploy "{\"edition\":\"java\",\"loader\":\"paper\",\"version\":\"$PAPER\",\"advanced\":{\"name\":\"survival\",\"port\":25700,\"build\":\"$BUILD\",\"java\":$JAVA,\"heap\":\"1G\",\"flags\":{\"preset\":\"aikar\",\"extra\":[\"-Dfile.encoding=UTF-8\"]},\"seed\":\"8675309\",\"level_type\":\"flat\",\"level_name\":\"main\",\"motd\":\"Advanced test\",\"gamemode\":\"creative\",\"difficulty\":\"hard\",\"max_players\":7,\"online_mode\":true,\"whitelist_players\":\"Notch\",\"ops\":\"Notch\"}}")
 [ "$c" = 200 ] && ok "Paper deployed with every option" || bad "Paper deploy ($c $(dx 'cat /tmp/body'))"
 S=minecraft-survival
 check "  named $S"                          dx "test -f /etc/systemd/system/$S.service"
@@ -62,9 +66,10 @@ dx "grep -q '\"build\": \"$BUILD\"' /opt/$S/.redstonepanel-server.json" && ok " 
 U=$(unit $S)
 echo "$U" | grep -q -- "-Xms1G -Xmx1G -XX:+UseG1GC" && ok "  unit: 1G heap up front with Aikar's flags" || bad "  unit: $U"
 echo "$U" | grep -q -- "-Dfile.encoding=UTF-8 -jar server.jar nogui" && ok "  unit: extra flag before -jar" || bad "  unit extra: $U"
-echo "$U" | grep -q "java-21" && ok "  unit: Java 21" || bad "  unit java: $U"
+echo "$U" | grep -q "java-$JAVA" && ok "  unit: Java $JAVA" || bad "  unit java: $U"
 for kv in level-seed=8675309 level-type=minecraft:flat level-name=main motd=Advanced\ test gamemode=creative difficulty=hard max-players=7 online-mode=true white-list=true; do
-    [ "$(prop $S "${kv%%=*}")" = "${kv#*=}" ] && ok "  $kv" || bad "  ${kv%%=*}=$(prop $S "${kv%%=*}")"
+    # Paper rewrites server.properties and escapes the colon (minecraft\:flat): the same value
+    [ "$(prop $S "${kv%%=*}" | sed 's/\\:/:/g')" = "${kv#*=}" ] && ok "  $kv" || bad "  ${kv%%=*}=$(prop $S "${kv%%=*}")"
 done
 dx "grep -q '\"name\": \"Notch\"' /opt/$S/whitelist.json" && ok "  Notch whitelisted (UUID from Mojang)" || bad "  whitelist: $(dx "cat /opt/$S/whitelist.json")"
 dx "grep -q '069a79f4-44e9-4726-a5be-fca90e38aaf5' /opt/$S/ops.json" && ok "  Notch is an operator" || bad "  ops: $(dx "cat /opt/$S/ops.json")"
@@ -75,7 +80,12 @@ dx "ps -eo args | grep -q '[U]seG1GC.*-jar server.jar'" && ok "  the running Jav
 dx "systemctl stop $S"
 
 # --- Fabric with a pinned loader, chosen name only
-LOADER=$(dx "curl -s -b /tmp/jar 'http://127.0.0.1:8080/api/java/builds?loader=fabric'" | $PY -c "import json,sys; b=[x['build'] for x in json.load(sys.stdin)['builds'] if '(' not in x['label']]; print(b[1])")
+# Not the newest stable loader, so the pin shows: the next stable one, else the newest unstable one
+LOADER=$(dx "curl -s -b /tmp/jar 'http://127.0.0.1:8080/api/java/builds?loader=fabric'" | $PY -c "
+import json,sys
+b=json.load(sys.stdin)['builds']; stable=[x['build'] for x in b if '(' not in x['label']]; other=[x['build'] for x in b if '(' in x['label']]
+print(stable[1] if len(stable) > 1 else other[0])")
+[ -n "$LOADER" ] || { bad "no Fabric loader to pin"; exit 1; }
 c=$(deploy "{\"edition\":\"java\",\"loader\":\"fabric\",\"advanced\":{\"name\":\"modded\",\"build\":\"$LOADER\"}}")
 [ "$c" = 200 ] && ok "Fabric deployed with loader $LOADER" || bad "Fabric deploy ($c $(dx 'cat /tmp/body'))"
 dx "grep -q 'loader $LOADER' /opt/minecraft-modded/.redstonepanel-server.json" && ok "  loader $LOADER recorded" || bad "  loader: $(dx 'cat /opt/minecraft-modded/.redstonepanel-server.json')"
