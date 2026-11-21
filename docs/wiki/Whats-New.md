@@ -9,6 +9,16 @@ the dashboard.
 
 ---
 
+## 1.16.8: backups on another cluster node *(November 2026)*
+
+- **Also keep a copy on** another cluster member, from a server's **Backups** tab on the
+  master. Each copy is checked with SHA-256 and kept to the same number as the server's own.
+- **Restore from a copy** even after the original machine is gone: **Use a copy of another
+  server's backup…** on a new server, then **Put back** and **Restore**.
+- A failed copy shows under **Needs attention** and can send a webhook alert.
+
+[Release notes](../../release-notes/v1.16.8.md)
+
 ## 1.16.7: two-factor sign-in *(November 2026)*
 
 - **A code from your phone after your password**, for panel and Linux accounts. Set it up

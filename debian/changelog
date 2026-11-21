@@ -1,3 +1,18 @@
+redstonepanel (1.16.8) noble; urgency=medium
+
+  * Backup copies on another cluster member: on a cluster master, a
+    server's Backups tab can keep a copy of each backup on the master or
+    another node. The master copies new backups within a few minutes and
+    checks each with SHA-256.
+  * Scheduled copies follow the server's Keep setting; manual copies stay
+    until deleted. Copies can be downloaded, or put back into the server's
+    backups and restored, even after the original machine is gone.
+  * A failing copy shows under Needs attention on the master and sends the
+    new backup_copy_failed webhook event.
+  * Cluster contract 4: every member needs 1.16.8 or later for copies.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 16:10:00 +0000
+
 redstonepanel (1.16.7) noble; urgency=medium
 
   * Two-factor sign-in: any panel or Linux account can ask for a six-digit

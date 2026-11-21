@@ -102,6 +102,10 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**Backups on another cluster member** *(1.16.8)*. In a cluster, a server's backups can also be
+kept on another member, checked as they're copied, so a world survives losing the machine it
+ran on. Read the [1.16.8 release notes](release-notes/v1.16.8.md).
+
 **Two-factor sign-in** *(1.16.7)*. Any account can ask for a code from an authenticator app
 after its password, with ten recovery codes for a lost phone, and admins can require it for
 every admin. Read the [1.16.7 release notes](release-notes/v1.16.7.md).
