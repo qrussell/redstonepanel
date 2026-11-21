@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.9**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.10**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,14 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.10: a panel that works on a phone
-
-- **Every page fits a phone:** the sidebar becomes a ☰ menu, tables become cards, and Start,
-  Restart and Stop are big buttons at the top.
-- **Live Chat and the console** work with the on-screen keyboard.
-- **Install it as an app** from your phone's browser (over HTTPS), so it opens like any other
-  app.
 
 ### 1.16.11: backups off the machine, without a cluster
 
@@ -126,6 +118,6 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.9** adds Debian 13, Ubuntu 26.04 and 26.10,
-ARM64 and the Raspberry Pi; **1.16.8** keeps backup copies on another cluster member, and
-**1.16.7** adds two-factor sign-in.
+See [What's New](Whats-New.md). The latest: **1.16.10** makes the panel work on a phone and
+installable as an app; **1.16.9** adds Debian 13, Ubuntu 26.04 and 26.10, ARM64 and the
+Raspberry Pi, and **1.16.8** keeps backup copies on another cluster member.

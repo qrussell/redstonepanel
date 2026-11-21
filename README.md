@@ -102,6 +102,11 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**A panel that works on a phone** *(1.16.10)*. Every page fits a phone: the sidebar becomes a
+☰ menu, Start, Restart and Stop are big buttons and tables turn into cards. Over HTTPS the panel
+installs as an app, and **📱 Open on your phone** shows a QR code to open it on your phone.
+Read the [1.16.10 release notes](release-notes/v1.16.10.md).
+
 **Debian, newer Ubuntu and the Raspberry Pi** *(1.16.9)*. The panel now installs on Ubuntu
 26.04 LTS and 26.10, Debian 13 and 64-bit Raspberry Pi OS on a Pi 4 or 5, as well as Ubuntu
 24.04, on x86-64 and ARM64 machines (Java servers only on ARM64, since Bedrock is made for

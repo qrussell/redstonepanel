@@ -1,3 +1,18 @@
+redstonepanel (1.16.10) noble; urgency=medium
+
+  * Works on a phone: below 768 px the sidebar becomes a menu under a top
+    bar, Start, Restart and Stop are large buttons, tabs scroll sideways,
+    tables become cards and dialogs fill the screen.
+  * Fields no longer make iOS zoom in, Live Chat stays above the on-screen
+    keyboard, and touch screens get 44 px controls.
+  * Installable as an app over HTTPS (a manifest and a service worker that
+    caches nothing but shows a "Can't reach the panel" page when offline).
+  * Open on your phone: a QR code of the panel's address on the desktop,
+    made by the panel itself, offering the machine's network addresses
+    when the panel was opened as localhost.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 16:30:00 +0000
+
 redstonepanel (1.16.9) noble; urgency=medium
 
   * Runs on Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit Raspberry

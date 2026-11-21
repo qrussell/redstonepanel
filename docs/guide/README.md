@@ -1,7 +1,7 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.16.9**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.16.10**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
 "Creative Lab" running a Fabric server with mods.
 
@@ -43,6 +43,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.16.10 | **Works on a phone**: a ☰ menu, big Start/Restart/Stop buttons and tables as cards; **installable as an app** over HTTPS; **📱 Open on your phone** shows a QR code on the desktop. | [On a phone](#on-a-phone) |
 | 1.16.9 | Runs on **Ubuntu 26.04 and 26.10, Debian 13 and a Raspberry Pi 4 or 5** (64-bit Pi OS), on x86-64 and ARM64 (Java only on ARM64), with the Java versions each system packages. | [Install](#1-install), [On a Raspberry Pi](#on-a-raspberry-pi), [Java versions](#java-versions) |
 | 1.16.8 | **Backup copies on another cluster member**, made by the master, checked with SHA-256 and restorable after losing the original machine. | [Backups](#9-backups) |
 | 1.16.7 | **Two-factor sign-in** with an authenticator app and recovery codes, and an option to require it for admins. | [Two-factor sign-in](#two-factor-sign-in) |
@@ -263,9 +264,33 @@ in ten minutes and that account and address wait a few minutes.
 Admins can make it compulsory for every admin; see
 [Panel Settings](#17-panel-settings-name-https-sign-in).
 
-**On a phone or tablet**, use the browser's **Add to Home Screen** (Safari's Share menu, or
-Chrome's ⋮ menu). The panel gets its own RedstonePanel icon and opens without the browser's
-address bar.
+### On a phone
+
+The panel works on a phone or a small tablet. Below 768 px wide:
+
+- The sidebar becomes a menu: tap **☰** in the top bar, which also names the open server. The
+  menu closes when you pick something, tap outside it or press Escape.
+- On a server's page, **Start**, **Restart** and **Stop** are large buttons across the top, and
+  the tabs scroll sideways.
+- Tables (the dashboard's servers, backups, files, the access log) become cards, and dialogs
+  fill the screen.
+- Live Chat keeps its box above the on-screen keyboard, and fields don't make the page zoom in.
+
+<p><img src="images/phone-dashboard.png" alt="The dashboard on a phone" width="260"> <img src="images/phone-menu.png" alt="The menu open on a phone" width="260"> <img src="images/phone-server.png" alt="A server's page on a phone" width="260"></p>
+
+**Open on your phone.** On a computer, click **📱 Open on your phone** in the sidebar and scan the
+QR code with the phone's camera. The code is made by the panel itself, so the address never
+goes to an outside service. If you opened the panel as `localhost`, it offers this machine's
+network addresses instead.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/phone-qr.png"><img src="images/phone-qr.png" alt="The Open on your phone dialog with a QR code"></picture>
+
+**Install it as an app.** Over HTTPS, Android's Chrome offers **Install app** (or ⋮ → **Install
+app**), and on an iPhone use Safari's **Share → Add to Home Screen**. The panel then opens in
+its own window with the RedstonePanel icon, without the browser's address bar. Browsers only
+install apps from HTTPS sites, so on plain HTTP the phone can only add a bookmark to its home
+screen; turn on HTTPS in [Panel Settings](#17-panel-settings-name-https-sign-in). If the phone
+can't reach the panel, the app shows **Can't reach the panel** with **Try again**.
 
 ## 3. The dashboard
 
