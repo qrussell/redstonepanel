@@ -77,8 +77,28 @@ per read (15 minutes), not per transfer.
 - The player history (1.14.2) stays on A.
 - Phantom units made by hand.
 
-## 6. Later (1.16.x)
+## 6. Pre-copy for big worlds (1.16.13)
 
-- **Pre-copy for big worlds:** copy while the server runs, then only what changed after it
-  stops. Needs a file list with sizes and times from A and a second, partial archive.
+An option for moves. While the server keeps running, A packs the folder as it is
+(`export(precopy=True)`, no save-off: this copy only has to be close) and keeps a list of every
+path with, for files, the size, mtime, ctime and inode noted **before** the file was read, and
+when. B receives it as usual and `stage()`s it: unpacked into a hidden
+`/opt/.redstonepanel-import-*` folder, not a server yet.
+
+Then A stops the server and packs a second archive (`export(stop=True, base=<pre id>)`):
+every folder and link, every file that is new or whose noted values differ, plus
+`.redstonepanel-precopy.json` listing what was deleted (or became another kind of thing, such
+as a file turned into a folder). A file whose ctime is within two seconds of when it was noted
+counts as changed, because timestamps are only as fine as the kernel's clock tick. A file that
+shrinks while it is read is padded with zeros so the archive stays valid, and is always sent
+again. A forgets the pre-copy once the second archive is packed.
+
+B's import names the staged copy (`begin_import(base=…)`); `install()` deletes what was deleted,
+removes anything in the way of a changed path (never writing through an existing link), unpacks
+the changes with the `data` filter, and carries on as a normal install. Every failure path
+removes the staged folder (abort, a failed install, the day-old clean-up). Needs cluster
+contract 5 on both members; older members are refused a pre-copy with "update it to 1.16.13".
+
+## 7. Later
+
 - Moving several servers at once.

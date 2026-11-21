@@ -1,7 +1,7 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.16.8**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.16.12**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
 "Creative Lab" running a Fabric server with mods.
 
@@ -28,8 +28,10 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Change difficulty, game mode, ports… | [Configuration](#7-configuration-player-roles-and-the-whitelist) |
 | Make someone an operator, or whitelist them | [Player roles and the whitelist](#7-configuration-player-roles-and-the-whitelist) |
 | Back up a world, or put one back | [Backups](#9-backups) |
+| Keep backups off this machine (NAS, Backblaze B2, S3) | [Off-site copies](#off-site-copies-ssh-or-s3-storage) |
 | Restart a server every night | [Scheduled restarts](#scheduled-restarts) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
+| Keep a Bedrock server on the newest version | [Automatic Bedrock updates](#update-alerts-and-automatic-bedrock-updates) |
 | Add mods, plugins or Bedrock add-ons | [Mods, plugins and add-ons](#12-mods-plugins-and-add-ons) |
 | Let Bedrock players join a Java server | [Finding mods and plugins](#finding-mods-and-plugins) (the **Bedrock players** bundle) |
 | Edit a plugin's config file | [Files](#11-files) |
@@ -43,6 +45,10 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.16.12 | **Update available** alerts for every server, **automatic updates for Bedrock** (opt-in) with a backup and rollback, and Bedrock servers that always save before stopping. | [Update alerts and automatic Bedrock updates](#update-alerts-and-automatic-bedrock-updates) |
+| 1.16.11 | **Off-site backup copies** to an SSH server or S3-compatible storage, retention by age, and bringing a server back on a new machine; Bedrock servers get the firewall rules they really need. | [Off-site copies](#off-site-copies-ssh-or-s3-storage), [Backup storage](#backup-storage) |
+| 1.16.10 | **Works on a phone**: a ☰ menu, big Start/Restart/Stop buttons and tables as cards; **installable as an app** over HTTPS; **📱 Open on your phone** shows a QR code on the desktop. | [On a phone](#on-a-phone) |
+| 1.16.9 | Runs on **Ubuntu 26.04 and 26.10, Debian 13 and a Raspberry Pi 4 or 5** (64-bit Pi OS), on x86-64 and ARM64 (Java only on ARM64), with the Java versions each system packages. | [Install](#1-install), [On a Raspberry Pi](#on-a-raspberry-pi), [Java versions](#java-versions) |
 | 1.16.8 | **Backup copies on another cluster member**, made by the master, checked with SHA-256 and restorable after losing the original machine. | [Backups](#9-backups) |
 | 1.16.7 | **Two-factor sign-in** with an authenticator app and recovery codes, and an option to require it for admins. | [Two-factor sign-in](#two-factor-sign-in) |
 | 1.16.6 | The console makes room instead of covering the page, and keeps the sidebar visible. | [Console](#13-console) |
@@ -67,7 +73,9 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 6. [Live Chat](#6-live-chat)
 7. [Configuration, player roles and the whitelist](#7-configuration-player-roles-and-the-whitelist)
 8. [Maintenance: templates, export, update, uninstall](#8-maintenance-templates-export-update-uninstall)
+   - [Update alerts and automatic Bedrock updates](#update-alerts-and-automatic-bedrock-updates)
 9. [Backups](#9-backups)
+   - [Off-site copies (SSH or S3 storage)](#off-site-copies-ssh-or-s3-storage)
    - [Scheduled restarts](#scheduled-restarts)
 10. [World & Maps](#10-world--maps)
 11. [Files](#11-files)
@@ -78,6 +86,7 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 16. [Users](#16-users)
 17. [Panel Settings: name, HTTPS, sign-in](#17-panel-settings-name-https-sign-in)
     - [Notifications](#notifications)
+    - [Backup storage](#backup-storage)
 18. [Clusters](#18-clusters)
 19. [Command line](#19-command-line)
 20. [Troubleshooting](#20-troubleshooting)
@@ -266,9 +275,33 @@ in ten minutes and that account and address wait a few minutes.
 Admins can make it compulsory for every admin; see
 [Panel Settings](#17-panel-settings-name-https-sign-in).
 
-**On a phone or tablet**, use the browser's **Add to Home Screen** (Safari's Share menu, or
-Chrome's ⋮ menu). The panel gets its own RedstonePanel icon and opens without the browser's
-address bar.
+### On a phone
+
+The panel works on a phone or a small tablet. Below 768 px wide:
+
+- The sidebar becomes a menu: tap **☰** in the top bar, which also names the open server. The
+  menu closes when you pick something, tap outside it or press Escape.
+- On a server's page, **Start**, **Restart** and **Stop** are large buttons across the top, and
+  the tabs scroll sideways.
+- Tables (the dashboard's servers, backups, files, the access log) become cards, and dialogs
+  fill the screen.
+- Live Chat keeps its box above the on-screen keyboard, and fields don't make the page zoom in.
+
+<p><img src="images/phone-dashboard.png" alt="The dashboard on a phone" width="260"> <img src="images/phone-menu.png" alt="The menu open on a phone" width="260"> <img src="images/phone-server.png" alt="A server's page on a phone" width="260"></p>
+
+**Open on your phone.** On a computer, click **📱 Open on your phone** in the sidebar and scan the
+QR code with the phone's camera. The code is made by the panel itself, so the address never
+goes to an outside service. If you opened the panel as `localhost`, it offers this machine's
+network addresses instead.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/phone-qr.png"><img src="images/phone-qr.png" alt="The Open on your phone dialog with a QR code"></picture>
+
+**Install it as an app.** Over HTTPS, Android's Chrome offers **Install app** (or ⋮ → **Install
+app**), and on an iPhone use Safari's **Share → Add to Home Screen**. The panel then opens in
+its own window with the RedstonePanel icon, without the browser's address bar. Browsers only
+install apps from HTTPS sites, so on plain HTTP the phone can only add a bookmark to its home
+screen; turn on HTTPS in [Panel Settings](#17-panel-settings-name-https-sign-in). If the phone
+can't reach the panel, the app shows **Can't reach the panel** with **Try again**.
 
 ## 3. The dashboard
 
@@ -440,6 +473,15 @@ Under **Import Existing**, choose a `.zip`, `.tar.gz`/`.tgz` or `.tar` of a serv
 click **Upload & Import**. A backup wrapped in a single folder is fine; its contents are used.
 The panel gives it a name, a free port and a service, like a fresh deploy.
 
+**Bring a server back from backup storage** (admins)
+
+If a server's backups were copied to an SSH server or S3 storage (see
+[Off-site copies](#off-site-copies-ssh-or-s3-storage)), **From backup storage → Choose a
+backup…** lists every backup there, from every panel that copies to it. Pick one and click
+**Import from backup storage**: the copy is downloaded and checked, the server gets its old name
+if it's free here, its server software is downloaded again, and it starts. Add the storage under
+[Backup storage](#backup-storage) first.
+
 **Removed servers** are listed at the bottom of the same dialog. See
 [Restore a removed server](#15-restore-a-removed-server).
 
@@ -569,13 +611,57 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
   downloaded before the server is stopped, so a failed download changes nothing. Then it stops
   the server, installs the download and starts it again. Your world, settings, ports,
   operators and allowlist are kept. Take a backup first: a Java world opened by a newer
-  version can't go back to an older one. Bedrock servers always update to the newest release.
+  version can't go back to an older one. Bedrock servers always update to the newest release,
+  the same safe way as [automatic updates](#update-alerts-and-automatic-bedrock-updates): a
+  "Before update" backup first, and the old version put back if the new one doesn't start.
   On Fabric and Paper servers, moving to a newer Minecraft version first lists the mods or
   plugins that have no build for it yet on Modrinth or Hangar (and any it couldn't check),
   so you can wait rather than update into a server that won't start. If the new version
   needs a Java that isn't installed, you're asked to install it first.
 - **Java** (admins, Java servers): which Java the server runs on and which it needs. Choose
   another installed Java that's new enough and click **Use**; a running server restarts.
+
+### Update alerts and automatic Bedrock updates
+
+Every 6 hours the panel looks for a newer Bedrock Dedicated Server, Minecraft release, Paper
+build or Fabric loader for each server (never snapshots or pre-releases). When there is one,
+the server shows **⬆** and the new version in the sidebar, on the dashboard, on its
+**Overview** and under **Maintenance → Update Server**. **Check now** looks right away. With
+[notifications](#notifications) on, you get one **Update available** message per new version.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/update-alert.png"><img src="images/update-alert.png" alt="Update available on a Paper server"></picture>
+
+Bedrock players' apps update themselves, and then can't join a server on the older version.
+So a Bedrock server can update itself: tick **Update automatically** under **Maintenance →
+Update Server** (it's off until you do).
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/bedrock-auto-update.png"><img src="images/bedrock-auto-update.png" alt="Update automatically on a Bedrock server"></picture>
+
+When a new release is out:
+
+1. The new version is downloaded from minecraft.net and checked. If that fails, nothing else
+   happens and the server keeps running.
+2. Players see "Server updates to the new Minecraft version in 5 minutes" in chat, then again
+   1 minute and 10 seconds before.
+3. The server stops and is backed up (**Before update** on the **Backups** tab; the newest
+   three are kept).
+4. The new files go in. The server's `server.properties`, `permissions.json` and
+   `allowlist.json` stay as they are, and so do its worlds and add-ons.
+5. The server starts. When it says "Server started.", the update is done (**Bedrock server
+   updated** notification).
+
+If the new version doesn't finish starting within 3 minutes, the old files and the world from
+the "Before update" backup go back, the server starts on the old version, and the failure
+shows under **Needs attention** and as a **Server update failed** notification. A stopped
+server is updated but stays stopped.
+
+Java servers are never updated automatically, because a new version can break mods and
+plugins: you get the alert and update with **Check & Update** when you're ready. Bedrock
+can't run on ARM64 machines such as a Raspberry Pi, so there is nothing to update there.
+
+On a cluster, each member checks its own servers (also while its panel is stopped), and the
+master shows the nodes' alerts. From the command line, `sudo redstonepanel check-updates` does
+the same check and updates.
 
 ### Java versions
 
@@ -628,7 +714,9 @@ with older versions are cleared the next time the dashboard loads.
 
 1. Tick **Automatic backups**.
 2. Choose how often: every hour, every 6 or 12 hours, every day, or every Sunday.
-3. Choose the time and how many scheduled backups to **Keep**.
+3. Choose the time and how many scheduled backups to **Keep**. Optionally, **Also delete them
+   after** a number of days ("keep 7, and none older than 14 days"); the newest backup always
+   stays, so a server that has been stopped for a month still has one.
 4. Click **Save schedule**. **Next backup** shows when the next one will run.
 
 The time is the **server's clock**, and the form shows its time zone (UTC on most servers). A
@@ -647,9 +735,10 @@ The time is the **server's clock**, and the form shows its time zone (UTC on mos
 - A backup is a `.tar.gz` of the server folder: the world, `server.properties`, operators,
   allowlist and so on. It leaves out what can be downloaded again (`server.jar`,
   `bedrock_server`, Bedrock's built-in packs) and logs.
-- Backups are stored in `/var/backups/redstonepanel/<server>/`, readable only by root. In a
-  cluster, the master can also keep a copy on another member (below); otherwise copy that
-  folder to another disk or machine if you want backups that survive losing this one.
+- Backups are stored in `/var/backups/redstonepanel/<server>/`, readable only by root. To have
+  backups that survive losing this machine, copy them to an SSH server or S3-compatible storage
+  ([off-site copies](#off-site-copies-ssh-or-s3-storage), below) or, in a cluster, to another
+  member.
 - Only **Scheduled** backups are pruned to the number you keep. **Manual** and **Before
   restore** backups stay until you delete them.
 
@@ -676,20 +765,70 @@ A backup on the same disk doesn't survive losing the disk. In a cluster, open a 
   holds them. **Scheduled** copies are kept to the same number as the server's own; **Manual**
   ones stay until you delete them.
 - If a copy fails (the member is off, or its disk is full), it shows under **Needs attention**
-  on the master's dashboard, and as **Backup copy to another member failed** in webhook
-  notifications. The master tries again every few minutes and catches up on what it missed.
+  on the master's dashboard, and as **Backup copy to another member or storage failed** in
+  webhook notifications. The master tries again every few minutes and catches up on what it missed.
 - **⬇️** downloads a copy. **Put back** (admins) copies it into the server's own backups, where
   **Restore** brings its world back.
 - If a machine is lost, its servers' copies are still on the other member: make a new server
   of the same edition and version, open its **Backups** tab, click **Use a copy of another
   server's backup…**, **Put back** the copy you want, and **Restore** it.
-- Every member needs RedstonePanel 1.16.8 or later. Standalone panels don't have this.
+- Every member needs RedstonePanel 1.16.8 or later. Standalone panels don't have this; they
+  can use off-site copies instead.
+
+### Off-site copies (SSH or S3 storage)
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/offsite-copies.png"><img src="images/offsite-copies.png" alt="Off-site copies on the Backups tab"></picture>
+
+Any panel, with or without a cluster, can copy its servers' backups off the machine:
+
+- **An SSH server**: a NAS, another PC or a VPS with `rsync` installed. Copies resume where they
+  stopped if the connection drops.
+- **S3-compatible storage**: Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3 and others.
+  Archives over 100 MB go up in parts.
+
+An admin adds the storage once under [Panel Settings → Backup storage](#backup-storage). After
+that, each server's **Backups** tab has an **Off-site copies** section:
+
+- Tick **Copy to** a storage to copy this server's backups there (a storage can be set to copy
+  every server's backups, which is the default).
+- After each scheduled or manual backup, the copy starts straight away in the background, so a
+  slow upload never holds the server up, and it happens even while the panel itself is stopped.
+  The panel also checks every few minutes for anything missing and copies it.
+- Every copy is checked with SHA-256 when it arrives, and again before it's restored. A
+  `.sha256` file is kept next to each copy.
+- What's copied: every **Manual** backup, and the newest **Scheduled** ones, up to the storage's
+  own **Keep** (or the server's, if the storage doesn't set one) and, if set, no older than its
+  **Delete copies after** days. Older scheduled copies are deleted from the storage; the newest
+  copy always stays. **Before restore** and **Before mod changes** backups stay on this machine.
+  So you can keep, for example, 7 here and 30 days off the machine.
+- **Restore** (admins) downloads the copy into the server's backups, checks it, and restores
+  its world as usual (the current world is saved first as a **Before restore** backup).
+- **🗑** deletes a copy from the storage (admins). **Copy now** copies anything missing straight
+  away.
+- If copying fails (the storage is off, the key was removed, the bucket is full), it shows under
+  **Needs attention** on the dashboard and as **Backup copy to another member or storage
+  failed** in webhook notifications, once until it works again. The panel keeps trying every
+  few minutes.
+
+On the storage, copies are kept as `<folder>/<panel id>/<server>/<backup>.tar.gz`. The panel id
+is this machine's host name and four random characters (shown in Panel Settings), so several
+panels can share one bucket or folder.
+
+**If the machine dies:** install RedstonePanel on the new machine, add the same storage under
+**Panel Settings → Backup storage** (for SSH, add the new panel's key on the storage too), then
+**➕ New Server → From backup storage**: pick the backup, and the server is set up again with its
+old name if it's free, its server software downloaded again (a Java server at the same
+Minecraft version and type), and started.
+
+From the command line, `sudo redstonepanel offsite-copy minecraft-java` copies a server's
+backups now, and `sudo redstonepanel offsite-key` prints the panel's SSH key.
 
 Bedrock servers work the same way:
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/backups-bedrock.png"><img src="images/backups-bedrock.png" alt="Backups tab, Bedrock server"></picture>
 
-From the command line, `sudo redstonepanel backup minecraft-java` takes a backup.
+From the command line, `sudo redstonepanel backup minecraft-java` takes a backup (and starts
+its off-site copy).
 
 ### Scheduled restarts
 
@@ -1005,6 +1144,13 @@ Get a message in Discord, or any service that takes a webhook, when something ha
    - **Server started** / **Server stopped**: every start and stop, including your own.
    - **Scheduled restart**: a [scheduled restart](#scheduled-restarts) happened, or failed.
    - **Backup finished** / **Backup failed**.
+   - **Update available**: a newer version is out for a server, once per version (see
+     [Update alerts](#update-alerts-and-automatic-bedrock-updates)).
+   - **Bedrock server updated** / **Server update failed**: a Bedrock update finished, or
+     didn't and the old version was put back.
+   - **Backup copy to another member or storage failed**: an
+     [off-site copy](#off-site-copies-ssh-or-s3-storage) or a copy on another cluster member
+     failed (once, until it works again).
    - **Player joined** / **Player turned away**: from the access log (see
      [Whitelist & Access](#7-configuration-player-roles-and-the-whitelist)), within about 30 seconds.
      Turned-away messages are sent at most once a minute per server.
@@ -1022,6 +1168,41 @@ only by root and never shows it again. Paste a new one to replace it, or **Remov
 
 Other services receive a JSON POST with the fields `text`, `event`, `server`, `panel`,
 `message` and `time`.
+
+### Backup storage
+
+Where the [off-site copies](#off-site-copies-ssh-or-s3-storage) of this machine's backups go.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/backup-storage.png"><img src="images/backup-storage.png" alt="Backup storage settings"></picture>
+
+Click **Add storage** and choose:
+
+- **SSH server (rsync)**: the **Host**, **Port**, **User** and **Folder** (relative to that
+  user's home unless it starts with `/`). Open **This panel's SSH key** and add the line shown to
+  `~/.ssh/authorized_keys` of that user on the SSH server. That machine needs `rsync` (`sudo apt
+  install rsync`). The panel records the server's host key on the first connection, as `ssh`
+  does, and refuses to send anything if it changes later; if that machine was reinstalled, click
+  **Forget host key** and **Test** again.
+- **S3-compatible**: the **Endpoint** (for example `https://s3.eu-central-003.backblazeb2.com`,
+  `https://<account>.r2.cloudflarestorage.com` or `http://192.168.1.30:9000` for MinIO), the
+  **Bucket**, an optional **Folder in the bucket**, the **Region** (`auto` for Cloudflare R2) and
+  an **Access key** and **Secret key** that can read, write, list and delete in that bucket. Leave
+  **Path-style addresses** ticked unless your provider needs bucket names in the host name.
+  The secret is stored on this machine readable only by root and never shown again; leave it
+  empty when editing to keep it.
+
+For both:
+
+- **Scheduled copies to keep**: empty keeps as many as each server keeps here. **Delete copies
+  after (days)**: empty never deletes by age. Manual copies stay until you delete them.
+- **Copy every server's backups** (the default), or leave it off and tick the storage on each
+  server's **Backups** tab.
+- **Test** writes a small file, lists it and deletes it, and says which step failed.
+- **Remove** stops copying there. The copies already there stay; delete them on the storage if
+  you want them gone.
+
+Each machine in a cluster copies its own servers' backups: add the storage on each node's own
+panel (the master can't change a node's settings).
 
 **Sign-in**:
 
@@ -1070,7 +1251,12 @@ to the node.
 
 1. On the master: **Settings → Cluster → Make this panel a master**, give the cluster a name,
    and click **Create cluster**. The panel restarts on HTTPS (port 8443).
-2. On the master: make a **join code**. Codes work once and expire after an hour.
+2. On the master: make a **join code**. Codes work once and expire after an hour. Or click
+   **Find panels on your network** *(1.16.13)*: the master lists the other RedstonePanels on its
+   local networks (it asks each address on ports 8443 and 8080), says which are already in a
+   cluster, and **Add to cluster** makes the code and links to the panel to paste it into.
+
+   <picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster-find.png"><img src="images/cluster-find.png" alt="Find panels on your network"></picture>
 3. On each node: paste the code under **Settings → Cluster → Join a cluster**, and click
    **Join**.
 4. Download the cluster CA from **Settings → Cluster** and install it on your devices once.
@@ -1106,6 +1292,14 @@ you choose whether to start it. Schedules and Phantom stay with the original.
 
 Both machines need RedstonePanel 1.16 or later. Older backups and the player history stay on the
 old machine.
+
+**Pre-copy while it runs** *(1.16.13)*: for a big world, tick this in the **Move** window. The
+folder is copied to the other machine while players stay on, then the server stops and only the
+files that changed since are copied and checked. The server is down for seconds instead of
+minutes, and the window says how long it was down. Both machines need RedstonePanel 1.16.13 or
+later for this.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster-precopy.png"><img src="images/cluster-precopy.png" alt="Moving a server with a pre-copy"></picture>
 
 **Templates between machines:** in the template manager, **Copy to node** sends one of the
 master's templates to a node. Templates a node made on its own panel are listed under its name,
@@ -1157,6 +1351,7 @@ Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 | `redstonepanel restore NAME` | Restore a removed server. |
 | `redstonepanel backup NAME` | Back up a server now. |
 | `redstonepanel restart-server NAME` | Warn players, then restart a server (what its restart timer runs). |
+| `redstonepanel check-updates` | Look for newer server versions and update the Bedrock servers set to update automatically (what the update timer runs every 6 hours). |
 | `redstonepanel notify-test` | Send a test notification. |
 | `redstonepanel cluster create "NAME"` | Make this panel a cluster master. |
 | `redstonepanel cluster join-code` | Make a join code (master). |

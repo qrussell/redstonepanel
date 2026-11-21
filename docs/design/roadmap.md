@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.8 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7) and backups on another node (1.16.8) shipped; newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.12 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) and Bedrock auto-updates and update alerts (1.16.12) shipped; pre-copy and LAN discovery (1.16.13), a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -23,12 +23,12 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.16.8)
+## What already exists (1.16.12)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore (and, in a cluster, a copy on another member), webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore (and, in a cluster, a copy on another member), webhook notifications, scheduled restarts, dark/light themes, a layout for phones and an installable app (PWA), an activity log, HTTPS modes,
 trusted-LAN sign-in, two-factor sign-in with recovery codes, clusters (managing every node's servers from the master, with real
 certificates for a master on the internet, and moving or copying servers between members), a first-run setup guide, kick, ban and unban, the redstone logo and theme, a server list that folds by node and edition, the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
@@ -460,7 +460,7 @@ refused joins, so those are Java only.
     the same one), the streamed archive with its SHA-256, names and ports kept when free, Java
     installed on the target, schedules and Phantom carried over, rollback on failure, the old
     copy kept as a removed server until an admin deletes it, and templates copied both ways.
-    **Still to do (1.16.x):** the pre-copy for big worlds below, and fleet.md's LAN discovery.
+    **Still to do (1.16.13):** the pre-copy for big worlds below, and fleet.md's LAN discovery.
 
     - **Move:** stop the server and export it the way a backup does (save-off over RCON,
       `save hold` on Bedrock). The archive is streamed from node A through the master into
@@ -674,7 +674,7 @@ refused joins, so those are Java only.
     `packaging/test/test-backup-copies.sh`, a master and two nodes in systemd containers
     (33/33), including restoring a stopped node's world from the other node's copy.
 
-### 1.16.9: newer Ubuntu, Debian and ARM64
+### 1.16.9: newer Ubuntu, Debian, ARM64 and Raspberry Pi *(released 21 Nov 2026)*
 
 17. **Ubuntu 26.04 LTS and 26.10, Debian 13, and ARM64 machines such as a Raspberry Pi, for
     Java servers.** Ubuntu 26.04 is the LTS most new machines will run, and 25.04 and 25.10
@@ -711,7 +711,25 @@ refused joins, so those are Java only.
 
     **Size:** about a week, mostly the test matrix.
 
-### 1.16.10: a panel that works on a phone
+    **As built:** as planned. `install.sh` accepts Ubuntu 24.04, 26.04 and 26.10 and Debian 13
+    on amd64 and arm64, warns on 25.04 and 25.10, and refuses Debian 12, 32-bit systems and
+    anything else (`FORCE=1` still overrides). Java comes from `apt-cache pkgnames` for
+    `openjdk-N-jre-headless` (cached 10 minutes, falling back to Ubuntu's list): Debian 13
+    offers 21 and 25, Ubuntu 26.04 adds 26 and 26.10 adds 27 and 28. A Minecraft version
+    needing a Java the system lacks gets the closest newer one with a note in the New Server
+    dialog, or a clear message when nothing is new enough; the 409 for a missing Java now
+    carries `major`, which also fixed installing Java 16 for Minecraft 1.17. Bedrock on ARM64
+    is refused for create, import, restore, update and move/copy, with a pointer to Geyser;
+    `/api/auth/me` reports `machine` and `bedrock_supported`, and cluster `hello`/join report
+    each node's `machine` so the master greys Bedrock out for ARM64 nodes. New Java servers
+    get `-Xms512M -Xmx1G` on machines with 3 GB or less. The cluster proxy ignores a query
+    string in `raw_path` (older Starlette test clients put one there). Tested: 12 new unit
+    tests, the unit suite against each system's own Python packages (new `python-system`
+    GitLab job on Ubuntu 24.04, 26.04, 26.10 and Debian 13), and install tests on all four
+    systems on amd64 plus Ubuntu 26.04 and Debian 13 on GitHub's ARM64 runners, including
+    Paper booting on ARM Java and Bedrock refused with nothing left behind.
+
+### 1.16.10: a panel that works on a phone *(released 21 Nov 2026)*
 
 18. **Every page usable on a phone, and the panel installable as an app.** Restarting a
     crashed server or answering "is it up?" from a phone is one of the commonest reasons to
@@ -746,7 +764,21 @@ refused joins, so those are Java only.
 
     **Size:** one to two weeks; the tables and every dialog are most of it.
 
-### 1.16.11: backups off the machine, without a cluster
+    **As built:** below `md` the sidebar is a slide-in menu under a top bar
+    (`ServerApp.openNav/closeNav`, `.rp-sidebar` in `input.css`), and closes when something in
+    it is picked. The dashboard's server table, backups (and backup copies from 1.16.8), the
+    file manager and the access log turn into cards through one CSS rule (`table.rp-cards`,
+    labels from `data-label`). The PWA keeps the existing `manifest.json` (adding `id`, `scope`
+    and `description`) rather than a new `.webmanifest`, and `static/sw.js` caches nothing,
+    only replacing the browser's error page when the panel can't be reached; it registers only
+    in a secure context. Added on request: **📱 Open on your phone**, a QR code of the panel's
+    address made by `core/qr.py` (`GET /api/phone-qr`, http/https addresses only, signed-in
+    users only), offering the machine's addresses when the panel was opened as localhost.
+    The screenshot demo takes phone pictures at 390x844. Tested in Chromium with phone
+    emulation (390x844), the installability check and against a QR reader. Not yet tried on
+    a real iPhone or Android phone.
+
+### 1.16.11: backups off the machine, without a cluster *(released 21 Nov 2026)*
 
 19. **Copy every backup to an SSH server or S3-compatible storage.** 1.16.8 only helps people
     with a second machine in a cluster, and most panels are a single machine. A backup on the
@@ -788,7 +820,56 @@ refused joins, so those are Java only.
     **Size:** about a week; S3 multipart upload and the restore-on-a-new-machine path are most
     of it.
 
-### 1.16.12: Bedrock that keeps up, and update alerts
+    **As built:** `core/backup_targets.py`, standard library only (`hmac`/`hashlib` SigV4,
+    `http.client` with a CONNECT tunnel when `https_proxy` is set, `xml.etree` for listings;
+    `ssh`, `rsync` and `ssh-keygen` as subprocesses, never through a shell on this side). What
+    changed from the plan:
+    - **Each panel copies its own servers' backups**, standalone, master or node, rather than
+      the 1.16.8 copy step. Storage is a Panel Settings item, so a master can't add it on a node
+      (it can tick an existing one on a node server's Backups tab through the proxy, as for any
+      server setting). The Backups tab has its own **Off-site copies** section with a checkbox
+      per storage (several at once) instead of extra entries in **Also keep a copy on**.
+    - **When:** `redstonepanel backup` (the timer) starts the copy in its own transient unit
+      (`systemd-run --collect`, `redstonepanel-offsite-<server>`), so it runs after the backup
+      unit has finished and also while the panel is stopped; **Back up now** starts it in the
+      panel. A sweep every 5 minutes retries failures and copies anything missing, but only
+      contacts the storage when a backup is new, a copy is due for deletion, or 6 hours have
+      passed since it last listed it (S3 list requests cost money on some providers). A per
+      target and server lock file keeps the panel and the unit from copying the same thing.
+    - **Layout:** `<folder or prefix>/<panel id>/<server>/<file>` with a `.sha256` file next to
+      each copy. The panel id is the host name plus four random hex digits, made once, so
+      several panels can share a bucket and a new machine finds the old one's backups.
+    - **Checks:** S3 requests carry their body's real SHA-256 (`x-amz-content-sha256`, per part
+      for multipart), which the storage verifies; SSH copies are checked on the storage with
+      `sha256sum` (or `shasum -a 256`) before they take their final name. Restores and imports
+      check the downloaded file against the `.sha256` again.
+    - **Retention:** the storage keeps its own count (or the server's Keep) and an optional age;
+      local schedules got an optional age too ("Also delete them after N days"). The newest
+      scheduled backup or copy is never deleted by age. Manual copies stay until deleted;
+      before-restore and before-update backups aren't copied.
+    - **SSH host keys** are checked with `StrictHostKeyChecking=accept-new` and the panel's own
+      `known_hosts`; a changed key stops copies until an admin clicks **Forget host key**.
+    - **Import → From backup storage** unpacks the copy as a removed server and runs the 1.16
+      restore path, which downloads the server binary again; for Java at the recorded Minecraft
+      version and loader, because backups now include `.redstonepanel-server.json`.
+    - `rsync` and `openssh-client` became Recommends. New commands: `redstonepanel
+      offsite-copy NAME` and `redstonepanel offsite-key`. The webhook event stays
+      `backup_copy_failed` ("Backup copy to another member or storage failed").
+
+    Tested: `tests/test_backup_targets.py` (29 tests: the AWS documentation's two SigV4
+    examples, an in-process S3 server that checks each request's signature and body SHA-256
+    including multipart and paged listings, a stand-in `ssh` with real rsync, retention, the
+    once-per-failure webhook, fetch and import); by hand against a real OpenSSH server and the
+    moto S3 server (12 MB multipart upload, download, delete); and
+    `packaging/test/test-offsite.sh` (panel, SSH storage, SeaweedFS's S3 server, which checks
+    signatures like real S3, and a second panel as the new machine) in Docker: 39 checks passed
+    in a cloud thread (copy after Back up now and after scheduled backups with the panel
+    stopped, retention on the storage, a storage that's down, restore, a damaged copy refused, a
+    changed host key, a 110 MB multipart S3 upload and download, the new machine's import), and
+    on Quentin's PC with the internet the import downloaded the real Bedrock server and started
+    it. MinIO no longer publishes images that can be pulled, so the test uses SeaweedFS 3.80.
+
+### 1.16.12: Bedrock that keeps up, and update alerts *(released 21 Nov 2026)*
 
 20. **Bedrock servers that update themselves (opt-in), and a notice when any server has an
     update.** Bedrock clients update automatically and then can't join an older server, so
@@ -812,6 +893,113 @@ refused joins, so those are Java only.
     dashboard never waits on the network.
 
     **Size:** a few days.
+
+    **As built:** `core/updates.py`. Changes from the plan:
+    - **One timer for the machine, every 6 hours** (`redstonepanel-updates.timer`, 00:15, 06:15,
+      12:15, 18:15 plus up to 15 minutes' random delay, `Persistent=true`) instead of a daily
+      `redstonepanel-bedrock-update@` per server: one look at Mojang's API covers every Bedrock
+      server, and a day's wait would lock Bedrock players out for most of it. It runs
+      `redstonepanel check-updates`, so it works while the panel is stopped. The panel writes and
+      enables the units when it starts, so upgrading the package sets it up.
+    - **The download comes first.** The zip is downloaded (minecraft.net and
+      minecraft-services.net hosts only, also after redirects) and checked (a real zip, no
+      `..`, absolute paths or links, has `bedrock_server`) before anyone is warned, so a failed
+      download changes nothing. The panel now unpacks Bedrock in Python instead of `curl | jq`,
+      `wget` and `unzip`, for new servers and the Update button too.
+    - **Rollback** keeps every file the zip replaces in a staging folder, so the old program goes
+      back exactly. The world comes back from the "Before update" backup (`pre-update`, the
+      newest three kept); the world the new version may have converted is kept as a "Before
+      restore" backup. "Started" means BDS logged `Server started.` within 3 minutes; screen
+      exiting means it stopped. The stop before the backup sends Bedrock's own `stop` first, so
+      it saves the world.
+    - **The Update button uses the same path** (no warning, since someone pressed it).
+    - **Java servers are never updated automatically**; they get the alert only, because a new
+      Minecraft version can break mods and plugins. The alert covers a newer release (vanilla,
+      Paper, Fabric), a newer stable Paper build of the same release, and a newer stable Fabric
+      loader.
+    - **Clusters:** alerts travel in the `update` field of each server in `/api/servers`, which
+      the master already reads from its nodes, so no new cluster routes; the settings routes are
+      under `/api/servers/{name}/updates`, which nodes already accept from the master.
+    - Webhook events `update_available` (on by default, once per version per server), `updated`
+      and `update_failed` (on by default). Failures show under **Needs attention** until the next
+      successful update.
+
+    **Tested:** `tests/test_updates.py` (30 tests: the links API and a retried non-zip download, and host allowlist, Java alert
+    rules, unsafe zips, symlinks in the server folder, keep-files, put-back, alert once per
+    version, stale alerts, warning steps and order, failed download/backup/start, rollback,
+    stopped servers stay stopped, the timer only updates opted-in servers). End to end,
+    `packaging/test/test-bedrock-update.sh` (43 checks, in CI with the cluster scripts): a
+    stand-in BDS and a stand-in download API in a systemd container; the timer's run warns,
+    stops with `stop`, backs up, keeps settings and world, starts 1.0.0.2; a release that dies
+    on start is rolled back to 1.0.0.2 with its world; the Update button; refused hosts and
+    damaged zips leave the server running. With a real Bedrock Dedicated Server on Quentin's PC
+    (Docker, 21 Nov 2026): a new server got 1.26.66.1 from minecraft.net and stayed up; the
+    timer updated a real 1.26.65.1 server to 1.26.66.1 (warnings in chat, `stop` and "Quit
+    correctly", Before update backup, settings kept, "Server started."); the Update button
+    reinstalled it the same way. Once minecraft.net answered a third download in five minutes
+    with something that wasn't a zip, so a non-zip answer is now logged (size, type, first
+    bytes) and the download is tried once more after 30 seconds. The screenshot demo takes
+    `update-alert.png` and `bedrock-auto-update.png` in both themes.
+
+    **Fixed in the same release: Bedrock always saves before it stops.** Found while testing:
+    the ordinary **Stop** and **Restart** of a Bedrock server only ran `systemctl stop`, whose
+    SIGTERM goes to `screen`, which hangs up on `bedrock_server`, so it quit without saving and
+    the last minutes of play could be lost. The game servers' drop-in now has
+    `ExecStop=redstonepanel stop-unit %N $MAINPID`, which types Bedrock's own `stop` into its
+    console and waits up to 75 seconds for it to exit (it logs "Quit correctly") before systemd
+    ends what is left. Because it is in the unit, every stop is covered: Stop, Restart, backups,
+    restores, moves, updates, scheduled restarts, uninstalling and shutting the machine down.
+    Java servers are untouched (they save on SIGTERM). Tested with `tests/test_safe_stop.py`
+    and `packaging/test/test-bedrock-stop.sh` (a stand-in BDS that only writes its world when it
+    gets `stop`, through the Stop and Restart buttons, the restart timer and `systemctl stop`),
+    and a real Bedrock Dedicated Server on Quentin's PC.
+
+### 1.16.13: less downtime for big worlds, and finding panels on the network
+
+20a. **The rest of 1.16's moves: a pre-copy, and Find panels.** Left over from 1.16.0 (item 12)
+    and fleet.md phase 3. Moving a big world stops the server for as long as the whole folder
+    takes to pack, copy and unpack, which is minutes for a world of several gigabytes. And adding
+    a node means knowing its address and visiting it to paste a join code.
+
+    - **Pre-copy while it runs** (an option in the **Move** window): the folder is packed and
+      sent while the server keeps running, and the target unpacks it into a hidden folder next
+      to its servers. Then the server stops and only what changed since (and a list of what was
+      deleted) is packed and applied over that copy. The server is down for that second, small
+      step only. The move window says how long the server was down.
+    - **Find panels on your network** (Panel Settings › Cluster › Add a node): the master asks
+      every address of its own private networks (each up to a /24, at most four) for
+      `/api/panel-info` on ports 8443 and 8080, and lists the RedstonePanels that answer with
+      their name, address and whether they're standalone, already a node here, or in another
+      cluster. **Add to cluster** makes a join code and says where to paste it. Nothing is
+      added without an admin pasting the code into the other panel, as before.
+
+    **How:** `core/transfer.py` gets `precopy`/`base` on export, `stage()` and a `base` on
+    import (cluster contract 5, new node route `POST /api/cluster/transfers/{id}/stage`);
+    `core/moves.py` runs the two rounds. `core/discovery.py` does the search with the standard
+    library (`ip -j addr`, http.client, a thread pool). `/api/panel-info` adds
+    `"app": "RedstonePanel"` and the cluster role.
+
+    **Size:** a few days. The careful parts: never missing a changed file (a file's size,
+    times and inode are noted *before* it is read, and anything changed within two seconds of
+    that counts as changed), and applying the changes without writing through links.
+
+    **As built:** as above. Unit tests in `tests/test_precopy.py`: the second
+    archive holds only changed, new and deleted files; a world edited in place (same size),
+    new and deleted files, a deleted folder, a file that became a folder and a new link all
+    arrive so B's folder equals A's; a file that shrinks while read keeps the archive valid;
+    deletions and changes can't reach outside the staged folder through a link; cancelling
+    removes the staged copy; the master's job runs in order and cleans up both members after a
+    failure in either round; older nodes are refused a pre-copy with a clear message. Discovery:
+    only private networks, capped at /24 and four networks, never this machine, HTTPS preferred,
+    nodes recognised, answers from other software ignored, a real HTTP answer read. The
+    multi-panel test `packaging/test/test-move.sh` (Ubuntu 24.04 containers in a cloud thread,
+    48 checks, all passing) moves a stand-in Bedrock server that writes to its world ten times a
+    second, with a 20 MB world file, using a pre-copy: down for 1 to 2 seconds, every world file
+    identical on the node and the file it kept writing complete up to the stop, nothing staged
+    or archived left behind. Find panels, run on the master, found the node (marked as a node
+    here) and a third, standalone panel on the same /24 in about 12 seconds; a master user
+    (not admin) is refused. Not tested: a multi-gigabyte world, and real Java/Bedrock servers
+    (the pre-copy doesn't depend on the edition: it reads files, never the game).
 
 ### 1.16.14: port forwarding, for players outside your home
 

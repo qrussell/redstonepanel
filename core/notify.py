@@ -30,11 +30,14 @@ EVENTS = {
     "restarted": "Scheduled restart",
     "backup_ok": "Backup finished",
     "backup_failed": "Backup failed",
-    "backup_copy_failed": "Backup copy to another member failed",
+    "backup_copy_failed": "Backup copy to another member or storage failed",
     "player_joined": "Player joined",
     "player_refused": "Player turned away",
+    "update_available": "Update available",
+    "updated": "Bedrock server updated",
+    "update_failed": "Server update failed",
 }
-DEFAULT_EVENTS = ["crashed", "backup_failed", "backup_copy_failed", "restarted"]
+DEFAULT_EVENTS = ["crashed", "backup_failed", "backup_copy_failed", "restarted", "update_available", "update_failed"]
 # A server stuck in a crash loop restarts every 20 s; one message per event per server is enough
 QUIET_SECONDS = {"crashed": 300, "started": 60, "stopped": 60, "player_refused": 60}
 TIMEOUT = 5
@@ -246,6 +249,51 @@ def bedrock_quit_cleanly(d):
         return False
     lines = [l.strip() for l in tail.splitlines() if l.strip()]
     return any(l.endswith("Quit correctly") for l in lines[-5:])
+
+BEDROCK_STOP_WAIT = 75        # systemd's own stop timeout is 90 s; leave it time to clean up
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+def stop_bedrock(server, mainpid=None, timeout=BEDROCK_STOP_WAIT, sleep=time.sleep, run=None):
+    """Run by the drop-in's ExecStop before systemd stops a game server (Stop, Restart, backups,
+    restores, moves, updates, scheduled restarts, shutting the machine down).
+
+    Bedrock runs under screen, and systemd's SIGTERM goes to screen, which hangs up on
+    bedrock_server: it quits without saving. So type Bedrock's own `stop` into its console
+    (it saves the world and logs "Quit correctly") and wait for it to exit; systemd then
+    stops whatever is left. Java saves on SIGTERM by itself, so nothing is done for it.
+    Returns "saved", "timeout", "not-running" or None (not a panel Bedrock server)."""
+    import subprocess
+    if not _is_panel_server(server):
+        return None
+    d = bedrock_dir(server)
+    if not d:
+        return None
+    run = run or subprocess.run
+    try:
+        r = run(["sudo", "-u", "minecraft", "screen", "-S", server, "-p", "0", "-X", "stuff", "stop\r"],
+                capture_output=True, text=True, timeout=10)
+        sent = r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        sent = False
+    if not sent:
+        return "not-running"           # no screen session: the game isn't there to save
+    _log(f"[SYSTEM] Asked {server} to save its world and stop (Bedrock's own stop command).")
+    for _ in range(timeout):
+        if mainpid and not _pid_alive(mainpid):
+            return "saved"
+        if not mainpid and bedrock_quit_cleanly(d):
+            return "saved"
+        sleep(1)
+    _log(f"[WARNING] {server} didn't stop within {timeout} s of its stop command; systemd stops it now.")
+    return "timeout"
 
 def revive(server):
     """Starts a crashed Bedrock server again in 20 s, as Restart=on-failure does for Java.

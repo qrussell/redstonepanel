@@ -4,6 +4,44 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.16.12 (2026-11-21)
+
+Release notes: release-notes/v1.16.12.md
+
+- Update available: the panel checks every 6 hours for a newer Bedrock release, Minecraft release, Paper build or Fabric loader (never snapshots), shows it in the sidebar, dashboard, cluster page and Overview, and can send one update_available webhook per version.
+- Update automatically for Bedrock servers (off by default): players are warned for 5 minutes, a Before update backup is taken, the files are swapped keeping settings and worlds, and a server that doesn't start goes back to the old version and shows under Needs attention.
+- The update check is one machine timer, redstonepanel-updates.timer, so it runs while the panel is stopped. The Update button uses the same safe path.
+- Bedrock servers save before they stop: every stop, from the buttons, backups, scheduled restarts, updates or shutting down, sends Bedrock its own stop command and waits for it to quit.
+
+## 1.16.11 (2026-11-21)
+
+Release notes: release-notes/v1.16.11.md
+
+- Off-site backup copies: Panel Settings > Backup storage adds SSH servers (rsync, the panel's own key) and S3-compatible storage (Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3). A server's Backups tab picks where its backups are copied; each copy is checked with SHA-256.
+- Copies run after each backup, even while the panel is stopped, and a failed copy shows under Needs attention and sends one backup_copy_failed webhook until it works again.
+- Retention by age: backup storage keeps its own count and age, and local schedules can also delete backups after N days. The newest one is never deleted by age.
+- Restore from an off-site copy, or bring a server back on a new machine with New Server > From backup storage.
+- Bedrock firewall: servers without a transport line (NetherNet, the default since Bedrock 1.26.50) now get TCP server-port and UDP 7551 opened. Existing Bedrock servers are fixed once after the upgrade.
+- The panel keeps ufw in step with server.properties edited by hand and with servers removed by hand, and notes game-port rules nothing uses.
+
+## 1.16.10 (2026-11-21)
+
+Release notes: release-notes/v1.16.10.md
+
+- Works on a phone: below 768 px the sidebar becomes a menu under a top bar, Start, Restart and Stop are large buttons, tabs scroll sideways, tables become cards and dialogs fill the screen.
+- Fields no longer make iOS zoom in, Live Chat stays above the on-screen keyboard, and touch screens get 44 px controls.
+- Installable as an app over HTTPS (a manifest and a service worker that caches nothing but shows a "Can't reach the panel" page when offline).
+- Open on your phone: a QR code of the panel's address on the desktop, made by the panel itself, offering the machine's network addresses when the panel was opened as localhost.
+
+## 1.16.9 (2026-11-21)
+
+Release notes: release-notes/v1.16.9.md
+
+- Runs on Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit Raspberry Pi OS (Pi 4 or 5), on x86-64 and ARM64. Ubuntu 25.04 and 25.10 still install with an end-of-support note; Debian 12 and 32-bit systems are refused with what to install instead.
+- Java versions come from what the system packages (Debian 13 has 21 and 25). A Minecraft version needing a Java the system lacks gets the closest newer one, with a note; installing Java 16 for Minecraft 1.17 no longer fails.
+- Bedrock is x86-64 only: on ARM64 machines and nodes it is greyed out, and creating, importing, restoring, updating or moving one there is refused.
+- New Java servers get a 1 GB heap on machines with 3 GB of memory or less.
+
 ## 1.16.8 (2026-11-21)
 
 Release notes: release-notes/v1.16.8.md

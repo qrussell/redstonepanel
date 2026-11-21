@@ -22,6 +22,7 @@ import core.backups as backups
 import core.notify as notify
 import core.setup as setup_guide
 import core.restarts as restarts
+import core.updates as updates
 import core.auth as auth
 import core.settings as panel_settings
 import core.twofactor as twofactor
@@ -33,6 +34,7 @@ import core.cluster_client as cluster_client
 import core.transfer as transfer
 import core.moves as moves
 import core.backup_copies as backup_copies
+import core.backup_targets as backup_targets
 from starlette.background import BackgroundTask
 import json
 import uuid
@@ -159,8 +161,10 @@ def health():
 
 @app.get("/api/panel-info")
 def panel_info():
-    """Which panel this is, so several servers' panels can be told apart (also before sign-in)."""
-    return {"name": panel_settings.display_name()}
+    """Which panel this is, so several servers' panels can be told apart (also before sign-in).
+    1.16.13: also that it is a RedstonePanel and its cluster role, so a master's Find panels
+    (core/discovery.py) can offer to add standalone panels on the network."""
+    return {"name": panel_settings.display_name(), "app": "RedstonePanel", "cluster": cluster.role()}
 
 @app.get("/api/phone-qr")
 def phone_qr_api(url: str):
@@ -789,6 +793,7 @@ class BackupSchedule(BaseModel):
     frequency: str
     time: str
     keep: int
+    keep_days: int = 0
 
 def _backup_call(fn, *args):
     try:
@@ -810,12 +815,15 @@ def get_backups(server_name: str):
 @app.put("/api/servers/{server_name}/backups/schedule")
 def set_backup_schedule(server_name: str, req: BackupSchedule):
     _backup_call(manager._check_server, server_name)
-    return _backup_call(backups.set_schedule, server_name, req.enabled, req.frequency, req.time, req.keep)
+    return _backup_call(backups.set_schedule, server_name, req.enabled, req.frequency, req.time, req.keep,
+                        req.keep_days)
 
 @app.post("/api/servers/{server_name}/backups")
 def backup_now(server_name: str):
     _backup_call(manager._check_server, server_name)
-    return _backup_call(backups.run_backup, server_name, "manual")
+    info = _backup_call(backups.run_backup, server_name, "manual")
+    info["offsite"] = backup_targets.sync_soon(server_name)     # 1.16.11: copy it to backup storage now
+    return info
 
 @app.get("/api/servers/{server_name}/backups/{filename}")
 def download_backup(server_name: str, filename: str):
@@ -842,6 +850,108 @@ def delete_backup(request: Request, server_name: str, filename: str):
     _backup_call(backups.delete_backup, server_name, filename)
     return {"status": "success"}
 
+# --- 1.16.11: copies on SSH or S3-compatible backup storage (core/backup_targets.py)
+# A server's Backups tab (on a node too, through the master's proxy: each panel uses its own storage)
+def _offsite_call(fn, *args, **kwargs):
+    from core import archive
+    try:
+        return fn(*args, **kwargs)
+    except backup_targets.TargetError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (backups.BackupError, archive.ArchiveError, manager.DependencyError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class OffsiteToggle(BaseModel):
+    enabled: bool
+
+class OffsiteFetch(BaseModel):
+    file: str
+    panel: Optional[str] = None
+    server: Optional[str] = None
+
+@app.get("/api/servers/{server_name}/offsite")
+def offsite_view_api(server_name: str):
+    return _offsite_call(backup_targets.view, server_name)
+
+@app.post("/api/servers/{server_name}/offsite/sync")
+def offsite_sync_api(server_name: str):
+    _offsite_call(manager._check_server, server_name)
+    if not backup_targets.sync_soon(server_name):
+        raise HTTPException(status_code=400, detail="No backup storage keeps copies of this server's backups.")
+    return {"status": "started"}
+
+@app.put("/api/servers/{server_name}/offsite/{target_id}")
+def offsite_toggle_api(server_name: str, target_id: str, req: OffsiteToggle, request: Request):
+    _require_admin(request, "choose where backups are copied")
+    _offsite_call(manager._check_server, server_name)
+    _offsite_call(backup_targets.set_server, target_id, server_name, req.enabled, request.state.user["username"])
+    return _offsite_call(backup_targets.view, server_name, list_copies=False)
+
+@app.post("/api/servers/{server_name}/offsite/{target_id}/fetch")
+def offsite_fetch_api(server_name: str, target_id: str, req: OffsiteFetch, request: Request):
+    _require_admin(request, "restore from backup storage")
+    return _offsite_call(backup_targets.fetch, target_id, server_name, req.file, request.state.user["username"],
+                         req.panel, req.server)
+
+@app.delete("/api/servers/{server_name}/offsite/{target_id}/{filename}")
+def offsite_delete_api(server_name: str, target_id: str, filename: str, request: Request):
+    _require_admin(request, "delete a copy on backup storage")
+    return _offsite_call(backup_targets.delete_copy, target_id, server_name, filename, request.state.user["username"])
+
+# Panel Settings > Backup storage (admins only: everything under /api/settings is)
+def _storage_view():
+    try:
+        key = backup_targets.public_key()
+    except backup_targets.TargetError:
+        key = None
+    data = backup_targets.load()
+    return {"targets": [backup_targets.public({**t, "id": tid}) for tid, t in sorted(data["targets"].items())],
+            "panel_id": backup_targets.panel_id(), "public_key": key,
+            "tools": {"ssh": bool(shutil.which("ssh")), "rsync": bool(shutil.which("rsync"))},
+            "servers": [s["name"] for s in manager.list_servers()]}
+
+@app.get("/api/settings/backup-storage")
+def storage_view_api():
+    return _storage_view()
+
+@app.post("/api/settings/backup-storage")
+def storage_add_api(request: Request, req: dict = Body(...)):
+    _offsite_call(backup_targets.save_target, None, req, request.state.user["username"])
+    return _storage_view()
+
+@app.post("/api/settings/backup-storage/test")
+def storage_test_api(req: dict = Body(...)):
+    tid = req.get("id") if isinstance(req.get("id"), str) else None
+    fields = req.get("fields") if isinstance(req.get("fields"), dict) else None
+    return _offsite_call(backup_targets.test_target, tid, fields)
+
+@app.put("/api/settings/backup-storage/{target_id}")
+def storage_change_api(target_id: str, request: Request, req: dict = Body(...)):
+    _offsite_call(backup_targets.save_target, target_id, req, request.state.user["username"])
+    return _storage_view()
+
+@app.delete("/api/settings/backup-storage/{target_id}")
+def storage_remove_api(target_id: str, request: Request):
+    _offsite_call(backup_targets.remove_target, target_id, request.state.user["username"])
+    return _storage_view()
+
+@app.post("/api/settings/backup-storage/{target_id}/forget-host-key")
+def storage_forget_key_api(target_id: str, request: Request):
+    _offsite_call(backup_targets.forget_host_key, target_id, request.state.user["username"])
+    return _storage_view()
+
+@app.get("/api/settings/backup-storage/{target_id}/browse")
+def storage_browse_api(target_id: str):
+    return _offsite_call(backup_targets.browse, target_id)
+
+@app.post("/api/settings/backup-storage/{target_id}/import")
+def storage_import_api(target_id: str, request: Request, req: dict = Body(...)):
+    """Import > From backup storage: a new server here from a copy (the old machine is gone)."""
+    return _offsite_call(backup_targets.import_copy, target_id, str(req.get("panel") or ""),
+                         str(req.get("server") or ""), str(req.get("file") or ""), request.state.user["username"])
+
 # Scheduled restarts: a systemd timer per server, warning players first
 class RestartSchedule(BaseModel):
     enabled: bool
@@ -867,6 +977,36 @@ def set_restarts(server_name: str, req: RestartSchedule):
     _restart_call(manager._check_server, server_name)
     _restart_call(restarts.set_schedule, server_name, req.enabled, req.frequency, req.time, req.warn)
     return restarts.overview(server_name)
+
+# Update alerts and automatic Bedrock updates (1.16.12, core/updates.py)
+class AutoUpdateSetting(BaseModel):
+    enabled: bool
+
+def _alerts_call(fn, *args, **kw):
+    try:
+        return fn(*args, **kw)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except updates.UpdateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+def _actor(request):
+    return ((getattr(request.state, "user", None) or {}).get("username")) or "?"
+
+@app.get("/api/servers/{server_name}/updates")
+def get_updates(server_name: str):
+    _alerts_call(manager._check_server, server_name)
+    return _alerts_call(updates.overview, server_name)
+
+@app.put("/api/servers/{server_name}/updates")
+def set_auto_update(request: Request, server_name: str, req: AutoUpdateSetting):
+    _alerts_call(manager._check_server, server_name)
+    return _alerts_call(updates.set_auto, server_name, req.enabled, actor=_actor(request))
+
+@app.post("/api/servers/{server_name}/updates/check")
+def check_updates_now(server_name: str):
+    _alerts_call(manager._check_server, server_name)
+    return _alerts_call(updates.check_one, server_name)
 
 # Webhook notifications (admins: under /api/settings). The URL is never sent back in full.
 class NotificationSettings(BaseModel):
@@ -1554,11 +1694,14 @@ def _transfer_call(request, fn, *args, **kwargs):
 class TransferExport(BaseModel):
     server: str
     stop: bool
+    precopy: bool = False                   # 1.16.13: pack it while it runs, listing every file
+    base: Optional[str] = None              # 1.16.13: only what changed since that pre-copy
 
 class TransferImport(BaseModel):
     size: int
     sha256: str
     meta: dict
+    base: Optional[str] = None              # 1.16.13: a staged pre-copy these changes go on
 
 class TransferFinish(BaseModel):
     outcome: str
@@ -1571,7 +1714,7 @@ class TransferInstall(BaseModel):
 
 @app.post("/api/cluster/transfers/export")
 def transfer_export_api(req: TransferExport, request: Request):
-    return _transfer_call(request, transfer.export, req.server, req.stop)
+    return _transfer_call(request, transfer.export, req.server, req.stop, req.precopy, req.base)
 
 @app.get("/api/cluster/transfers/{tid}/archive")
 def transfer_archive_api(tid: str, request: Request):
@@ -1584,7 +1727,7 @@ def transfer_finish_api(tid: str, req: TransferFinish, request: Request):
 
 @app.post("/api/cluster/transfers/import")
 def transfer_import_api(req: TransferImport, request: Request):
-    return _transfer_call(request, transfer.begin_import, req.size, req.sha256, req.meta)
+    return _transfer_call(request, transfer.begin_import, req.size, req.sha256, req.meta, req.base)
 
 @app.put("/api/cluster/transfers/{tid}/archive")
 async def transfer_receive_api(tid: str, request: Request):
@@ -1602,6 +1745,10 @@ async def transfer_receive_api(tid: str, request: Request):
 def transfer_install_api(tid: str, req: TransferInstall, request: Request):
     return _transfer_call(request, transfer.install, tid, req.keep_name, req.start, req.carry,
                           request.state.user["username"])
+
+@app.post("/api/cluster/transfers/{tid}/stage")
+def transfer_stage_api(tid: str, request: Request):
+    return _transfer_call(request, transfer.stage, tid)
 
 @app.post("/api/cluster/transfers/{tid}/confirm")
 def transfer_confirm_api(tid: str, request: Request):
@@ -1754,6 +1901,7 @@ class MoveRequest(BaseModel):
     from_node: str = "local"
     to_node: str = "local"
     start: bool = False
+    precopy: bool = False
 
 def _need_master_admin(request):
     _need_master()
@@ -1765,7 +1913,8 @@ def cluster_move_api(req: MoveRequest, request: Request):
     _need_master_admin(request)
     user = request.state.user
     try:
-        return moves.start(req.kind, req.from_node, req.server, req.to_node, req.start, user["username"], user["role"])
+        return moves.start(req.kind, req.from_node, req.server, req.to_node, req.start, user["username"], user["role"],
+                           req.precopy)
     except moves.MoveError as e:
         raise HTTPException(status_code=e.status, detail=str(e))
 
@@ -1875,6 +2024,21 @@ def cluster_new_join_api(request: Request, body: dict = Body(default={})):
         _cluster_fail(e)
     manager.write_log(f"[CLUSTER] {me} made a join code ({j['id']}), valid for one hour.")
     return j
+
+@app.post("/api/settings/cluster/discover")
+def cluster_discover_api(request: Request):
+    """Find panels on your network (1.16.13): RedstonePanels on this machine's private networks."""
+    from core import discovery
+    me = request.state.user["username"]
+    if cluster.role() != "master":
+        raise HTTPException(status_code=400, detail="Create a cluster first: only its master adds panels.")
+    try:
+        found = discovery.find(cluster.load_nodes())
+    except discovery.DiscoveryError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    manager.write_log(f"[CLUSTER] {me} looked for panels on {', '.join(found['networks'])}: found "
+                      f"{len(found['panels'])} in {found['seconds']} s.")
+    return found
 
 @app.delete("/api/settings/cluster/joins/{join_id}")
 def cluster_cancel_join_api(join_id: str):

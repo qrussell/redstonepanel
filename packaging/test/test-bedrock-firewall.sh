@@ -96,6 +96,7 @@ P=19150
 
 # --- a rule nothing uses gets a warning with the command to close it
 dx "ufw allow 19170/udp" >/dev/null
+restart_panel                            # the dashboard reads ufw at most once a minute
 api GET /api/host | json "[a['text'] for a in d['attention']]" | grep -q "sudo ufw delete allow 19170/udp" \
     && ok "a game-port rule no server uses gets a warning" || bad "leftover warning"
 dx "ufw delete allow 19170/udp" >/dev/null
