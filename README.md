@@ -102,6 +102,8 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**Bedrock that keeps up** *(1.16.12)*. The panel tells you when a newer Minecraft, Paper, Fabric or Bedrock version is out, and Bedrock servers can update themselves: players are warned, a backup is taken first, and a failed update is rolled back. Bedrock servers also now always save before they stop. Read the [1.16.12 release notes](release-notes/v1.16.12.md).
+
 **Backups off the machine** *(1.16.11)*. Copy each server's backups to an SSH server or S3-compatible storage (Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3), checked as they're copied, keep them by age as well as by count, and bring a server back on a new machine straight from that storage. Bedrock servers also get the firewall rules they actually listen on. Read the [1.16.11 release notes](release-notes/v1.16.11.md).
 
 **A panel that works on a phone** *(1.16.10)*. Every page fits a phone: the sidebar becomes a

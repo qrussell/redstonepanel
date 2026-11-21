@@ -1,3 +1,22 @@
+redstonepanel (1.16.12) noble; urgency=medium
+
+  * Update available: the panel checks every 6 hours for a newer Bedrock
+    release, Minecraft release, Paper build or Fabric loader (never
+    snapshots), shows it in the sidebar, dashboard, cluster page and
+    Overview, and can send one update_available webhook per version.
+  * Update automatically for Bedrock servers (off by default): players are
+    warned for 5 minutes, a Before update backup is taken, the files are
+    swapped keeping settings and worlds, and a server that doesn't start
+    goes back to the old version and shows under Needs attention.
+  * The update check is one machine timer, redstonepanel-updates.timer, so
+    it runs while the panel is stopped. The Update button uses the same
+    safe path.
+  * Bedrock servers save before they stop: every stop, from the buttons,
+    backups, scheduled restarts, updates or shutting down, sends Bedrock
+    its own stop command and waits for it to quit.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 21:20:00 +0000
+
 redstonepanel (1.16.11) noble; urgency=medium
 
   * Off-site backup copies: Panel Settings > Backup storage adds SSH
