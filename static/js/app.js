@@ -204,50 +204,76 @@ const ServerApp = {
         });
     },
 
+    // Sidebar headings the user collapsed (kept in this browser): 'java', 'bedrock', 'other',
+    // 'node:<id>' for a whole node, 'node:<id>:java' and so on for a node's editions
+    collapsedGroups: (() => {
+        try { return new Set(JSON.parse(localStorage.getItem('rp_collapsedGroups') || '[]')); } catch (e) { return new Set(); }
+    })(),
+
+    toggleGroup(key) {
+        if (this.collapsedGroups.has(key)) this.collapsedGroups.delete(key);
+        else this.collapsedGroups.add(key);
+        try { localStorage.setItem('rp_collapsedGroups', JSON.stringify([...this.collapsedGroups])); } catch (e) {}
+        this.renderSidebar();
+    },
+
     renderSidebar() {
         const list = document.getElementById('server-list');
-        list.innerHTML = '';
-
-        const local = this.servers.filter(s => !s.node);
-        const javaServers = local.filter(s => s.edition === 'Java');
-        const bedrockServers = local.filter(s => s.edition === 'Bedrock');
-        const otherServers = local.filter(s => s.edition !== 'Java' && s.edition !== 'Bedrock');
         const esc = t => this.escapeHtml(String(t ?? ''));
+        const editions = [['java', 'Java Edition', s => s.edition === 'Java'],
+                          ['bedrock', 'Bedrock Edition', s => s.edition === 'Bedrock'],
+                          ['other', 'Unknown / Other', s => s.edition !== 'Java' && s.edition !== 'Bedrock']];
 
-        const renderGroup = (title, serversGroup, note) => {
-            if (serversGroup.length === 0 && !note) return;
-
-            list.innerHTML += `<div class="text-xs font-bold text-gray-500 uppercase tracking-wider mt-4 mb-1 px-3">${title}</div>`;
-            if (note) list.innerHTML += `<div class="text-xs text-yellow-600 dark:text-yellow-500 px-3 mb-1">${note}</div>`;
-
-            serversGroup.forEach(srv => {
-                const dot = srv.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off';
-                const isActive = this.sameServer(this.activeServer, srv) ? 'rp-active bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
-                                
-                list.innerHTML += `
-                    <div onclick="ServerApp.openWorkspace(${JSON.stringify(srv).replace(/"/g, '&quot;')})" 
-                         class="p-3 rounded cursor-pointer transition flex items-center gap-3 ${isActive}">
-                        <span class="${dot}">●</span>
-                        <div>
-                            <div class="font-bold text-gray-900 dark:text-gray-200">${srv.name}${this.hasProxyProblem(srv) || this.hasConnectProblem(srv) ? ' <span class="text-yellow-600" title="Players may not be able to connect: see Overview">⚠</span>' : ''}</div>
-                            <div class="text-xs text-gray-500">${srv.edition}${srv.version ? ' ' + this.escapeHtml(srv.version) : ''} • Port ${srv.port}</div>
-                        </div>
+        const serverRow = srv => {
+            const dot = srv.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off';
+            const isActive = this.sameServer(this.activeServer, srv) ? 'rp-active bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
+            return `
+                <div onclick="ServerApp.openWorkspace(${JSON.stringify(srv).replace(/"/g, '&quot;')})"
+                     class="p-3 rounded cursor-pointer transition flex items-center gap-3 ${isActive}">
+                    <span class="${dot}">●</span>
+                    <div class="min-w-0">
+                        <div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(srv.name)}${this.hasProxyProblem(srv) || this.hasConnectProblem(srv) ? ' <span class="text-yellow-600" title="Players may not be able to connect: see Overview">⚠</span>' : ''}</div>
+                        <div class="text-xs text-gray-500">${esc(srv.edition)}${srv.version ? ' ' + esc(srv.version) : ''} • Port ${srv.port}</div>
                     </div>
-                `;
-            });
+                </div>`;
         };
 
-        renderGroup('Java Edition', javaServers);
-        renderGroup('Bedrock Edition', bedrockServers);
-        renderGroup('Unknown / Other', otherServers);
-        // A cluster master: each node's servers under the node's name
+        // A heading that folds what's under it. When folded it shows how many servers it holds
+        // and how many are online, so a folded group still tells you something.
+        // level: 'top' (this machine's editions), 'node' (a cluster node) or 'sub' (a node's editions)
+        const heading = (key, title, servers, level) => {
+            const open = !this.collapsedGroups.has(key);
+            const online = servers.filter(s => s.status === 'online').length;
+            const count = servers.length ? `<span class="ml-auto font-normal normal-case tracking-normal">${open ? servers.length : `${online}/${servers.length} online`}</span>` : '';
+            return `<button type="button" onclick="ServerApp.toggleGroup(${this.jsArg(key)})" aria-expanded="${open}"
+                        class="w-full flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider rounded hover:text-gray-900 dark:hover:text-gray-100 transition ${level === 'node' ? 'text-gray-700 dark:text-gray-300' : 'text-gray-500'} ${level === 'sub' ? 'mt-2 mb-1 pl-5 pr-3' : 'mt-4 mb-1 px-3'}">
+                        <span class="inline-block w-3 text-center transition-transform ${open ? 'rotate-90' : ''}" aria-hidden="true">▸</span>
+                        <span class="truncate">${title}</span>${count}
+                    </button>`;
+        };
+
+        // Edition groups for one machine. On a node they sit under its heading, indented.
+        const editionGroups = (servers, prefix, sub) => editions.map(([id, title, match]) => {
+            const group = servers.filter(match);
+            if (!group.length) return '';
+            const key = prefix + id;
+            return heading(key, title, group, sub ? 'sub' : 'top')
+                + (this.collapsedGroups.has(key) ? '' : `<div class="${sub ? 'pl-3' : ''}">${group.map(serverRow).join('')}</div>`);
+        }).join('');
+
+        let html = editionGroups(this.servers.filter(s => !s.node), '', false);
+        // A cluster master: each node's servers under the node's name, split by edition like this machine's
         this.clusterNodes.forEach(n => {
             const servers = this.servers.filter(s => s.node === n.id);
+            const key = `node:${n.id}`;
             const note = n.state !== 'ok' ? `⚠️ ${esc(this.clusterStates[n.state] || n.state)}`
                 : (n.cluster_api || 1) < 2 ? 'Update RedstonePanel on this node to manage its servers here.'
                 : (servers.length ? '' : 'No servers yet.');
-            renderGroup(`🌐 ${esc(n.name)}`, servers, note);
+            html += heading(key, `🌐 ${esc(n.name)}`, servers, 'node');
+            if (note) html += `<div class="text-xs text-yellow-600 dark:text-yellow-500 px-3 mb-1">${note}</div>`;
+            if (!this.collapsedGroups.has(key)) html += editionGroups(servers, `${key}:`, true);
         });
+        list.innerHTML = html;
     },
 
     async openWorkspace(srv) {
