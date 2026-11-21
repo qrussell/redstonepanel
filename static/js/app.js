@@ -1530,7 +1530,149 @@ const ServerApp = {
             return;
         }
         this.backupInfo = await res.json();
+        this.backupCopies = null;
+        this.backupCopiesAll = null;
         this.renderBackups();
+        this.loadBackupCopies();
+    },
+
+    // --- 1.16.8: copies of a server's backups on another cluster member (set on the master) ---
+    backupMember() {
+        return (this.activeServer && this.activeServer.node) || 'local';
+    },
+
+    async loadBackupCopies() {
+        const role = this.currentUser && this.currentUser.cluster ? this.currentUser.cluster.role : 'standalone';
+        const box = document.getElementById('backup-copies-box');
+        if (!box || !this.activeServer) return;
+        const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 shadow-sm';
+        if (role === 'node') {
+            box.className = card;
+            box.innerHTML = `<p class="text-xs text-gray-500 dark:text-gray-400">A copy of these backups on another cluster member is set on the cluster's master, on this server's Backups tab there.</p>`;
+            return;
+        }
+        if (role !== 'master') return;
+        const name = this.activeServer.name;
+        const res = await fetch(`/api/cluster/backup-copies/${encodeURIComponent(this.backupMember())}/${encodeURIComponent(name)}`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        box.className = card;
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">Backup copies: ${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        this.backupCopies = await res.json();
+        this.renderBackupCopies();
+    },
+
+    copyRows(list, actions) {
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes' };
+        return list.map(c => `
+            <tr class="border-t border-gray-200 dark:border-gray-700">
+                <td class="py-2 pr-3 whitespace-nowrap">${esc(new Date(c.created * 1000).toLocaleString())}</td>
+                <td class="py-2 pr-3">${esc(kindLabel[c.kind] || c.kind)}</td>
+                <td class="py-2 pr-3">${esc(c.server)}${c.panel_name ? ` <span class="text-xs text-gray-500 dark:text-gray-400">from ${esc(c.panel_name)}</span>` : ''}</td>
+                <td class="py-2 pr-3">${esc(c.holder_name)}</td>
+                <td class="py-2 pr-3 text-right whitespace-nowrap">${esc(this.formatSize(c.size))}</td>
+                <td class="py-2 text-right whitespace-nowrap">${actions(c)}</td>
+            </tr>`).join('');
+    },
+
+    copyPath(c) {
+        return [c.holder, c.panel, c.server, c.file].map(encodeURIComponent).join('/');
+    },
+
+    renderBackupCopies() {
+        const box = document.getElementById('backup-copies-box');
+        const v = this.backupCopies;
+        if (!box || !v || !v.available) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const isAdmin = this.currentUser && this.currentUser.role === 'admin';
+        const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+        const btn = 'px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+        const options = [`<option value="">Nowhere else (only this machine)</option>`]
+            .concat(v.members.map(m => `<option value="${esc(m.id)}" ${m.id === v.to ? 'selected' : ''}>${esc(m.name)}${m.id === 'local' ? ' (the master)' : ''}</option>`)).join('');
+        let status = '';
+        const st = v.status;
+        if (v.to && st) {
+            const when = new Date(st.at * 1000).toLocaleString();
+            status = st.ok
+                ? `<p class="text-xs text-gray-500 dark:text-gray-400">Last checked ${esc(when)}: every backup has its copy on ${esc(v.to_name)}${st.last_copied_at ? `; last copied ${esc(new Date(st.last_copied_at * 1000).toLocaleString())}` : ''}.</p>`
+                : `<p class="text-xs text-red-500">Copying to ${esc(v.to_name)} failed (${esc(when)}): ${esc(st.error)}. The master tries again every few minutes.</p>`;
+        } else if (v.to) {
+            status = `<p class="text-xs text-gray-500 dark:text-gray-400">Copying to ${esc(v.to_name)} starts within a few minutes.</p>`;
+        }
+        const actions = c => `
+            <a href="/api/cluster/backup-copies/file/${this.copyPath(c)}" class="${btn}" title="Download">⬇</a>
+            ${isAdmin ? `<button onclick="ServerApp.putCopyInto(${this.jsArg(c.holder)}, ${this.jsArg(c.panel)}, ${this.jsArg(c.server)}, ${this.jsArg(c.file)})" class="px-2 py-1 rounded bg-yellow-600 hover:bg-yellow-700 text-white" title="Copy it into this server's backups, to restore from there">Put back</button>
+            <button onclick="ServerApp.deleteCopy(${this.jsArg(c.holder)}, ${this.jsArg(c.panel)}, ${this.jsArg(c.server)}, ${this.jsArg(c.file)})" class="${btn} hover:bg-red-700 hover:text-white" title="Delete this copy">🗑</button>` : ''}`;
+        const head = `<thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pb-1">Taken</th><th class="pb-1">Type</th><th class="pb-1">Server</th><th class="pb-1">Kept on</th><th class="pb-1 text-right">Size</th><th></th></tr></thead>`;
+        const table = list => `<div class="overflow-x-auto"><table class="w-full text-sm text-gray-700 dark:text-gray-300">${head}<tbody>${this.copyRows(list, actions)}</tbody></table></div>`;
+        const missing = (v.unreachable || []).length
+            ? `<p class="text-xs text-yellow-600 dark:text-yellow-500 mt-2">Not answering, so their copies aren't listed: ${v.unreachable.map(m => esc(m.name)).join(', ')}.</p>` : '';
+        const all = this.backupCopiesAll;
+        const others = all ? all.copies.filter(c => !v.copies.some(x => x.holder === c.holder && x.panel === c.panel && x.file === c.file)) : null;
+        box.innerHTML = `
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-sm font-bold text-gray-900 dark:text-white">Copies on another cluster member</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">${v.copies.length} · ${esc(this.formatSize(v.copies.reduce((a, c) => a + c.size, 0)))}</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+                <label class="text-sm text-gray-700 dark:text-gray-300" for="backup-copy-to">Also keep a copy on</label>
+                <select id="backup-copy-to" class="${field}" ${isAdmin ? '' : 'disabled'}>${options}</select>
+                ${isAdmin ? `<button onclick="ServerApp.saveCopyTarget(this)" class="bg-theme hover-bg-theme text-white px-3 py-2 rounded font-bold text-sm">Save</button>` : ''}
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">A backup on the same disk doesn't survive losing the disk. After each scheduled or manual backup, the master copies it to that member within a few minutes and checks it arrived whole (SHA-256). Scheduled copies are kept to the same number as here; manual ones stay until you delete them. Copies stay there even if this machine is lost.</p>
+            ${status}
+            ${v.copies.length ? `<div class="mt-3">${table(v.copies)}</div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2"><b>Put back</b> copies a backup into this server's list above, where <b>Restore</b> brings its world back.</p>`
+                : `<p class="text-sm text-gray-500 dark:text-gray-400 mt-2">No copies yet.</p>`}
+            ${missing}
+            ${isAdmin ? (others === null
+                ? `<button onclick="ServerApp.loadAllCopies(this)" class="mt-3 text-sm underline text-theme">Use a copy of another server's backup…</button>`
+                : `<div class="mt-4"><p class="text-sm font-bold text-gray-900 dark:text-white mb-1">Copies of other servers' backups</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">For a server whose machine is gone: make a new server of the same edition and version here, then put one of its copies back into it and restore.</p>
+                    ${others.length ? table(others) : `<p class="text-sm text-gray-500 dark:text-gray-400">There are no others.</p>`}</div>`) : ''}`;
+    },
+
+    async saveCopyTarget(button) {
+        const to = document.getElementById('backup-copy-to').value || null;
+        button.disabled = true;
+        const res = await fetch(`/api/cluster/backup-copies/${encodeURIComponent(this.backupMember())}/${encodeURIComponent(this.activeServer.name)}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to })
+        });
+        button.disabled = false;
+        if (!res.ok) return alert(`Couldn't save: ${await this.apiError(res)}`);
+        this.backupCopies = await res.json();
+        this.renderBackupCopies();
+    },
+
+    async loadAllCopies(button) {
+        button.disabled = true;
+        const res = await fetch('/api/cluster/backup-copies');
+        if (!res.ok) { button.disabled = false; return alert(`Couldn't list the copies: ${await this.apiError(res)}`); }
+        this.backupCopiesAll = await res.json();
+        this.renderBackupCopies();
+    },
+
+    async putCopyInto(holder, panel, server, file) {
+        const target = this.activeServer.name;
+        if (!confirm(`Copy ${file} into ${target}'s backups?\n\nNothing is restored yet: afterwards, use Restore on it in the list of backups.`)) return;
+        const res = await fetch(`/api/cluster/backup-copies/file/${this.copyPath({ holder, panel, server, file })}/into`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ member: this.backupMember(), server: target })
+        });
+        if (!res.ok) return alert(`Couldn't put it back: ${await this.apiError(res)}`);
+        const r = await res.json();
+        alert(r.existed ? `${target} already has this backup (${r.file}).` : `It's in ${target}'s backups now as ${r.file}. Use Restore on it to bring that world back.`);
+        this.loadBackups();
+    },
+
+    async deleteCopy(holder, panel, server, file) {
+        if (!confirm(`Delete the copy ${file}? This can't be undone.`)) return;
+        const res = await fetch(`/api/cluster/backup-copies/file/${this.copyPath({ holder, panel, server, file })}`, { method: 'DELETE' });
+        if (!res.ok) return alert(`Delete failed: ${await this.apiError(res)}`);
+        this.loadBackupCopies();
     },
 
     // --- Files tab (admins): browse, edit text, upload, download, rename, delete ---
@@ -2529,7 +2671,8 @@ const ServerApp = {
                 </table></div>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Restore replaces the current world with the backup's. The server is stopped while that happens, and the world it replaces is saved first as a "Before restore" backup.</p>`
                 : `<p class="text-sm text-gray-500 dark:text-gray-400">No backups yet.</p>`}
-            </div>`;
+            </div>
+            <div id="backup-copies-box"></div>`;
     },
 
     async saveBackupSchedule(button) {
@@ -2610,6 +2753,10 @@ const ServerApp = {
         this.toggleConsole(true);
         const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups`, { method: 'POST' });
         if (!res.ok) alert(`Backup failed: ${await this.apiError(res)}`);
+        else if (this.backupCopies && this.backupCopies.to) {
+            // Copy it to the other member now, not at the master's next pass
+            fetch(`/api/cluster/backup-copies/${encodeURIComponent(this.backupMember())}/${encodeURIComponent(this.activeServer.name)}/sync`, { method: 'POST' });
+        }
         this.loadBackups();
     },
 

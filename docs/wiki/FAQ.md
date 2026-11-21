@@ -115,8 +115,10 @@ machines and still manage them from one page.
   can be undone.
 - Mod and plugin updates can back the world up first, and the last update can be undone.
 - Uninstalling a server with **Keep World** keeps its files, so it can be restored later.
-- Backups are stored in `/var/backups/redstonepanel/` on the same machine. Copy them elsewhere
-  for protection against losing the disk; off-machine backups are on the roadmap.
+- Backups are stored in `/var/backups/redstonepanel/` on the same machine. In a cluster, the
+  master can keep a copy of each server's backups on another member (**Backups** tab → **Also
+  keep a copy on**). Without a cluster, copy them elsewhere for protection against losing the
+  disk; off-machine backups for standalone panels are on the roadmap.
 
 ## What happens if the panel stops or I uninstall it?
 

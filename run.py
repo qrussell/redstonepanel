@@ -128,6 +128,9 @@ def main():
     from core import cluster_client, manager
     import main as main_module
     cluster_client.maintenance(manager.write_log, main_module._restart_soon)
+    # Cluster masters: copy backups to the member chosen on each server's Backups tab (1.16.8)
+    from core import backup_copies
+    backup_copies.sweeper()
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 

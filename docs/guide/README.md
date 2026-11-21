@@ -547,8 +547,9 @@ The time is the **server's clock**, and the form shows its time zone (UTC on mos
 - A backup is a `.tar.gz` of the server folder: the world, `server.properties`, operators,
   allowlist and so on. It leaves out what can be downloaded again (`server.jar`,
   `bedrock_server`, Bedrock's built-in packs) and logs.
-- Backups are stored in `/var/backups/redstonepanel/<server>/`, readable only by root. Copy
-  that folder to another disk or machine if you want backups that survive losing this one.
+- Backups are stored in `/var/backups/redstonepanel/<server>/`, readable only by root. In a
+  cluster, the master can also keep a copy on another member (below); otherwise copy that
+  folder to another disk or machine if you want backups that survive losing this one.
 - Only **Scheduled** backups are pruned to the number you keep. **Manual** and **Before
   restore** backups stay until you delete them.
 
@@ -561,6 +562,28 @@ The time is the **server's clock**, and the form shows its time zone (UTC on mos
   you can undo a restore by restoring that one. **Before mod changes** backups are taken by
   **Update all** on the Mods / Plugins tab.
 - **🗑**: deletes a backup (admins).
+
+**Copies on another cluster member** (cluster masters)
+
+A backup on the same disk doesn't survive losing the disk. In a cluster, open a server's
+**Backups** tab on the master and choose **Also keep a copy on**: the master, or another node.
+
+- After each scheduled or manual backup, the master copies it to that member within a few
+  minutes (straight away after **Back up now**) and checks it arrived whole with SHA-256. A
+  node's backup going to another node passes through the master; nodes never talk to each
+  other.
+- Copies are kept in `/var/backups/redstonepanel/remote/<member>/<server>/` on the member that
+  holds them. **Scheduled** copies are kept to the same number as the server's own; **Manual**
+  ones stay until you delete them.
+- If a copy fails (the member is off, or its disk is full), it shows under **Needs attention**
+  on the master's dashboard, and as **Backup copy to another member failed** in webhook
+  notifications. The master tries again every few minutes and catches up on what it missed.
+- **⬇️** downloads a copy. **Put back** (admins) copies it into the server's own backups, where
+  **Restore** brings its world back.
+- If a machine is lost, its servers' copies are still on the other member: make a new server
+  of the same edition and version, open its **Backups** tab, click **Use a copy of another
+  server's backup…**, **Put back** the copy you want, and **Restore** it.
+- Every member needs RedstonePanel 1.16.8 or later. Standalone panels don't have this.
 
 Bedrock servers work the same way:
 

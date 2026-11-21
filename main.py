@@ -31,6 +31,7 @@ import core.cluster as cluster
 import core.cluster_client as cluster_client
 import core.transfer as transfer
 import core.moves as moves
+import core.backup_copies as backup_copies
 from starlette.background import BackgroundTask
 import json
 import uuid
@@ -99,9 +100,9 @@ PUBLIC_API = {"/api/auth/login", "/api/auth/login/code", "/api/auth/logout", "/a
               "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join"}
 ADMIN_API = ("/api/users", "/api/settings")
 NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates",
-                 "/api/cluster/transfers")
+                 "/api/cluster/transfers", "/api/cluster/held-backups")
 CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster/nodes/", "/api/cluster/moves",
-                    "/api/cluster/moved/")
+                    "/api/cluster/moved/", "/api/cluster/backup-copies")
 STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 # An admin who must set up two-factor (Panel Settings > Sign-in) can reach only these until they do
 TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
@@ -803,6 +804,14 @@ def backup_now(server_name: str):
 def download_backup(server_name: str, filename: str):
     path = _backup_call(backups.backup_path, server_name, filename)
     return FileResponse(path, filename=filename, media_type="application/gzip")
+
+@app.get("/api/servers/{server_name}/backups/{filename}/sha256")
+def backup_sha256_api(server_name: str, filename: str):
+    """1.16.8: the master checks each copy it sends to another cluster member against this."""
+    try:
+        return {"sha256": backup_copies.backup_sha256(server_name, filename)}
+    except backup_copies.CopyError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
 
 @app.post("/api/servers/{server_name}/backups/{filename}/restore")
 def restore_backup(request: Request, server_name: str, filename: str):
@@ -1554,6 +1563,138 @@ def transfer_abort_api(tid: str, request: Request):
 def transfer_delete_moved_api(server_name: str, request: Request):
     return _transfer_call(request, transfer.delete_moved, server_name)
 
+# --- 1.16.8: backup copies on another cluster member (core/backup_copies.py)
+# Holder side: only the master calls these, with its token (NODE_ONLY_API keeps browsers out).
+def _held_call(request, fn, *args):
+    if request.state.user.get("source") != "cluster":
+        raise HTTPException(status_code=403, detail="Only the cluster's master can use this.")
+    try:
+        return fn(*args)
+    except backup_copies.CopyError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except backups.BackupError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+def _query_int(request, name):
+    try:
+        return int(request.query_params.get(name, ""))
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Bad {name}.")
+
+async def _held_receive(request, receiver):
+    try:
+        async for chunk in request.stream():
+            if chunk:
+                await run_in_threadpool(_held_call, request, receiver.write, chunk)
+    except BaseException:
+        receiver.abort()
+        raise
+    return await run_in_threadpool(_held_call, request, receiver.close)
+
+@app.get("/api/cluster/held-backups")
+def held_backups_api(request: Request, panel: Optional[str] = None, server: Optional[str] = None):
+    return _held_call(request, backup_copies.list_held, panel or None, server or None)
+
+@app.get("/api/cluster/held-backups/{panel}/{server_name}/{filename}")
+def held_backup_download_api(request: Request, panel: str, server_name: str, filename: str):
+    path = _held_call(request, backup_copies.held_path, panel, server_name, filename)
+    return FileResponse(path, filename=filename, media_type="application/gzip")
+
+@app.get("/api/cluster/held-backups/{panel}/{server_name}/{filename}/sha256")
+def held_backup_sha_api(request: Request, panel: str, server_name: str, filename: str):
+    return {"sha256": _held_call(request, backup_copies.held_sha256, panel, server_name, filename)}
+
+@app.put("/api/cluster/held-backups/into/{server_name}/{filename}")
+async def held_backup_into_api(request: Request, server_name: str, filename: str):
+    receiver = await run_in_threadpool(_held_call, request, backup_copies.IntoReceiver, server_name, filename,
+                                       _query_int(request, "size"), request.query_params.get("sha256", ""))
+    return await _held_receive(request, receiver)
+
+@app.put("/api/cluster/held-backups/{panel}/{server_name}/{filename}")
+async def held_backup_receive_api(request: Request, panel: str, server_name: str, filename: str):
+    q = request.query_params
+    receiver = await run_in_threadpool(_held_call, request, backup_copies.HoldReceiver, panel,
+                                       q.get("panel_name") or panel, server_name, filename,
+                                       _query_int(request, "size"), q.get("sha256", ""), q.get("keep"))
+    return await _held_receive(request, receiver)
+
+@app.delete("/api/cluster/held-backups/{panel}/{server_name}/{filename}")
+def held_backup_delete_api(request: Request, panel: str, server_name: str, filename: str):
+    if request.state.user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only a cluster master's admin can delete backup copies.")
+    return _held_call(request, backup_copies.delete_held, panel, server_name, filename)
+
+# Master side: the Backups tab's "Also keep a copy on", the copies, and what can be done with them
+def _copy_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except backup_copies.CopyError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except cluster_client.NodeError as e:
+        raise HTTPException(status_code=e.status if e.status in (400, 404, 409, 507) else 502, detail=str(e))
+    except (manager.ServerError, backups.BackupError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class CopyTarget(BaseModel):
+    to: Optional[str] = None
+
+class CopyInto(BaseModel):
+    member: str = "local"
+    server: str
+
+@app.get("/api/cluster/backup-copies")
+def backup_copies_all_api(request: Request):
+    """Every copy kept in the cluster, for putting one into a server (also after its machine is gone)."""
+    _need_master_admin_for(request, "see every backup copy in the cluster")
+    found, missing = _copy_call(backup_copies.copies)
+    return {"copies": found, "unreachable": missing, "members": backup_copies.members()}
+
+@app.get("/api/cluster/backup-copies/{member_id}/{server_name}")
+def backup_copies_view_api(member_id: str, server_name: str):
+    return _copy_call(backup_copies.view, member_id, server_name)
+
+@app.put("/api/cluster/backup-copies/{member_id}/{server_name}")
+def backup_copies_set_api(member_id: str, server_name: str, req: CopyTarget, request: Request):
+    _need_master_admin_for(request, "choose where backup copies are kept")
+    return _copy_call(backup_copies.set_target, member_id, server_name, req.to or None,
+                      request.state.user["username"])
+
+@app.post("/api/cluster/backup-copies/{member_id}/{server_name}/sync")
+def backup_copies_sync_api(member_id: str, server_name: str, request: Request):
+    """Copies what's missing now (after Back up now), without waiting for the next pass."""
+    _need_master()
+    if not _copy_call(backup_copies.target, member_id, server_name):
+        raise HTTPException(status_code=400, detail="Copies of this server's backups aren't kept on another member.")
+    backup_copies.sync_soon(member_id, server_name, request.state.user["username"])
+    return {"status": "started"}
+
+@app.get("/api/cluster/backup-copies/file/{holder}/{panel}/{server_name}/{filename}")
+def backup_copy_download_api(holder: str, panel: str, server_name: str, filename: str, request: Request):
+    user = request.state.user
+    chunks, size = _copy_call(backup_copies.download, holder, panel, server_name, filename, user["username"],
+                              user["role"])
+    return StreamingResponse(chunks, media_type="application/gzip",
+                             headers={"Content-Length": str(size),
+                                      "Content-Disposition": f'attachment; filename="{filename}"'})
+
+@app.post("/api/cluster/backup-copies/file/{holder}/{panel}/{server_name}/{filename}/into")
+def backup_copy_into_api(holder: str, panel: str, server_name: str, filename: str, req: CopyInto, request: Request):
+    _need_master_admin_for(request, "put a backup copy into a server")
+    return _copy_call(backup_copies.put_into, holder, panel, server_name, filename, req.member, req.server,
+                      request.state.user["username"])
+
+@app.delete("/api/cluster/backup-copies/file/{holder}/{panel}/{server_name}/{filename}")
+def backup_copy_delete_api(holder: str, panel: str, server_name: str, filename: str, request: Request):
+    _need_master_admin_for(request, "delete a backup copy")
+    return _copy_call(backup_copies.remove, holder, panel, server_name, filename, request.state.user["username"])
+
+def _need_master_admin_for(request, what):
+    _need_master()
+    if request.state.user["role"] != "admin":
+        raise HTTPException(status_code=403, detail=f"Only admins can {what}.")
+
 # Master side: master admins start a move or copy and follow it
 class MoveRequest(BaseModel):
     kind: str
@@ -1732,6 +1873,7 @@ def cluster_remove_node_api(node_id: str, request: Request):
     except cluster_client.NodeError as e:
         confirmed, problem = False, str(e)
     cluster.forget_node(node_id)
+    backup_copies.forget_member(node_id)
     cluster_client.forget_cached(node_id)
     manager.write_log(f"[CLUSTER] {me} removed node '{node['name']}'"
                       + ("" if confirmed else f" (it couldn't be told: {problem}; run 'sudo redstonepanel leave' on it)"))

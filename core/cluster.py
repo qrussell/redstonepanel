@@ -37,7 +37,8 @@ from core.version import panel_version
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
-CLUSTER_API = 3                 # the master<->node contract version (see hello()); 3: moving servers (1.16)
+CLUSTER_API = 4                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
+                                # 4: backup copies on another member (1.16.8)
 MIN_JOIN_API = 1                # oldest node contract a master still lets join (phase 1 nodes)
 PROXY_API = 2                   # a node needs this for the master's proxy (phase 2, 1.15)
 JOIN_TTL = 3600                 # join codes are single-use and valid for an hour
@@ -86,6 +87,12 @@ NODE_ROUTES = (
     ("POST", r"/api/cluster/transfers/[0-9a-f]{32}/(finish|install|confirm)"),
     ("DELETE", r"/api/cluster/transfers/[0-9a-f]{32}"),
     ("DELETE", r"/api/cluster/transfers/moved/minecraft[A-Za-z0-9_.@-]*"),
+    # 1.16.8: copies of other members' backups kept here, and a copy put into a server's backups
+    # (cluster plumbing). A backup's own checksum is under the server's routes above.
+    ("GET", r"/api/cluster/held-backups"),
+    ("GET|PUT|DELETE", r"/api/cluster/held-backups/(master|n-[0-9a-f]{4,32})/minecraft[A-Za-z0-9_.-]*/[^/]+"),
+    ("GET", r"/api/cluster/held-backups/(master|n-[0-9a-f]{4,32})/minecraft[A-Za-z0-9_.-]*/[^/]+/sha256"),
+    ("PUT", r"/api/cluster/held-backups/into/minecraft[A-Za-z0-9_.-]*/[^/]+"),
 )
 # What the master's proxy (/api/cluster/nodes/{id}/proxy/...) passes on for its users: the node
 # routes except the cluster's own plumbing, which only the master itself calls.
