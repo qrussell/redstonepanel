@@ -422,6 +422,15 @@ def notify_unit_cmd(phase, name):
         print(f"redstonepanel notify-unit: {e}", file=sys.stderr)
 
 
+def stop_unit_cmd(name, mainpid=""):
+    # Run by the minecraft-*.service drop-in's ExecStop; must never fail the unit's stop
+    try:
+        from core import notify
+        notify.stop_bedrock(name, int(mainpid) if mainpid.isdigit() else None)
+    except Exception as e:
+        print(f"redstonepanel stop-unit: {e}", file=sys.stderr)
+
+
 def restore_cmd(name):
     from core import manager
     try:
@@ -462,6 +471,8 @@ if __name__ == "__main__":
         notify_test_cmd()
     elif cmd == "notify-unit" and len(rest) == 2 and rest[0] in ("start", "stop"):
         notify_unit_cmd(*rest)
+    elif cmd == "stop-unit" and len(rest) in (1, 2):
+        stop_unit_cmd(*rest)
     elif cmd == "restore" and len(rest) == 1:
         restore_cmd(rest[0])
     elif cmd == "set-name" and len(rest) == 1:
