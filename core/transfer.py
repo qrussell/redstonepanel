@@ -557,7 +557,8 @@ def _carry(name, meta, actor):
     b = meta.get("backup") or {}
     if b.get("enabled"):
         try:
-            backups.set_schedule(name, True, b.get("frequency"), b.get("time"), b.get("keep"))
+            backups.set_schedule(name, True, b.get("frequency"), b.get("time"), b.get("keep"),
+                                  b.get("keep_days") or 0)
         except Exception as e:
             manager.write_log(f"[MOVE] Couldn't set {name}'s backup schedule: {e}")
     r = meta.get("restart") or {}

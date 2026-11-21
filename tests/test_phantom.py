@@ -41,7 +41,7 @@ class Host:
             mock.patch.object(manager, "_check_server", self.check),
             mock.patch.object(manager, "list_servers", self.list_servers),
             mock.patch.object(manager, "read_properties",
-                              lambda d: {"server-port": str(self.servers[d]), **self.props.get(d, {})}),
+                              lambda d: {"server-port": str(self.servers[d]), "transport": "raknet", **self.props.get(d, {})}),
             mock.patch.object(manager, "run_and_log", self.run),
             mock.patch.object(manager, "write_log", lambda m: None),
             mock.patch.object(manager, "open_firewall", lambda port, proto: self.cmds.append(["ufw", "allow", f"{port}/{proto}"])),

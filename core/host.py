@@ -429,6 +429,49 @@ def ufw_allows_spec(status_text, spec, proto):
     return all(ufw_allows(status_text, p, proto) for p in (ports if len(ports) <= 50 else (ports[0], ports[-1])))
 
 
+# Ports that look like a game server's: Bedrock (and NetherNet LAN discovery) and Java
+GAME_PORTS = ((7551, 7551), (19132, 19999), (25565, 25999))
+
+
+def ufw_rules(status_text):
+    """The ALLOW rules in `ufw status` text as (port spec, proto or None), once each (the (v6)
+    copies and rules limited to an address or interface are left out)."""
+    out = []
+    for line in status_text.splitlines():
+        parts = line.split()
+        if len(parts) < 3 or "ALLOW" not in parts[1:3] or "(v6)" in line.split("ALLOW")[0]:
+            continue
+        if parts[1] != "ALLOW" or not re.fullmatch(r"[0-9:,]+(/(tcp|udp))?", parts[0]):
+            continue
+        ports, _, proto = parts[0].partition("/")
+        if (ports, proto or None) not in out:
+            out.append((ports, proto or None))
+    return out
+
+
+def leftover_rules(status_text, in_use):
+    """ufw rules on game ports that no server on the panel or Phantom needs: ['19140/udp', ...]."""
+    def covered(lo, hi, proto):
+        for spec, p in in_use:
+            a, _, b = str(spec).partition(":")
+            if p == proto and a.isdigit() and int(a) <= hi and lo <= int(b or a):
+                return True
+        return False
+    out = []
+    for ports, proto in ufw_rules(status_text):
+        for part in ports.split(","):
+            a, _, b = part.partition(":")
+            if not a.isdigit() or (b and not b.isdigit()):
+                continue
+            lo, hi = int(a), int(b or a)
+            if not any(lo <= g_hi and g_lo <= hi for g_lo, g_hi in GAME_PORTS):
+                continue
+            protos = [proto] if proto else ["tcp", "udp"]
+            if not all(covered(lo, hi, p) for p in protos):
+                out.append(f"{part}/{proto}" if proto else part)
+    return out
+
+
 def firewall():
     def compute():
         if not shutil.which("ufw"):
@@ -571,6 +614,13 @@ def _needs_attention(rep, failed, phantoms):
         if s["problems"]:
             out.append(_attention("warn", f"Players may not be able to connect to {s['name']}: see its Overview.",
                                   server=s["name"]))
+    left = rep["services"]["firewall"].get("leftover") or []
+    if left:
+        out.append(_attention("info", f"The firewall (ufw) still allows {', '.join(left)}, which no server on this "
+                                      f"panel uses. If nothing else on this machine needs "
+                                      f"{'them' if len(left) > 1 else 'it'}, close {'them' if len(left) > 1 else 'it'} with: "
+                                      + " && ".join(f"sudo ufw delete allow {r}" for r in left),
+                              where="services"))
     for p in phantoms:
         if p.get("active") != "active":
             out.append(_attention("warn", f"Phantom proxy {p['unit']} is {p.get('active')}.", where="services"))
@@ -616,6 +666,11 @@ def _needs_attention(rep, failed, phantoms):
         out.extend(backup_copies.attention())
     except Exception:
         pass                                    # never let this break the dashboard
+    try:
+        from core import backup_targets
+        out.extend(backup_targets.attention())
+    except Exception:
+        pass
     order = {"error": 0, "warn": 1, "info": 2}
     return sorted(out, key=lambda a: order[a["level"]])
 
@@ -625,6 +680,12 @@ def _gb(n):
 
 
 def _build():
+    try:
+        # Opening the dashboard also follows server.properties edited outside the panel
+        if manager.sync_firewall():
+            _cache.pop("ufw", None)
+    except Exception as e:
+        manager.write_log(f"[FIREWALL] Checking the firewall failed: {e}")
     listed = manager.list_servers()
     names = [s["name"] for s in listed]
     server_units = [f"{n}.service" for n in names]
@@ -658,7 +719,8 @@ def _build():
                       "memory": _int(panel.get("MemoryCurrent")), "pid": os.getpid()},
             "failed_units": failed,
             "phantoms": [{"unit": p["unit"], "active": p.get("active"), "enabled": p.get("enabled")} for p in phantoms],
-            "firewall": {"installed": fw["installed"], "active": fw["active"]},
+            "firewall": {"installed": fw["installed"], "active": fw["active"],
+                         "leftover": leftover_rules(fw["rules"], manager.rules_in_use(listed)) if fw["active"] else []},
             "java": java["installed"],
             "java_needed": java["needed"],
             "java_installable": java["installable"],

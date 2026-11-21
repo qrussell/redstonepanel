@@ -218,13 +218,13 @@ class Transfer(Member):
 
     def test_carried_schedules(self):
         self.server()
-        meta_backup = {"enabled": True, "frequency": "daily", "time": "03:00", "keep": 5}
+        meta_backup = {"enabled": True, "frequency": "daily", "time": "03:00", "keep": 5, "keep_days": 30}
         set_b, set_r = [], []
         with mock.patch.object(backups, "get_schedule", return_value=meta_backup), \
                 mock.patch.object(backups, "set_schedule", lambda *a: set_b.append(a)), \
                 mock.patch.object(T.restarts, "set_schedule", lambda *a: set_r.append(a)):
             self.move_to_b()
-        self.assertEqual(set_b, [("minecraft-java", True, "daily", "03:00", 5)])
+        self.assertEqual(set_b, [("minecraft-java", True, "daily", "03:00", 5, 30)])
         self.assertEqual(set_r, [], "restarts weren't scheduled")
 
 
