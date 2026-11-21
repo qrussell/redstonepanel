@@ -1,13 +1,15 @@
 # Builds the .deb, runs the install tests on Ubuntu 24.04, 26.04 and 26.10 and Debian 13 (x86-64),
 # and on Ubuntu 26.04 and Debian 13 on ARM64 (GitHub's ARM runners: a Raspberry Pi's
-# architecture), and attaches the
-# .deb to a GitHub Release whose description is release-notes/<tag>.md (GitHub's
-# generated notes if that file is missing). Runs on version tags (e.g. v1.0.0) and can
-# be run by hand.
+# architecture), runs the multi-container cluster tests (cluster, move, backup copies), and on
+# version tags (e.g. v1.0.0) attaches the .deb to a GitHub Release whose description is
+# release-notes/<tag>.md (GitHub's generated notes if that file is missing).
+# Runs on every push to main (GitLab mirrors it here after each merge), so a broken install on
+# any supported system shows up at merge time instead of at release time; on tags; and by hand.
 name: release
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -79,8 +81,28 @@ jobs:
         if: failure()
         run: docker exec rp-test journalctl -u redstonepanel --no-pager -n 200 || true
 
+  # End-to-end tests with several panels on one Docker network (Ubuntu 24.04 containers):
+  # clusters (join, node allowlist, certificate renewal, promotion), moving and copying servers,
+  # and 1.16.8's backup copies on another member. Stand-in game servers; nothing big downloaded.
+  cluster:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies]
+    name: ${{ matrix.script }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+          path: dist
+      - name: Run ${{ matrix.script }}.sh
+        run: bash packaging/test/${{ matrix.script }}.sh
+
   release:
-    needs: test
+    needs: [test, cluster]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

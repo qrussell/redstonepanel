@@ -640,9 +640,20 @@ For Debian, build with `--build-arg DISTRO=debian --build-arg REL=13`; for ARM64
 QEMU, for example `docker run --privileged --rm tonistiigi/binfmt --install arm64`, and is
 slow). On ARM64 the test checks that Bedrock is refused instead of installed.
 
-`test-install.sh` installs, signs in, switches HTTPS on and off, upgrades, removes and
-purges the package, printing PASS/FAIL for each step. Pass `--no-install-recommends` to
-test a Bedrock-only install.
+`test-install.sh` installs, signs in (Linux and panel accounts, and two-factor sign-in with
+app codes, recovery codes, the admin requirement and both resets), switches HTTPS on and off,
+upgrades, removes and purges the package, printing PASS/FAIL for each step. Pass
+`--no-install-recommends` to test a Bedrock-only install.
+
+The tests with several panels start their own containers on a Docker network; run them from
+the checkout after building the .deb:
+
+```bash
+bash packaging/test/test-cluster.sh          # create, join, node allowlist, renew, promote, leave
+bash packaging/test/test-cluster-phase2.sh   # a master running game servers on its nodes
+bash packaging/test/test-move.sh             # move and copy servers between panels
+bash packaging/test/test-backup-copies.sh    # backup copies kept on another member (1.16.8)
+```
 
 ### The stylesheet
 
@@ -669,9 +680,11 @@ Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which
    `docs/guide/images/`, and the light theme, in `docs/guide/images/light/`). Merge it through a merge request.
 2. Tag `main` as `v1.0.1` and push the tag to GitLab.
 
-The tag reaching GitHub runs `.github/workflows/release.yml`. It builds the .deb, runs
+`.github/workflows/release.yml` runs on every push to `main` (each merge, once GitLab
+mirrors it) and on tags. It builds the .deb, runs
 the install tests on Ubuntu 24.04, 26.04 and 26.10 and Debian 13 (with and without
-recommends), and on Ubuntu 26.04 and Debian 13 on GitHub's ARM64 runners, and publishes
+recommends), and on Ubuntu 26.04 and Debian 13 on GitHub's ARM64 runners, runs the four
+cluster tests above, and for a tag publishes
 a GitHub Release with the .deb, using `release-notes/<tag>.md` as its description (or
 GitHub's generated notes if the file is missing). The tag must match the version in
 `debian/changelog`. The qrussell-repo apt repository picks up the release within 4 hours.
