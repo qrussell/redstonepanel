@@ -9,6 +9,16 @@ the dashboard.
 
 ---
 
+## 1.16.6: a console that makes room *(November 2026)*
+
+- **The console no longer hides the page.** While it's open, the page beside the sidebar ends
+  above it, so buttons near the bottom of a tab can still be reached, and the sidebar's buttons
+  stay visible.
+- It's at most a third of the window's height, and when a click opens it, the button you
+  clicked is scrolled back into view.
+
+[Release notes](../../release-notes/v1.16.6.md)
+
 ## 1.16.5: a gameplay port for each Bedrock server *(November 2026)*
 
 - **Several Bedrock servers on one machine work again.** Since 1.16.4 every new Bedrock server

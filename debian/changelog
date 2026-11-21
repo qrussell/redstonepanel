@@ -1,3 +1,15 @@
+redstonepanel (1.16.6) noble; urgency=medium
+
+  * The console no longer covers the page. While it's open, the page
+    beside the sidebar ends above it, so buttons near the bottom of a tab
+    can still be scrolled into view, and it starts at the sidebar's edge,
+    so the sidebar's buttons stay visible.
+  * The console is at most 35% of the window's height (300px on taller
+    windows), and when a click opens it, the button that was clicked is
+    scrolled back into view above it.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 04:54:00 +0000
+
 redstonepanel (1.16.5) noble; urgency=medium
 
   * Each new Bedrock server gets its own gameplay port: server-udp-ports

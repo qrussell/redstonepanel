@@ -98,6 +98,10 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**A console that makes room** *(1.16.6)*. The console used to slide up over the bottom of the
+window, hiding buttons until it was closed. While it's open, the page now ends above it and the
+sidebar stays visible. Read the [1.16.6 release notes](release-notes/v1.16.6.md).
+
 **A gameplay port for each Bedrock server** *(1.16.5)*. Since 1.16.4 every new Bedrock server
 used UDP 19132 for gameplay, so a second Bedrock server clashed with the first. Each now gets
 its own, on the same number as its port. Read the

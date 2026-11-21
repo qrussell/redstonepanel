@@ -1,7 +1,7 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.16.5**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.16.6**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
 "Creative Lab" running a Fabric server with mods.
 
@@ -43,6 +43,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.16.6 | The console makes room instead of covering the page, and keeps the sidebar visible. | [Console](#13-console) |
 | 1.16.5 | Each Bedrock server gets its own UDP gameplay port (`server-udp-ports`), so several can run on one machine. | [Create a server](#4-create-or-import-a-server) |
 | 1.16.4 | New Bedrock servers keep every setting from the Bedrock download, so **Configuration** lists them all. | [Configuration](#7-configuration-player-roles-and-the-whitelist) |
 | 1.16.3 | Fold the server list by edition and by cluster node; a folded heading shows how many servers are online. | [The dashboard](#3-the-dashboard) |
@@ -752,11 +753,17 @@ Every install, change and removal goes in the activity log (`[MODS] alex install
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/console.png"><img src="images/console.png" alt="Console"></picture>
 
-**🖥️ Console** opens the panel's activity log at the bottom of the screen: deploys, updates,
-service starts and stops, firewall changes, backups, and who signed in. Lines are coloured by
-kind: errors and crashes red, warnings yellow, backups and restarts blue, sign-ins and settings
-purple, commands the panel runs grey. The same log is in
-`/var/log/redstonepanel/panel.log`. Close it with **❌ Close**.
+**🖥️ Console** opens the panel's activity log at the bottom of the screen, beside the sidebar:
+deploys, updates, service starts and stops, firewall changes, backups, and who signed in. Lines
+are coloured by kind: errors and crashes red, warnings yellow, backups and restarts blue,
+sign-ins and settings purple, commands the panel runs grey. The same log is in
+`/var/log/redstonepanel/panel.log`.
+
+It also opens by itself when you start something that takes a while, such as creating, starting
+or stopping a server, a backup or a restore, so you can watch it happen. While it's open, the
+page above it ends where the console starts, so you can still scroll to everything on it, and
+the button you clicked stays in view. It takes up to a third of the window's height. Close it
+with **❌ Close** at its top right; **🖥️ Console** in the sidebar opens it again.
 
 ## 14. Templates
 
