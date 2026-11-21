@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.4 (21 Nov 2026): moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, and a folding server list shipped; two-factor sign-in (1.16.5), backups on another node (1.16.6), Debian and ARM64 (1.16.7), a phone-friendly panel (1.16.8), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.4 (21 Nov 2026): moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, and a folding server list shipped; two-factor sign-in (1.16.5), backups on another node (1.16.6), newer Ubuntu, Debian and ARM64 (1.16.7), a phone-friendly panel (1.16.8), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -591,18 +591,26 @@ refused joins, so those are Java only.
 
     **Size:** about a week.
 
-### 1.16.7: Debian and ARM64
+### 1.16.7: newer Ubuntu, Debian and ARM64
 
-17. **Debian 12/13, and ARM64 machines such as a Raspberry Pi, for Java servers.** Many home
-    servers are Debian or a Pi, and today `install.sh` refuses them. The package is already
-    `Architecture: all` and its dependencies are in Debian too, so most of the work is testing.
+17. **Ubuntu 25.10 and 26.04 LTS, Debian 12/13, and ARM64 machines such as a Raspberry Pi, for
+    Java servers.** Ubuntu 26.04 is the LTS most new machines will run, and 25.04 reached the
+    end of its support in January 2026, yet `install.sh` refuses everything but 24.04 and 25.04.
+    Many home servers are also Debian or a Pi, which it refuses too. The package is already
+    `Architecture: all` and its dependencies are in Ubuntu's and Debian's archives, so most of
+    the work is testing.
 
-    - `install.sh` accepts Debian 12 and 13 as well as Ubuntu 24.04 and 25.04.
+    - `install.sh` accepts Ubuntu 24.04, 25.04, 25.10 and 26.04, and Debian 12 and 13.
+    - **Newer Ubuntu releases:** check that their Python, FastAPI and Starlette still meet the
+      package's minimum versions and that the panel runs on them, and that their OpenJDK
+      packages cover the Java versions Minecraft needs.
+    - **Ubuntu 25.04** stays accepted for existing installs but leaves the test matrix, since it
+      no longer gets updates.
     - **Java:** the panel offers the OpenJDK versions each release packages, and says so when
       a Minecraft version needs a Java the release doesn't have.
     - **Bedrock is hidden on ARM64**, because Mojang only ships it for x86-64; Phantom too.
-    - The install tests run on Debian 12 and 13, and on ARM64 for one Ubuntu and one Debian
-      release.
+    - The install tests run on Ubuntu 24.04, 25.10 and 26.04 and Debian 12 and 13, and on ARM64
+      for one Ubuntu and one Debian release.
     - The README, installation page and FAQ list the supported systems.
 
     **Size:** about a week, mostly the test matrix.
@@ -821,7 +829,8 @@ until it's agreed.
   asked, as they're the most common reason a Java owner can't use the panel.
 - **Per-server resource limits** with systemd `MemoryMax=`/`CPUQuota=`, beside 1.17's Memory
   setting, so one server can't starve the rest.
-- ~~**Debian 12/13 and ARM64** for Java servers.~~ *Scheduled as 1.16.7 (item 17 above).*
+- ~~**Ubuntu 25.10 and 26.04, Debian 12/13 and ARM64** for Java servers.~~ *Scheduled as
+  1.16.7 (item 17 above).*
 
 **For players**
 
