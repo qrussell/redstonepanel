@@ -32,6 +32,7 @@ import core.cluster_client as cluster_client
 import core.transfer as transfer
 import core.moves as moves
 import core.backup_copies as backup_copies
+import core.backup_targets as backup_targets
 from starlette.background import BackgroundTask
 import json
 import uuid
@@ -788,6 +789,7 @@ class BackupSchedule(BaseModel):
     frequency: str
     time: str
     keep: int
+    keep_days: int = 0
 
 def _backup_call(fn, *args):
     try:
@@ -809,12 +811,15 @@ def get_backups(server_name: str):
 @app.put("/api/servers/{server_name}/backups/schedule")
 def set_backup_schedule(server_name: str, req: BackupSchedule):
     _backup_call(manager._check_server, server_name)
-    return _backup_call(backups.set_schedule, server_name, req.enabled, req.frequency, req.time, req.keep)
+    return _backup_call(backups.set_schedule, server_name, req.enabled, req.frequency, req.time, req.keep,
+                        req.keep_days)
 
 @app.post("/api/servers/{server_name}/backups")
 def backup_now(server_name: str):
     _backup_call(manager._check_server, server_name)
-    return _backup_call(backups.run_backup, server_name, "manual")
+    info = _backup_call(backups.run_backup, server_name, "manual")
+    info["offsite"] = backup_targets.sync_soon(server_name)     # 1.16.11: copy it to backup storage now
+    return info
 
 @app.get("/api/servers/{server_name}/backups/{filename}")
 def download_backup(server_name: str, filename: str):
@@ -840,6 +845,108 @@ def delete_backup(request: Request, server_name: str, filename: str):
     _require_admin(request, "delete a backup")
     _backup_call(backups.delete_backup, server_name, filename)
     return {"status": "success"}
+
+# --- 1.16.11: copies on SSH or S3-compatible backup storage (core/backup_targets.py)
+# A server's Backups tab (on a node too, through the master's proxy: each panel uses its own storage)
+def _offsite_call(fn, *args, **kwargs):
+    from core import archive
+    try:
+        return fn(*args, **kwargs)
+    except backup_targets.TargetError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (backups.BackupError, archive.ArchiveError, manager.DependencyError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class OffsiteToggle(BaseModel):
+    enabled: bool
+
+class OffsiteFetch(BaseModel):
+    file: str
+    panel: Optional[str] = None
+    server: Optional[str] = None
+
+@app.get("/api/servers/{server_name}/offsite")
+def offsite_view_api(server_name: str):
+    return _offsite_call(backup_targets.view, server_name)
+
+@app.post("/api/servers/{server_name}/offsite/sync")
+def offsite_sync_api(server_name: str):
+    _offsite_call(manager._check_server, server_name)
+    if not backup_targets.sync_soon(server_name):
+        raise HTTPException(status_code=400, detail="No backup storage keeps copies of this server's backups.")
+    return {"status": "started"}
+
+@app.put("/api/servers/{server_name}/offsite/{target_id}")
+def offsite_toggle_api(server_name: str, target_id: str, req: OffsiteToggle, request: Request):
+    _require_admin(request, "choose where backups are copied")
+    _offsite_call(manager._check_server, server_name)
+    _offsite_call(backup_targets.set_server, target_id, server_name, req.enabled, request.state.user["username"])
+    return _offsite_call(backup_targets.view, server_name, list_copies=False)
+
+@app.post("/api/servers/{server_name}/offsite/{target_id}/fetch")
+def offsite_fetch_api(server_name: str, target_id: str, req: OffsiteFetch, request: Request):
+    _require_admin(request, "restore from backup storage")
+    return _offsite_call(backup_targets.fetch, target_id, server_name, req.file, request.state.user["username"],
+                         req.panel, req.server)
+
+@app.delete("/api/servers/{server_name}/offsite/{target_id}/{filename}")
+def offsite_delete_api(server_name: str, target_id: str, filename: str, request: Request):
+    _require_admin(request, "delete a copy on backup storage")
+    return _offsite_call(backup_targets.delete_copy, target_id, server_name, filename, request.state.user["username"])
+
+# Panel Settings > Backup storage (admins only: everything under /api/settings is)
+def _storage_view():
+    try:
+        key = backup_targets.public_key()
+    except backup_targets.TargetError:
+        key = None
+    data = backup_targets.load()
+    return {"targets": [backup_targets.public({**t, "id": tid}) for tid, t in sorted(data["targets"].items())],
+            "panel_id": backup_targets.panel_id(), "public_key": key,
+            "tools": {"ssh": bool(shutil.which("ssh")), "rsync": bool(shutil.which("rsync"))},
+            "servers": [s["name"] for s in manager.list_servers()]}
+
+@app.get("/api/settings/backup-storage")
+def storage_view_api():
+    return _storage_view()
+
+@app.post("/api/settings/backup-storage")
+def storage_add_api(request: Request, req: dict = Body(...)):
+    _offsite_call(backup_targets.save_target, None, req, request.state.user["username"])
+    return _storage_view()
+
+@app.post("/api/settings/backup-storage/test")
+def storage_test_api(req: dict = Body(...)):
+    tid = req.get("id") if isinstance(req.get("id"), str) else None
+    fields = req.get("fields") if isinstance(req.get("fields"), dict) else None
+    return _offsite_call(backup_targets.test_target, tid, fields)
+
+@app.put("/api/settings/backup-storage/{target_id}")
+def storage_change_api(target_id: str, request: Request, req: dict = Body(...)):
+    _offsite_call(backup_targets.save_target, target_id, req, request.state.user["username"])
+    return _storage_view()
+
+@app.delete("/api/settings/backup-storage/{target_id}")
+def storage_remove_api(target_id: str, request: Request):
+    _offsite_call(backup_targets.remove_target, target_id, request.state.user["username"])
+    return _storage_view()
+
+@app.post("/api/settings/backup-storage/{target_id}/forget-host-key")
+def storage_forget_key_api(target_id: str, request: Request):
+    _offsite_call(backup_targets.forget_host_key, target_id, request.state.user["username"])
+    return _storage_view()
+
+@app.get("/api/settings/backup-storage/{target_id}/browse")
+def storage_browse_api(target_id: str):
+    return _offsite_call(backup_targets.browse, target_id)
+
+@app.post("/api/settings/backup-storage/{target_id}/import")
+def storage_import_api(target_id: str, request: Request, req: dict = Body(...)):
+    """Import > From backup storage: a new server here from a copy (the old machine is gone)."""
+    return _offsite_call(backup_targets.import_copy, target_id, str(req.get("panel") or ""),
+                         str(req.get("server") or ""), str(req.get("file") or ""), request.state.user["username"])
 
 # Scheduled restarts: a systemd timer per server, warning players first
 class RestartSchedule(BaseModel):

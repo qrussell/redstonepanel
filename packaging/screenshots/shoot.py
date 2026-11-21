@@ -245,10 +245,20 @@ class Shooter:
             shot("panel-settings")
             self.scroll_to_text("Notifications")
             shot("notifications")
+            self.scroll_to_text("Backup storage")   # 1.16.11: the demo's SSH storage on Creative Lab
+            shot("backup-storage")
             self.scroll_to_text("Connection")    # on a master this also shows Nightly backups
             shot("panel-settings-1")
             self.close_modals()
         step("settings", settings)
+
+        # 1.16.11: off-site copies of the Paper server's backups on the SSH storage
+        def offsite():
+            self.open_server("minecraft-java", tab="backups")
+            page.wait_for_selector("#offsite-box:has-text('Copy to')", timeout=20000)
+            page.evaluate("document.getElementById('offsite-box').scrollIntoView({block: 'start'})")
+            shot("offsite-copies")
+        step("offsite copies", offsite)
 
         def phone_qr():
             page.evaluate("ServerApp.openPhoneQr()")

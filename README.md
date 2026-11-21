@@ -55,7 +55,7 @@ every feature step by step.
 | --- | --- |
 | **Java and Bedrock** | Both, side by side. Java as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft version you pick, each with the Java it needs installed for you. |
 | **Mods and plugins without the hassle** | A catalog from **Modrinth** and **Hangar** with one-click bundles (performance, essentials, Geyser for Bedrock players), dependencies installed for you, update checks and one-click undo. Or drop `.jar`, `.mcpack` and `.mcaddon` files on the server. |
-| **Worlds that are safe** | Scheduled and on-demand backups that copy running servers consistently, one-click restore (with an undo), a backup before mod updates, and uninstalled servers you can bring back. |
+| **Worlds that are safe** | Scheduled and on-demand backups that copy running servers consistently, copies off the machine on a NAS or S3 storage, one-click restore (with an undo), a backup before mod updates, and uninstalled servers you can bring back. |
 | **To know what's going on** | A dashboard of the machine and every server, a **Needs attention** list, Discord or webhook alerts for crashes and backups, and a log of who joined and who was turned away. |
 | **Everything from the browser** | Live chat and console, a `server.properties` editor, player roles and whitelists, a file manager with an editor, scheduled restarts that warn players, world downloads. |
 | **More than one machine** | **Clusters**: one master panel manages every node's servers with all their tabs, creates servers on any node, **moves or copies a server to another machine** *(new in 1.16)*, and renews the cluster's certificates for you. |
@@ -186,8 +186,11 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
 - restore servers you uninstalled with **Keep World** (➕ New Server → Removed servers, or
   `sudo redstonepanel restore NAME`): their files stay in `/opt`, and restoring gives them a
   new systemd service under the same name, on their old port if it's still free
-- scheduled and on-demand backups with retention, and restoring a world from a backup
-  (**Backups** tab, or `sudo redstonepanel backup NAME`)
+- scheduled and on-demand backups with retention by count and age, and restoring a world from
+  a backup (**Backups** tab, or `sudo redstonepanel backup NAME`)
+- off-site copies of backups on an SSH server (rsync) or S3-compatible storage (Backblaze B2,
+  Wasabi, Cloudflare R2, MinIO, AWS S3), checked with SHA-256, with their own retention, restore
+  from a copy, and bringing a server back on a new machine (**Panel Settings → Backup storage**)
 - notifications to Discord or any webhook when a server crashes, starts or stops, and when a
   backup finishes or fails
 - scheduled restarts that warn players in game first
@@ -397,15 +400,25 @@ root.
   the same with `save hold` / `save query` / `save resume`. A Java server without RCON is
   copied while it runs, and the panel warns you: open its **Live Chat** tab once to set RCON
   up.
-- **Retention.** Only scheduled backups are pruned to the number you keep. Manual backups and
-  the ones taken before a restore stay until you delete them.
+- **Retention.** Only scheduled backups are pruned to the number you keep and, if you set it,
+  to an age in days (the newest always stays). Manual backups and the ones taken before a
+  restore stay until you delete them.
+- **Off-site copies.** Under **Panel Settings → Backup storage** an admin adds an SSH server
+  (the panel's own SSH key, `rsync`, host key checked on first use) or S3-compatible storage
+  (AWS Signature Version 4, multipart uploads over 100 MB, nothing extra installed). Each
+  backup is copied there straight after it's taken, in its own transient systemd unit, and
+  checked with SHA-256; the storage keeps its own number and age of scheduled copies. A server's
+  **Backups** tab restores from a copy, and **➕ New Server → From backup storage** brings a
+  server back on a new machine. A failed copy shows under **Needs attention** and can send a
+  webhook. `rsync` and `openssh-client` are recommended packages.
 - **Restore** (admins) replaces the server's world with the one in a backup. The server is
   stopped while that happens, and the world it replaces is saved first as a "Before restore"
   backup, so a restore can be undone.
 - Uninstalling a server removes its timer and keeps its backups; restoring the server brings
   its schedule back.
 
-`sudo redstonepanel backup NAME` takes a manual backup from the command line.
+`sudo redstonepanel backup NAME` takes a manual backup from the command line;
+`sudo redstonepanel offsite-copy NAME` copies a server's backups to its backup storage now.
 
 ## Notifications
 
@@ -653,6 +666,7 @@ bash packaging/test/test-cluster.sh          # create, join, node allowlist, ren
 bash packaging/test/test-cluster-phase2.sh   # a master running game servers on its nodes
 bash packaging/test/test-move.sh             # move and copy servers between panels
 bash packaging/test/test-backup-copies.sh    # backup copies kept on another member (1.16.8)
+bash packaging/test/test-offsite.sh          # backup copies on SSH and S3 (SeaweedFS) storage (1.16.11)
 ```
 
 ### The stylesheet
@@ -683,7 +697,7 @@ Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which
 `.github/workflows/release.yml` runs on every push to `main` (each merge, once GitLab
 mirrors it) and on tags. It builds the .deb, runs
 the install tests on Ubuntu 24.04, 26.04 and 26.10 and Debian 13 (with and without
-recommends), and on Ubuntu 26.04 and Debian 13 on GitHub's ARM64 runners, runs the four
+recommends), and on Ubuntu 26.04 and Debian 13 on GitHub's ARM64 runners, runs the five
 cluster tests above, and for a tag publishes
 a GitHub Release with the .deb, using `release-notes/<tag>.md` as its description (or
 GitHub's generated notes if the file is missing). The tag must match the version in
