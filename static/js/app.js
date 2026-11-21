@@ -1857,6 +1857,13 @@ const ServerApp = {
         this.resourcesData = r;
         body.innerHTML = this.resourcesHtml(r);
         this.onLimitModeChange();
+        const st = document.getElementById('res-status');
+        if (this.resourcesSaved && st) {
+            st.className = 'text-sm text-green-600 dark:text-green-400';
+            st.textContent = this.resourcesSaved;
+            card.scrollIntoView({ block: 'nearest' });
+        }
+        this.resourcesSaved = null;
     },
 
     resourcesHtml(r) {
@@ -1937,13 +1944,13 @@ const ServerApp = {
             return;
         }
         const out = await res.json();
-        this.resourcesData = out;
-        document.getElementById('resources-body').innerHTML = this.resourcesHtml(out);
-        this.onLimitModeChange();
-        const st = document.getElementById('res-status');
-        st.className = 'text-sm text-green-600 dark:text-green-400';
-        st.textContent = out.restarted ? 'Saved and restarted.' : out.restart_needed ? 'Saved. The new memory is used after the next restart.' : 'Saved.';
-        this.loadServers();
+        // Refresh the server list (Max RAM, status) but stay on Maintenance: loadServers reopens
+        // the server on its Overview
+        await this.loadServers();
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        // switchTab reloads the card; it shows this once it has
+        this.resourcesSaved = out.restarted ? 'Saved and restarted.' : out.restart_needed ? 'Saved. The new memory is used after the next restart.' : 'Saved.';
+        this.switchTab('maintenance');
     },
 
     // Dashboard: host history (fetched at most once a minute; the tiles refresh every 10 s)
