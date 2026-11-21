@@ -1306,9 +1306,11 @@ refused joins, so those are Java only.
     `tests/test_deployopts.py` (27 tests: every check, flags in the unit across rewrites, pinned
     Paper and Fabric builds, snapshots and the downgrade check, deploy with every option,
     template order, Maintenance flags); `test-install.sh` (refusals with nothing left behind,
-    flags on Maintenance, `jvm-flags.json` 0600); Aikar's flags start Java 21;
-    `packaging/test/test-advanced-deploy.sh` deploys Paper with every option, Fabric with a
-    pinned loader and a Vanilla snapshot with real downloads and checks each starts.
+    flags on Maintenance, `jvm-flags.json` 0600); `packaging/test/test-advanced-deploy.sh`
+    with real downloads on Docker Desktop, 33/33: Paper 26.3 with every option (build 256 pinned,
+    Java 25, Aikar's flags plus an extra flag, flat world, Notch whitelisted and op), Fabric with
+    loader 0.20.0 pinned, and Vanilla 26.4-snapshot-10, each reaching "Done"; updating the
+    snapshot back to 26.3 refused.
 
 ### 1.18: helpers with their own access, and SFTP
 
