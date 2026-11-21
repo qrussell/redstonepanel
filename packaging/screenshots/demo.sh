@@ -102,10 +102,15 @@ api POST "$P/api/servers/minecraft-java/action" '{"action":"restart"}'
 sleep 40
 
 say "backups, restarts, a template, nightly cluster backups"
+# Backup copies on another member (1.16.8): the master's Paper server on the node, the node's on the master
+api PUT /api/cluster/backup-copies/local/minecraft-java "{\"to\":\"$NID\"}"
+api PUT "/api/cluster/backup-copies/$NID/minecraft-java" '{"to":"local"}'
 for s in /api/servers/minecraft-java /api/servers/minecraft-bedrock "$P/api/servers/minecraft-java"; do
     api PUT "$s/backups/schedule" '{"enabled":true,"frequency":"daily","time":"04:00","keep":7}'
     api POST "$s/backups"
 done
+api POST /api/cluster/backup-copies/local/minecraft-java/sync
+api POST "/api/cluster/backup-copies/$NID/minecraft-java/sync"
 api PUT /api/servers/minecraft-java/restarts '{"enabled":true,"frequency":"daily","time":"05:00","warn":5}'
 api POST /api/servers/minecraft-java/template/save '{"name":"Paper survival"}'
 dx $M "printf '%s\n%s\n' '$PASSPHRASE' '$PASSPHRASE' | redstonepanel cluster nightly on" >/dev/null 2>&1 \
