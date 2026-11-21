@@ -887,6 +887,8 @@ def remove_server(server_name, keep_world, note=None):
     from core import backups, restarts
     backups.on_server_removed(server_name, purged=not keep_world)
     restarts.on_server_removed(server_name, purged=not keep_world)
+    from core import perf
+    perf.on_server_removed(server_name, purged=not keep_world)
     # Its Phantom LAN proxy goes too (Phantom units made by hand stay)
     from core import phantom
     try:
@@ -1083,6 +1085,8 @@ def restore_server(name):
         from core import backups, restarts
         backups.on_server_restored(name)          # its backup and restart schedules, if it had them
         restarts.on_server_restored(name)
+        from core import perf
+        perf.on_server_restored(name)       # its memory and CPU limits, if it had them
         write_log(f"[RESTORE] Restored {name} (port {port}).")
         return {"name": name, "port": port, "old_port": old_port, "downloaded": downloaded}
     finally:

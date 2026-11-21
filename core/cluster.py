@@ -72,6 +72,7 @@ NODE_ROUTES = (
     ("GET", r"/api/logs"),
     ("GET", r"/api/templates"),
     ("GET", r"/api/host"),
+    ("GET", r"/api/host/history"),          # 1.17: the dashboard's history charts for a node
     # phase 2 (1.15): every tab of a server, creating, removing and restoring servers, templates
     # pushed by the master, Java runtimes. Phantom lives under the server's own routes.
     ("GET|POST|PUT|DELETE", SERVER + r"(/[^/]+)*"),

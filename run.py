@@ -131,6 +131,9 @@ def main():
     # Cluster masters: copy backups to the member chosen on each server's Backups tab (1.16.8)
     from core import backup_copies
     backup_copies.sweeper()
+    # Performance history: every server and the host, once a minute (1.17)
+    from core import perf
+    perf.sampler()
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 

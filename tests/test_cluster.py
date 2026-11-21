@@ -486,6 +486,7 @@ class RouteCoverage(unittest.TestCase):
     EXPECTED = {("GET", "/api/cluster/hello"), ("DELETE", "/api/cluster/membership"),
                 ("POST", "/api/cluster/cert/csr"), ("PUT", "/api/cluster/cert"),
                 ("GET", "/api/servers"), ("GET", "/api/logs"), ("GET", "/api/templates"), ("GET", "/api/host"),
+                ("GET", "/api/host/history"),
                 ("POST", "/api/servers/deploy"), ("POST", "/api/servers/import"),
                 ("GET", "/api/servers/removed"), ("POST", "/api/servers/removed/{server_name}/restore"),
                 ("POST", "/api/cluster/templates"),

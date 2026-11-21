@@ -33,10 +33,13 @@ EVENTS = {
     "backup_copy_failed": "Backup copy to another member failed",
     "player_joined": "Player joined",
     "player_refused": "Player turned away",
+    "tps_low": "TPS under 15 for 5 minutes",
+    "disk_full": "Disk over 95 % full",
 }
 DEFAULT_EVENTS = ["crashed", "backup_failed", "backup_copy_failed", "restarted"]
 # A server stuck in a crash loop restarts every 20 s; one message per event per server is enough
-QUIET_SECONDS = {"crashed": 300, "started": 60, "stopped": 60, "player_refused": 60}
+QUIET_SECONDS = {"crashed": 300, "started": 60, "stopped": 60, "player_refused": 60,
+                 "tps_low": 3600, "disk_full": 3600}   # 1.17's alerts: at most once an hour each
 TIMEOUT = 5
 DISCORD_HOSTS = {"discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com"}
 NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.-]*$")
@@ -139,7 +142,7 @@ def _post(url, body):
         r.read(1024)
 
 def _quiet(event, server):
-    """True if this event was sent for this server moments ago (crash loops)."""
+    """True if this event was sent for this server (or disk, for disk_full) moments ago."""
     window = QUIET_SECONDS.get(event)
     if not window or not server:
         return False
@@ -162,12 +165,13 @@ def _quiet(event, server):
         pass
     return False
 
-def send(event, server, message, test=False):
-    """Posts one notification. Never raises; returns (sent, error). test=True ignores the event list."""
+def send(event, server, message, test=False, quiet_key=None):
+    """Posts one notification. Never raises; returns (sent, error). test=True ignores the event list.
+    quiet_key: what the once-in-a-while window counts by, if not the server (a disk, for disk_full)."""
     cfg = load()
     if not cfg["url"]:
         return False, "No webhook URL is set."
-    if not test and (event not in cfg["events"] or _quiet(event, server)):
+    if not test and (event not in cfg["events"] or _quiet(event, quiet_key or server)):
         return False, None
     try:
         _post(cfg["url"], payload(cfg["url"], event, server, message))
