@@ -28,6 +28,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Change difficulty, game mode, ports… | [Configuration](#7-configuration-player-roles-and-the-whitelist) |
 | Make someone an operator, or whitelist them | [Player roles and the whitelist](#7-configuration-player-roles-and-the-whitelist) |
 | Back up a world, or put one back | [Backups](#9-backups) |
+| Keep backups off this machine (NAS, Backblaze B2, S3) | [Off-site copies](#off-site-copies-ssh-or-s3-storage) |
 | Restart a server every night | [Scheduled restarts](#scheduled-restarts) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
 | Add mods, plugins or Bedrock add-ons | [Mods, plugins and add-ons](#12-mods-plugins-and-add-ons) |
@@ -67,6 +68,7 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 7. [Configuration, player roles and the whitelist](#7-configuration-player-roles-and-the-whitelist)
 8. [Maintenance: templates, export, update, uninstall](#8-maintenance-templates-export-update-uninstall)
 9. [Backups](#9-backups)
+   - [Off-site copies (SSH or S3 storage)](#off-site-copies-ssh-or-s3-storage)
    - [Scheduled restarts](#scheduled-restarts)
 10. [World & Maps](#10-world--maps)
 11. [Files](#11-files)
@@ -77,6 +79,7 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 16. [Users](#16-users)
 17. [Panel Settings: name, HTTPS, sign-in](#17-panel-settings-name-https-sign-in)
     - [Notifications](#notifications)
+    - [Backup storage](#backup-storage)
 18. [Clusters](#18-clusters)
 19. [Command line](#19-command-line)
 20. [Troubleshooting](#20-troubleshooting)
@@ -391,6 +394,15 @@ Under **Import Existing**, choose a `.zip`, `.tar.gz`/`.tgz` or `.tar` of a serv
 click **Upload & Import**. A backup wrapped in a single folder is fine; its contents are used.
 The panel gives it a name, a free port and a service, like a fresh deploy.
 
+**Bring a server back from backup storage** (admins)
+
+If a server's backups were copied to an SSH server or S3 storage (see
+[Off-site copies](#off-site-copies-ssh-or-s3-storage)), **From backup storage → Choose a
+backup…** lists every backup there, from every panel that copies to it. Pick one and click
+**Import from backup storage**: the copy is downloaded and checked, the server gets its old name
+if it's free here, its server software is downloaded again, and it starts. Add the storage under
+[Backup storage](#backup-storage) first.
+
 **Removed servers** are listed at the bottom of the same dialog. See
 [Restore a removed server](#15-restore-a-removed-server).
 
@@ -579,7 +591,9 @@ with older versions are cleared the next time the dashboard loads.
 
 1. Tick **Automatic backups**.
 2. Choose how often: every hour, every 6 or 12 hours, every day, or every Sunday.
-3. Choose the time and how many scheduled backups to **Keep**.
+3. Choose the time and how many scheduled backups to **Keep**. Optionally, **Also delete them
+   after** a number of days ("keep 7, and none older than 14 days"); the newest backup always
+   stays, so a server that has been stopped for a month still has one.
 4. Click **Save schedule**. **Next backup** shows when the next one will run.
 
 The time is the **server's clock**, and the form shows its time zone (UTC on most servers). A
@@ -598,9 +612,10 @@ The time is the **server's clock**, and the form shows its time zone (UTC on mos
 - A backup is a `.tar.gz` of the server folder: the world, `server.properties`, operators,
   allowlist and so on. It leaves out what can be downloaded again (`server.jar`,
   `bedrock_server`, Bedrock's built-in packs) and logs.
-- Backups are stored in `/var/backups/redstonepanel/<server>/`, readable only by root. In a
-  cluster, the master can also keep a copy on another member (below); otherwise copy that
-  folder to another disk or machine if you want backups that survive losing this one.
+- Backups are stored in `/var/backups/redstonepanel/<server>/`, readable only by root. To have
+  backups that survive losing this machine, copy them to an SSH server or S3-compatible storage
+  ([off-site copies](#off-site-copies-ssh-or-s3-storage), below) or, in a cluster, to another
+  member.
 - Only **Scheduled** backups are pruned to the number you keep. **Manual** and **Before
   restore** backups stay until you delete them.
 
@@ -627,20 +642,70 @@ A backup on the same disk doesn't survive losing the disk. In a cluster, open a 
   holds them. **Scheduled** copies are kept to the same number as the server's own; **Manual**
   ones stay until you delete them.
 - If a copy fails (the member is off, or its disk is full), it shows under **Needs attention**
-  on the master's dashboard, and as **Backup copy to another member failed** in webhook
-  notifications. The master tries again every few minutes and catches up on what it missed.
+  on the master's dashboard, and as **Backup copy to another member or storage failed** in
+  webhook notifications. The master tries again every few minutes and catches up on what it missed.
 - **⬇️** downloads a copy. **Put back** (admins) copies it into the server's own backups, where
   **Restore** brings its world back.
 - If a machine is lost, its servers' copies are still on the other member: make a new server
   of the same edition and version, open its **Backups** tab, click **Use a copy of another
   server's backup…**, **Put back** the copy you want, and **Restore** it.
-- Every member needs RedstonePanel 1.16.8 or later. Standalone panels don't have this.
+- Every member needs RedstonePanel 1.16.8 or later. Standalone panels don't have this; they
+  can use off-site copies instead.
+
+### Off-site copies (SSH or S3 storage)
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/offsite-copies.png"><img src="images/offsite-copies.png" alt="Off-site copies on the Backups tab"></picture>
+
+Any panel, with or without a cluster, can copy its servers' backups off the machine:
+
+- **An SSH server**: a NAS, another PC or a VPS with `rsync` installed. Copies resume where they
+  stopped if the connection drops.
+- **S3-compatible storage**: Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3 and others.
+  Archives over 100 MB go up in parts.
+
+An admin adds the storage once under [Panel Settings → Backup storage](#backup-storage). After
+that, each server's **Backups** tab has an **Off-site copies** section:
+
+- Tick **Copy to** a storage to copy this server's backups there (a storage can be set to copy
+  every server's backups, which is the default).
+- After each scheduled or manual backup, the copy starts straight away in the background, so a
+  slow upload never holds the server up, and it happens even while the panel itself is stopped.
+  The panel also checks every few minutes for anything missing and copies it.
+- Every copy is checked with SHA-256 when it arrives, and again before it's restored. A
+  `.sha256` file is kept next to each copy.
+- What's copied: every **Manual** backup, and the newest **Scheduled** ones, up to the storage's
+  own **Keep** (or the server's, if the storage doesn't set one) and, if set, no older than its
+  **Delete copies after** days. Older scheduled copies are deleted from the storage; the newest
+  copy always stays. **Before restore** and **Before mod changes** backups stay on this machine.
+  So you can keep, for example, 7 here and 30 days off the machine.
+- **Restore** (admins) downloads the copy into the server's backups, checks it, and restores
+  its world as usual (the current world is saved first as a **Before restore** backup).
+- **🗑** deletes a copy from the storage (admins). **Copy now** copies anything missing straight
+  away.
+- If copying fails (the storage is off, the key was removed, the bucket is full), it shows under
+  **Needs attention** on the dashboard and as **Backup copy to another member or storage
+  failed** in webhook notifications, once until it works again. The panel keeps trying every
+  few minutes.
+
+On the storage, copies are kept as `<folder>/<panel id>/<server>/<backup>.tar.gz`. The panel id
+is this machine's host name and four random characters (shown in Panel Settings), so several
+panels can share one bucket or folder.
+
+**If the machine dies:** install RedstonePanel on the new machine, add the same storage under
+**Panel Settings → Backup storage** (for SSH, add the new panel's key on the storage too), then
+**➕ New Server → From backup storage**: pick the backup, and the server is set up again with its
+old name if it's free, its server software downloaded again (a Java server at the same
+Minecraft version and type), and started.
+
+From the command line, `sudo redstonepanel offsite-copy minecraft-java` copies a server's
+backups now, and `sudo redstonepanel offsite-key` prints the panel's SSH key.
 
 Bedrock servers work the same way:
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/backups-bedrock.png"><img src="images/backups-bedrock.png" alt="Backups tab, Bedrock server"></picture>
 
-From the command line, `sudo redstonepanel backup minecraft-java` takes a backup.
+From the command line, `sudo redstonepanel backup minecraft-java` takes a backup (and starts
+its off-site copy).
 
 ### Scheduled restarts
 
@@ -956,6 +1021,9 @@ Get a message in Discord, or any service that takes a webhook, when something ha
    - **Server started** / **Server stopped**: every start and stop, including your own.
    - **Scheduled restart**: a [scheduled restart](#scheduled-restarts) happened, or failed.
    - **Backup finished** / **Backup failed**.
+   - **Backup copy to another member or storage failed**: an
+     [off-site copy](#off-site-copies-ssh-or-s3-storage) or a copy on another cluster member
+     failed (once, until it works again).
    - **Player joined** / **Player turned away**: from the access log (see
      [Whitelist & Access](#7-configuration-player-roles-and-the-whitelist)), within about 30 seconds.
      Turned-away messages are sent at most once a minute per server.
@@ -973,6 +1041,41 @@ only by root and never shows it again. Paste a new one to replace it, or **Remov
 
 Other services receive a JSON POST with the fields `text`, `event`, `server`, `panel`,
 `message` and `time`.
+
+### Backup storage
+
+Where the [off-site copies](#off-site-copies-ssh-or-s3-storage) of this machine's backups go.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/backup-storage.png"><img src="images/backup-storage.png" alt="Backup storage settings"></picture>
+
+Click **Add storage** and choose:
+
+- **SSH server (rsync)**: the **Host**, **Port**, **User** and **Folder** (relative to that
+  user's home unless it starts with `/`). Open **This panel's SSH key** and add the line shown to
+  `~/.ssh/authorized_keys` of that user on the SSH server. That machine needs `rsync` (`sudo apt
+  install rsync`). The panel records the server's host key on the first connection, as `ssh`
+  does, and refuses to send anything if it changes later; if that machine was reinstalled, click
+  **Forget host key** and **Test** again.
+- **S3-compatible**: the **Endpoint** (for example `https://s3.eu-central-003.backblazeb2.com`,
+  `https://<account>.r2.cloudflarestorage.com` or `http://192.168.1.30:9000` for MinIO), the
+  **Bucket**, an optional **Folder in the bucket**, the **Region** (`auto` for Cloudflare R2) and
+  an **Access key** and **Secret key** that can read, write, list and delete in that bucket. Leave
+  **Path-style addresses** ticked unless your provider needs bucket names in the host name.
+  The secret is stored on this machine readable only by root and never shown again; leave it
+  empty when editing to keep it.
+
+For both:
+
+- **Scheduled copies to keep**: empty keeps as many as each server keeps here. **Delete copies
+  after (days)**: empty never deletes by age. Manual copies stay until you delete them.
+- **Copy every server's backups** (the default), or leave it off and tick the storage on each
+  server's **Backups** tab.
+- **Test** writes a small file, lists it and deletes it, and says which step failed.
+- **Remove** stops copying there. The copies already there stay; delete them on the storage if
+  you want them gone.
+
+Each machine in a cluster copies its own servers' backups: add the storage on each node's own
+panel (the master can't change a node's settings).
 
 **Sign-in**:
 

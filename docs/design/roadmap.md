@@ -747,6 +747,50 @@ refused joins, so those are Java only.
     **Size:** about a week; S3 multipart upload and the restore-on-a-new-machine path are most
     of it.
 
+    **As built:** `core/backup_targets.py`, standard library only (`hmac`/`hashlib` SigV4,
+    `http.client` with a CONNECT tunnel when `https_proxy` is set, `xml.etree` for listings;
+    `ssh`, `rsync` and `ssh-keygen` as subprocesses, never through a shell on this side). What
+    changed from the plan:
+    - **Each panel copies its own servers' backups**, standalone, master or node, rather than
+      the 1.16.8 copy step. Storage is a Panel Settings item, so a master can't add it on a node
+      (it can tick an existing one on a node server's Backups tab through the proxy, as for any
+      server setting). The Backups tab has its own **Off-site copies** section with a checkbox
+      per storage (several at once) instead of extra entries in **Also keep a copy on**.
+    - **When:** `redstonepanel backup` (the timer) starts the copy in its own transient unit
+      (`systemd-run --collect`, `redstonepanel-offsite-<server>`), so it runs after the backup
+      unit has finished and also while the panel is stopped; **Back up now** starts it in the
+      panel. A sweep every 5 minutes retries failures and copies anything missing, but only
+      contacts the storage when a backup is new, a copy is due for deletion, or 6 hours have
+      passed since it last listed it (S3 list requests cost money on some providers). A per
+      target and server lock file keeps the panel and the unit from copying the same thing.
+    - **Layout:** `<folder or prefix>/<panel id>/<server>/<file>` with a `.sha256` file next to
+      each copy. The panel id is the host name plus four random hex digits, made once, so
+      several panels can share a bucket and a new machine finds the old one's backups.
+    - **Checks:** S3 requests carry their body's real SHA-256 (`x-amz-content-sha256`, per part
+      for multipart), which the storage verifies; SSH copies are checked on the storage with
+      `sha256sum` (or `shasum -a 256`) before they take their final name. Restores and imports
+      check the downloaded file against the `.sha256` again.
+    - **Retention:** the storage keeps its own count (or the server's Keep) and an optional age;
+      local schedules got an optional age too ("Also delete them after N days"). The newest
+      scheduled backup or copy is never deleted by age. Manual copies stay until deleted;
+      before-restore and before-update backups aren't copied.
+    - **SSH host keys** are checked with `StrictHostKeyChecking=accept-new` and the panel's own
+      `known_hosts`; a changed key stops copies until an admin clicks **Forget host key**.
+    - **Import → From backup storage** unpacks the copy as a removed server and runs the 1.16
+      restore path, which downloads the server binary again; for Java at the recorded Minecraft
+      version and loader, because backups now include `.redstonepanel-server.json`.
+    - `rsync` and `openssh-client` became Recommends. New commands: `redstonepanel
+      offsite-copy NAME` and `redstonepanel offsite-key`. The webhook event stays
+      `backup_copy_failed` ("Backup copy to another member or storage failed").
+
+    Tested: `tests/test_backup_targets.py` (29 tests: the AWS documentation's two SigV4
+    examples, an in-process S3 server that checks each request's signature and body SHA-256
+    including multipart and paged listings, a stand-in `ssh` with real rsync, retention, the
+    once-per-failure webhook, fetch and import); by hand against a real OpenSSH server and the
+    moto S3 server (12 MB multipart upload, download, delete); and
+    `packaging/test/test-offsite.sh` (panel, SSH storage, MinIO and a second panel as the new
+    machine) in Docker. TEST-RESULTS
+
 ### 1.16.12: Bedrock that keeps up, and update alerts
 
 20. **Bedrock servers that update themselves (opt-in), and a notice when any server has an

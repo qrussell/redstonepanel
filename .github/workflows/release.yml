@@ -1,6 +1,6 @@
 # Builds the .deb, runs the install tests on Ubuntu 24.04, 26.04 and 26.10 and Debian 13 (x86-64),
 # and on Ubuntu 26.04 and Debian 13 on ARM64 (GitHub's ARM runners: a Raspberry Pi's
-# architecture), runs the multi-container cluster tests (cluster, move, backup copies), and on
+# architecture), runs the multi-container cluster tests (cluster, move, backup copies, off-site backups), and on
 # version tags (e.g. v1.0.0) attaches the .deb to a GitHub Release whose description is
 # release-notes/<tag>.md (GitHub's generated notes if that file is missing).
 # Runs on every push to main (GitLab mirrors it here after each merge), so a broken install on
@@ -90,7 +90,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies]
+        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies, test-offsite]
     name: ${{ matrix.script }}
     steps:
       - uses: actions/checkout@v4

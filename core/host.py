@@ -616,6 +616,11 @@ def _needs_attention(rep, failed, phantoms):
         out.extend(backup_copies.attention())
     except Exception:
         pass                                    # never let this break the dashboard
+    try:
+        from core import backup_targets
+        out.extend(backup_targets.attention())
+    except Exception:
+        pass
     order = {"error": 0, "warn": 1, "info": 2}
     return sorted(out, key=lambda a: order[a["level"]])
 
