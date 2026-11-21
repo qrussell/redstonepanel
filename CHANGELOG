@@ -4,6 +4,15 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.16.8 (2026-11-21)
+
+Release notes: release-notes/v1.16.8.md
+
+- Backup copies on another cluster member: on a cluster master, a server's Backups tab can keep a copy of each backup on the master or another node. The master copies new backups within a few minutes and checks each with SHA-256.
+- Scheduled copies follow the server's Keep setting; manual copies stay until deleted. Copies can be downloaded, or put back into the server's backups and restored, even after the original machine is gone.
+- A failing copy shows under Needs attention on the master and sends the new backup_copy_failed webhook event.
+- Cluster contract 4: every member needs 1.16.8 or later for copies.
+
 ## 1.16.7 (2026-11-21)
 
 Release notes: release-notes/v1.16.7.md

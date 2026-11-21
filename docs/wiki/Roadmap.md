@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.7**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.8**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,13 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.8: backups on another cluster node
-
-- **Keep a copy of each backup on another cluster member**, checked as it's copied, with the
-  same retention.
-- Restore from the copy even if the original machine is gone.
-- A failed copy shows under **Needs attention** and can send an alert.
 
 ### 1.16.9: newer Ubuntu, Debian and ARM64
 
@@ -144,5 +137,5 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.7** adds two-factor sign-in; **1.16.6** stops the console
-covering the page, and **1.16.5** gives each Bedrock server its own gameplay port.
+See [What's New](Whats-New.md). The latest: **1.16.8** keeps backup copies on another cluster
+member; **1.16.7** adds two-factor sign-in, and **1.16.6** stops the console covering the page.
