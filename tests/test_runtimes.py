@@ -68,6 +68,7 @@ class Base(unittest.TestCase):
             mock.patch.object(R, "_would_remove", lambda *pkgs: list(self.others)),
             mock.patch.object(R, "_autoremovable", lambda: list(self.autoremovable())),
             mock.patch.object(R, "_default_major", lambda: 25),
+            mock.patch.object(R.javaservers, "packaged_javas", lambda refresh=False: R.javaservers.UBUNTU_JAVA),
             mock.patch.object(R, "_apt", apt),
             mock.patch.object(R, "_systemctl", lambda verb, name: self.states.get((verb, name), "")),
             mock.patch.object(R.manager, "_write_unit", write_unit),
@@ -271,7 +272,7 @@ class Api(unittest.TestCase):
         res = asyncio.run(main.java_missing(None, e))
         self.assertEqual(res.status_code, 409)
         body = json.loads(res.body)
-        self.assertEqual(body["java"], {"required": 21, "package": "openjdk-21-jre-headless"})
+        self.assertEqual(body["java"], {"required": 21, "major": 21, "package": "openjdk-21-jre-headless"})
         self.assertIn("needs Java 21", body["detail"])
 
 

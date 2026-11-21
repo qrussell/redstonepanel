@@ -1,13 +1,15 @@
 <h1><picture><source media="(prefers-color-scheme: dark)" srcset="static/img/redstonepanel-logo-dark.svg"><img src="static/img/redstonepanel-logo.svg" alt="RedstonePanel" width="328" height="64"></picture></h1>
 
-**A free, self-hosted web panel for Minecraft Java and Bedrock servers on your own Ubuntu
-machine.** Create servers in a couple of clicks, add mods and plugins from a catalog, keep
+**A free, self-hosted web panel for Minecraft Java and Bedrock servers on your own Ubuntu or
+Debian machine, or a Raspberry Pi.** Create servers in a couple of clicks, add mods and plugins from a catalog, keep
 your worlds backed up, and manage several machines from one place. No Docker, no database:
 every game server is a plain systemd service, and the panel installs and updates with `apt`.
 
 [![Latest release](https://img.shields.io/github/v/release/qrussell/redstonepanel?label=latest)](https://github.com/qrussell/redstonepanel/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-![Ubuntu 24.04 and 25.04](https://img.shields.io/badge/Ubuntu-24.04%20%7C%2025.04-E95420?logo=ubuntu&logoColor=white)
+![Ubuntu 24.04, 26.04 and 26.10](https://img.shields.io/badge/Ubuntu-24.04%20%7C%2026.04%20%7C%2026.10-E95420?logo=ubuntu&logoColor=white)
+![Debian 13](https://img.shields.io/badge/Debian-13-A81D33?logo=debian&logoColor=white)
+![Raspberry Pi 4 and 5](https://img.shields.io/badge/Raspberry%20Pi-4%20%7C%205%20(64--bit)-C51A4A?logo=raspberrypi&logoColor=white)
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/hero.png"><img src="docs/guide/images/hero.png" alt="The RedstonePanel dashboard on a cluster master"></picture>
 
@@ -17,7 +19,8 @@ every game server is a plain systemd service, and the panel installs and updates
 
 ## Quick start
 
-From a fresh Ubuntu 24.04 or 25.04 machine to players joining, in about five minutes:
+From a fresh Ubuntu, Debian or 64-bit Raspberry Pi OS machine (see
+[Supported systems](#supported-systems)) to players joining, in about five minutes:
 
 **1. Install the panel.**
 
@@ -29,7 +32,8 @@ curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install
 and password (any member of the `sudo` group).
 
 **3. Create a server.** Click **➕ New Server**, choose **Java** or **Bedrock** (and for Java,
-Vanilla, Paper or Fabric and a version), then click **Deploy Fresh Server**. The panel
+Vanilla, Paper or Fabric and a version), then click **Deploy Fresh Server**. (On a Raspberry
+Pi or another ARM64 machine, Java only: Mojang makes the Bedrock server for x86-64 only.) The panel
 downloads it, installs the Java it needs, picks a free port and starts it. A Java server is
 ready in about a minute; watch it in **🖥️ Console**.
 
@@ -189,7 +193,8 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   backs the cluster up every night
 
 The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as an
-`Architecture: all` Debian package for **Ubuntu 24.04 and 25.04**.
+`Architecture: all` Debian package for **Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit
+Raspberry Pi OS**, on x86-64 and ARM64 machines.
 
 ## Documentation
 
@@ -214,9 +219,65 @@ whenever they change on `main`.
 curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install.sh | sudo sh
 ```
 
-[`install.sh`](install.sh) checks that this is Ubuntu 24.04 or 25.04, adds the repository's key
+[`install.sh`](install.sh) checks that this is a [supported system](#supported-systems), adds the repository's key
 (refusing it unless its fingerprint matches the one below) and source, and installs the panel.
 It does what the next section does by hand.
+
+### Supported systems
+
+| System | x86-64 (Intel, AMD) | ARM64 | Notes |
+| --- | --- | --- | --- |
+| Ubuntu 26.04 LTS | ✅ tested | ✅ tested | The best choice for a new machine. |
+| Ubuntu 24.04 LTS | ✅ tested | ✅ | |
+| Ubuntu 26.10 | ✅ tested | ✅ | Supported by Ubuntu until July 2027. |
+| Debian 13 (trixie) | ✅ tested | ✅ tested | Debian packages Java 21 and 25 only (see [Java](#what-gets-installed)). |
+| Raspberry Pi OS, 64-bit (Debian 13 based) | | ✅ Pi 4 and Pi 5 | Java servers only. See [Raspberry Pi](#raspberry-pi). |
+| Ubuntu 25.04 and 25.10 | ✅ | ✅ | Still installs, but Ubuntu no longer updates them: upgrade to 26.04. |
+
+**Bedrock servers need an x86-64 machine.** Mojang only makes Bedrock Dedicated Server for
+64-bit Intel and AMD Linux, so on ARM64 (a Raspberry Pi, an ARM VPS) the panel hides Bedrock
+and runs Java servers only. Bedrock players can still join a Java server through Geyser (in
+the add-on catalog), or a cluster can keep its Bedrock servers on an x86-64 member.
+
+Not supported: **Debian 12** and the Raspberry Pi OS built on it (their Python 3.11 is older
+than the panel needs), **32-bit** Raspberry Pi OS or any other 32-bit system, and other
+distributions. `install.sh` says which of these it found and stops; `FORCE=1` makes it carry on
+anyway.
+
+### Raspberry Pi
+
+A **Raspberry Pi 4 or 5** makes a quiet, cheap Java server for a family or a few friends.
+
+1. With Raspberry Pi Imager, write **Raspberry Pi OS Lite (64-bit)** to the card or SSD, and
+   turn on SSH in its settings.
+2. Sign in over SSH and run the one-line installer below. It installs the same package as on
+   any other machine.
+3. Create a **Paper** server: it uses noticeably less CPU than Vanilla, which matters on a Pi.
+
+**Memory.** Each new Java server may use up to 2 GB (1 GB on a machine with 3 GB or less); its
+**Overview** shows this as **Max RAM**. Leave about 1 GB for the system and the panel:
+
+| Pi | What fits |
+| --- | --- |
+| 2 GB | Not recommended: one small server, which gets 1 GB. |
+| 4 GB | One server at the default 2 GB, for about 5 to 10 players. |
+| 8 GB | Two or three servers at 2 GB, or one at 4 to 5 GB with more players or mods. |
+| 16 GB | Several servers; CPU, not memory, is the limit. |
+
+To change a server's limit, run `sudo systemctl edit --full minecraft-java` (with the server's
+name), change `-Xmx2G` to, say, `-Xmx4G`, then restart the server. The panel keeps it through
+updates and moves.
+
+**Storage.** Run from an SSD (USB 3, or NVMe on a Pi 5) rather than a microSD card if you
+can: worlds and backups write a lot, and cards wear out and slow the server down. Keep backups
+on a second drive or another machine.
+
+**Cooling.** A Pi 5 needs its active cooler (or a case with a fan) to run a server all day
+without slowing itself down.
+
+**Java.** Raspberry Pi OS packages Java 21 and 25, which run Minecraft 1.17 and newer. Older
+versions ask for Java 8; the panel says the Pi doesn't have it and offers Java 21 instead,
+which some old versions and modpacks don't start on.
 
 ### From the qrussell-repo apt repository (recommended)
 
@@ -267,7 +328,7 @@ Replace `X` with the version you downloaded. Upgrade the same way, with the newe
 
 ### What gets installed
 
-Either way, `apt` pulls in the dependencies from Ubuntu's archive (`python3-fastapi`,
+Either way, `apt` pulls in the dependencies from Ubuntu's or Debian's archive (`python3-fastapi`,
 `python3-uvicorn`, `python3-multipart`, PAM, `screen` and so on), then starts the
 `redstonepanel` service.
 
@@ -279,12 +340,16 @@ Java 25 runs Minecraft 26.1 and newer. Older Minecraft versions want older Java:
 1.21.11 need Java 21, 1.18 to 1.20.4 need Java 17, 1.17 Java 16 (Ubuntu's Java 17 runs it) and
 older versions Java 8. The panel uses the Java each version asks
 for when it's installed, else the closest newer one. When none is new enough, an admin can
-install it from the panel (it runs `apt install openjdk-21-jre-headless`, for example), and the
+install it from the panel (it runs `apt install openjdk-21-jre-headless`, for example). It offers
+the Java versions this system's package sources have: Ubuntu 24.04 and 26.04 package 8, 11, 17,
+21 and 25 (and newer releases more), Debian 13 and Raspberry Pi OS only 21 and 25. When a
+Minecraft version needs a Java the system doesn't package, the panel says so and offers the
+closest newer one. The
 dashboard lists each installed Java with the servers using it and can remove one no server
 uses.
 
 Several Java versions can be installed side by side; each server's systemd unit names the one
-it runs (`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`).
+it runs (`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`, or `…-arm64` on ARM64).
 
 `ufw` is also recommended. When it is installed, the panel opens each game server's ports
 in it (for NetherNet Bedrock servers: TCP server-port, UDP server-udp-ports and UDP 7551) and
@@ -530,7 +595,7 @@ The panel runs as **root**. It has to: it writes systemd units, installs package
 firewall ports and manages files in `/opt`. Anyone with a panel **admin** account
 effectively has root on the machine, so treat admin accounts like `sudo` access. Keep the
 panel off the open internet unless it is behind a proxy as described above, and keep
-Ubuntu updated.
+the system updated.
 
 To report a security problem, please open a private
 [security advisory](https://github.com/qrussell/redstonepanel/security/advisories/new)
@@ -545,7 +610,7 @@ docker run --rm -v "$PWD:/src:ro" -v "$PWD/dist:/out" ubuntu:24.04 bash /src/pac
 ```
 
 This builds `dist/redstonepanel_X_all.deb` in a clean Ubuntu container and runs lintian on
-it. One build serves both 24.04 and 25.04.
+it. One build serves every supported system and both x86-64 and ARM64.
 
 To test it like a real server, install it in a systemd container:
 
@@ -555,6 +620,11 @@ docker run -d --privileged --name rp-2404 -v "$PWD/dist:/dist:ro" -v "$PWD/packa
 docker exec rp-2404 bash /t/test-install.sh
 docker rm -f rp-2404
 ```
+
+For Debian, build with `--build-arg DISTRO=debian --build-arg REL=13`; for ARM64, add
+`--platform linux/arm64` to `docker build` and `docker run` (on an x86-64 machine this needs
+QEMU, for example `docker run --privileged --rm tonistiigi/binfmt --install arm64`, and is
+slow). On ARM64 the test checks that Bedrock is refused instead of installed.
 
 `test-install.sh` installs, signs in, switches HTTPS on and off, upgrades, removes and
 purges the package, printing PASS/FAIL for each step. Pass `--no-install-recommends` to
@@ -586,7 +656,8 @@ Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which
 2. Tag `main` as `v1.0.1` and push the tag to GitLab.
 
 The tag reaching GitHub runs `.github/workflows/release.yml`. It builds the .deb, runs
-the install tests on Ubuntu 24.04 and 25.04 (with and without recommends), and publishes
+the install tests on Ubuntu 24.04, 26.04 and 26.10 and Debian 13 (with and without
+recommends), and on Ubuntu 26.04 and Debian 13 on GitHub's ARM64 runners, and publishes
 a GitHub Release with the .deb, using `release-notes/<tag>.md` as its description (or
 GitHub's generated notes if the file is missing). The tag must match the version in
 `debian/changelog`. The qrussell-repo apt repository picks up the release within 4 hours.
@@ -600,7 +671,8 @@ access token with the `api` scope and the Developer role, saved as the masked CI
 `WIKI_TOKEN`; without it the job passes and says so. Don't edit either wiki by hand: the next
 publish overwrites the pages that come from the repository.
 
-On GitLab the same tag runs `.gitlab-ci.yml`. Its checks run first. Then `build-deb`
+On GitLab the same tag runs `.gitlab-ci.yml`. Its checks run first, including the unit tests
+with each supported system's own Python and FastAPI packages (`python-system`). Then `build-deb`
 builds the .deb in `ubuntu:24.04` (it runs on every merge request and on `main` too, with
 the .deb kept as a job artifact for 30 days). Finally `release` runs
 `packaging/gitlab-release.py`, which uploads the .deb to the project's package registry

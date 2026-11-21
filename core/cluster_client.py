@@ -203,7 +203,7 @@ def _node_servers(node):
         if hit and now - hit[0] < OVERVIEW_TTL:
             return hit[1]
     base = {"id": node["id"], "name": node["name"], "url": node["url"], "platform": node.get("platform"),
-            "version": node.get("version"), "cert_expires": node.get("cert_expires"),
+            "machine": node.get("machine"), "version": node.get("version"), "cert_expires": node.get("cert_expires"),
             "cluster_api": node.get("cluster_api"), "verify": cluster.node_verify(node)}
     try:
         servers = call_node(node, "GET", "/api/servers")
@@ -237,6 +237,8 @@ def _hello_fields(node):
         out["cluster_api"] = h["cluster_api"]
     if isinstance(h.get("cert_expires"), int):
         out["cert_expires"] = h["cert_expires"]
+    if cluster.clean_machine(h.get("machine")):
+        out["machine"] = h["machine"]
     return out
 
 

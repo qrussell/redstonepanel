@@ -56,7 +56,9 @@ class Base(unittest.TestCase):
                 f.write(JAR)
         for p in (mock.patch.object(J, "_get_json", lambda url, cache=True: API.get(url)),
                   mock.patch.object(J, "_download", download),
-                  mock.patch.object(J, "JVM_ROOT", self.jvm)):
+                  mock.patch.object(J, "JVM_ROOT", self.jvm),
+                  # Ubuntu 24.04's Java versions, whatever apt on the test machine has
+                  mock.patch.object(J, "packaged_javas", lambda refresh=False: J.UBUNTU_JAVA)):
             p.start()
             self.addCleanup(p.stop)
 

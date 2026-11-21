@@ -15,7 +15,8 @@ B=http://127.0.0.1:8080
 J="Content-Type: application/json"
 O="Origin: $B"
 DEB=$(ls /dist/redstonepanel_*_all.deb)
-. /etc/os-release; echo "=== Ubuntu $VERSION_ID, installing $(basename "$DEB") $*"
+. /etc/os-release; ARCH=$(dpkg --print-architecture); SYSTEM="$PRETTY_NAME, $ARCH"
+echo "=== $SYSTEM, installing $(basename "$DEB") $*"
 
 apt-get update -qq
 apt-get install -y -qq "$@" "$DEB" > /tmp/install.log 2>&1 || { tail -30 /tmp/install.log; echo "FAIL  install"; exit 1; }
@@ -72,6 +73,29 @@ if ! command -v java >/dev/null; then
     [ "$c" = 409 ] && grep -q '"package":"openjdk-25-jre-headless"' /tmp/body && ok "Java deploy without Java -> 409 naming the package" || bad "Java deploy without Java ($c $(cat /tmp/body))"
 fi
 
+# --- the Java versions offered are the ones this system's package sources have (Debian 13: 21, 25)
+APT_JAVA=$(apt-cache pkgnames openjdk- | sed -nE 's/^openjdk-([0-9]+)-jre-headless$/\1/p' | sort -n | tr '\n' ' ')
+code -b $L $B/api/java/runtimes >/dev/null
+python3 - "$APT_JAVA" <<'EOF' && ok "Java versions offered = this system's openjdk packages" || bad "Java versions offered"
+import json, sys
+apt = sorted(int(x) for x in sys.argv[1].split() if int(x) >= 8)
+got = json.load(open("/tmp/body"))
+offered = sorted([i["major"] for i in got["installable"]] + [j["major"] for j in got["installed"]])
+print(f"  apt has Java {apt}; the panel offers {offered}")
+sys.exit(0 if offered == apt else 1)
+EOF
+
+# --- Bedrock: x86-64 only (Mojang makes no ARM64 build)
+code -b $L $B/api/auth/me >/dev/null
+if [ "$ARCH" = amd64 ]; then
+    check "Bedrock offered on amd64"       grep -q '"bedrock_supported":true' /tmp/body
+else
+    check "Bedrock not offered on $ARCH"   grep -q '"bedrock_supported":false' /tmp/body
+    c=$(code -b $L -X POST $B/api/servers/deploy -H "$J" -H "$O" -d '{"edition":"bedrock"}')
+    [ "$c" = 400 ] && grep -q 'x86-64' /tmp/body && ! ls -d /opt/minecraft-bedrock* >/dev/null 2>&1 \
+        && ok "Bedrock deploy on $ARCH -> 400, nothing made" || bad "Bedrock deploy on $ARCH ($c $(cat /tmp/body))"
+fi
+
 # --- import server backups: .tar.gz and .zip, each wrapped in a folder; hostile archives refused
 BK=/tmp/backups && mkdir -p $BK/bedrock-server_backup_20261110/worlds/w
 printf '#!/bin/sh\nexec sleep 600\n' > $BK/bedrock-server_backup_20261110/bedrock_server
@@ -79,12 +103,17 @@ chmod +x $BK/bedrock-server_backup_20261110/bedrock_server
 echo "server-port=19132" > $BK/bedrock-server_backup_20261110/server.properties
 tar -C $BK -czf /tmp/bedrock-backup.tar.gz bedrock-server_backup_20261110
 c=$(code -b $L -X POST $B/api/servers/import -H "$O" -F "file=@/tmp/bedrock-backup.tar.gz")
-[ "$c" = 200 ] && grep -q '"server":"minecraft-bedrock"' /tmp/body && ok "import wrapped .tar.gz Bedrock backup" || bad "import .tar.gz ($c $(cat /tmp/body))"
-check "  files at the top of /opt/minecraft-bedrock" test -x /opt/minecraft-bedrock/bedrock_server
-check "  world kept"                       test -d /opt/minecraft-bedrock/worlds/w
-check "  owned by minecraft"               test "$(stat -c %U /opt/minecraft-bedrock/bedrock_server)" = minecraft
-check "  service starts"                   bash -c 'sleep 2; systemctl is-active --quiet minecraft-bedrock'
-check "  valid RestartSec in unit"         grep -qx "RestartSec=20" /etc/systemd/system/minecraft-bedrock.service
+if [ "$ARCH" = amd64 ]; then
+    [ "$c" = 200 ] && grep -q '"server":"minecraft-bedrock"' /tmp/body && ok "import wrapped .tar.gz Bedrock backup" || bad "import .tar.gz ($c $(cat /tmp/body))"
+    check "  files at the top of /opt/minecraft-bedrock" test -x /opt/minecraft-bedrock/bedrock_server
+    check "  world kept"                       test -d /opt/minecraft-bedrock/worlds/w
+    check "  owned by minecraft"               test "$(stat -c %U /opt/minecraft-bedrock/bedrock_server)" = minecraft
+    check "  service starts"                   bash -c 'sleep 2; systemctl is-active --quiet minecraft-bedrock'
+    check "  valid RestartSec in unit"         grep -qx "RestartSec=20" /etc/systemd/system/minecraft-bedrock.service
+else
+    [ "$c" = 400 ] && grep -q 'x86-64' /tmp/body && ok "Bedrock backup import on $ARCH -> 400" || bad "Bedrock import on $ARCH ($c $(cat /tmp/body))"
+    check "  nothing left in /opt"             bash -c '! ls -d /opt/minecraft-bedrock* /opt/.redstonepanel-import-* 2>/dev/null'
+fi
 python3 - <<'EOF'
 import zipfile
 with zipfile.ZipFile("/tmp/java-backup.zip", "w") as z:
@@ -129,5 +158,5 @@ apt-get purge -y -qq redstonepanel >/dev/null 2>&1 && ok "apt purge" || bad "apt
 check "panel data deleted on purge"       test ! -e /var/lib/redstonepanel
 check "game server untouched by purge"    test -f /opt/minecraft-test/world/level.dat
 
-echo "=== $([ $FAILS = 0 ] && echo 'ALL PASSED' || echo "$FAILS FAILED") on Ubuntu $VERSION_ID"
+echo "=== $([ $FAILS = 0 ] && echo 'ALL PASSED' || echo "$FAILS FAILED") on $SYSTEM"
 exit $FAILS

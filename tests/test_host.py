@@ -177,6 +177,7 @@ class Report(unittest.TestCase):
             mock.patch.object(H.javaservers, "installed_javas", lambda: {21: "/usr/lib/jvm/java-21/bin/java"}),
             mock.patch.object(H.runtimes, "owner", lambda path: "openjdk-21-jre-headless"),
             mock.patch.object(H.runtimes, "_default_major", lambda: 21),
+            mock.patch.object(H.javaservers, "packaged_javas", lambda refresh=False: H.javaservers.UBUNTU_JAVA),
             mock.patch.object(H, "panel_update", lambda: None),
             mock.patch.object(H, "java_players", lambda server, d: (2, 20)),
             mock.patch.object(H, "cached_size", lambda path: (12345, 1)),

@@ -1,4 +1,5 @@
 import os
+import platform
 import subprocess
 import shutil
 import re
@@ -25,11 +26,28 @@ class JavaMissing(DependencyError):
     def __init__(self, err):
         super().__init__(str(err))
         self.required = err.required
+        self.major = err.major
         self.package = err.package
 
 # program -> Ubuntu package (the .deb depends on/recommends these)
 TOOL_PACKAGES = {"java": "openjdk-25-jre-headless", "screen": "screen", "unzip": "unzip",
                  "curl": "curl", "wget": "wget", "jq": "jq"}
+
+# Mojang ships Bedrock Dedicated Server for x86-64 Linux only, so ARM64 machines (a Raspberry
+# Pi, an ARM VPS) run Java servers only.
+BEDROCK_MACHINES = ("x86_64", "amd64")
+
+def bedrock_supported(machine=None):
+    return (machine or platform.machine()).lower() in BEDROCK_MACHINES
+
+def bedrock_unsupported_message():
+    return (f"Bedrock servers can't run on this machine ({platform.machine()}): Mojang only makes Bedrock "
+            f"Dedicated Server for 64-bit Intel and AMD (x86-64) machines. Java servers work here, and "
+            f"Bedrock players can join one through Geyser.")
+
+def require_bedrock_machine():
+    if not bedrock_supported():
+        raise ServerError(bedrock_unsupported_message())
 
 def require_tools(*tools):
     missing = [t for t in tools if not shutil.which(t)]
@@ -649,6 +667,7 @@ def update_server_binary(server_name, version=None):
     if not is_java:
         if version:
             raise ServerError("Bedrock servers always update to the newest release.")
+        require_bedrock_machine()
         require_tools("curl", "wget", "jq", "unzip")
 
     if is_java:
@@ -735,8 +754,22 @@ def _fetch_bedrock(d):
         os.remove(f"{d}/bedrock-server.zip")
     run_and_log(["chmod", "+x", f"{d}/bedrock_server"])
 
-def _write_unit(svc_name, mc_dir, edition, xms="1G", xmx="2G", java="/usr/bin/java"):
-    """Writes the game server's systemd unit and reloads systemd (doesn't enable or start it)."""
+def default_heap(meminfo="/proc/meminfo"):
+    """A new Java server's heap: 1-2 GB, or 512 MB-1 GB on a machine with 3 GB of memory or less
+    (a 2 GB Raspberry Pi), where 2 GB would leave nothing for the system."""
+    try:
+        with open(meminfo) as f:
+            kb = int(re.search(r"^MemTotal:\s+([0-9]+) kB", f.read(), re.M).group(1))
+    except (OSError, AttributeError, ValueError):
+        kb = 0
+    return {"xms": "512M", "xmx": "1G"} if 0 < kb <= 3 * 1024 * 1024 else {"xms": "1G", "xmx": "2G"}
+
+def _write_unit(svc_name, mc_dir, edition, xms=None, xmx=None, java="/usr/bin/java"):
+    """Writes the game server's systemd unit and reloads systemd (doesn't enable or start it).
+    A Java server without a heap given gets default_heap()."""
+    if not (xms and xmx):
+        heap = default_heap()
+        xms, xmx = xms or heap["xms"], xmx or heap["xmx"]
     if edition == "bedrock":
         exec_start = f"/usr/bin/screen -c {mc_dir}/screenrc -L -Logfile {mc_dir}/server.log -DmS {svc_name} ./bedrock_server"
         env_vars = "Environment=\"LD_LIBRARY_PATH=.\""
@@ -1009,6 +1042,7 @@ def restore_server(name):
     try:
         write_log(f"[RESTORE] Restoring {name} from {d}.")
         if edition != "java":                     # Java itself is checked below, per Minecraft version
+            require_bedrock_machine()
             require_tools("screen", *([] if match["has_binary"] else ["curl", "wget", "jq", "unzip"]))
         downloaded = False
         if not match["has_binary"]:
@@ -1094,6 +1128,8 @@ def _import_unpacked(staging, root):
     else:
         raise archive.ArchiveError("This doesn't look like a Minecraft server backup: no bedrock_server, "
                                    "server.jar or server.properties at its top level.")
+    if edition == "bedrock" and not bedrock_supported():
+        raise archive.ArchiveError(bedrock_unsupported_message())
     if edition == "java" and not os.path.isfile(os.path.join(root, "server.jar")):
         write_log("[WARNING] The backup has no server.jar; use Update on the new server to download one.")
 
@@ -1154,6 +1190,8 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
     Keeps prefer_name and the server's ports when they're free here, else picks others.
     on_placed(name) is called once the folder is in place, so a failure after it can be undone.
     Returns {name, port, old_port, renamed}."""
+    if edition == "bedrock":
+        require_bedrock_machine()
     name = prefer_name if prefer_name and _reserve_exact(prefer_name) else None
     if not name:
         name, _ = _reserve_name(edition)
@@ -1211,6 +1249,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
     if template_id:
         get_checked_template(template_id, edition)   # fail before downloading anything
     if edition == "bedrock":
+        require_bedrock_machine()
         require_tools("curl", "wget", "jq", "unzip", "screen")
     proto = "tcp" if edition == "java" else "udp"
 

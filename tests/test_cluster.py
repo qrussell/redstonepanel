@@ -5,6 +5,7 @@ different temporary directory for each panel (see Panels.use).
 """
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -284,6 +285,12 @@ class ClusterFlow(unittest.TestCase):
         self.assertEqual(h["cluster_api"], C.CLUSTER_API)
         self.assertEqual(h["cluster_id"], self.node_state["cluster_id"])
         self.assertGreater(h["cert_expires"], 0)
+        self.assertEqual(h["machine"], platform.machine())
+        self.p.use("master")
+        self.assertEqual(C.public_node(C.load_nodes()[0])["machine"], platform.machine(), "the join records it")
+        self.p.use("node")
+        self.assertEqual(C.clean_machine("aarch64"), "aarch64")
+        self.assertIsNone(C.clean_machine("x86_64; rm -rf /"))
 
     def test_renewal(self):
         req = C.cert_csr()
