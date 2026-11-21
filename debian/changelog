@@ -1,3 +1,16 @@
+redstonepanel (1.16.5) noble; urgency=medium
+
+  * Each new Bedrock server gets its own gameplay port: server-udp-ports
+    is set to the server's port. Since 1.16.4 every new Bedrock server
+    kept the 19132 from Mojang's server.properties, so a second Bedrock
+    server on the same machine clashed with the first.
+  * Moving, importing or restoring a Bedrock server moves a matching
+    server-udp-ports along with its port, applying a template keeps the
+    server's own, and ports in server-udp-ports count as taken when the
+    panel picks ports for a new server.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 04:26:00 +0000
+
 redstonepanel (1.16.4) noble; urgency=medium
 
   * New Bedrock servers keep the full server.properties that comes with

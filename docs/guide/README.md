@@ -1,7 +1,7 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.16.4**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.16.5**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
 "Creative Lab" running a Fabric server with mods.
 
@@ -43,6 +43,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.16.5 | Each Bedrock server gets its own UDP gameplay port (`server-udp-ports`), so several can run on one machine. | [Create a server](#4-create-or-import-a-server) |
 | 1.16.4 | New Bedrock servers keep every setting from the Bedrock download, so **Configuration** lists them all. | [Configuration](#7-configuration-player-roles-and-the-whitelist) |
 | 1.16.3 | Fold the server list by edition and by cluster node; a folded heading shows how many servers are online. | [The dashboard](#3-the-dashboard) |
 | 1.16.2 | **Kick**, **Ban** and **Unban** players, and a **Banned** list for Java servers. | [Kick, ban and unban](#7-configuration-player-roles-and-the-whitelist) |
@@ -304,7 +305,8 @@ The panel then:
   checksums;
 - sets the server's ports in its `server.properties`. A Bedrock server keeps the full file
   that comes with the Bedrock download, so every setting is there to change in
-  **Configuration**;
+  **Configuration**, and gets UDP `server-udp-ports` (its gameplay port) on the same number as
+  its TCP `server-port`, so each Bedrock server has its own;
 - accepts the Minecraft EULA for you (`eula=true`), so by deploying a server you agree to it;
 - creates a systemd service that runs as the `minecraft` user and restarts the server if it
   crashes;

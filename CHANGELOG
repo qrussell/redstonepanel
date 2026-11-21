@@ -4,6 +4,13 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.16.5 (2026-11-21)
+
+Release notes: release-notes/v1.16.5.md
+
+- Each new Bedrock server gets its own gameplay port: server-udp-ports is set to the server's port. Since 1.16.4 every new Bedrock server kept the 19132 from Mojang's server.properties, so a second Bedrock server on the same machine clashed with the first.
+- Moving, importing or restoring a Bedrock server moves a matching server-udp-ports along with its port, applying a template keeps the server's own, and ports in server-udp-ports count as taken when the panel picks ports for a new server.
+
 ## 1.16.4 (2026-11-21)
 
 Release notes: release-notes/v1.16.4.md

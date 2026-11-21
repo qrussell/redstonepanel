@@ -98,6 +98,11 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**A gameplay port for each Bedrock server** *(1.16.5)*. Since 1.16.4 every new Bedrock server
+used UDP 19132 for gameplay, so a second Bedrock server clashed with the first. Each now gets
+its own, on the same number as its port. Read the
+[1.16.5 release notes](release-notes/v1.16.5.md).
+
 **New Bedrock servers keep all their settings** *(1.16.4)*. A newly created Bedrock server's
 `server.properties` had only its ports, so **Configuration** showed almost nothing to edit. It
 now has every setting from the official Bedrock download. Read the

@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.4**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.5**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -10,28 +10,28 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 
 ## Next up
 
-### 1.16.5: two-factor sign-in
+### 1.16.6: two-factor sign-in
 
 - **Codes from an authenticator app** at sign-in, for panel and Linux accounts, with recovery
   codes shown once.
 - An optional setting to **require it for every admin**.
 - Locked out? `sudo redstonepanel reset-2fa NAME` on the server.
 
-### 1.16.6: backups on another cluster node
+### 1.16.7: backups on another cluster node
 
 - **Keep a copy of each backup on another cluster member**, checked as it's copied, with the
   same retention.
 - Restore from the copy even if the original machine is gone.
 - A failed copy shows under **Needs attention** and can send an alert.
 
-### 1.16.7: newer Ubuntu, Debian and ARM64
+### 1.16.8: newer Ubuntu, Debian and ARM64
 
 - **Ubuntu 25.10 and 26.04 LTS**, as well as 24.04 and 25.04.
 - **Debian 12 and 13**.
 - **ARM64** machines such as a Raspberry Pi, for Java servers. Bedrock is only made for
   x86-64, so it's hidden there.
 
-### 1.16.8: a panel that works on a phone
+### 1.16.9: a panel that works on a phone
 
 - **Every page fits a phone:** the sidebar becomes a ☰ menu, tables become cards, and Start,
   Restart and Stop are big buttons at the top.
@@ -69,7 +69,7 @@ close the gaps people most often notice when choosing a panel.
 
 | Idea | Why |
 | --- | --- |
-| ⭐ **Backups to SFTP/rsync or S3-compatible storage**, on the same schedule, for panels without a cluster (1.16.6 copies to another cluster node). | A backup on the same disk doesn't survive losing the disk. |
+| ⭐ **Backups to SFTP/rsync or S3-compatible storage**, on the same schedule, for panels without a cluster (1.16.7 copies to another cluster node). | A backup on the same disk doesn't survive losing the disk. |
 | ⭐ **Automatic Bedrock updates** (opt-in), with a backup first and a player warning. | Bedrock players' clients update themselves, and then can't join an older server. |
 | **Cloudflare Tunnel for the master panel** (opt-in): paste a tunnel token in Panel Settings and reach the panel at your own hostname, with no port opened or forwarded on your router. Game traffic is unchanged. | Reaching the panel from outside today means opening a port and handling a certificate. A tunnel needs neither, and keeps your home IP address private. |
 | **Whitelist kept in step across servers** from the cluster master. | Today each server's whitelist is changed on its own. |
@@ -98,6 +98,6 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.4** fixes the settings of new Bedrock
-servers; **1.16.3** lets you fold the server list by node and edition, and **1.16.2** adds kick,
-ban and unban, and gives the panel its own logo and a redstone theme.
+See [What's New](Whats-New.md). The latest: **1.16.5** gives each Bedrock server its own
+gameplay port; **1.16.4** fixes the settings of new Bedrock servers, and **1.16.3** lets you fold
+the server list by node and edition.

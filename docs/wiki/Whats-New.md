@@ -9,6 +9,14 @@ the dashboard.
 
 ---
 
+## 1.16.5: a gameplay port for each Bedrock server *(November 2026)*
+
+- **Several Bedrock servers on one machine work again.** Since 1.16.4 every new Bedrock server
+  used UDP 19132 for gameplay, so a second one clashed with the first. Each now gets its own,
+  on the same number as its port (19132, 19134, …), which is also easy to forward on a router.
+
+[Release notes](../../release-notes/v1.16.5.md)
+
 ## 1.16.4: Bedrock settings fix *(November 2026)*
 
 - **New Bedrock servers keep all their settings.** A newly created Bedrock server's
