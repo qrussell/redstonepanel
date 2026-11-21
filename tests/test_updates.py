@@ -171,6 +171,22 @@ class Files(unittest.TestCase):
                 U.install_files(self.d, path)
             self.assertEqual(read(os.path.join(self.d, "bedrock_server")), "old binary", why)
 
+    def test_download_retries_once_after_a_non_zip_answer(self):
+        bodies = [b"<html>Too many requests</html>", open(self.zip, "rb").read()]
+        class Answer(io.BytesIO):
+            headers = {"Content-Type": "text/html"}
+            def geturl(self):
+                return "https://www.minecraft.net/x/bedrock-server-1.26.10.4.zip"
+        logged = []
+        with mock.patch.object(U.urllib.request, "urlopen", lambda req, timeout=None: Answer(bodies.pop(0))), \
+                mock.patch.object(U.time, "sleep", lambda s: None), \
+                mock.patch.object(M, "write_log", logged.append):
+            path = U.download_bedrock({"version": "1.26.10.4", "url": "https://www.minecraft.net/x/bedrock-server-1.26.10.4.zip"},
+                                      self.root)
+        self.assertTrue(zipfile.is_zipfile(path))
+        self.assertTrue(any("Too many requests" in l for l in logged), "what came back is logged")
+        self.assertTrue(any("Trying again" in l for l in logged))
+
     def test_symlink_in_the_folder_is_refused_before_any_change(self):
         os.rename(os.path.join(self.d, "behavior_packs"), os.path.join(self.root, "elsewhere"))
         os.symlink(os.path.join(self.root, "elsewhere"), os.path.join(self.d, "behavior_packs"))

@@ -59,6 +59,8 @@ START_WAIT = 180
 STOP_WAIT = 60
 KEEP_PRE_UPDATE = 3
 TIMEOUT = 60
+DOWNLOAD_TRIES = 2
+DOWNLOAD_RETRY_WAIT = 30
 ANNOUNCED_MAX = 500
 
 
@@ -295,6 +297,9 @@ def check(only=None, announce=True):
     state["announced"] = state["announced"][-ANNOUNCED_MAX:]
     if not only:
         state["checked"] = now
+    else:                                        # Check now on one server
+        state["checked_one"] = {**(state.get("checked_one") if isinstance(state.get("checked_one"), dict) else {}),
+                                only: now}
     _write(STATE_FILE, state)
     return state
 
@@ -422,7 +427,8 @@ def overview(server):
             "current": _current_of(d, is_java),
             "update": server_update(server, d, is_java),
             "error": (state["errors"].get(server) or {}).get("error"),
-            "checked": state.get("checked"),
+            "checked": max(state.get("checked") or 0,
+                           (state.get("checked_one") or {}).get(server) or 0) or None,
             "next_check": next_check(),
             "last": result if isinstance(result, dict) else None,
             "warn_minutes": WARN_MINUTES}
@@ -449,6 +455,8 @@ def on_server_removed(server, purged):
     for key in ("servers", "errors", "results"):
         if state[key].pop(server, None) is not None:
             changed = True
+    if isinstance(state.get("checked_one"), dict) and state["checked_one"].pop(server, None) is not None:
+        changed = True
     if purged:                                   # a new server of the same name hears about versions again
         kept = [k for k in state["announced"] if not k.startswith(server + " ")]
         changed = changed or len(kept) != len(state["announced"])
@@ -478,19 +486,37 @@ def download_bedrock(latest, dest_dir):
     if not _allowed_url(url):
         raise UpdateError(f"Refused to download Bedrock from {_host(url)}: not a minecraft.net address.")
     path = os.path.join(dest_dir, "bedrock-server.zip")
+    for attempt in range(1, DOWNLOAD_TRIES + 1):
+        try:
+            _download_once(url, latest["version"], path)
+            members(path)                             # refuses a broken or unexpected zip
+            return path
+        except UpdateError as e:
+            if attempt == DOWNLOAD_TRIES or "unsafe path" in str(e) or "symbolic link" in str(e):
+                raise
+            # minecraft.net sometimes answers a burst of downloads with something else; try once more
+            manager.write_log(f"[UPDATE] {e} Trying again in {DOWNLOAD_RETRY_WAIT} seconds.")
+            time.sleep(DOWNLOAD_RETRY_WAIT)
+
+def _download_once(url, version, path):
     req = urllib.request.Request(url, headers={"User-Agent": BROWSER_UA})
-    manager.write_log(f"[UPDATE] Downloading Bedrock {latest['version']} from {_host(url)} ...")
+    manager.write_log(f"[UPDATE] Downloading Bedrock {version} from {_host(url)} ...")
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r, open(path, "wb") as f:
             if not _allowed_url(r.geturl()):
                 raise UpdateError(f"The Bedrock download was redirected to {_host(r.geturl())}; refused.")
             shutil.copyfileobj(r, f, 1 << 20)
+            kind = r.headers.get("Content-Type") or "no type"
     except urllib.error.HTTPError as e:
-        raise UpdateError(f"Downloading Bedrock {latest['version']} failed: {_host(url)} answered HTTP {e.code}.")
+        raise UpdateError(f"Downloading Bedrock {version} failed: {_host(url)} answered HTTP {e.code}.")
     except (urllib.error.URLError, OSError) as e:
-        raise UpdateError(f"Downloading Bedrock {latest['version']} failed: {getattr(e, 'reason', e)}")
-    members(path)                                     # refuses a broken or unexpected zip
-    return path
+        raise UpdateError(f"Downloading Bedrock {version} failed: {getattr(e, 'reason', e)}")
+    if not zipfile.is_zipfile(path):
+        # Say what came back instead (an error page, usually), so a failure can be explained
+        with open(path, "rb") as f:
+            head = f.read(200).decode("utf-8", "replace")
+        manager.write_log(f"[UPDATE] {_host(url)} sent {os.path.getsize(path)} bytes ({kind}) that aren't a zip, "
+                          f"starting: {re.sub(r'[^ -~]', '?', head)!r}")
 
 def members(zip_path):
     """The zip's files as (zip member, relative path), refusing anything that would land outside

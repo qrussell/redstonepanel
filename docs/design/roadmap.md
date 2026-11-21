@@ -802,7 +802,7 @@ refused joins, so those are Java only.
       and `update_failed` (on by default). Failures show under **Needs attention** until the next
       successful update.
 
-    **Tested:** `tests/test_updates.py` (29 tests: the links API and host allowlist, Java alert
+    **Tested:** `tests/test_updates.py` (30 tests: the links API and a retried non-zip download, and host allowlist, Java alert
     rules, unsafe zips, symlinks in the server folder, keep-files, put-back, alert once per
     version, stale alerts, warning steps and order, failed download/backup/start, rollback,
     stopped servers stay stopped, the timer only updates opted-in servers). End to end,
@@ -810,7 +810,18 @@ refused joins, so those are Java only.
     stand-in BDS and a stand-in download API in a systemd container; the timer's run warns,
     stops with `stop`, backs up, keeps settings and world, starts 1.0.0.2; a release that dies
     on start is rolled back to 1.0.0.2 with its world; the Update button; refused hosts and
-    damaged zips leave the server running.
+    damaged zips leave the server running. With a real Bedrock Dedicated Server on Quentin's PC
+    (Docker, 21 Nov 2026): a new server got 1.26.66.1 from minecraft.net and stayed up; the
+    timer updated a real 1.26.65.1 server to 1.26.66.1 (warnings in chat, `stop` and "Quit
+    correctly", Before update backup, settings kept, "Server started."); the Update button
+    reinstalled it the same way. Once minecraft.net answered a third download in five minutes
+    with something that wasn't a zip, so a non-zip answer is now logged (size, type, first
+    bytes) and the download is tried once more after 30 seconds. The screenshot demo takes
+    `update-alert.png` and `bedrock-auto-update.png` in both themes.
+
+    Found while testing, not changed here: the panel's ordinary **Stop** and **Restart** of a
+    Bedrock server only run `systemctl stop`, so BDS never gets its `stop` command (no "Quit
+    correctly"). Updates send `stop` themselves.
 
 ### 1.17: server performance and tuning
 

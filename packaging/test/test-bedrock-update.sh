@@ -92,7 +92,7 @@ U=$(api POST "/api/servers/$SRV/updates/check")
 echo "$U" | json "d['update']['label']" | grep -qx "Bedrock 1.0.0.2" && ok "Check now finds Bedrock 1.0.0.2" || { bad "check now"; echo "$U"; }
 api GET /api/servers | json "[s['update']['latest'] for s in d if s['name'] == '$SRV'][0]" | grep -qx 1.0.0.2 \
     && ok "the server list carries the alert (sidebar, dashboard, cluster master)" || bad "server list alert"
-dx "redstonepanel check-updates" | grep -q "Bedrock 1.0.0.2 is available" && ok "check-updates reports it" || bad "check-updates output"
+dx "RP_BEDROCK_LINKS=http://127.0.0.1:8099/links.json redstonepanel check-updates" | grep -q "Bedrock 1.0.0.2 is available" && ok "check-updates reports it" || bad "check-updates output"
 check "off by default: nothing was updated" started 1.0.0.1
 
 # --- turning it on, and the timer's run: warn, back up, update, start
