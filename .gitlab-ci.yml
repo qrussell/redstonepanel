@@ -6,9 +6,10 @@
 # - GitLab (here): build-deb builds the .deb in ubuntu:24.04, and release uploads it to
 #   the package registry and creates the GitLab release (packaging/gitlab-release.py).
 # - GitHub: GitLab mirrors the tag, and .github/workflows/release.yml builds the .deb,
-#   install-tests it on Ubuntu 24.04, 26.04, 26.10 and Debian 13 (and ARM64) and creates the
-#   GitHub release, which
-#   qrussell-repo (apt) picks up.
+#   install-tests it on Ubuntu 24.04, 26.04, 26.10 and Debian 13 (and ARM64), runs the cluster
+#   tests and creates the GitHub release, which qrussell-repo (apt) picks up. The same workflow
+#   runs (without releasing) on every push of main to the mirror, so install and cluster tests
+#   run after each merge.
 # release-from-github recreates a GitLab release from the GitHub one: run a pipeline on
 # main with the variable RELEASE_TAG=vX.Y.Z (Build > Pipelines > Run pipeline).
 
