@@ -104,3 +104,88 @@ textarea:focus {
     box-shadow: 0 0 0 3px var(--accent-glow);
 }
 input[type="checkbox"], input[type="radio"], input[type="range"], progress { accent-color: var(--accent-base); }
+
+/* ---------------------------------------------------------------------------------------------
+   Phones (1.16.10). Below Tailwind's md breakpoint (768 px) the sidebar is a menu that slides in
+   from the left (ServerApp.openNav / closeNav), under a top bar. Layout classes live in
+   index.html and app.js; this is what Tailwind classes can't say.
+   --------------------------------------------------------------------------------------------- */
+/* The visible height, not the height behind the browser's address bar */
+body.h-screen { height: 100vh; height: 100dvh; }
+
+#mobile-bar { min-height: 3.5rem; padding-top: env(safe-area-inset-top); }
+#console-dock { left: 0; padding-bottom: env(safe-area-inset-bottom); }
+@media (min-width: 768px) {
+    #console-dock { left: 18rem; }
+}
+
+@media (max-width: 767.98px) {
+    .rp-sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        padding-top: env(safe-area-inset-top);
+        transform: translateX(-100%);
+        transition: transform 0.2s cubic-bezier(.4, 0, .2, 1);
+        visibility: hidden;
+    }
+    body.rp-nav-open .rp-sidebar { transform: none; visibility: visible; }
+    body.rp-nav-open { overscroll-behavior: contain; }
+
+    /* Dialogs fill the screen */
+    .rp-dialog {
+        max-width: none !important;
+        min-height: 100%;
+        border-radius: 0 !important;
+        border: 0 !important;
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom)) !important;
+    }
+
+    /* 16 px fields: iOS zooms the page into anything smaller when it gets focus */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea { font-size: 16px !important; }
+
+    /* Tables become cards: each row is a card, each cell a "Label  value" line.
+       Cells say their label with data-label; rp-card-head is the card's title line and
+       rp-card-actions its buttons. */
+    table.rp-cards, table.rp-cards > tbody, table.rp-cards > tbody > tr, table.rp-cards > tbody > tr > td { display: block; width: 100%; }
+    table.rp-cards > thead { display: none; }
+    table.rp-cards > tbody > tr { padding: 0.75rem; }
+    table.rp-cards > tbody > tr > td { padding: 0.125rem 0 !important; text-align: left !important; white-space: normal !important; }
+    table.rp-cards > tbody > tr > td:empty { display: none; }
+    table.rp-cards > tbody > tr > td[data-label]::before {
+        content: attr(data-label);
+        display: inline-block;
+        min-width: 7.5rem;
+        font-size: 0.75rem;
+        color: #99948f;
+    }
+    table.rp-cards > tbody > tr > td.rp-card-icon { display: inline-block; width: auto; padding-right: 0.5rem !important; }
+    table.rp-cards > tbody > tr > td.rp-card-head { display: inline; font-weight: 700; }
+    table.rp-cards > tbody > tr > td.rp-card-actions { padding-top: 0.5rem !important; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+}
+
+/* Touch screens: every control at least 44 px, the size of a fingertip. Text links inside
+   sentences (underline) keep their size. */
+@media (pointer: coarse) {
+    button:not(.underline):not(.rp-touch-exempt),
+    a[class*="px-"],
+    select,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]) {
+        min-height: 44px;
+    }
+    button:not(.underline):not(.rp-touch-exempt), a[class*="px-"] { min-width: 44px; }
+    a[class*="px-"] { display: inline-flex; align-items: center; justify-content: center; }
+    input[type="checkbox"], input[type="radio"] { width: 1.25rem; height: 1.25rem; }
+}
+
+/* Sideways-scrolling tab rows: no scrollbar, the cut-off tab shows there's more */
+.rp-tabs { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.rp-tabs::-webkit-scrollbar { display: none; }
+.rp-tabs > button { flex-shrink: 0; }
+
+/* The QR code that opens the panel on a phone: always dark on white, whatever the theme */
+.rp-qr { background: #fff; border-radius: 0.5rem; padding: 0.5rem; }
+.rp-qr svg, .rp-qr img { display: block; width: 100%; height: auto; }
