@@ -370,6 +370,26 @@ host cache so the dashboard is current at once. Phantom refuses NetherNet server
 reason, and its port bookkeeping treats them as holding their UDP ports and 7551, not 19132.
 Existing servers aren't changed on upgrade; the dashboard lists what's missing.
 
+**Fixed in 1.16.11:** a server.properties with no `transport` line was treated as RakNet, so
+only UDP server-port was opened. Found in the 1.16.11 off-site backup test, where an older
+backup brought back with a fresh Bedrock 1.26 took players on TCP 19140 and UDP 7551. Checked
+against a real BDS 1.26.66.1 in Docker: with no `transport` line it runs NetherNet (TCP
+server-port as one dual-stack socket, so server-portv6 is unused, plus UDP 7551, which stays
+open even with `enable-lan-visibility=false`); without `server-udp-ports` it takes gameplay
+ports from the kernel's random range; it never writes keys back to server.properties. Now only
+`transport=raknet` means RakNet (UDP server-port and server-portv6). Import, restore and moves
+give a server without `server-udp-ports` its own server-port, as new servers get. Once after
+upgrading, the panel does the same for existing Bedrock servers and opens the rules they need,
+closing nothing (`/var/lib/redstonepanel/bedrock-firewall-1.16.11` records that it ran).
+The panel also keeps ufw in step when server.properties changes without it: it notes the rules
+it opened for each server (`firewall-rules.json`), and every two minutes and whenever the
+dashboard loads it opens what a hand-edited server now needs, closes what it no longer needs,
+and closes the rules of a server whose unit was deleted by hand (never a rule another server or
+a Phantom still uses). A rule on a game port (7551, 19132-19999, 25565-25999) that no server
+needs gets a dashboard note with the `ufw delete` command; the panel doesn't close rules it
+didn't open. A rule the panel opened and an admin later deleted isn't put back; the dashboard
+names it as missing.
+
 ### 1.14.2: who joined, who was turned away *(Nov 2026)*
 
 Asked for after the whitelist was turned on on every server: see who has been joining and who

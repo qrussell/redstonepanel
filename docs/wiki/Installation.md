@@ -24,7 +24,7 @@ and updates with the rest of the system through `apt`.
   server is set up with a 2 GB heap (1 GB on a machine with 3 GB or less), and a Bedrock server
   usually needs 1–2 GB.
 - **Ports:** 8080 for the panel (8443 once HTTPS is on), 25565+ (TCP) for Java servers and
-  19132+ (UDP) for Bedrock servers.
+  19132+ (TCP and UDP) plus UDP 7551 for Bedrock servers.
 - Nothing else. Java is installed later, only when a Java server needs it, and only the version
   it needs.
 
