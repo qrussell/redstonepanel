@@ -85,8 +85,8 @@ login ujar alex "$PASS_USER"
 
 ov=$(api jar GET /api/cluster/overview)
 NID=$(echo "$ov" | json "[n['id'] for n in d['nodes'] if not n.get('local')][0]")
-echo "$ov" | json "[n.get('cluster_api') for n in d['nodes'] if not n.get('local')][0]" | grep -qx 2 \
-    && ok "overview: node speaks cluster contract 2" || { bad "overview: node speaks cluster contract 2"; echo "$ov"; }
+echo "$ov" | json "[n.get('cluster_api') for n in d['nodes'] if not n.get('local')][0]" | grep -qxE "[2-9]" \
+    && ok "overview: node speaks cluster contract 2 or later" || { bad "overview: node speaks cluster contract 2 or later"; echo "$ov"; }
 P="/api/cluster/nodes/$NID/proxy"
 S="$P/api/servers/minecraft-test"
 

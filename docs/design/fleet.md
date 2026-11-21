@@ -437,7 +437,9 @@ and `core/cluster_client.py`, tests in `tests/test_cluster_proxy.py` and
   the node, then deploys)
 - Automatic certificate renewal and nightly backups
 
-**Phase 3: move things between nodes** (roadmap 1.16)
+**Phase 3: move things between nodes** (roadmap 1.16; moving and copying servers and templates
+implemented in 1.16.0: `core/transfer.py`, `core/moves.py`, [move.md](move.md), tests in
+`tests/test_move.py` and `packaging/test/test-move.sh`; LAN discovery not yet)
 - Copy templates between nodes, and move or copy a server (export on A streamed into import on
   B through the master, no 1 MB cap)
 - LAN discovery: find standalone panels via `GET /api/panel-info` on 8080/8443 and offer

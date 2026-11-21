@@ -1,4 +1,4 @@
-# RedstonePanel
+<h1><picture><source media="(prefers-color-scheme: dark)" srcset="static/img/redstonepanel-logo-dark.svg"><img src="static/img/redstonepanel-logo.svg" alt="RedstonePanel" width="328" height="64"></picture></h1>
 
 **A free, self-hosted web panel for Minecraft Java and Bedrock servers on your own Ubuntu
 machine.** Create servers in a couple of clicks, add mods and plugins from a catalog, keep
@@ -9,7 +9,7 @@ every game server is a plain systemd service, and the panel installs and updates
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![Ubuntu 24.04 and 25.04](https://img.shields.io/badge/Ubuntu-24.04%20%7C%2025.04-E95420?logo=ubuntu&logoColor=white)
 
-![The RedstonePanel dashboard on a cluster master](docs/guide/images/hero.png)
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/hero.png"><img src="docs/guide/images/hero.png" alt="The RedstonePanel dashboard on a cluster master"></picture>
 
 **[⬇️ Install](#install)** · **[📖 User manual](docs/guide/README.md)** ·
 **[✨ What's new](docs/wiki/Whats-New.md)** · **[❓ Is it right for me?](docs/wiki/FAQ.md)** ·
@@ -25,7 +25,8 @@ curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install
 
 Then open **http://&lt;your-server&gt;:8080/** and sign in with your Linux account (any member
 of the `sudo` group). The script adds the signed qrussell-repo apt repository and runs
-`apt install redstonepanel`, so `apt upgrade` keeps the panel current. Prefer to do it by hand,
+`apt install redstonepanel`, so `apt upgrade` keeps the panel current. A setup guide on the
+dashboard then walks you through your first server, backups, HTTPS and alerts. Prefer to do it by hand,
 or to use a `.deb`? See [Install](#install) below or the
 [installation page](docs/wiki/Installation.md).
 
@@ -38,7 +39,7 @@ or to use a `.deb`? See [Install](#install) below or the
 | **Worlds that are safe** | Scheduled and on-demand backups that copy running servers consistently, one-click restore (with an undo), a backup before mod updates, and uninstalled servers you can bring back. |
 | **To know what's going on** | A dashboard of the machine and every server, a **Needs attention** list, Discord or webhook alerts for crashes and backups, and a log of who joined and who was turned away. |
 | **Everything from the browser** | Live chat and console, a `server.properties` editor, player roles and whitelists, a file manager with an editor, scheduled restarts that warn players, world downloads. |
-| **More than one machine** | **Clusters** *(new in 1.15)*: one master panel manages every node's servers with all their tabs, creates servers on any node, and renews the cluster's certificates for you. |
+| **More than one machine** | **Clusters**: one master panel manages every node's servers with all their tabs, creates servers on any node, **moves or copies a server to another machine** *(new in 1.16)*, and renews the cluster's certificates for you. |
 | **Something that stays out of the way** | Plain systemd services that keep running, and keep backing up, even while the panel is stopped. Servers live in `/opt` and backups in `/var/backups`: no containers to dig through. |
 | **Security you can reason about** | Linux (PAM) or panel accounts with admin and user roles, HTTPS (self-signed, certbot or the cluster's own CA), optional trusted-LAN access, a signed apt repository. |
 | **No cost, no lock-in** | MIT licensed, no paid tier, no account to create, no telemetry. |
@@ -47,22 +48,67 @@ or to use a `.deb`? See [Install](#install) below or the
 
 | | |
 | --- | --- |
-| [![Dashboard](docs/guide/images/dashboard.png)](docs/guide/README.md#3-the-dashboard) **Dashboard:** the machine, every server and what needs attention | [![Server overview](docs/guide/images/overview.png)](docs/guide/README.md#5-overview) **Each server:** start, stop, restart, and a tab for everything |
-| [![Mods](docs/guide/images/mods.png)](docs/guide/README.md#12-mods-plugins-and-add-ons) **Mods and plugins:** what's installed, a catalog, updates | [![Backups](docs/guide/images/backups.png)](docs/guide/README.md#9-backups) **Backups:** schedules, restore, download |
-| [![Files](docs/guide/images/files.png)](docs/guide/README.md#11-files) **Files:** browse, upload, edit configs | [![Live chat](docs/guide/images/live-chat.png)](docs/guide/README.md#6-live-chat) **Live chat** and server commands |
-| [![New Server](docs/guide/images/new-server.png)](docs/guide/README.md#4-create-or-import-a-server) **New Server:** edition, type, version and, on a cluster, where | [![Cluster](docs/guide/images/cluster.png)](docs/guide/README.md#18-clusters) **Cluster:** every panel and its servers on one page |
+| <a href="docs/guide/README.md#3-the-dashboard"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/dashboard.png"><img src="docs/guide/images/dashboard.png" alt="Dashboard"></picture></a> **Dashboard:** the machine, every server and what needs attention | <a href="docs/guide/README.md#5-overview"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/overview.png"><img src="docs/guide/images/overview.png" alt="Server overview"></picture></a> **Each server:** start, stop, restart, and a tab for everything |
+| <a href="docs/guide/README.md#12-mods-plugins-and-add-ons"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/mods.png"><img src="docs/guide/images/mods.png" alt="Mods"></picture></a> **Mods and plugins:** what's installed, a catalog, updates | <a href="docs/guide/README.md#9-backups"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/backups.png"><img src="docs/guide/images/backups.png" alt="Backups"></picture></a> **Backups:** schedules, restore, download |
+| <a href="docs/guide/README.md#11-files"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/files.png"><img src="docs/guide/images/files.png" alt="Files"></picture></a> **Files:** browse, upload, edit configs | <a href="docs/guide/README.md#6-live-chat"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/live-chat.png"><img src="docs/guide/images/live-chat.png" alt="Live chat"></picture></a> **Live chat** and server commands |
+| <a href="docs/guide/README.md#4-create-or-import-a-server"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/new-server.png"><img src="docs/guide/images/new-server.png" alt="New Server"></picture></a> **New Server:** edition, type, version and, on a cluster, where | <a href="docs/guide/README.md#18-clusters"><picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/cluster.png"><img src="docs/guide/images/cluster.png" alt="Cluster"></picture></a> **Cluster:** every panel and its servers on one page |
+
+The screenshots follow your light or dark theme (on GitHub; GitLab shows the dark ones). To
+see them in the other theme:
+
+<details>
+<summary>🌙 <b>Show the tour in the dark theme</b></summary>
+
+<table>
+<tr><td><a href="docs/guide/README.md#3-the-dashboard"><img src="docs/guide/images/dashboard.png" width="420" alt="Dashboard (dark theme)"></a><br>Dashboard</td><td><a href="docs/guide/README.md#5-overview"><img src="docs/guide/images/overview.png" width="420" alt="Each server (dark theme)"></a><br>Each server</td></tr>
+<tr><td><a href="docs/guide/README.md#12-mods-plugins-and-add-ons"><img src="docs/guide/images/mods.png" width="420" alt="Mods and plugins (dark theme)"></a><br>Mods and plugins</td><td><a href="docs/guide/README.md#9-backups"><img src="docs/guide/images/backups.png" width="420" alt="Backups (dark theme)"></a><br>Backups</td></tr>
+<tr><td><a href="docs/guide/README.md#11-files"><img src="docs/guide/images/files.png" width="420" alt="Files (dark theme)"></a><br>Files</td><td><a href="docs/guide/README.md#6-live-chat"><img src="docs/guide/images/live-chat.png" width="420" alt="Live chat (dark theme)"></a><br>Live chat</td></tr>
+<tr><td><a href="docs/guide/README.md#4-create-or-import-a-server"><img src="docs/guide/images/new-server.png" width="420" alt="New Server (dark theme)"></a><br>New Server</td><td><a href="docs/guide/README.md#18-clusters"><img src="docs/guide/images/cluster.png" width="420" alt="Cluster (dark theme)"></a><br>Cluster</td></tr>
+</table>
+
+</details>
+<details>
+<summary>☀️ <b>Show the tour in the light theme</b></summary>
+
+<table>
+<tr><td><a href="docs/guide/README.md#3-the-dashboard"><img src="docs/guide/images/light/dashboard.png" width="420" alt="Dashboard (light theme)"></a><br>Dashboard</td><td><a href="docs/guide/README.md#5-overview"><img src="docs/guide/images/light/overview.png" width="420" alt="Each server (light theme)"></a><br>Each server</td></tr>
+<tr><td><a href="docs/guide/README.md#12-mods-plugins-and-add-ons"><img src="docs/guide/images/light/mods.png" width="420" alt="Mods and plugins (light theme)"></a><br>Mods and plugins</td><td><a href="docs/guide/README.md#9-backups"><img src="docs/guide/images/light/backups.png" width="420" alt="Backups (light theme)"></a><br>Backups</td></tr>
+<tr><td><a href="docs/guide/README.md#11-files"><img src="docs/guide/images/light/files.png" width="420" alt="Files (light theme)"></a><br>Files</td><td><a href="docs/guide/README.md#6-live-chat"><img src="docs/guide/images/light/live-chat.png" width="420" alt="Live chat (light theme)"></a><br>Live chat</td></tr>
+<tr><td><a href="docs/guide/README.md#4-create-or-import-a-server"><img src="docs/guide/images/light/new-server.png" width="420" alt="New Server (light theme)"></a><br>New Server</td><td><a href="docs/guide/README.md#18-clusters"><img src="docs/guide/images/light/cluster.png" width="420" alt="Cluster (light theme)"></a><br>Cluster</td></tr>
+</table>
+
+</details>
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
-## What's new in 1.15
+## What's new in 1.16
 
-**Manage every node from the master.** On a cluster master, each node's servers are listed in
-the sidebar under the node's name and open with every tab: configuration, backups, files, mods,
-Java and Phantom. **New Server** has a **Where** choice to create a server on any node, and its
-template and Java follow automatically. A master on the internet can use a real certbot
-certificate, the master renews every node's certificate before it expires, and nightly
-encrypted cluster backups keep a way back if the master is lost. Read the
-[release notes](release-notes/v1.15.0.md), or [every release's highlights](docs/wiki/Whats-New.md).
+**A server list that folds** *(1.16.3)*. Click any heading in the sidebar (Java Edition,
+Bedrock Edition or a cluster node) to fold it; a folded heading shows how many of its servers
+are online, and the browser remembers what you folded. Each cluster node's servers now get their
+own Java and Bedrock headings, like this machine's. Read the
+[1.16.3 release notes](release-notes/v1.16.3.md).
+
+**Kick, ban and unban, and a new look** *(1.16.2)*. **Configuration → Whitelist & Access**
+can now kick anyone online and, on Java, ban and unban (running or stopped), with a
+**Banned** list. Bedrock gets kick only, since it has no ban list. RedstonePanel also has its own
+logo and a stone-and-redstone theme in dark and light. Read the
+[1.16.2 release notes](release-notes/v1.16.2.md).
+
+**A setup guide for new panels** *(1.16.1)*. The dashboard of a new panel opens with four
+steps to a safe setup: your first server, a backup schedule for every server, HTTPS (or plain
+HTTP on a network you trust) and crash alerts in Discord or any webhook. Each step opens the
+place where it's done and ticks itself when it is. Read the
+[1.16.1 release notes](release-notes/v1.16.1.md).
+
+**Move a server to another machine.** On a cluster master's 🌐 Cluster page, **Move…** stops a
+server, streams its whole folder to another machine of the cluster (checked byte for byte), and
+starts it there with the same name and ports when they're free, the Java it needs, and its
+memory, backup and restart schedules and Phantom. The old machine keeps its files as a removed
+server until you click **Delete the old copy**, and a move that fails undoes itself. **Copy…**
+makes a second copy without stopping the server, and templates can be copied between the master
+and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
+[every release's highlights](docs/wiki/Whats-New.md).
 
 ## All features
 
@@ -96,13 +142,17 @@ encrypted cluster backups keep a way back if the master is lost. Read the
   and remove one per server, so a server on another port shows up under LAN Games
 - a panel activity log, and a player access log per server: who joined, left or was turned away
   (names and IDs only), with whitelist/allowlist editing (**Configuration → Whitelist & Access**)
+- kick, ban and unban players: Online now, a Banned list (Java) and Kick/Ban on access log rows
+- a setup guide on a new panel's dashboard: first server, backup schedules, HTTPS and alerts,
+  each step ticked from what the panel can see
 - a dashboard for the machine: CPU, memory, disks, network, each server's CPU, memory,
   players and disk use, supporting services (Java, firewall, timers, certificates,
   Phantom proxies), a list of what needs attention, and on a cluster master each node's
   resources
 
 - clusters: one master panel manages the servers of other RedstonePanels with every tab,
-  creates servers on them, renews their certificates and backs the cluster up every night
+  creates servers on them, moves or copies servers between them, renews their certificates and
+  backs the cluster up every night
 
 The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as an
 `Architecture: all` Debian package for **Ubuntu 24.04 and 25.04**.
@@ -390,8 +440,20 @@ it off the master. **Nightly backups** (Panel Settings → Cluster, or
 `sudo redstonepanel cluster nightly on`) also keep the last 7 on the master itself. `sudo redstonepanel cluster promote FILE` on any other panel makes that panel
 the master. Nodes accept it straight away and refuse the old master from then on.
 
+**Moving a server to another machine:** on the master's **🌐 Cluster** page, click **Move…**
+next to the server and pick where it goes. The server stops, its whole folder is streamed
+through the master to the other machine and checked against a SHA-256 checksum, and it starts
+there under the same name and ports when they're free. The Java it needs is installed there, and
+its memory, backup and restart schedules and Phantom come along. The old machine keeps the files
+as a removed server marked "moved to …" until you click **Delete the old copy**; if anything goes
+wrong, the move undoes itself and the server starts where it was. **Copy…** does the same without
+stopping the server or removing anything. Both machines need RedstonePanel 1.16 or later; only
+admins on the master can move servers. Older backups and the player history stay on the old
+machine.
+
 `sudo redstonepanel leave` takes a node out of the cluster (remove it on the master too). The
-design is in [docs/design/fleet.md](docs/design/fleet.md).
+design is in [docs/design/fleet.md](docs/design/fleet.md) and
+[docs/design/move.md](docs/design/move.md).
 
 ## Exposing the panel to the internet
 
@@ -479,12 +541,14 @@ packaging/build-css.sh
 Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which mirrors
 `main` and tags to GitHub. Each version is released on both. To release version 1.0.1:
 
-1. On a branch, add a `debian/changelog` entry (`dch -v 1.0.1`), update the version in
+1. On a branch, add a `debian/changelog` entry (`dch -v 1.0.1`) and regenerate `CHANGELOG`
+   from it (`python3 packaging/changelog.py`; CI fails if you forget), update the version in
    `packaging/redstonepanel.8`, and write the release description in
    `release-notes/v1.0.1.md`. Add the release's highlights to the top of
    `docs/wiki/Whats-New.md`, update `docs/wiki/Roadmap.md` and the user manual for what
    changed, and retake the screenshots if the UI changed
-   (`bash packaging/screenshots/demo.sh`). Merge it through a merge request.
+   (`bash packaging/screenshots/demo.sh`: it takes each one in the dark theme, in
+   `docs/guide/images/`, and the light theme, in `docs/guide/images/light/`). Merge it through a merge request.
 2. Tag `main` as `v1.0.1` and push the tag to GitLab.
 
 The tag reaching GitHub runs `.github/workflows/release.yml`. It builds the .deb, runs
@@ -493,9 +557,14 @@ a GitHub Release with the .deb, using `release-notes/<tag>.md` as its descriptio
 GitHub's generated notes if the file is missing). The tag must match the version in
 `debian/changelog`. The qrussell-repo apt repository picks up the release within 4 hours.
 
-`.github/workflows/wiki.yml` publishes `docs/wiki/` and the user manual to the GitHub wiki
-whenever they change on `main`, and on every release (`packaging/sync-wiki.sh` does the
-copying, and can be run by hand on a checkout of the wiki).
+The wiki pages live in `docs/wiki/` (plus the user manual, `docs/guide/README.md`) and are
+published to both wikis whenever they change on `main` and on every release:
+`.github/workflows/wiki.yml` updates the GitHub wiki, and the `wiki` job in `.gitlab-ci.yml`
+updates the GitLab wiki (`packaging/publish-gitlab-wiki.py`). Both use
+`packaging/sync-wiki.py`, which rewrites links for each site. The GitLab job needs a project
+access token with the `api` scope and the Developer role, saved as the masked CI/CD variable
+`WIKI_TOKEN`; without it the job passes and says so. Don't edit either wiki by hand: the next
+publish overwrites the pages that come from the repository.
 
 On GitLab the same tag runs `.gitlab-ci.yml`. Its checks run first. Then `build-deb`
 builds the .deb in `ubuntu:24.04` (it runs on every merge request and on `main` too, with

@@ -1,0 +1,228 @@
+# Changelog
+
+Every RedstonePanel release, newest first. This file is generated from `debian/changelog` by
+`packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
+it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
+
+## 1.16.4 (2026-11-21)
+
+Release notes: release-notes/v1.16.4.md
+
+- New Bedrock servers keep the full server.properties that comes with the Bedrock download; only the ports are set. Before, every setting except server-port, server-portv6 and query.port was dropped, so Configuration showed almost nothing to edit.
+
+## 1.16.3 (2026-11-21)
+
+Release notes: release-notes/v1.16.3.md
+
+- Server list: every heading folds with a click (this machine's Java and Bedrock Edition, each cluster node), and a folded heading shows how many of its servers are online. What's folded is remembered in the browser.
+- A cluster node's servers get their own Java Edition and Bedrock Edition headings, like this machine's. A node's warnings stay visible while it is folded.
+- Server names in the server list are HTML-escaped.
+
+## 1.16.2 (2026-11-21)
+
+Release notes: release-notes/v1.16.2.md
+
+- Kick, ban and unban from Whitelist & Access: Online now lists the players on the server with Kick (and Ban on Java), a Banned list with Unban and a form to ban by name, Unban on players turned away for a ban, and Kick/Ban on each access log row. A running server is told through its console (Java over RCON, Bedrock through screen); a stopped Java server's banned-players.json is edited directly. Bedrock has no ban list, so it gets kick only. Bans are by name and UUID, never by address. Each action is logged with who did it.
+- GET /api/servers/{name}/moderation and POST /api/servers/{name}/players/kick|ban|unban, reachable by the cluster master.
+- A new look: an original RedstonePanel logo and favicon, warm stone greys with redstone-red accents in both the dark and light themes, glowing focus rings, status lamps and usage bars. Redstone Red is the default accent palette; a palette you picked before is kept.
+- Stop is an outlined red button, so it no longer looks like Restart.
+- Packaging: build-deb.sh no longer strips carriage returns from binary files, which corrupted PNG images.
+
+## 1.16.1 (2026-11-20)
+
+Release notes: release-notes/v1.16.1.md
+
+- First-run setup guide: a Set up RedstonePanel card at the top of the dashboard (admins) with four steps: create your first server, give every server a backup schedule, choose HTTPS or keep plain HTTP on a network you trust, and send crash and backup alerts to a webhook. Each step opens the dialog that already does the job.
+- Steps are ticked from the panel's real state, so work done from the command line or by another admin counts, and an upgraded panel only shows what's still missing. The card says when ufw is missing or off, since the panel opens game ports only through it.
+- Hide guide hides it for every admin; Panel Settings > Setup guide shows it again, and takes back "keep HTTP". Only those two answers are stored, in setup.json.
+- On a cluster node joining the cluster ticks the HTTPS step; a master counts its nodes' servers.
+- GET/PUT /api/settings/setup (admins).
+
+## 1.16.0 (2026-11-20)
+
+Release notes: release-notes/v1.16.0.md
+
+- Move a server to another cluster member: on the master's cluster page, admins get Move and Copy for every server. A move stops the server, packs its whole folder, streams it through the master to the other member (checked against its SHA-256, no size cap), installs it there under the same name and ports when they're free, installs the Java it needs, carries over its memory, backup and restart schedules and Phantom, starts it and checks it keeps running. Only then does the old member take it off the panel, keeping its files as a removed server marked "moved to", until an admin deletes them. Any failure undoes the new copy and starts the server where it was.
+- Copy a server, to another member or the same one, without stopping it (the world is saved first, as backups do), under a new name where needed, started or not.
+- Templates between members: copy one of the master's templates to a node, or a node's own template to the master.
+- While a server is being moved it can't be started on the old member.
+- Cluster contract 3: nodes accept /api/cluster/transfers/... from their master (a master admin only, never through the proxy). The only files a master can delete on a node are those a move left behind.
+- Template names are escaped in the template manager.
+
+## 1.15.0 (2026-11-20)
+
+Release notes: release-notes/v1.15.0.md
+
+- Clusters phase 2: manage every node's servers from the master. The master's server list shows each node's servers under the node's name, and opening one shows every tab: Overview, Live Chat, Configuration (with Whitelist & Access), Maintenance, Backups, World & Maps, Files, Mods, Java and Phantom. Requests go through the master's proxy, /api/cluster/nodes/{id}/proxy/..., with the node's token; downloads and uploads are streamed.
+- Nodes accept a wider allowlist from the master: every route of a single server, creating, importing, removing and restoring servers, templates pushed by the master and Java runtimes. Never users, panel settings, HTTPS, sign-in, panel updates, cluster membership changes by proxy, or erasing a server's files.
+- Master admins act as admins on the nodes; master users get a user's rights there. Both panels log each change as "[CLUSTER] user@master: ...".
+- New Server has a Where choice on a master. A template is copied to the node first, ports are chosen on the node, and a missing Java can be installed there. Save as Template on a node's server saves it as one of the master's templates.
+- A cluster master can use its own certificate (certbot or uploaded, HTTPS mode "custom") for browsers; nodes keep cluster certificates on private addresses. A node with its own public certificate can join and is checked with the system's trust store (verify "system").
+- The master renews node cluster certificates automatically 30 days before they expire, and its own.
+- Nightly cluster backups: Panel Settings > Cluster > Nightly backups (or "redstonepanel cluster nightly on") writes an encrypted backup every night after 3:00, keeping 7.
+- The cluster contract goes to version 2. 1.14 nodes still join and show on the Cluster page; update them to manage their servers.
+
+## 1.14.2 (2026-11-20)
+
+Release notes: release-notes/v1.14.2.md
+
+- Player access log: the panel reads each server's console and logs and keeps who joined, left or was turned away (not whitelisted, banned, wrong version, server full), with names and UUIDs/XUIDs only; player addresses are never stored. The first scan reads older logs, so last-seen dates go back as far as the logs do. Events are kept 90 days.
+- Configuration -> Whitelist & Access: see and edit the whitelist (Java) or allowlist (Bedrock), with each player's last join. A running server is changed through its console (RCON or screen), so changes apply at once; otherwise the file is edited. Players turned away in the last 7 days are listed with an Allow button, and the access log can be filtered by player, event and period.
+- Needs attention lists players turned away in the last 24 hours who still aren't allowed.
+- New webhook events, off by default: Player joined, Player turned away.
+
+## 1.14.1 (2026-11-20)
+
+Release notes: release-notes/v1.14.1.md
+
+- Firewall rules follow each server's network settings: Bedrock servers using the NetherNet transport get TCP server-port (signaling), UDP server-udp-ports (gameplay) and UDP 7551 (LAN discovery, shared by all NetherNet servers) instead of UDP server-port. Changing the port or transport in Configuration, or applying a template, opens the new rules and closes the old ones; removing a server closes only rules no other server needs.
+- The dashboard checks every rule a server needs and says which are missing, with the ufw command to open them; a closed 7551 is reported as consoles not finding the server under LAN Games.
+- Phantom refuses NetherNet servers and says why: it only relays RakNet, and NetherNet servers announce themselves on the LAN by themselves. A NetherNet server on port 19132 no longer stops Phantoms for RakNet servers (its 19132 is TCP), and proxy ports skip its UDP ports.
+
+## 1.14.0 (2026-11-20)
+
+Release notes: release-notes/v1.14.0.md
+
+- A catalog of mods and plugins: Find mods / Find plugins opens on bundles and a hand-picked starter set (performance, admin tools, for players, libraries), checked against the server's loader and Minecraft version, with Installed / Update available / Not for this version badges.
+- Bundles install several at once, with what they need, after an optional world backup: Performance pack, Server essentials and Bedrock players on Fabric; Server essentials, Build protection and Bedrock players on Paper.
+- Search filters by category and sorts by downloads, follows, recent updates or newest, on Modrinth and Hangar.
+- Click a mod or plugin for its details: downloads, followers, licence, links, and exactly what Install would add (the build, its file and the dependencies it brings).
+- Catalog project data is cached for an hour.
+
+## 1.13.2 (2026-11-19)
+
+Release notes: release-notes/v1.13.2.md
+
+- Phantom LAN proxies for Bedrock servers, managed like add-ons (admins): Add-ons -> Server tools -> Phantom installs, starts, stops, restarts and uninstalls a Phantom (jhead/phantom 0.5.4, checked against a pinned SHA-256) that makes a server on a port other than 19132 show up under Friends -> LAN Games. It runs as phantom-<server>.service under the minecraft user, with a proxy port from 19300 up, and opens UDP 19132 and that port in ufw. Install refuses while a Bedrock server holds 19132, and explains why.
+- The tab also lists Phantom units made outside the panel that point at the server or hold its port, with their problems, Start / Stop and Remove unit (the unit file only). Removing a server removes its Phantom.
+
+## 1.13.1 (2026-11-19)
+
+Release notes: release-notes/v1.13.1.md
+
+- Java is installed when a server needs it, not with the package: Java moves from Recommends to Suggests, so Bedrock-only hosts get none. Creating, updating or restoring a Java server whose Java isn't installed offers to install the right openjdk-N-jre-headless (admins), then carries on. Servers that were waiting for it are moved onto it.
+- Dashboard -> Supporting services -> Java lists each installed Java with the servers on it, the ones servers need, and Install / Remove. Only a Java no server uses can be removed, and only when apt would remove nothing but that JRE.
+- Maintenance -> Java shows which Java a server runs on and switches it to another installed one that's new enough.
+- Update RedstonePanel from the dashboard (admins): Check for updates and Update now. The upgrade runs as its own systemd unit (redstonepanel upgrade, also usable from a terminal), so it survives the panel's restart; the page reloads on the new version. Game servers keep running.
+- Removing a server (Uninstall or Purge) closes its port in ufw and clears its failed state. The dashboard no longer lists failed units whose unit file is gone, such as servers removed by older versions, and clears them.
+- Browsers no longer keep running an old app.js after an update (a blank dashboard until Ctrl+F5): the panel's files are sent with Cache-Control: no-cache, and its pages link app.js and the stylesheet with the panel version.
+
+## 1.13.0 (2026-11-19)
+
+Release notes: release-notes/v1.13.0.md
+
+- Find and install mods and plugins from Modrinth (Fabric and Paper) and Hangar (Paper) on the Mods / Plugins tab. Install picks the newest release build for the server's loader and Minecraft version, checks its hash, and installs required dependencies (such as Fabric API) too.
+- Updates: the list shows which mods and plugins have a newer build, with Update and Update all (optionally backing up the world first) and Undo for the last update. Jars added by hand are recognised by hash.
+- Maintenance -> Update warns about mods and plugins that have no build for the Minecraft version you're moving to.
+
+## 1.12.0 (2026-11-19)
+
+Release notes: release-notes/v1.12.0.md
+
+- Mods, plugins and Bedrock add-ons: a Mods (Fabric), Plugins (Paper) or Add-ons (Bedrock) tab for admins. Drop .jar, .mcpack or .mcaddon files on it; each is checked and put in mods/, plugins/ or the packs folders, and Bedrock packs are enabled for the world. Forge mods, plugins on Fabric, mods on Paper and anything on vanilla are refused with the reason. The list warns about other Minecraft versions and missing dependencies, and can disable or remove each one.
+- Files tab: drag and drop uploads, with a progress bar per file.
+
+## 1.11.0 (2026-11-18)
+
+Release notes: release-notes/v1.11.0.md
+
+- Dashboard: with no server selected, the panel shows this machine's CPU, memory, disks and network; each game server's state, uptime, CPU, memory, players, folder and backup sizes and next backup and restart; supporting services (the panel, Java runtimes, screen, ufw, Phantom proxies, timers, HTTPS and cluster certificates, notifications); and a list of what needs attention. Read from /proc, statvfs and systemctl.
+- On a cluster master, the dashboard and Cluster page show each node's CPU, memory, disk and servers online, through a new read-only node route, GET /api/host.
+
+## 1.10.0 (2026-11-18)
+
+Release notes: release-notes/v1.10.0.md
+
+- File manager (admins): each server's Files tab browses its folder, edits text files, uploads, downloads, renames, creates folders and deletes. Paths are opened one folder at a time without following symlinks, so nothing outside the server folder can be reached, and new files belong to the folder's owner.
+
+## 1.9.0 (2026-11-18)
+
+Release notes: release-notes/v1.9.0.md
+
+- Java servers can be Paper or Fabric as well as vanilla, on a chosen Minecraft release (the newest by default).
+- Each Java server runs the Java its Minecraft version needs, from /usr/lib/jvm; deploy and update name the openjdk package to install when no installed Java is new enough.
+- Update can move a Java server to a newer Minecraft release, never an older one, and downloads before stopping the server.
+- Vanilla and Paper downloads are checked against their checksums.
+
+## 1.8.1 (2026-11-18)
+
+Release notes: release-notes/v1.8.1.md
+
+- Only admins can uninstall or purge a server. Panel users and trusted-LAN visitors no longer see those buttons, and the API refuses them. Who uninstalled or purged a server is logged.
+- User guide: new New Server screenshot.
+
+## 1.8.0 (2026-11-18)
+
+Release notes: release-notes/v1.8.0.md
+
+- Notifications: a Discord or JSON webhook for crashed, started and stopped servers, scheduled restarts and finished or failed backups (Panel Settings > Notifications). Server events come from a systemd drop-in for every minecraft-*.service, so crashes are reported while the panel is stopped. New command: redstonepanel notify-test.
+- Scheduled restarts with in-game warnings (Maintenance tab), as redstonepanel-restart@<server>.timer. New command: redstonepanel restart-server NAME.
+- The console colours lines by kind.
+- Fixed: a crashed Bedrock server was never restarted (screen exits 0 when the game dies). It now starts again after 20 seconds.
+- Fixed: a stopped Java server (exit 143) showed as failed.
+- Fixed: dark mode's white workspace and unreadable New Server title.
+
+## 1.7.0 (2026-11-18)
+
+Release notes: release-notes/v1.7.0.md
+
+- Scheduled backups. Each server's Backups tab sets a schedule (hourly, every 6 or 12 hours, daily or weekly) run by a systemd timer, redstonepanel-backup@<server>.timer, so backups happen while the panel is stopped. Archives go to /var/backups/redstonepanel/<server>/ (root only); scheduled ones are pruned to the number kept.
+- Consistent copies of running servers: save-off/save-all flush/save-on over RCON for Java, save hold/save query/save resume for Bedrock.
+- Back up now, download, delete, and restore a backup over the current world (admins). The replaced world is kept as a "Before restore" backup.
+- New command: redstonepanel backup NAME.
+- Uninstalling a server removes its backup timer and keeps its backups; restoring the server brings the schedule back.
+
+## 1.6.0 (2026-11-18)
+
+Release notes: release-notes/v1.6.0.md
+
+- Restore removed servers. Servers uninstalled with "Keep World" are listed under New Server > Removed servers (and by `redstonepanel removed`); restoring writes a new systemd unit under the same name, keeps the old port unless another server took it, downloads the server binary only if it is missing, then enables and starts it. Also `redstonepanel restore NAME`.
+- "Uninstall (Keep World)" now keeps the server binary too, so a restore runs the same game version, and remembers the server's heap size.
+- Admins can permanently delete a removed server's files.
+- Uninstall refuses names that aren't the panel's own servers.
+- Parallel deploys and imports can no longer pick the same server name.
+
+## 1.5.0 (2026-11-17)
+
+Release notes: release-notes/v1.5.0.md
+
+- Clusters: make one panel the master and add other panels as nodes with single-use join codes. The master's Cluster page lists every node's game servers and can start, stop and restart them. A cluster CA issues each member's HTTPS certificate, limited to private addresses and local names. Node tokens only reach game-server listing and control, never users or settings. Encrypted backup and promote recover from a lost master.
+- New commands: cluster create/status/join-code/backup/promote, join, leave and cluster-https.
+- The header shows the panel's version, also returned by /api/auth/me.
+- The server action endpoint only accepts start, stop and restart for the panel's own minecraft* units.
+
+## 1.4.0 (2026-11-17)
+
+Release notes: release-notes/v1.4.0.md
+
+- Bedrock: show why players can't connect. The overview warns when the server rejected its transport (1.26.x accepts only NetherNet), when a NetherNet server started without accepting clients on its TCP port, and when server-udp-ports has a public address in front, which stops that listener on 1.26.63.1. The sidebar marks affected servers.
+- Detect Phantom proxies installed as services next to a Bedrock server, whatever their unit name, and flag the two ways they break it: holding UDP 19132 and forwarding to their own port ("Server offline").
+- NetherNet servers show their TCP signaling port and UDP gameplay ports.
+
+## 1.3.1 (2026-11-16)
+
+Release notes: release-notes/v1.3.1.md
+
+- Fix Java live chat failing with "not connected" when the RCON password contains symbols such as : = # ! or \, or spaces. Minecraft saves server.properties in Java's escaped format; the panel now reads and writes it the same way, so it uses the password the server uses. It also agrees with Minecraft on trailing spaces and continued lines, which could leave RCON switched off while the panel thought it was on; the panel now turns it back on and restarts the server.
+- Saving properties only rewrites the settings that changed.
+- Clearer chat errors: a rejected password or RCON not running now says to restart the server (needed after changing rcon.password).
+
+## 1.3.0 (2026-11-14)
+
+- Name each panel to tell several servers apart: the name shows in the sidebar, the browser tab title and on the sign-in page. It defaults to the host name; set it in Panel Settings or with "redstonepanel set-name NAME". "redstonepanel status" shows it.
+- Import server backups as .zip, .tar.gz/.tgz or .tar. A backup wrapped in a single folder (e.g. bedrock-server_backup_20261110/) is unpacked from inside it, so the server starts. Archives are unpacked safely (no paths or links outside the server folder) and the edition is detected from the files; non-backups are refused with a clear message.
+- Fix the generated systemd units: "RestartSec=20 5" was invalid.
+
+## 1.2.0 (2026-11-14)
+
+- Show the Minecraft version of each server in the sidebar and on the Overview tab; for Java servers also show the Java version it needs and warn when the installed Java is too old.
+- Recommend openjdk-25-jre-headless instead of Java 21: current Minecraft Java Edition releases need Java 25.
+- Log a clear warning when a deployed or updated Java server needs a newer Java than the one installed.
+
+## 1.1.0 (2026-11-14)
+
+- Fix the World & Maps tab in light mode: its label disappeared on hover and it was styled differently from the other tabs.
+
+## 1.0.0 (2026-11-14)
+
+- Initial package release.

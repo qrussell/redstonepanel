@@ -130,7 +130,7 @@ const ServerApp = {
 
     // --- Theming & Preferences ---
     themeMode: localStorage.getItem('rp_themeMode') || 'dark',
-    themeColor: localStorage.getItem('rp_themeColor') || 'diamond',
+    themeColor: localStorage.getItem('rp_themeColor') || 'redstone',
 
     applyTheme() {
         document.documentElement.classList.toggle('dark', this.themeMode === 'dark');
@@ -154,8 +154,8 @@ const ServerApp = {
             <div class="mb-6">
                 <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Accent Palette</label>
                 <select id="setting-color" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
+                    <option value="redstone" ${this.themeColor === 'redstone' ? 'selected' : ''}>Redstone Red (default)</option>
                     <option value="diamond" ${this.themeColor === 'diamond' ? 'selected' : ''}>Diamond Blue</option>
-                    <option value="redstone" ${this.themeColor === 'redstone' ? 'selected' : ''}>Redstone Red</option>
                     <option value="emerald" ${this.themeColor === 'emerald' ? 'selected' : ''}>Emerald Green</option>
                     <option value="amethyst" ${this.themeColor === 'amethyst' ? 'selected' : ''}>Amethyst Purple</option>
                 </select>
@@ -204,50 +204,76 @@ const ServerApp = {
         });
     },
 
+    // Sidebar headings the user collapsed (kept in this browser): 'java', 'bedrock', 'other',
+    // 'node:<id>' for a whole node, 'node:<id>:java' and so on for a node's editions
+    collapsedGroups: (() => {
+        try { return new Set(JSON.parse(localStorage.getItem('rp_collapsedGroups') || '[]')); } catch (e) { return new Set(); }
+    })(),
+
+    toggleGroup(key) {
+        if (this.collapsedGroups.has(key)) this.collapsedGroups.delete(key);
+        else this.collapsedGroups.add(key);
+        try { localStorage.setItem('rp_collapsedGroups', JSON.stringify([...this.collapsedGroups])); } catch (e) {}
+        this.renderSidebar();
+    },
+
     renderSidebar() {
         const list = document.getElementById('server-list');
-        list.innerHTML = '';
-
-        const local = this.servers.filter(s => !s.node);
-        const javaServers = local.filter(s => s.edition === 'Java');
-        const bedrockServers = local.filter(s => s.edition === 'Bedrock');
-        const otherServers = local.filter(s => s.edition !== 'Java' && s.edition !== 'Bedrock');
         const esc = t => this.escapeHtml(String(t ?? ''));
+        const editions = [['java', 'Java Edition', s => s.edition === 'Java'],
+                          ['bedrock', 'Bedrock Edition', s => s.edition === 'Bedrock'],
+                          ['other', 'Unknown / Other', s => s.edition !== 'Java' && s.edition !== 'Bedrock']];
 
-        const renderGroup = (title, serversGroup, note) => {
-            if (serversGroup.length === 0 && !note) return;
-
-            list.innerHTML += `<div class="text-xs font-bold text-gray-500 uppercase tracking-wider mt-4 mb-1 px-3">${title}</div>`;
-            if (note) list.innerHTML += `<div class="text-xs text-yellow-600 dark:text-yellow-500 px-3 mb-1">${note}</div>`;
-
-            serversGroup.forEach(srv => {
-                const dot = srv.status === 'online' ? 'text-green-500' : 'text-red-500';
-                const isActive = this.sameServer(this.activeServer, srv) ? 'bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
-                                
-                list.innerHTML += `
-                    <div onclick="ServerApp.openWorkspace(${JSON.stringify(srv).replace(/"/g, '&quot;')})" 
-                         class="p-3 rounded cursor-pointer transition flex items-center gap-3 ${isActive}">
-                        <span class="${dot}">●</span>
-                        <div>
-                            <div class="font-bold text-gray-900 dark:text-gray-200">${srv.name}${this.hasProxyProblem(srv) || this.hasConnectProblem(srv) ? ' <span class="text-yellow-600" title="Players may not be able to connect: see Overview">⚠</span>' : ''}</div>
-                            <div class="text-xs text-gray-500">${srv.edition}${srv.version ? ' ' + this.escapeHtml(srv.version) : ''} • Port ${srv.port}</div>
-                        </div>
+        const serverRow = srv => {
+            const dot = srv.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off';
+            const isActive = this.sameServer(this.activeServer, srv) ? 'rp-active bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
+            return `
+                <div onclick="ServerApp.openWorkspace(${JSON.stringify(srv).replace(/"/g, '&quot;')})"
+                     class="p-3 rounded cursor-pointer transition flex items-center gap-3 ${isActive}">
+                    <span class="${dot}">●</span>
+                    <div class="min-w-0">
+                        <div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(srv.name)}${this.hasProxyProblem(srv) || this.hasConnectProblem(srv) ? ' <span class="text-yellow-600" title="Players may not be able to connect: see Overview">⚠</span>' : ''}</div>
+                        <div class="text-xs text-gray-500">${esc(srv.edition)}${srv.version ? ' ' + esc(srv.version) : ''} • Port ${srv.port}</div>
                     </div>
-                `;
-            });
+                </div>`;
         };
 
-        renderGroup('Java Edition', javaServers);
-        renderGroup('Bedrock Edition', bedrockServers);
-        renderGroup('Unknown / Other', otherServers);
-        // A cluster master: each node's servers under the node's name
+        // A heading that folds what's under it. When folded it shows how many servers it holds
+        // and how many are online, so a folded group still tells you something.
+        // level: 'top' (this machine's editions), 'node' (a cluster node) or 'sub' (a node's editions)
+        const heading = (key, title, servers, level) => {
+            const open = !this.collapsedGroups.has(key);
+            const online = servers.filter(s => s.status === 'online').length;
+            const count = servers.length ? `<span class="ml-auto font-normal normal-case tracking-normal">${open ? servers.length : `${online}/${servers.length} online`}</span>` : '';
+            return `<button type="button" onclick="ServerApp.toggleGroup(${this.jsArg(key)})" aria-expanded="${open}"
+                        class="w-full flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider rounded hover:text-gray-900 dark:hover:text-gray-100 transition ${level === 'node' ? 'text-gray-700 dark:text-gray-300' : 'text-gray-500'} ${level === 'sub' ? 'mt-2 mb-1 pl-5 pr-3' : 'mt-4 mb-1 px-3'}">
+                        <span class="inline-block w-3 text-center transition-transform ${open ? 'rotate-90' : ''}" aria-hidden="true">▸</span>
+                        <span class="truncate">${title}</span>${count}
+                    </button>`;
+        };
+
+        // Edition groups for one machine. On a node they sit under its heading, indented.
+        const editionGroups = (servers, prefix, sub) => editions.map(([id, title, match]) => {
+            const group = servers.filter(match);
+            if (!group.length) return '';
+            const key = prefix + id;
+            return heading(key, title, group, sub ? 'sub' : 'top')
+                + (this.collapsedGroups.has(key) ? '' : `<div class="${sub ? 'pl-3' : ''}">${group.map(serverRow).join('')}</div>`);
+        }).join('');
+
+        let html = editionGroups(this.servers.filter(s => !s.node), '', false);
+        // A cluster master: each node's servers under the node's name, split by edition like this machine's
         this.clusterNodes.forEach(n => {
             const servers = this.servers.filter(s => s.node === n.id);
+            const key = `node:${n.id}`;
             const note = n.state !== 'ok' ? `⚠️ ${esc(this.clusterStates[n.state] || n.state)}`
                 : (n.cluster_api || 1) < 2 ? 'Update RedstonePanel on this node to manage its servers here.'
                 : (servers.length ? '' : 'No servers yet.');
-            renderGroup(`🌐 ${esc(n.name)}`, servers, note);
+            html += heading(key, `🌐 ${esc(n.name)}`, servers, 'node');
+            if (note) html += `<div class="text-xs text-yellow-600 dark:text-yellow-500 px-3 mb-1">${note}</div>`;
+            if (!this.collapsedGroups.has(key)) html += editionGroups(servers, `${key}:`, true);
         });
+        list.innerHTML = html;
     },
 
     async openWorkspace(srv) {
@@ -749,6 +775,7 @@ const ServerApp = {
 		}
 		if (!this.activeServer || this.activeServer.name !== server) return;
 		this.accessData = d;
+		await this.loadModeration();
 		const word = d.edition === 'java' ? 'whitelist' : 'allowlist';
 		document.getElementById('wl-state').innerHTML = d.enabled
 			? `<span class="text-green-600 dark:text-green-400 font-bold">On</span> <span class="text-gray-500 dark:text-gray-400">(${esc(d.setting)}=true)</span>`
@@ -773,7 +800,8 @@ const ServerApp = {
 			<div class="flex items-center justify-between gap-3 p-3">
 				<div><span class="font-bold text-gray-900 dark:text-white">${esc(a.name)}</span>
 					<span class="text-xs text-gray-500 dark:text-gray-400">${a.count}× · ${esc(reasons[a.reason] || a.reason || 'refused')}</span></div>
-				${a.reason === 'not_whitelisted' ? `<button onclick="ServerApp.accessAdd(${this.jsArg(a.name)})" class="text-sm text-theme hover:underline">Allow</button>` : ''}
+				${a.reason === 'not_whitelisted' ? `<button onclick="ServerApp.accessAdd(${this.jsArg(a.name)})" class="text-sm text-theme hover:underline">Allow</button>`
+				  : a.reason === 'banned' && this.modBanned(a.name) ? `<button onclick="ServerApp.modUnban(${this.jsArg(a.name)})" class="text-sm text-theme hover:underline">Unban</button>` : ''}
 			</div>`).join('');
 		this.loadAccessLog();
 	},
@@ -825,7 +853,7 @@ const ServerApp = {
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			d = await res.json();
 		} catch (e) {
-			rows.innerHTML = `<tr><td colspan="3" class="p-2 text-red-500">Could not load the access log (${esc(e.message)}).</td></tr>`;
+			rows.innerHTML = `<tr><td colspan="4" class="p-2 text-red-500">Could not load the access log (${esc(e.message)}).</td></tr>`;
 			return;
 		}
 		if (!this.activeServer || this.activeServer.name !== server) return;
@@ -839,10 +867,113 @@ const ServerApp = {
 				<td class="p-2 whitespace-nowrap text-gray-600 dark:text-gray-300">${esc(new Date(e.ts * 1000).toLocaleString())}</td>
 				<td class="p-2 font-bold text-gray-900 dark:text-white">${esc(e.name)}</td>
 				<td class="p-2">${label(e)}</td>
-			</tr>`).join('') : `<tr><td colspan="3" class="p-2 text-gray-500 dark:text-gray-400">Nothing in this period.</td></tr>`;
+				<td class="p-2 text-right whitespace-nowrap">${this.modActions(e.name, 'text-xs')}</td>
+			</tr>`).join('') : `<tr><td colspan="4" class="p-2 text-gray-500 dark:text-gray-400">Nothing in this period.</td></tr>`;
 		document.getElementById('al-count').innerText = d.events.length >= 500
 			? 'Showing the newest 500; narrow the filter to see more.'
 			: `${d.events.length} event${d.events.length === 1 ? '' : 's'}. Kept for ${d.retention_days} days.`;
+	},
+
+    // Kick, ban and unban (1.16.2). Bans are Java only: Bedrock has no ban list.
+    async loadModeration() {
+		const server = this.activeServer.name, esc = t => this.escapeHtml(t === null || t === undefined ? '' : t);
+		this.modData = null;
+		let m;
+		try {
+			const res = await api(`/api/servers/${encodeURIComponent(server)}/moderation`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			m = await res.json();
+		} catch (e) {
+			document.getElementById('mod-online').innerHTML = `<p class="p-3 text-red-500">Could not load who's online (${esc(e.message)}).</p>`;
+			return;
+		}
+		if (!this.activeServer || this.activeServer.name !== server) return;
+		this.modData = m;
+		document.getElementById('mod-online-note').innerText = !m.running ? 'The server is stopped.'
+			: m.online_source === 'rcon' ? 'Live, from the server.'
+			: 'From the server log; it can be up to 30 seconds behind.';
+		document.getElementById('mod-online').innerHTML = m.online.length ? m.online.map(n => `
+			<div class="flex items-center justify-between gap-3 p-3">
+				<span class="font-bold text-gray-900 dark:text-white min-w-0 truncate"><span class="text-green-500">●</span> ${esc(n)}</span>
+				<span class="flex gap-3 whitespace-nowrap">${this.modActions(n, 'text-sm')}</span>
+			</div>`).join('') : `<p class="p-3 text-gray-500 dark:text-gray-400">${m.running ? 'Nobody is online.' : 'Nobody is online while the server is stopped.'}</p>`;
+
+		document.getElementById('mod-ban-form').classList.toggle('hidden', !m.bans);
+		document.getElementById('mod-banned').classList.toggle('hidden', !m.bans);
+		document.getElementById('mod-ban-help').innerText = !m.bans
+			? "Bedrock servers have no ban list. To keep someone out, turn on the allowlist and leave them off it; to remove someone now, use Kick."
+			: `Players in banned-players.json can't join. ` + (m.live ? 'The server is running, so changes apply at once.'
+				: m.running ? "RCON isn't set up, so bans can't change while the server runs. Open Live Chat once to set it up."
+				: 'Changes apply when the server starts.');
+		document.getElementById('mod-banned').innerHTML = m.banned.length ? m.banned.map(b => `
+			<div class="flex items-center justify-between gap-3 p-3">
+				<div class="min-w-0">
+					<div class="font-bold text-gray-900 dark:text-white">${esc(b.name)}</div>
+					<div class="text-xs text-gray-500 dark:text-gray-400">${esc(b.reason || 'No reason given')}${b.created ? ` · ${esc(b.created)}` : ''}${b.source ? ` · ${b.source === 'Rcon' ? 'from the panel or another RCON tool' : b.source === 'Server' ? 'from the server console' : `by ${esc(b.source)}`}` : ''}${b.expires && b.expires !== 'forever' ? ` · until ${esc(b.expires)}` : ''}</div>
+				</div>
+				<button onclick="ServerApp.modUnban(${this.jsArg(b.name)})" class="text-sm text-theme hover:underline">Unban</button>
+			</div>`).join('') : `<p class="p-3 text-gray-500 dark:text-gray-400">Nobody is banned.</p>`;
+	},
+
+    modBanned(name) {
+		const m = this.modData;
+		return !!(m && m.banned.some(b => b.name.toLowerCase() === String(name).toLowerCase()));
+	},
+
+    // Kick (if online) and Ban (Java, if not banned) buttons for one player
+    modActions(name, size) {
+		const m = this.modData;
+		if (!m) return '';
+		const online = m.online.some(n => n.toLowerCase() === String(name).toLowerCase());
+		const out = [];
+		if (online) out.push(`<button onclick="ServerApp.modKick(${this.jsArg(name)})" class="${size} text-yellow-700 dark:text-yellow-400 hover:underline">Kick</button>`);
+		if (m.bans && !this.modBanned(name)) out.push(`<button onclick="ServerApp.modBan(${this.jsArg(name)})" class="${size} text-red-600 dark:text-red-400 hover:underline">Ban</button>`);
+		return out.join(' ');
+	},
+
+    async modKick(name) {
+		const reason = prompt(`Kick ${name}? They can join again straight away.\n\nReason shown to them (optional):`, '');
+		if (reason === null) return;
+		await this.modAction('kick', name, reason);
+	},
+
+    async modBan(name) {
+		const reason = prompt(`Ban ${name}? They're removed if online and can't join until you unban them.\n\nReason (optional):`, '');
+		if (reason === null) return;
+		await this.modAction('ban', name, reason);
+	},
+
+    async modBanFromForm() {
+		const name = document.getElementById('mod-ban-name').value.trim();
+		if (!name) return;
+		if (!confirm(`Ban ${name}?`)) return;
+		const ok = await this.modAction('ban', name, document.getElementById('mod-ban-reason').value);
+		if (ok) {
+			document.getElementById('mod-ban-name').value = '';
+			document.getElementById('mod-ban-reason').value = '';
+		}
+	},
+
+    async modUnban(name) {
+		if (!confirm(`Unban ${name}? They'll be able to join again.`)) return;
+		await this.modAction('unban', name, '');
+	},
+
+    async modAction(action, player, reason) {
+		let msg, ok = false;
+		try {
+			const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/players/${action}`, {
+				method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player, reason: reason || '' })
+			});
+			const j = await res.json().catch(() => ({}));
+			ok = res.ok;
+			msg = res.ok ? j.message : `Not done: ${j.detail || `HTTP ${res.status}`}`;
+		} catch (e) {
+			msg = `Not done: ${e.message}`;
+		}
+		await this.loadAccess();
+		alert(msg);
+		return ok;
 	},
 
     async setPlayerRole(select) {
@@ -978,11 +1109,12 @@ const ServerApp = {
             const isActive = this.editingTemplateId === t.id ? 'bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
             aside.innerHTML += `
                 <div onclick="ServerApp.openTemplateEditor('${t.id}')" class="p-3 mb-1 rounded cursor-pointer transition ${isActive}">
-                    <div class="font-bold text-gray-900 dark:text-gray-200">${t.name}</div>
-                    <div class="text-xs text-gray-500">${t.edition} Template</div>
+                    <div class="font-bold text-gray-900 dark:text-gray-200">${this.escapeHtml(t.name)}</div>
+                    <div class="text-xs text-gray-500">${this.escapeHtml(t.edition)} Template</div>
                 </div>
             `;
         });
+        this.renderNodeTemplates(aside);
     },
 
     openTemplateEditor(id) {
@@ -994,6 +1126,7 @@ const ServerApp = {
         
         document.getElementById('template-editor-main').classList.remove('hidden');
         document.getElementById('editing-temp-title').innerText = `Edit Template: ${temp.name}`;
+        this.renderTemplateCopy(temp);
         
         // Build properties editor
         const editor = document.getElementById('temp-properties-editor');
@@ -1055,7 +1188,7 @@ const ServerApp = {
         const whereHtml = nodes.length ? `
             <div class="mb-4">
                 <label class="block text-sm text-gray-400 mb-1">Where</label>
-                <select id="deploy-where" onchange="ServerApp.onDeployWhereChange(this.value)" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white">
+                <select id="deploy-where" onchange="ServerApp.onDeployWhereChange(this.value)" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
                     <option value="">${esc(this.panelName || 'This panel')} (this panel, the master)</option>
                     ${nodes.map(n => `<option value="${esc(n.id)}" ${n.id === where ? 'selected' : ''}>🌐 ${esc(n.name)}</option>`).join('')}
                 </select>
@@ -1067,7 +1200,7 @@ const ServerApp = {
 
             <div class="mb-4">
                 <label class="block text-sm text-gray-400 mb-1">Engine Edition</label>
-                <select id="deploy-edition" onchange="ServerApp.onDeployEditionChange(this.value)" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                <select id="deploy-edition" onchange="ServerApp.onDeployEditionChange(this.value)" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                     <option value="java">Java Edition (Auto-Port)</option>
                     <option value="bedrock">Bedrock Edition (Auto-Port)</option>
                 </select>
@@ -1076,7 +1209,7 @@ const ServerApp = {
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="block text-sm text-gray-400 mb-1">Server Type</label>
-                            <select id="deploy-loader" onchange="ServerApp.loadDeployVersions()" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                            <select id="deploy-loader" onchange="ServerApp.loadDeployVersions()" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                                 <option value="vanilla">Vanilla (Mojang)</option>
                                 <option value="paper">Paper (plugins)</option>
                                 <option value="fabric">Fabric (mods)</option>
@@ -1084,7 +1217,7 @@ const ServerApp = {
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-1">Minecraft Version</label>
-                            <select id="deploy-version" onchange="ServerApp.showJavaRequirement(this.value || this.dataset.newest, 'deploy-java-note')" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                            <select id="deploy-version" onchange="ServerApp.showJavaRequirement(this.value || this.dataset.newest, 'deploy-java-note')" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                                 <option value="">Loading…</option>
                             </select>
                         </div>
@@ -1093,21 +1226,21 @@ const ServerApp = {
                 </div>
                 
                 <label class="block text-sm text-gray-400 mb-1">Base Template (Optional)</label>
-                <select id="deploy-template" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white mb-2">
+                <select id="deploy-template" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                     ${templateOptions}
                 </select>
                 
                 <button onclick="ServerApp.executeDeploy()" class="mt-2 w-full bg-green-600 hover:bg-green-700 py-2 rounded text-white font-bold transition">Deploy Fresh Server</button>
             </div>
-            <hr class="border-gray-700 my-4" />
+            <hr class="border-gray-200 dark:border-gray-700 my-4" />
             <div class="mb-6">
                 <label class="block text-sm text-gray-400 mb-1">Import Existing (.zip, .tar.gz, .tar)</label>
-                <input type="file" id="import-file" accept=".zip,.tar.gz,.tgz,.tar,application/zip,application/gzip,application/x-tar" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white text-sm mb-2" />
+                <input type="file" id="import-file" accept=".zip,.tar.gz,.tgz,.tar,application/zip,application/gzip,application/x-tar" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white text-sm mb-2" />
                 <p class="text-xs text-gray-500 mb-2">A backup wrapped in a single folder is fine; its contents are used.</p>
                 <button onclick="ServerApp.executeImport()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-white font-bold transition">Upload & Import</button>
             </div>
             <div id="removed-servers" class="mb-6">${this.removedServersHtml()}</div>
-            <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white transition">Cancel</button>
+            <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white transition">Cancel</button>
         `;
         modal.classList.remove('hidden');
         this.loadDeployVersions();
@@ -2525,26 +2658,32 @@ const ServerApp = {
             } else if (!s.has_binary) {
                 note = `<p class="text-xs text-yellow-500 mt-1">The server binary is missing; the latest ${esc(s.edition)} release will be downloaded.${s.edition === 'Java' ? ' A world from an older version is upgraded and can\'t go back, so export it first.' : ''}</p>`;
             }
+            if (s.moved_to) {
+                note += `<p class="text-xs text-gray-400 mt-1">Left behind by a move to ${esc(s.moved_to)}. Restore it only if the move went wrong.</p>`;
+            }
             const when = s.removed_at ? ` • removed ${new Date(s.removed_at * 1000).toLocaleDateString()}` : '';
+            const masterAdmin = this.isMaster() && this.currentUser.role === 'admin' && this.removedNode() && s.moved_to;
             return `
-                <div class="border border-gray-700 rounded p-2 mb-2">
+                <div class="border border-gray-200 dark:border-gray-700 rounded p-2 mb-2">
                     <div class="flex items-center justify-between gap-2">
                         <div class="min-w-0">
-                            <div class="font-bold text-white truncate">${esc(s.name)}</div>
+                            <div class="font-bold text-gray-900 dark:text-white truncate">${esc(s.name)}</div>
                             <div class="text-xs text-gray-400 truncate" title="${esc(s.directory)}">${details}${when}</div>
                         </div>
                         <div class="flex gap-1 shrink-0">
                             <button onclick="ServerApp.restoreRemoved('${esc(s.name)}', this)" ${s.can_restore ? '' : 'disabled'}
                                 class="px-3 py-1 rounded text-sm font-bold text-white ${s.can_restore ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 cursor-not-allowed'}">Restore</button>
                             ${isAdmin ? `<button onclick="ServerApp.deleteRemoved('${esc(s.name)}')" title="Delete its files permanently"
-                                class="px-2 py-1 rounded text-sm bg-gray-700 hover:bg-red-700 text-white">🗑</button>` : ''}
+                                class="px-2 py-1 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-red-700 text-gray-900 dark:text-white hover:text-white">🗑</button>` : ''}
+                            ${masterAdmin ? `<button onclick="ServerApp.deleteMovedCopy(${this.jsArg(this.removedNode())}, ${this.jsArg(s.name)}, this)" title="Delete the files this move left behind"
+                                class="px-2 py-1 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-red-700 text-gray-900 dark:text-white hover:text-white">🗑</button>` : ''}
                         </div>
                     </div>
                     ${note}
                 </div>`;
         }).join('');
         return `
-            <hr class="border-gray-700 my-4" />
+            <hr class="border-gray-200 dark:border-gray-700 my-4" />
             <label class="block text-sm text-gray-400 mb-1">Removed servers</label>
             <p class="text-xs text-gray-500 mb-2">Uninstalled with "Keep World". Their files are still on this machine; restoring gives them a new service under the same name.</p>
             ${rows}`;
@@ -2840,7 +2979,7 @@ const ServerApp = {
 	},
 
 	// --- Panel Settings: connection (HTTP/HTTPS) and sign-in (admins only) ---
-	async openPanelSettings() {
+	async openPanelSettings(section) {
 		const overlay = document.getElementById('settings-overlay');
 		const box = document.getElementById('settings-content');
 		box.innerHTML = '<p class="text-gray-500">Loading settings...</p>';
@@ -2873,13 +3012,16 @@ const ServerApp = {
 			<input id="set-panel-name" maxlength="40" value="${esc(s.panel_name)}" placeholder="${esc(d.defaults.panel_name)}" class="${field} mb-1">
 			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">Tells this server's panel apart from others: shown in the sidebar, the browser tab and on the sign-in page (visible before signing in). Leave empty to use the server's host name, <b>${esc(d.defaults.panel_name)}</b>.</p>
 
-			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Notifications</h4>
+			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Setup guide</h4>
+			${this.setupSettingsRow()}
+
+			<h4 id="set-section-notifications" class="font-bold text-gray-900 dark:text-white mb-2">Notifications</h4>
 			<div id="set-notifications" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
-			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
+			<h4 id="set-section-connection" class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
 			<div class="space-y-2 mb-3">
 				${clusterRole === 'master'
 					? `${radio('https_mode', 'cluster', s.https_mode, 'HTTPS from the cluster', 'The cluster CA\'s certificate. Browsers warn until each device imports the cluster CA.')}
@@ -2929,6 +3071,18 @@ const ServerApp = {
 		document.getElementById('set-https-port').disabled = clusterRole !== 'standalone';
 		this.loadClusterSettings();
 		this.loadNotificationSettings();
+		this.loadSetupSettings();
+		const target = section && document.getElementById(`set-section-${section}`);
+		if (target) target.scrollIntoView({ block: 'start' });
+	},
+
+	async loadSetupSettings() {
+		try {
+			const r = await fetch('/api/settings/setup');
+			if (r.ok) this.setupData = await r.json();
+		} catch (e) { return; }
+		const el = document.getElementById('set-setup-guide');
+		if (el) el.outerHTML = this.setupSettingsRow();
 	},
 
 	async loadNotificationSettings() {
@@ -3058,6 +3212,7 @@ const ServerApp = {
 	dashTimer: null,
 	dashData: null,
 	dashHosts: null,
+	setupData: null,
 
 	showDashboard() {
 		if (this.fileEditor && this.fileEditor.dirty
@@ -3098,6 +3253,14 @@ const ServerApp = {
 		} else {
 			this.dashHosts = null;
 		}
+		if (this.isAdmin() && !this.dashData.redacted) {
+			try {
+				const r = await fetch('/api/settings/setup');
+				this.setupData = r.ok ? await r.json() : null;
+			} catch (e) { /* keep the last answer */ }
+		} else {
+			this.setupData = null;
+		}
 		if (!document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard();
 	},
 
@@ -3126,10 +3289,10 @@ const ServerApp = {
 		return diff >= 0 ? `in ${rel}` : `${rel} ago`;
 	},
 	fmtPct(p) { return p === null || p === undefined ? '—' : `${Math.round(p)}%`; },
-	barColor(p) { return p >= 90 ? 'bg-red-500' : p >= 75 ? 'bg-yellow-500' : 'bg-green-500'; },
+	barColor(p) { return p >= 90 ? 'rp-level rp-level-high' : p >= 75 ? 'rp-level rp-level-warn' : 'rp-level rp-level-ok'; },
 	bar(p) {
 		const w = Math.max(0, Math.min(100, p || 0));
-		return `<div class="w-full h-2 rounded bg-gray-200 dark:bg-gray-700 overflow-hidden"><div class="h-2 rounded ${this.barColor(w)}" style="width:${w}%"></div></div>`;
+		return `<div class="w-full h-2 rounded bg-gray-200 dark:bg-gray-700"><div class="h-2 rounded ${this.barColor(w)}" style="width:${w}%"></div></div>`;
 	},
 
 	openServerByName(name, tab) {
@@ -3202,7 +3365,7 @@ const ServerApp = {
 		const td = 'px-3 py-2 whitespace-nowrap';
 		const serverRows = servers.map(s => {
 			const crash = s.crash_loop;
-			const dot = s.status === 'online' ? 'text-green-500' : crash || s.state === 'failed' ? 'text-red-500' : 'text-gray-400';
+			const dot = s.status === 'online' ? 'rp-lamp-on' : crash || s.state === 'failed' ? 'text-red-500' : 'text-gray-400';
 			const stateText = crash ? 'crash loop' : s.state === 'failed' ? 'failed' : s.status;
 			const lb = s.last_backup;
 			const backupNote = lb ? (lb.ok ? `last ${this.fmtWhen(lb.at)}` : '<span class="text-red-500">last failed</span>') : 'none yet';
@@ -3288,7 +3451,7 @@ const ServerApp = {
 				</section>`;
 		}
 
-		document.getElementById('dash-body').innerHTML = attentionHtml + tiles + serverTable
+		document.getElementById('dash-body').innerHTML = this.setupCard() + attentionHtml + tiles + serverTable
 			+ `<section class="grid grid-cols-1 lg:grid-cols-3 gap-4">${host}${disks}${services}</section>` + nodes
 			+ (d.redacted ? `<p class="${note}">You're on the trusted local network without signing in, so addresses, versions and settings are hidden.</p>` : '');
 	},
@@ -3399,6 +3562,104 @@ const ServerApp = {
 		this.panelUpdateBox('The update is taking longer than expected. Reload this page later, or check with: sudo redstonepanel status', lines, true);
 	},
 
+	// First-run setup guide (admins): four steps, each ticked from the panel's real state
+	// (GET /api/settings/setup) and each opening the dialog that already does the job
+	setupCard() {
+		const g = this.setupData;
+		if (!g || g.dismissed) return '';
+		const esc = t => this.escapeHtml(t === null || t === undefined ? '' : String(t));
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const btn = 'px-3 py-1 rounded text-xs bg-theme hover-bg-theme text-white font-bold';
+		const link = 'underline text-xs text-theme';
+		const step = Object.fromEntries(g.steps.map(x => [x.id, { ...x }]));
+		// On a cluster master, servers on the nodes count too; each node's own guide covers their backups
+		const nodeServers = (this.dashHosts ? this.dashHosts.nodes : []).filter(n => !n.local && n.summary)
+			.reduce((a, n) => a + (n.summary.servers_total || 0), 0);
+		if (!step.server.servers && nodeServers) {
+			step.server.done = true;
+			step.backups.done = true;
+			step.backups.onNodes = true;
+		}
+		const done = Object.values(step).filter(x => x.done).length;
+		if (done === g.total) return '';
+
+		const fw = step.server.firewall;
+		const unscheduled = step.backups.unscheduled || [];
+		const plural = n => n === 1 ? '' : 's';
+		const items = [
+			{ s: step.server, title: 'Create your first server',
+			  body: step.server.done
+				? (step.server.servers ? `${step.server.servers} server${plural(step.server.servers)} on this panel.` : `${nodeServers} server${plural(nodeServers)} on the cluster's nodes.`)
+				: `Java (Vanilla, Paper or Fabric) or Bedrock, on the version you pick. The panel installs the Java it needs.`
+				  + (fw === 'missing' ? `<br><span class="text-yellow-700 dark:text-yellow-300">⚠️ The firewall ufw isn't installed, so the panel can't open game ports for you. If this machine has another firewall, open each server's port in it.</span>`
+				   : fw === 'off' ? `<br><span class="text-yellow-700 dark:text-yellow-300">ℹ️ The firewall ufw is installed but off. The panel adds a rule for each server's ports, which takes effect when you turn ufw on.</span>` : ''),
+			  action: step.server.done ? '' : `<button onclick="ServerApp.openDeployModal()" class="${btn}">➕ New Server</button>` },
+			{ s: step.backups, title: 'Back up your worlds',
+			  body: step.backups.onNodes ? `Backups of the nodes' servers are set on each node.`
+				: step.backups.done ? 'Every server has a backup schedule.'
+				: !step.server.done ? 'Once you have a server, give it a backup schedule.'
+				: `Give each server a schedule on its <b>Backups</b> tab. Daily at 04:00, keeping 7, is a good start. Backups run even while the panel is stopped.`,
+			  action: step.server.done && !step.backups.done ? `<div class="flex flex-wrap gap-2">${unscheduled.map(n =>
+				`<button onclick="ServerApp.openServerByName(${this.jsArg(n)}, 'backups')" class="${btn}">${esc(n)}</button>`).join('')}</div>` : '' },
+			{ s: step.connection, title: 'Choose how the panel is reached',
+			  body: step.connection.cluster_role === 'node' ? 'HTTPS comes from the cluster.'
+				: step.connection.https_mode !== 'off' ? 'The panel uses HTTPS.'
+				: step.connection.http_ok ? 'You chose plain HTTP on a network you trust.'
+				: `The panel uses plain HTTP, so anyone who can watch your network can read passwords as you sign in. That's usually fine on a home network you trust. Elsewhere, turn on HTTPS.`,
+			  action: step.connection.done ? ''
+				: `<div class="flex flex-wrap gap-3 items-center"><button onclick="ServerApp.openPanelSettings('connection')" class="${btn}">Turn on HTTPS</button>
+				   <button onclick="ServerApp.setupAnswer({ http_ok: true })" class="${link}">Keep HTTP, this is my home network</button></div>` },
+			{ s: step.notifications, title: 'Get told when something breaks',
+			  body: step.notifications.done ? 'Crash and backup alerts go to your webhook.'
+				: `Send crashes and failed backups to a Discord channel or any webhook, even while the panel is stopped.`,
+			  action: step.notifications.done ? '' : `<button onclick="ServerApp.openPanelSettings('notifications')" class="${btn}">Set up alerts</button>` },
+		];
+		const next = items.findIndex(i => !i.s.done);
+		return `
+			<section class="bg-white dark:bg-gray-800 rounded-lg border-2 border-theme shadow p-4">
+				<div class="flex justify-between items-start gap-3 mb-3">
+					<div>
+						<h3 class="font-bold text-gray-900 dark:text-white">🚀 Set up RedstonePanel</h3>
+						<p class="${note}">${done} of ${g.total} done. Each step opens the place where it's done, and ticks itself when it is.</p>
+					</div>
+					<button onclick="ServerApp.setupAnswer({ dismissed: true })" class="${note} underline whitespace-nowrap" title="Reopen it from Panel Settings">Hide guide</button>
+				</div>
+				<ol class="space-y-2">${items.map((i, n) => `
+					<li class="flex gap-3 p-2 rounded ${n === next ? 'bg-gray-50 dark:bg-gray-900/50' : ''}">
+						<span class="text-lg leading-6">${i.s.done ? '✅' : n === next ? '👉' : '⬜'}</span>
+						<div class="min-w-0 flex-1">
+							<p class="font-bold text-sm ${i.s.done ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-white'}">${n + 1}. ${i.title}</p>
+							<p class="${note} mt-0.5">${i.body}</p>
+							${i.action ? `<div class="mt-2">${i.action}</div>` : ''}
+						</div>
+					</li>`).join('')}
+				</ol>
+			</section>`;
+	},
+
+	async setupAnswer(changes) {
+		const res = await fetch('/api/settings/setup', {
+			method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes)
+		});
+		if (!res.ok) return alert(await this.apiError(res));
+		this.setupData = await res.json();
+		if (this.dashData && !document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard();
+		const el = document.getElementById('set-setup-guide');
+		if (el) el.outerHTML = this.setupSettingsRow();
+	},
+
+	// Panel Settings: reopen (or close) the guide, and take back "keep HTTP"
+	setupSettingsRow() {
+		const g = this.setupData;
+		const note = 'text-xs text-gray-500 dark:text-gray-400 mb-6';
+		if (!g) return `<p id="set-setup-guide" class="${note}">Loading...</p>`;
+		const conn = g.steps.find(x => x.id === 'connection') || {};
+		const http = conn.http_ok ? ` You chose to keep plain HTTP: <button onclick="ServerApp.setupAnswer({ http_ok: false })" class="underline text-theme">ask again</button>.` : '';
+		return g.dismissed
+			? `<p id="set-setup-guide" class="${note}">The setup guide is hidden (${g.done} of ${g.total} steps done). <button onclick="ServerApp.setupAnswer({ dismissed: false })" class="underline text-theme">Show it on the dashboard</button>.${http}</p>`
+			: `<p id="set-setup-guide" class="${note}">${g.complete ? 'All setup steps are done.' : `The setup guide is on the dashboard (${g.done} of ${g.total} steps done). <button onclick="ServerApp.setupAnswer({ dismissed: true })" class="underline text-theme">Hide it</button>.`}${http}</p>`;
+	},
+
 	// One panel of the cluster: the few numbers core.host.summary() gives
 	nodeCard(n) {
 		const esc = t => this.escapeHtml(t === null || t === undefined ? '' : t);
@@ -3488,14 +3749,16 @@ const ServerApp = {
 			const rows = (n.servers || []).map(s => `
 				<div class="flex items-center justify-between gap-3 p-3 border-t border-gray-200 dark:border-gray-700">
 					<div class="flex items-center gap-3 min-w-0">
-						<span class="${s.status === 'online' ? 'text-green-500' : 'text-red-500'}">●</span>
+						<span class="${s.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off'}">●</span>
 						<div class="min-w-0">
 							<div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(s.name)}</div>
 							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}</div>
 						</div>
 					</div>
-					<div class="flex gap-2">
+					<div class="flex flex-wrap justify-end gap-2">
 						${ok && (n.local || (n.cluster_api || 1) >= 2) ? `<button onclick="ServerApp.openClusterServer(${this.jsArg(n.local ? '' : n.id)}, ${this.jsArg(s.name)})" class="${btn} bg-gray-500 hover:bg-gray-600">Open</button>` : ''}
+						${this.canMoveFrom(n) ? `<button onclick="ServerApp.openMoveDialog('move', ${this.jsArg(n.id)}, ${this.jsArg(s.name)})" title="Move it to another cluster member" class="${btn} bg-gray-500 hover:bg-gray-600">Move…</button>
+						<button onclick="ServerApp.openMoveDialog('copy', ${this.jsArg(n.id)}, ${this.jsArg(s.name)})" title="Copy it, to another member or this one" class="${btn} bg-gray-500 hover:bg-gray-600">Copy…</button>` : ''}
 						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'start', this)" class="${btn} bg-green-600 hover:bg-green-700">Start</button>
 						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'restart', this)" class="${btn} bg-theme hover-bg-theme">Restart</button>
 						<button onclick="ServerApp.clusterPower(${this.jsArg(n.id)}, ${this.jsArg(s.name)}, 'stop', this)" class="${btn} bg-red-600 hover:bg-red-700">Stop</button>
@@ -3518,6 +3781,166 @@ const ServerApp = {
 					${rows || (ok ? '<p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">No Minecraft servers on this panel yet.</p>' : '')}
 				</div>`;
 		}).join('');
+	},
+
+	// --- 1.16: move or copy a server to another cluster member (master admins) ---
+	canMoveFrom(n) {
+		return this.currentUser && this.currentUser.role === 'admin' && n.state === 'ok'
+			&& (n.local || (n.cluster_api || 1) >= 3);
+	},
+
+	moveTargets(kind, from) {
+		return (this.clusterData ? this.clusterData.nodes : [])
+			.filter(n => n.state === 'ok' && (n.local || (n.cluster_api || 1) >= 3) && (kind === 'copy' || n.id !== from));
+	},
+
+	openMoveDialog(kind, from, server) {
+		const esc = t => this.escapeHtml(t);
+		const targets = this.moveTargets(kind, from);
+		if (!targets.length) {
+			return alert('No other cluster member can take it. Each one needs RedstonePanel 1.16 or later and must be reachable from the master.');
+		}
+		const src = this.clusterData.nodes.find(n => n.id === from) || { name: '?' };
+		const move = kind === 'move';
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		document.getElementById('modal-content').innerHTML = `
+			<h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">${move ? 'Move' : 'Copy'} ${esc(server)}</h2>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">${move
+				? `From <b>${esc(src.name)}</b>. The server stops while its folder is copied, then starts on the new member with the same name and ports if they're free there. Its memory, Java, backup and restart schedules and Phantom come along. The files on ${esc(src.name)} stay as a removed server until you delete them, so nothing is lost if something goes wrong.`
+				: `From <b>${esc(src.name)}</b>, without stopping it (the world is saved first, as backups do). The copy gets its own name and ports where needed, and no schedules.`}</p>
+			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">To</label>
+			<select id="move-to" class="${field} mb-3">${targets.map(n =>
+				`<option value="${esc(n.id)}">${esc(n.name)}${n.local ? ' (this panel)' : ''}${n.id === from ? ' (same panel)' : ''}</option>`).join('')}</select>
+			${move ? '' : `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-start"> Start the copy when it's ready</label>`}
+			<div class="flex gap-2">
+				<button id="move-go" onclick="ServerApp.startMove(${this.jsArg(kind)}, ${this.jsArg(from)}, ${this.jsArg(server)})" class="flex-1 px-4 py-2 bg-theme hover-bg-theme text-white rounded font-bold">${move ? 'Move' : 'Copy'}</button>
+				<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>
+			</div>`;
+		document.getElementById('modal-overlay').classList.remove('hidden');
+	},
+
+	async startMove(kind, from, server) {
+		const to = document.getElementById('move-to').value;
+		const startBox = document.getElementById('move-start');
+		document.getElementById('move-go').disabled = true;
+		const res = await fetch('/api/cluster/moves', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ kind, server, from_node: from, to_node: to, start: !!(startBox && startBox.checked) })
+		});
+		if (!res.ok) {
+			document.getElementById('move-go').disabled = false;
+			return alert(await this.apiError(res));
+		}
+		this.watchMove(await res.json());
+	},
+
+	async watchMove(job) {
+		this.renderMoveJob(job);
+		if (job.state !== 'running') {
+			this.loadCluster();
+			this.loadServers();             // the sidebar lists servers under their member
+			return;
+		}
+		setTimeout(async () => {
+			const res = await fetch(`/api/cluster/moves/${encodeURIComponent(job.id)}`);
+			if (res.ok) this.watchMove(await res.json());
+		}, 1500);
+	},
+
+	renderMoveJob(job) {
+		const esc = t => this.escapeHtml(t);
+		const box = document.getElementById('modal-content');
+		if (!box) return;
+		const move = job.kind === 'move';
+		const pct = job.total ? Math.min(100, Math.round(job.bytes * 100 / job.total)) : null;
+		let body;
+		if (job.state === 'running') {
+			body = `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">${esc(job.step)}…</p>
+				${pct !== null ? `<div class="w-full h-2 rounded bg-gray-200 dark:bg-gray-700 mb-1"><div class="h-2 rounded bg-theme" style="width:${pct}%"></div></div>
+				<p class="text-xs text-gray-500 dark:text-gray-400 mb-3">${this.fmtBytes(job.bytes)} of ${this.fmtBytes(job.total)}</p>` : ''}
+				<p class="text-xs text-gray-500 dark:text-gray-400">You can close this; it carries on, and the console shows each step.</p>`;
+		} else if (job.state === 'done') {
+			const r = job.result || {};
+			const changes = [r.renamed ? `its name was taken there, so it's now <b>${esc(r.name)}</b>` : '',
+				r.old_port ? `port ${esc(r.old_port)} was taken there, so it now uses port <b>${esc(r.port)}</b>` : ''].filter(Boolean);
+			body = `<p class="text-sm text-green-600 dark:text-green-400 font-bold mb-2">${move ? 'Moved' : 'Copied'} to ${esc(job.to.name)} as ${esc(r.name)} (port ${esc(r.port)}).</p>
+				${changes.length ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">Note: ${changes.join('; ')}.</p>` : ''}
+				${job.warning ? `<p class="text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 mb-2">⚠️ ${esc(job.warning)}</p>` : ''}
+				${move && !job.warning ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">The old files on ${esc(job.from.name)} are kept as a removed server, ${esc(job.server)}. Once the server works on ${esc(job.to.name)}, delete them to free the space.</p>
+				<button onclick="ServerApp.deleteMovedCopy(${this.jsArg(job.from.id)}, ${this.jsArg(job.server)}, this)" class="w-full mb-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold">Delete the old copy on ${esc(job.from.name)}</button>` : ''}`;
+		} else {
+			body = `<p class="text-sm text-red-500 font-bold mb-2">${move ? 'Moving' : 'Copying'} failed: ${esc(job.error)}</p>
+				<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">${esc(job.step)}</p>`;
+		}
+		box.innerHTML = `
+			<h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">${move ? 'Moving' : 'Copying'} ${esc(job.server)}</h2>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-3">${esc(job.from.name)} → ${esc(job.to.name)}</p>
+			${body}
+			<button onclick="ServerApp.closeModal()" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Close</button>`;
+	},
+
+	async deleteMovedCopy(member, name, button) {
+		if (!confirm(`Permanently delete the old copy of ${name} (the files the move left behind)? This can't be undone.`)) return;
+		if (button) button.disabled = true;
+		const res = await fetch(`/api/cluster/moved/${encodeURIComponent(member || 'local')}/${encodeURIComponent(name)}`, { method: 'DELETE' });
+		if (!res.ok) {
+			if (button) button.disabled = false;
+			return alert(`Not deleted: ${await this.apiError(res)}`);
+		}
+		if (button) { button.innerText = 'Deleted'; }
+		if (document.getElementById('removed-servers')) await this.loadRemovedServers();
+	},
+
+	// The master's template manager: copy a template to a node, or a node's template here
+	async renderTemplateCopy(temp) {
+		const box = document.getElementById('temp-copy');
+		if (!box) return;
+		const nodes = this.isMaster() ? this.clusterNodes.filter(n => n.state === 'ok' && (n.cluster_api || 1) >= 2) : [];
+		box.innerHTML = nodes.length ? `
+			<select id="temp-copy-to" class="bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white">
+				${nodes.map(n => `<option value="${this.escapeHtml(n.id)}">${this.escapeHtml(n.name)}</option>`).join('')}</select>
+			<button onclick="ServerApp.copyTemplateTo(${this.jsArg(temp.id)})" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded font-bold">Copy to node</button>` : '';
+	},
+
+	async copyTemplateTo(id) {
+		const node = document.getElementById('temp-copy-to').value;
+		if (await this.pushTemplate(node, id)) {
+			const n = this.clusterNodes.find(x => x.id === node);
+			alert(`Copied to ${n ? n.name : 'the node'}.`);
+		}
+	},
+
+	async renderNodeTemplates(aside) {
+		if (!this.isMaster()) return;
+		const esc = t => this.escapeHtml(t);
+		const nodes = this.clusterNodes.filter(n => n.state === 'ok' && (n.cluster_api || 1) >= 3);
+		const lists = await Promise.all(nodes.map(async n => {
+			try {
+				const r = await fetch(`/api/cluster/nodes/${encodeURIComponent(n.id)}/proxy/api/templates`);
+				return { n, list: r.ok ? await r.json() : [] };
+			} catch (e) { return { n, list: [] }; }
+		}));
+		const mine = new Set(this.templates.map(t => t.id));
+		const html = lists.map(({ n, list }) => {
+			const own = (Array.isArray(list) ? list : []).filter(t => t && !t.from_master && !mine.has(t.id));
+			if (!own.length) return '';
+			return `<h3 class="font-bold text-gray-500 mt-4 mb-2">On ${esc(n.name)}</h3>` + own.map(t => `
+				<div class="p-3 mb-1 rounded border border-gray-200 dark:border-gray-800">
+					<div class="font-bold text-gray-900 dark:text-gray-200">${esc(t.name)}</div>
+					<div class="text-xs text-gray-500 mb-1">${esc(t.edition)} Template</div>
+					<button onclick="ServerApp.copyTemplateHere(${this.jsArg(n.id)}, ${this.jsArg(t.id)})" class="text-xs underline text-theme">Copy to this panel</button>
+				</div>`).join('');
+		}).join('');
+		if (html && document.getElementById('template-list-aside') === aside) aside.insertAdjacentHTML('beforeend', html);
+	},
+
+	async copyTemplateHere(node, id) {
+		const res = await fetch('/api/cluster/nodes/local/templates', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template_id: id, from_node: node })
+		});
+		if (!res.ok) return alert(`Not copied: ${await this.apiError(res)}`);
+		await this.fetchTemplates();
+		this.renderTemplateSidebar();
 	},
 
 	// "CPU 12% · 3.1 GB memory free · 40 GB disk free" for a node on the cluster page

@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.15.0 (20 Nov 2026): clusters phase 2 shipped; moving servers (1.16) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.4 (21 Nov 2026): moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, and a folding server list shipped; two-factor sign-in (1.16.5), backups on another node (1.16.6), Debian and ARM64 (1.16.7), a phone-friendly panel (1.16.8), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -23,14 +23,14 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.15.0)
+## What already exists (1.16.4)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
 zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (managing every node's servers from the master, with real
-certificates for a master on the internet), the signed apt repository, and Bedrock connection
+certificates for a master on the internet, and moving or copying servers between members), a first-run setup guide, kick, ban and unban, the redstone logo and theme, a server list that folds by node and edition, the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
 
@@ -124,7 +124,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    on, so "is anything wrong?" has an answer without opening each server or SSHing in.
 
    Why here: it's read-only (low risk), every admin sees it on every visit, and it builds the
-   sampler that the resource graphs need, so it takes most of the work out of item 13 (1.17)
+   sampler that the resource graphs need, so it takes most of the work out of item 19 (1.17)
    rather than adding to the plan. It comes before 2.0 because per-server permissions and API
    tokens change who can see what; a dashboard that already exists only needs a filter then.
 
@@ -161,7 +161,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    database, no new dependency. One `GET /api/host` for signed-in users. Trusted-LAN visitors
    get the same view minus IP addresses and versions. The CPU and network samples are kept
    in memory between requests; that sampler becomes 1.17's history. Lay it out for phones
-   too (see the mobile pass in Groundwork).
+   too (see 1.16.8).
 
    **Size:** about a week. The background folder-size walk and the per-node cards are the
    fiddly parts.
@@ -431,10 +431,16 @@ refused joins, so those are Java only.
     shown on the node's row) and the nightly backup after 3:00, keeping 7, with the passphrase
     stored on the master. 1.14 nodes keep phase 1 and are asked to update.
 
-### 1.16: move a server to another node
+### 1.16.0: move a server to another node *(Nov 2026)*
 
 12. **Move or copy a server between cluster members** (fleet.md phase 3). Asked for after
     1.13.1 together with 1.15, which it needs.
+
+    **Shipped in 1.16.0** as designed in [move.md](move.md): move and copy (to another member or
+    the same one), the streamed archive with its SHA-256, names and ports kept when free, Java
+    installed on the target, schedules and Phantom carried over, rollback on failure, the old
+    copy kept as a removed server until an admin deletes it, and templates copied both ways.
+    **Still to do (1.16.x):** the pre-copy for big worlds below, and fleet.md's LAN discovery.
 
     - **Move:** stop the server and export it the way a backup does (save-off over RCON,
       `save hold` on Bedrock). The archive is streamed from node A through the master into
@@ -455,9 +461,190 @@ refused joins, so those are Java only.
     **Size:** one to two weeks; the streaming import and the rollback on failure are the
     careful parts.
 
+### 1.16.1: a first-run setup guide *(Nov 2026)*
+
+13. **Get a new owner to a safe setup without reading the manual.** Added to the plan after
+    1.16.0 from a comparison with other panels: installing is already one command, but the
+    first visit lands on an empty dashboard, and backups, HTTPS and notifications stay off
+    unless the owner finds Panel Settings and each server's Backups tab. Beginners on other
+    panels get a guided start; here that gap is the cheapest one to close.
+
+    Why here: it's small, it touches no server or cluster code, and it's what every new
+    owner sees first, so it ships as a point release ahead of the rest of 1.16.x and
+    performance (1.17).
+
+    - **A Setup card on the dashboard** (admins only), shown while any step is unfinished:
+      1. **Create your first server**: opens New Server.
+      2. **Back up your worlds**: a schedule on each server, with a suggested daily one;
+         opens that server's Backups tab.
+      3. **Choose how the panel is reached**: HTTP on a trusted LAN, self-signed HTTPS or
+         your own certificate; opens Panel Settings → Connection, and says plainly what HTTP
+         means for passwords.
+      4. **Get told when something breaks**: a Discord or webhook address and a test
+         message; opens Panel Settings → Notifications.
+    - **Every step is an existing dialog.** The guide only links and explains; it adds no
+      second way to do anything.
+    - **Steps are ticked from the panel's real state**, not from clicks: a server exists,
+      every server has a backup schedule, HTTPS is on (or HTTP was chosen on purpose), a
+      webhook is saved. So a step done elsewhere (the CLI, another admin) ticks itself, and
+      a panel upgraded from 1.16.0 shows only what's still missing.
+    - **Dismissable**, and reopened from Panel Settings. The dismissal is a panel setting, so
+      it holds for every admin.
+    - **On a cluster** a node's HTTPS step is done by joining, and the master's card counts
+      servers on every node.
+    - **Firewall:** when `ufw` isn't installed or is inactive, say so on step 1, since the
+      panel opens game ports only through it.
+
+    **How:** `GET /api/settings/setup` returns each step's state from existing settings and
+    server data, and `PUT` stores the two answers the guide keeps (dismissed, keep HTTP) in
+    `data/setup.json`; the card and its links are in `app.js`.
+
+    **Size:** a few days. Wording, and the screenshots for the manual, are most of it.
+
+### 1.16.2: kick and ban from the panel *(Nov 2026)*
+
+14. **Kick, ban and unban without typing commands.** Added after 1.16.0 from the comparison
+    with other panels: every other panel has buttons for these, and here they need `/kick` and
+    `/ban` typed in Live Chat. 1.14.2's Whitelist & Access already lists who joined and who was
+    turned away, so the buttons go there.
+
+    - **Kick** (with an optional reason) from the online players list and the access log.
+      Java over RCON, Bedrock through its `screen` session.
+    - **Ban and unban** on Java: over RCON while the server runs (`ban`, `pardon`), and by
+      editing `banned-players.json` while it's stopped, so the list is the same either way.
+      A **Banned** list beside the whitelist, with the reason, who banned and when.
+    - **Bedrock has no ban list**, so it gets kick only, and the panel says to use the
+      allowlist to keep someone out.
+    - Bans by name and UUID only, never by IP address, in line with 1.14.2's access log.
+    - Each action goes to the activity log with who did it. Users and admins both may kick and
+      ban (it's server management, like the console); trusted-LAN visitors too.
+
+    **How:** `core/whitelist.py` grows `banned-players.json` handling next to the whitelist;
+    `POST /api/servers/{name}/players/kick|ban|unban`, allowed for the cluster master.
+
+    **Size:** a few days.
+
+    **Shipped in 1.16.2**, in `core/moderation.py`. A running Java server without RCON is
+    refused rather than having its ban file edited, since it would overwrite the change. The
+    release also brought the RedstonePanel logo and a stone-and-redstone theme, with Redstone
+    Red as the default accent.
+
+### 1.16.3: a server list that folds *(Nov 2026)*
+
+    Not planned ahead: added after 1.16.2 because the sidebar grows long on a cluster. Every
+    heading in the server list (this machine's Java and Bedrock Edition, each node) folds with
+    a click and, folded, shows how many of its servers are online. A node's servers get their
+    own Java and Bedrock headings, like this machine's. What's folded is kept in the browser
+    (`rp_collapsedGroups` in localStorage), so nothing is stored on the server. The planned
+    point releases below each moved up one number.
+
+### 1.16.4: Bedrock settings fix *(Nov 2026)*
+
+    Not planned ahead: a fix. New Bedrock servers had lost every `server.properties` setting
+    except the ports, because the deploy replaced the file from the Bedrock download instead
+    of setting the ports in it. The planned point releases below each moved up one number.
+
+### 1.16.5: two-factor sign-in
+
+15. **A second step at sign-in for admin accounts.** An admin is effectively root, and a
+    password alone is a thin wall once the panel is reachable from outside the home network.
+    Other panels offer it; this closes the most-noticed security gap.
+
+    - **TOTP** (the six-digit codes from any authenticator app), set up under **🔑 Password**
+      for panel accounts and Linux (PAM) accounts alike: a QR code and the key to type, then
+      a code to confirm. Python's standard library does TOTP with `hmac`; the QR code is drawn
+      in the page by a small script shipped with the panel, so nothing new is installed.
+    - **Ten recovery codes** shown once at setup, each usable once.
+    - **Panel Settings → Sign-in → Require two-factor for admins** (off by default): an admin
+      without it is sent to set it up after signing in.
+    - **Recovery from the server:** `sudo redstonepanel reset-2fa NAME`, as with
+      `reset-security`.
+    - Trusted-LAN sign-in is unchanged (it never gives admin), and cluster node tokens don't
+      use it (they're machine credentials, not people).
+    - Failed codes count towards the existing sign-in rate limit.
+
+    **How:** secrets in `data/totp.json` (0600, root only), checked in `core/auth.py` between
+    the password and issuing the session.
+
+    **Size:** about a week, most of it the sign-in flow and recovery.
+
+### 1.16.6: backups on another cluster node
+
+16. **A copy of every backup off the machine it protects.** A backup on the same disk doesn't
+    survive losing the disk, and the guiding rule is to protect worlds first. Clusters make the
+    cheap version nearly free: the members already trust each other over HTTPS, so copying to
+    another member needs no new credentials or services.
+
+    - On a server's **Backups** tab: **Also keep a copy on** another cluster member (on a
+      master, any node; on a node, the master or another node through it).
+    - After each scheduled or manual backup, the archive is streamed to that member with a
+      SHA-256 check, the same way 1.16.0 moves servers, and stored under
+      `/var/backups/redstonepanel/remote/<panel>/<server>/` there.
+    - **Same retention** as the server's own backups. The copies are listed on the Backups tab
+      and can be downloaded or restored from, even after the original machine is gone.
+    - A failed copy is a **Needs attention** item and a webhook event (`backup_copy_failed`).
+    - Standalone panels don't get it; SFTP/rsync and S3-compatible storage stay in the
+      proposals below for them.
+
+    **How:** a copy step at the end of `run_backup`, sent over the cluster client. Nodes
+    accept copies only from cluster members.
+
+    **Size:** about a week.
+
+### 1.16.7: Debian and ARM64
+
+17. **Debian 12/13, and ARM64 machines such as a Raspberry Pi, for Java servers.** Many home
+    servers are Debian or a Pi, and today `install.sh` refuses them. The package is already
+    `Architecture: all` and its dependencies are in Debian too, so most of the work is testing.
+
+    - `install.sh` accepts Debian 12 and 13 as well as Ubuntu 24.04 and 25.04.
+    - **Java:** the panel offers the OpenJDK versions each release packages, and says so when
+      a Minecraft version needs a Java the release doesn't have.
+    - **Bedrock is hidden on ARM64**, because Mojang only ships it for x86-64; Phantom too.
+    - The install tests run on Debian 12 and 13, and on ARM64 for one Ubuntu and one Debian
+      release.
+    - The README, installation page and FAQ list the supported systems.
+
+    **Size:** about a week, mostly the test matrix.
+
+### 1.16.8: a panel that works on a phone
+
+18. **Every page usable on a phone, and the panel installable as an app.** Restarting a
+    crashed server or answering "is it up?" from a phone is one of the commonest reasons to
+    open a panel, and today the fixed sidebar takes most of a phone's width: the dashboard,
+    server pages and the setup guide are squeezed into a strip beside it. Other panels work on
+    phones; this closes that gap. It takes over the "mobile pass" from Groundwork.
+
+    Why here: after the 1.16.2–1.16.7 point releases it touches every page, so it goes last in
+    1.16.x, and before 1.17 so the performance charts are designed for small screens from the
+    start.
+
+    - **Sidebar becomes a menu** below the `md` breakpoint: a top bar with the panel name, the
+      current server and a ☰ button that slides the sidebar in, closing when a server is picked.
+    - **Server pages:** Start, Restart and Stop stay at the top as large buttons; the tabs
+      scroll sideways instead of wrapping; dialogs fill the screen.
+    - **Tables become cards** on narrow screens: the dashboard's server table, backups, the
+      file manager, mods and players.
+    - **Live Chat and the console** keep the input above the on-screen keyboard and stop the
+      page from zooming on focus (16 px inputs).
+    - **Touch targets** of at least 44 px for every button, and no actions that only appear on
+      hover.
+    - **An installable app (PWA):** a web app manifest and icons, so phones offer "Install" or
+      "Add to Home Screen" and the panel opens without browser bars. Browsers only allow
+      installing over HTTPS, so on plain HTTP it stays a home-screen bookmark, and the setup
+      guide's HTTPS step says so. No offline mode: a panel that can't reach its server has
+      nothing true to show.
+    - The screenshot demo also takes phone-sized pictures (390 x 844) for the manual.
+
+    **How:** Tailwind's responsive classes in `index.html` and the markup `app.js` builds, a
+    `static/manifest.webmanifest` and icons, and a minimal service worker (required for
+    installing; it caches nothing). No framework, no new dependency.
+
+    **Size:** one to two weeks; the tables and every dialog are most of it.
+
 ### 1.17: server performance and tuning
 
-13. **How well each server runs, its history, and what to change.** 1.11 answers "is the
+19. **How well each server runs, its history, and what to change.** 1.11 answers "is the
     machine all right?". This answers "is the game lagging, since when, and why?", and
     suggests fixes based on what was measured, not a fixed checklist.
 
@@ -545,12 +732,12 @@ refused joins, so those are Java only.
 
 ### 2.0: run it for other people
 
-14. **Per-server permissions.** Today a `user` can do everything to every server. Add
+20. **Per-server permissions.** Today a `user` can do everything to every server. Add
     per-server grants (view, console/chat, power, files, mods & plugins, settings) for `user`
     accounts. Admins
     stay admins (they're effectively root anyway). The dashboard then lists only the servers
     a user may view.
-15. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
+21. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes, shown once, revocable.
 
@@ -560,8 +747,8 @@ refused joins, so those are Java only.
   root against `/opt`; cover them with a temp `SERVERS_ROOT` and a stubbed `systemctl`, and in
   the systemd test container.
 - **Security review** of sign-in, import (archive unpacking) and anything that builds paths.
-- **Mobile pass** on the dashboard, server list and console (there are very few responsive
-  classes today).
+- ~~**Mobile pass**~~ on the dashboard, server list and console: *scheduled as 1.16.8
+  (item 18 above).*
 - ~~**README screenshots**~~ *(done with 1.15.0: a screenshot tour in the README, retaken by
   `packaging/screenshots/demo.sh`)*. A short GIF is still to do.
 - ~~**`install.sh`**~~ *(done with 1.15.0: `install.sh` in the repository root, served from
@@ -577,10 +764,9 @@ until it's agreed.
 
 **Protect worlds (first, per the guiding rules)**
 
-- **Off-machine backups.** Copy each finished backup to another cluster node (over the
-  existing cluster HTTPS and token, so no new credentials), to an rsync/SFTP target, or to
-  S3-compatible storage. Same retention, a `Needs attention` item when a copy fails.
-  *Suggested: 1.16.x or 1.18, before 2.0.* Takes "copying backups off the machine" out of Later.
+- **Off-machine backups.** ~~Copy each finished backup to another cluster node~~ *(scheduled
+  as 1.16.6, item 16 above)*. Still proposed: an rsync/SFTP target or S3-compatible storage,
+  for standalone panels, with the same retention and a `Needs attention` item when a copy fails.
 - **Automatic Bedrock updates** (opt-in per server). Bedrock clients update themselves and
   can't join an older server, so owners update by hand within hours of every release. A daily
   timer checks the download-links API; when there's a new version it warns players, backs up,
@@ -588,21 +774,40 @@ until it's agreed.
 
 **Security**
 
-- **Two-factor sign-in (TOTP)** for panel accounts, required for admins when the panel isn't
-  on HTTP-only LAN mode. Python's standard library does HOTP/TOTP with `hmac`; no new
-  dependency. Recovery: `sudo redstonepanel reset-2fa NAME`. *Small.*
+- ~~**Two-factor sign-in (TOTP).**~~ *Scheduled as 1.16.5 (item 15 above).*
+- **Reach the master panel through a Cloudflare Tunnel** (opt-in). Today a panel on the
+  internet needs a port opened or forwarded to 8443 and a certificate (1.15.0). With
+  `cloudflared`, the machine makes an outbound connection to Cloudflare, and the panel is
+  served at a hostname like `panel.example.com` with Cloudflare's certificate. No inbound port
+  is opened and the home IP address stays hidden. Suggested after 1.16.5, so admins have a
+  second sign-in step before the panel is reachable from anywhere.
+  - **Panel Settings → Connection → Cloudflare Tunnel:** paste the tunnel token from the
+    Cloudflare dashboard. The panel writes a token-based `cloudflared` service pointing at
+    `http://127.0.0.1:8080`, starts it, and shows the tunnel's state and public hostname on
+    the dashboard. Turn off stops and removes the service. CLI: `redstonepanel tunnel on|off|status`.
+  - **cloudflared isn't in Ubuntu's archive**, so it stays optional (a Suggests, not a
+    Depends). The panel tells the admin how to install it from Cloudflare's apt repository
+    and detects it; it doesn't download binaries itself.
+  - **Security:** tunnel visitors must never count as the trusted LAN. The current check
+    already refuses them, because `cloudflared` adds `X-Forwarded-For` and the Host is the
+    public name; keep a test for it. Everything through the tunnel arrives from 127.0.0.1, so
+    the sign-in rate limit and the activity log must use `Cf-Connecting-IP`, but only for
+    requests from the local `cloudflared`. Suggest Cloudflare Access (an email or SSO check
+    in front of the panel) in the setting's help text.
+  - **The master only.** Nodes keep talking to the master over the cluster's own HTTPS.
+    Players' game traffic doesn't go through the tunnel: a free Cloudflare Tunnel carries
+    HTTP to the panel, not Minecraft's TCP/UDP, so game ports are unchanged.
+  - *Size: about a week, mostly the service handling, the IP handling and the manual.*
 
 **Getting started**
 
-- **First-run setup guide.** When there are no servers, the dashboard offers: create a
-  server, turn on backups, choose HTTPS, add a webhook. Each step is the existing dialog.
-  *Small; pairs with the mobile pass.*
+- ~~**First-run setup guide.**~~ *Scheduled as 1.16.1 (item 13 above).*
 
 **Day-to-day management**
 
-- **Player actions:** kick, ban and unban with a ban list per server (Java `banned-players.json`,
-  over RCON while running; Bedrock has no ban list, so kick only), next to Whitelist & Access.
-  On a cluster master, apply a whitelist change to several servers at once.
+- ~~**Player actions:** kick, ban and unban with a ban list per server~~ *(shipped in
+  1.16.2, item 14 above)*. Still proposed: on a cluster master, apply a whitelist change to
+  several servers at once.
 - **Scheduled commands and announcements:** a list of commands per server on a schedule
   (`redstonepanel-command@.timer`), for messages, `save-all` or event toggles.
 - **Version update alerts:** the dashboard and a notification say when a newer Minecraft
@@ -616,8 +821,7 @@ until it's agreed.
   asked, as they're the most common reason a Java owner can't use the panel.
 - **Per-server resource limits** with systemd `MemoryMax=`/`CPUQuota=`, beside 1.17's Memory
   setting, so one server can't starve the rest.
-- **Debian 12/13 and ARM64** for Java servers (package is `all` already; needs the install
-  tests on those and Bedrock hidden on ARM).
+- ~~**Debian 12/13 and ARM64** for Java servers.~~ *Scheduled as 1.16.7 (item 17 above).*
 
 **For players**
 
@@ -628,7 +832,7 @@ until it's agreed.
 
 **Docs and reach**
 
-- A short GIF for the README, the mobile pass, and a GitHub Pages site built from `docs/wiki/`
+- A short GIF for the README, and a GitHub Pages site built from `docs/wiki/`
   if the wiki proves hard to find.
 
 ## Later (only when asked for)

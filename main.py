@@ -17,14 +17,18 @@ import urllib.parse
 import core.javaservers as javaservers
 import core.playerlog as playerlog
 import core.whitelist as whitelist
+import core.moderation as moderation
 import core.backups as backups
 import core.notify as notify
+import core.setup as setup_guide
 import core.restarts as restarts
 import core.auth as auth
 import core.settings as panel_settings
 from core.version import panel_version
 import core.cluster as cluster
 import core.cluster_client as cluster_client
+import core.transfer as transfer
+import core.moves as moves
 from starlette.background import BackgroundTask
 import json
 import uuid
@@ -92,8 +96,10 @@ async def no_stale_static(request: Request, call_next):
 PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/health", "/api/panel-info",
               "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join"}
 ADMIN_API = ("/api/users", "/api/settings")
-NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates")
-CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster/nodes/")
+NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates",
+                 "/api/cluster/transfers")
+CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster/nodes/", "/api/cluster/moves",
+                    "/api/cluster/moved/")
 STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 
 @app.middleware("http")
@@ -443,6 +449,42 @@ def whitelist_remove(request: Request, server_name: str, change: WhitelistChange
                       f"from {server_name}'s whitelist.")
     return result
 
+# Kick, ban and unban (1.16.2): anyone who may manage the server, like the console.
+# Bans are Java only (Bedrock has no ban list); by name and UUID, never IP address.
+class ModerationAction(BaseModel):
+    player: str
+    reason: Optional[str] = ""
+
+def _moderate(request: Request, server_name: str, what: str, fn, *args):
+    _known_server(server_name)
+    try:
+        result = fn(server_name, *args)
+    except (moderation.ModerationError, whitelist.WhitelistError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[PLAYERS] {request.state.user['username']} {what} on {server_name}.")
+    return result
+
+@app.get("/api/servers/{server_name}/moderation")
+def get_moderation(server_name: str):
+    _known_server(server_name)
+    return moderation.info(server_name)
+
+@app.post("/api/servers/{server_name}/players/kick")
+def kick_player(request: Request, server_name: str, req: ModerationAction):
+    reason = moderation._clean_reason(req.reason)
+    return _moderate(request, server_name, f"kicked {req.player.strip()}" + (f" ({reason})" if reason else ""),
+                     moderation.kick, req.player, reason)
+
+@app.post("/api/servers/{server_name}/players/ban")
+def ban_player(request: Request, server_name: str, req: ModerationAction):
+    reason = moderation._clean_reason(req.reason)
+    return _moderate(request, server_name, f"banned {req.player.strip()}" + (f" ({reason})" if reason else ""),
+                     moderation.ban, req.player, reason, request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/players/unban")
+def unban_player(request: Request, server_name: str, req: ModerationAction):
+    return _moderate(request, server_name, f"unbanned {req.player.strip()}", moderation.unban, req.player)
+
 @app.post("/api/servers/{server_name}/update")
 def update_server(server_name: str, req: Optional[ServerUpdateRequest] = None):
     try:
@@ -700,6 +742,26 @@ def test_notifications():
     if not ok:
         raise HTTPException(status_code=400, detail=err)
     return {"status": "success"}
+
+# The first-run setup guide on the dashboard (admins: under /api/settings). Steps are worked out
+# from the panel's state; only "dismissed" and "keep HTTP" are stored.
+class SetupAnswers(BaseModel):
+    dismissed: Optional[bool] = None
+    http_ok: Optional[bool] = None
+
+@app.get("/api/settings/setup")
+def get_setup():
+    return setup_guide.status()
+
+@app.put("/api/settings/setup")
+def set_setup(request: Request, req: SetupAnswers):
+    setup_guide.save_state(dismissed=req.dismissed, http_ok=req.http_ok)
+    me = request.state.user["username"]
+    if req.dismissed is not None:
+        manager.write_log(f"[SETTINGS] {me} {'closed' if req.dismissed else 'reopened'} the setup guide.")
+    if req.http_ok is not None:
+        manager.write_log(f"[SETTINGS] {me} {'chose to keep' if req.http_ok else 'no longer keeps'} plain HTTP.")
+    return setup_guide.status()
 
 # File manager (admins only): everything goes through core/files.py, which never follows symlinks
 class TextFile(BaseModel):
@@ -1239,24 +1301,187 @@ async def cluster_proxy_api(node_id: str, path: str, request: Request):
 
 class TemplatePush(BaseModel):
     template_id: str
+    from_node: Optional[str] = None       # 1.16: a node's own template ("local" or none: the master's)
 
 @app.post("/api/cluster/nodes/{node_id}/templates")
 def cluster_push_template_api(node_id: str, req: TemplatePush, request: Request):
-    """Copies one of the master's templates to a node, so a server can be created there with it."""
-    node = _proxy_node(node_id)
-    t = next((x for x in manager.load_templates() if x.get("id") == req.template_id), None)
+    """Copies a template to a cluster member: one of the master's to a node (so a server can be
+    created there with it), or since 1.16 a node's to the master ("local") or another node."""
+    _need_master()
+    user = request.state.user
+    who = {"actor": user["username"], "role": user["role"]}
+    src = None if req.from_node in (None, "", "local") else _proxy_node(req.from_node)
+    if src is None and node_id == "local":
+        raise HTTPException(status_code=400, detail="That template is already on this panel.")
+    if src is not None and src["id"] == node_id:
+        raise HTTPException(status_code=400, detail=f"That template is already on {src['name']}.")
+    if src is None:
+        t = next((x for x in manager.load_templates() if x.get("id") == req.template_id), None)
+    else:
+        try:
+            listed = cluster_client.call_node(src, "GET", "/api/templates", **who)
+        except cluster_client.NodeError as e:
+            raise HTTPException(status_code=502, detail=f"{src['name']}: {e}")
+        t = next((x for x in listed if isinstance(x, dict) and x.get("id") == req.template_id), None) \
+            if isinstance(listed, list) else None
     if not t:
         raise HTTPException(status_code=404, detail="Template not found.")
-    user = request.state.user
+    if node_id == "local":
+        try:
+            t = cluster.clean_template(t, src["name"])
+        except cluster.ClusterError as e:
+            raise HTTPException(status_code=400, detail=f"{src['name']}: {e}")
+        t.pop("from_master", None)
+        templates = [x for x in manager.load_templates() if x.get("id") != t["id"]] + [{**t, "from_node": src["name"]}]
+        manager.save_templates(templates)
+        manager.write_log(f"[CLUSTER] {user['username']}@{panel_settings.display_name()}: copied template "
+                          f"'{t['name']}' from {src['name']} to this panel")
+        return {"status": "success"}
+    node = _proxy_node(node_id)
     if _node_too_old(node):
         raise HTTPException(status_code=409, detail=_too_old_detail(node))
     try:
-        cluster_client.call_node(node, "POST", "/api/cluster/templates", {"template": t},
-                                 actor=user["username"], role=user["role"])
+        cluster_client.call_node(node, "POST", "/api/cluster/templates", {"template": t}, **who)
     except cluster_client.NodeError as e:
         raise HTTPException(status_code=502, detail=f"{node['name']}: {e}")
     manager.write_log(f"[CLUSTER] {user['username']}@{panel_settings.display_name()}: copied template "
-                      f"'{t.get('name')}' to {node['name']}")
+                      f"'{t.get('name')}' to {node['name']}" + (f" from {src['name']}" if src else ""))
+    return {"status": "success"}
+
+# --- 1.16: moving and copying servers between cluster members (docs/design/move.md)
+# Node side: only the master calls these, with its token (NODE_ONLY_API keeps browsers out),
+# and only for a master admin.
+def _transfer_call(request, fn, *args, **kwargs):
+    from core import archive
+    user = request.state.user
+    if user.get("source") != "cluster" or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only a cluster master's admin can move servers.")
+    try:
+        return fn(*args, **kwargs)
+    except transfer.TransferError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except (manager.ServerError, manager.DependencyError, backups.BackupError, archive.ArchiveError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class TransferExport(BaseModel):
+    server: str
+    stop: bool
+
+class TransferImport(BaseModel):
+    size: int
+    sha256: str
+    meta: dict
+
+class TransferFinish(BaseModel):
+    outcome: str
+    moved_to: Optional[str] = None
+
+class TransferInstall(BaseModel):
+    keep_name: bool = True
+    start: bool = True
+    carry: bool = True
+
+@app.post("/api/cluster/transfers/export")
+def transfer_export_api(req: TransferExport, request: Request):
+    return _transfer_call(request, transfer.export, req.server, req.stop)
+
+@app.get("/api/cluster/transfers/{tid}/archive")
+def transfer_archive_api(tid: str, request: Request):
+    path, _ = _transfer_call(request, transfer.open_archive, tid)
+    return FileResponse(path, media_type="application/gzip", filename=f"{tid}.tar.gz")
+
+@app.post("/api/cluster/transfers/{tid}/finish")
+def transfer_finish_api(tid: str, req: TransferFinish, request: Request):
+    return _transfer_call(request, transfer.finish, tid, req.outcome, req.moved_to)
+
+@app.post("/api/cluster/transfers/import")
+def transfer_import_api(req: TransferImport, request: Request):
+    return _transfer_call(request, transfer.begin_import, req.size, req.sha256, req.meta)
+
+@app.put("/api/cluster/transfers/{tid}/archive")
+async def transfer_receive_api(tid: str, request: Request):
+    receiver = await run_in_threadpool(_transfer_call, request, transfer.Receiver, tid)
+    try:
+        async for chunk in request.stream():
+            if chunk:
+                await run_in_threadpool(_transfer_call, request, receiver.write, chunk)
+    except BaseException:
+        receiver.abort()
+        raise
+    return await run_in_threadpool(_transfer_call, request, receiver.close)
+
+@app.post("/api/cluster/transfers/{tid}/install")
+def transfer_install_api(tid: str, req: TransferInstall, request: Request):
+    return _transfer_call(request, transfer.install, tid, req.keep_name, req.start, req.carry,
+                          request.state.user["username"])
+
+@app.post("/api/cluster/transfers/{tid}/confirm")
+def transfer_confirm_api(tid: str, request: Request):
+    return _transfer_call(request, transfer.confirm, tid)
+
+@app.delete("/api/cluster/transfers/{tid}")
+def transfer_abort_api(tid: str, request: Request):
+    return _transfer_call(request, transfer.abort, tid)
+
+@app.delete("/api/cluster/transfers/moved/{server_name}")
+def transfer_delete_moved_api(server_name: str, request: Request):
+    return _transfer_call(request, transfer.delete_moved, server_name)
+
+# Master side: master admins start a move or copy and follow it
+class MoveRequest(BaseModel):
+    kind: str
+    server: str
+    from_node: str = "local"
+    to_node: str = "local"
+    start: bool = False
+
+def _need_master_admin(request):
+    _need_master()
+    if request.state.user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can move or copy servers between cluster members.")
+
+@app.post("/api/cluster/moves")
+def cluster_move_api(req: MoveRequest, request: Request):
+    _need_master_admin(request)
+    user = request.state.user
+    try:
+        return moves.start(req.kind, req.from_node, req.server, req.to_node, req.start, user["username"], user["role"])
+    except moves.MoveError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+@app.get("/api/cluster/moves")
+def cluster_moves_api():
+    _need_master()
+    return moves.jobs()
+
+@app.get("/api/cluster/moves/{job_id}")
+def cluster_move_job_api(job_id: str):
+    _need_master()
+    job = moves.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="No such move.")
+    return job
+
+@app.delete("/api/cluster/moved/{member_id}/{server_name}")
+def cluster_delete_moved_api(member_id: str, server_name: str, request: Request):
+    """Deletes the files a move left behind on its source, once the admin is happy with the move."""
+    _need_master_admin(request)
+    user = request.state.user
+    end = None
+    try:
+        end = moves.member(member_id, user["username"], user["role"])
+        end.delete_moved(server_name)
+    except moves.MoveError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except transfer.TransferError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except cluster_client.NodeError as e:
+        # The node's own refusal (no such moved server) as it is; anything else is the node's fault
+        raise HTTPException(status_code=e.status if e.status in (400, 404, 409) else 502, detail=f"{end.name}: {e}")
+    except manager.ServerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[MOVE] {user['username']}: deleted the old copy of {server_name} on {end.name}.")
+    cluster_client.forget_cached()
     return {"status": "success"}
 
 @app.post("/api/cluster/nodes/{node_id}/servers/{server_name}/template")
@@ -1281,7 +1506,7 @@ def cluster_save_template_api(node_id: str, server_name: str, request: Request, 
     templates = manager.load_templates()
     templates.append({"id": str(uuid.uuid4()), "name": str(name).strip()[:100],
                       "edition": "Java" if srv.get("edition") == "Java" else "Bedrock",
-                      "properties": props if isinstance(props, dict) else {},
+                      "properties": manager.template_properties(props) if isinstance(props, dict) else {},
                       "permissions": perms.get("content", "") if isinstance(perms, dict) else ""})
     manager.save_templates(templates)
     manager.write_log(f"[CLUSTER] {user['username']}@{panel_settings.display_name()}: saved {server_name} on "

@@ -5,7 +5,7 @@ Hi everyone 👋
 RedstonePanel is a web panel for running Minecraft servers on your own Ubuntu machine. Each
 Java or Bedrock server is a plain systemd service, there's no Docker and no database, and the
 panel installs from a signed apt repository. This post is a tour of what the panel already
-does (as of **1.15.0**) and what's planned next. Your feedback decides the order, so please
+does (as of **1.16.1**) and what's planned next. Your feedback decides the order, so please
 reply with what you'd use, what's missing, or what gets in your way.
 
 ---
@@ -68,6 +68,8 @@ reply with what you'd use, what's missing, or what gets in your way.
 - **Bedrock connection diagnostics.**
 
 ### The panel itself
+- **A setup guide** on a new panel's dashboard *(new in 1.16.1)*: first server, backups,
+  HTTPS and alerts, each step ticked from what the panel can see.
 - **HTTPS:** self-signed (with its own CA), your own certificate, or plain HTTP on a
   trusted LAN.
 - **Sign-in** with Linux accounts (through PAM) or panel-only accounts with admin/user
@@ -75,7 +77,8 @@ reply with what you'd use, what's missing, or what gets in your way.
 - **Clusters:** one panel is the master and manages every node's servers with all their tabs,
   creates servers on any node, and can use a real (certbot) certificate on the internet. There
   are join codes, a cluster CA with automatic renewal, and encrypted cluster backups (also
-  nightly) that let you promote another panel if the master is lost.
+  nightly) that let you promote another panel if the master is lost. **Move or copy** a
+  server to another machine of the cluster *(new in 1.16)*.
 - **Dark and light themes.** A CLI (`sudo redstonepanel …`) covers status, backups,
   restores and cluster tasks.
 - **Installs with `apt install redstonepanel`** from the signed qrussell-repo repository.
@@ -88,18 +91,42 @@ reply with what you'd use, what's missing, or what gets in your way.
 Version numbers are targets, not promises. The guiding rule stays the same: **protect
 people's worlds first**, and use systemd rather than reinventing it.
 
-### Just shipped: 1.15 manages every node from the master
-- **Every tab for every server**, even on other machines, from the master's sidebar.
-- **Create a server on any node** with the new **Where** choice. Templates and Java follow.
-- **Real certificates for a master on the internet**, automatic renewal, nightly cluster
-  backups.
+### Just shipped: 1.16.1 adds a setup guide
+- **A Setup card on a new panel's dashboard:** your first server, a backup schedule for every
+  server, HTTPS or HTTP on purpose, and a Discord or webhook alert. Each step opens the place
+  where it's done and ticks itself when it is.
 
-### 1.16: move a server to another node
-- **Move** a server between cluster members. The world is streamed and checksummed, and
-  the server keeps its name, port, backup and restart schedules, mods and Phantom.
-  **Nothing is deleted on the old node until the new one is running.**
-- **Copy** a server under a new name, for a test copy of a world.
-- An optional **pre-copy** cuts downtime for big worlds.
+### Also new: 1.16 moves servers between machines
+- **Move** a server to another cluster member. The world is streamed and checksummed, and
+  the server keeps its name, ports, Java, backup and restart schedules, mods and Phantom.
+  **Nothing is deleted on the old machine until you say so.**
+- **Copy** a server, to another machine or the same one, without stopping it.
+- **Templates** copied between the master and its nodes.
+
+### 1.16.2: kick and ban from the panel
+- **Kick** from the players list or the access log, with an optional reason.
+- **Ban and unban** on Java servers, running or stopped, with a **Banned** list. Bedrock
+  gets kick only, as it has no ban list.
+
+### 1.16.3: two-factor sign-in
+- **Authenticator app codes** at sign-in, with recovery codes, and an option to require them
+  for every admin.
+
+### 1.16.4: backups on another cluster node
+- **A copy of each backup on another cluster member**, checked as it's copied, that you can
+  restore from even if the original machine is gone.
+
+### 1.16.5: Debian and ARM64
+- **Debian 12 and 13**, and **ARM64** machines such as a Raspberry Pi for Java servers.
+
+### 1.16.6: a panel that works on a phone
+- **Every page fits a phone:** a ☰ menu instead of the sidebar, cards instead of tables,
+  and big Start, Restart and Stop buttons.
+- **Install it as an app** from your phone's browser (over HTTPS).
+
+### 1.16.x: less downtime for big worlds
+- An optional **pre-copy** while the server keeps running.
+- **Find panels on your network** and add them to the cluster.
 
 ### 1.17: server performance and tuning
 - **Tick health** (TPS/MSPT) for Paper, Vanilla and Fabric 1.20.3+.
@@ -120,22 +147,19 @@ people's worlds first**, and use systemd rather than reinventing it.
 
 ### Groundwork along the way
 - More tests and a security review of sign-in, imports and path handling.
-- A **mobile pass** on the dashboard, server list and console.
 - ✅ Done: a one-line installer (`curl … install.sh | sudo sh`), screenshots in the README and
   a wiki. Still to do: a short GIF.
 
 ### Ideas we're considering (tell us which matter to you)
-- **Off-machine backups:** to another cluster node, rsync/SFTP or S3-compatible storage.
+- **Off-machine backups** to rsync/SFTP or S3-compatible storage, for panels without a
+  cluster.
 - **Automatic Bedrock updates**, so players on new clients can always join.
-- **Two-factor sign-in** for admins.
-- **A first-run setup guide** for new installs.
-- **Kick, ban and a ban list** on each server, and whitelist changes across servers.
+- **Whitelist changes across servers** from the cluster master.
 - **Scheduled commands and announcements.**
 - **Update alerts** when a new Minecraft release or Paper/Fabric build is out.
 - **World tools:** upload a world, new world with a seed, pre-generate with Chunky.
 - **Per-server CPU and memory limits.**
 - **A read-only status page** for players, and a **Discord chat bridge**.
-- **Debian and Raspberry Pi (ARM64)** for Java servers.
 
 ### Later, when someone asks for it
 - Backup retention by age, and off-machine copies (rsync/S3).

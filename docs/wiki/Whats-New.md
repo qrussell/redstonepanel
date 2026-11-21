@@ -9,6 +9,68 @@ the dashboard.
 
 ---
 
+## 1.16.4: Bedrock settings fix *(November 2026)*
+
+- **New Bedrock servers keep all their settings.** A newly created Bedrock server's
+  `server.properties` had only its ports, so Configuration showed almost nothing to edit. It
+  now has every setting from the official Bedrock download.
+
+[Release notes](../../release-notes/v1.16.4.md)
+
+## 1.16.3: a server list that folds *(November 2026)*
+
+A long server list, especially on a cluster, is now easy to tidy.
+
+- **Click any heading** in the sidebar (Java Edition, Bedrock Edition or a cluster node) to fold
+  it. A folded heading shows how many of its servers are online, and the browser remembers it.
+- **Each cluster node's servers** get their own Java and Bedrock headings, like this machine's.
+
+[Release notes](../../release-notes/v1.16.3.md)
+
+## 1.16.2: kick and ban, and a new look *(November 2026)*
+
+Remove or ban a player with a click, and RedstonePanel now looks like itself.
+
+- **Kick, ban and unban** in **Configuration → Whitelist & Access**: kick anyone online, ban
+  and unban on Java (running or stopped), a **Banned** list, and Kick/Ban on each access log row.
+  Bedrock has no ban list, so it gets kick only. By name, never by IP address.
+- **A new look:** an original RedstonePanel logo and favicon, and warm stone greys with
+  redstone-red accents in both the dark and light themes. **Redstone Red** is the new default
+  accent; a palette you picked before is kept.
+- **Stop** is now an outlined button, so it no longer looks like Restart.
+
+[Release notes](../../release-notes/v1.16.2.md)
+
+## 1.16.1: a setup guide for new panels *(November 2026)*
+
+A new panel now shows you how to get to a safe setup, right on the dashboard.
+
+- **Set up RedstonePanel** (admins): four steps to create your first server, put every server on
+  a backup schedule, choose HTTPS (or keep HTTP on a network you trust) and get crash alerts in
+  Discord or any webhook. Each step opens the place where it's done.
+- **Steps tick themselves** from what the panel can see, so work done elsewhere counts, and an
+  upgraded panel only shows what's missing.
+- **Hide guide** when you're done; **Panel Settings → Setup guide** brings it back.
+
+[Release notes](../../release-notes/v1.16.1.md)
+
+## 1.16.0: move a server to another machine *(November 2026)*
+
+Move a server to another machine in your cluster, or copy it, from the master's cluster page.
+Nothing is deleted until you say so.
+
+- **Move…** on every server of the 🌐 Cluster page (admins). The server stops, its whole folder
+  is streamed to the other machine and checked byte for byte, and it starts there with the same
+  name and ports when they're free, the Java it needs, its memory, backup and restart schedules
+  and Phantom.
+- **Nothing is lost.** The old machine keeps its files as a removed server marked "moved to …"
+  until you click **Delete the old copy**. A move that fails undoes itself and starts the server
+  where it was.
+- **Copy…** a server, to another machine or the same one, without stopping it.
+- **Templates** can be copied from the master to a node and from a node to the master.
+
+[Release notes](../../release-notes/v1.16.0.md)
+
 ## 1.15.0: manage every node from the master *(November 2026)*
 
 Manage every node's servers from the cluster master: every tab, new servers on any node, and
