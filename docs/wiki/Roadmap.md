@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.6**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.7**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,13 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.7: two-factor sign-in
-
-- **Codes from an authenticator app** at sign-in, for panel and Linux accounts, with recovery
-  codes shown once.
-- An optional setting to **require it for every admin**.
-- Locked out? `sudo redstonepanel reset-2fa NAME` on the server.
 
 ### 1.16.8: backups on another cluster node
 
@@ -147,6 +140,5 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.6** stops the console covering the page;
-**1.16.5** gives each Bedrock server its own gameplay port, and **1.16.4** fixes the settings of
-new Bedrock servers.
+See [What's New](Whats-New.md). The latest: **1.16.7** adds two-factor sign-in; **1.16.6** stops the console
+covering the page, and **1.16.5** gives each Bedrock server its own gameplay port.

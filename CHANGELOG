@@ -4,6 +4,15 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.16.7 (2026-11-21)
+
+Release notes: release-notes/v1.16.7.md
+
+- Two-factor sign-in: any panel or Linux account can ask for a six-digit code from an authenticator app after its password. Set it up under Password with a QR code; ten one-use recovery codes are shown once.
+- Panel Settings > Sign-in > Require two-factor for admins (off by default): an admin without it can only set it up or sign out.
+- Turning two-factor on signs out the account's other sessions. Wrong codes count towards the sign-in rate limit.
+- Admins can reset another panel account's two-factor under Users, and root can run redstonepanel reset-2fa NAME for any account.
+
 ## 1.16.6 (2026-11-21)
 
 Release notes: release-notes/v1.16.6.md

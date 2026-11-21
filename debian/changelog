@@ -1,3 +1,17 @@
+redstonepanel (1.16.7) noble; urgency=medium
+
+  * Two-factor sign-in: any panel or Linux account can ask for a six-digit
+    code from an authenticator app after its password. Set it up under
+    Password with a QR code; ten one-use recovery codes are shown once.
+  * Panel Settings > Sign-in > Require two-factor for admins (off by
+    default): an admin without it can only set it up or sign out.
+  * Turning two-factor on signs out the account's other sessions. Wrong
+    codes count towards the sign-in rate limit.
+  * Admins can reset another panel account's two-factor under Users, and
+    root can run redstonepanel reset-2fa NAME for any account.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 07:05:00 +0000
+
 redstonepanel (1.16.6) noble; urgency=medium
 
   * The console no longer covers the page. While it's open, the page
