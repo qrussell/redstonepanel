@@ -112,6 +112,11 @@ dx $M "printf '%s\n%s\n' '$PASSPHRASE' '$PASSPHRASE' | redstonepanel cluster nig
     || api PUT /api/settings/cluster/nightly "{\"enabled\":true,\"passphrase\":\"$PASSPHRASE\"}"
 api POST /api/servers/minecraft-java/chat '{"message":"Welcome to Survival Box!"}'
 
+say "update check: alerts for the 1.21.4 servers, Bedrock updating itself (1.16.12)"
+api PUT /api/servers/minecraft-bedrock/updates '{"enabled":true}'
+dx $M "redstonepanel check-updates" || true
+dx $N "redstonepanel check-updates" || true
+
 else
     PASS=$(docker exec $M cat /root/.demo-pass) || { echo "No demo to reuse: run without SETUP=0 first."; exit 1; }
 fi

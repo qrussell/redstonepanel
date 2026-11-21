@@ -83,14 +83,15 @@ jobs:
 
   # End-to-end tests with several panels on one Docker network (Ubuntu 24.04 containers):
   # clusters (join, node allowlist, certificate renewal, promotion), moving and copying servers,
-  # and 1.16.8's backup copies on another member. Stand-in game servers; nothing big downloaded.
+  # 1.16.8's backup copies on another member and 1.16.12's Bedrock updates. Stand-in game servers;
+  # nothing big downloaded.
   cluster:
     needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies]
+        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies, test-bedrock-update]
     name: ${{ matrix.script }}
     steps:
       - uses: actions/checkout@v4

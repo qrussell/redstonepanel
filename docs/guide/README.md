@@ -30,6 +30,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Back up a world, or put one back | [Backups](#9-backups) |
 | Restart a server every night | [Scheduled restarts](#scheduled-restarts) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
+| Keep a Bedrock server on the newest version | [Automatic Bedrock updates](#update-alerts-and-automatic-bedrock-updates) |
 | Add mods, plugins or Bedrock add-ons | [Mods, plugins and add-ons](#12-mods-plugins-and-add-ons) |
 | Let Bedrock players join a Java server | [Finding mods and plugins](#finding-mods-and-plugins) (the **Bedrock players** bundle) |
 | Edit a plugin's config file | [Files](#11-files) |
@@ -66,6 +67,7 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 6. [Live Chat](#6-live-chat)
 7. [Configuration, player roles and the whitelist](#7-configuration-player-roles-and-the-whitelist)
 8. [Maintenance: templates, export, update, uninstall](#8-maintenance-templates-export-update-uninstall)
+   - [Update alerts and automatic Bedrock updates](#update-alerts-and-automatic-bedrock-updates)
 9. [Backups](#9-backups)
    - [Scheduled restarts](#scheduled-restarts)
 10. [World & Maps](#10-world--maps)
@@ -520,13 +522,57 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
   downloaded before the server is stopped, so a failed download changes nothing. Then it stops
   the server, installs the download and starts it again. Your world, settings, ports,
   operators and allowlist are kept. Take a backup first: a Java world opened by a newer
-  version can't go back to an older one. Bedrock servers always update to the newest release.
+  version can't go back to an older one. Bedrock servers always update to the newest release,
+  the same safe way as [automatic updates](#update-alerts-and-automatic-bedrock-updates): a
+  "Before update" backup first, and the old version put back if the new one doesn't start.
   On Fabric and Paper servers, moving to a newer Minecraft version first lists the mods or
   plugins that have no build for it yet on Modrinth or Hangar (and any it couldn't check),
   so you can wait rather than update into a server that won't start. If the new version
   needs a Java that isn't installed, you're asked to install it first.
 - **Java** (admins, Java servers): which Java the server runs on and which it needs. Choose
   another installed Java that's new enough and click **Use**; a running server restarts.
+
+### Update alerts and automatic Bedrock updates
+
+Every 6 hours the panel looks for a newer Bedrock Dedicated Server, Minecraft release, Paper
+build or Fabric loader for each server (never snapshots or pre-releases). When there is one,
+the server shows **⬆** and the new version in the sidebar, on the dashboard, on its
+**Overview** and under **Maintenance → Update Server**. **Check now** looks right away. With
+[notifications](#notifications) on, you get one **Update available** message per new version.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/update-alert.png"><img src="images/update-alert.png" alt="Update available on a Paper server"></picture>
+
+Bedrock players' apps update themselves, and then can't join a server on the older version.
+So a Bedrock server can update itself: tick **Update automatically** under **Maintenance →
+Update Server** (it's off until you do).
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/bedrock-auto-update.png"><img src="images/bedrock-auto-update.png" alt="Update automatically on a Bedrock server"></picture>
+
+When a new release is out:
+
+1. The new version is downloaded from minecraft.net and checked. If that fails, nothing else
+   happens and the server keeps running.
+2. Players see "Server updates to the new Minecraft version in 5 minutes" in chat, then again
+   1 minute and 10 seconds before.
+3. The server stops and is backed up (**Before update** on the **Backups** tab; the newest
+   three are kept).
+4. The new files go in. The server's `server.properties`, `permissions.json` and
+   `allowlist.json` stay as they are, and so do its worlds and add-ons.
+5. The server starts. When it says "Server started.", the update is done (**Bedrock server
+   updated** notification).
+
+If the new version doesn't finish starting within 3 minutes, the old files and the world from
+the "Before update" backup go back, the server starts on the old version, and the failure
+shows under **Needs attention** and as a **Server update failed** notification. A stopped
+server is updated but stays stopped.
+
+Java servers are never updated automatically, because a new version can break mods and
+plugins: you get the alert and update with **Check & Update** when you're ready. Bedrock
+can't run on ARM64 machines such as a Raspberry Pi, so there is nothing to update there.
+
+On a cluster, each member checks its own servers (also while its panel is stopped), and the
+master shows the nodes' alerts. From the command line, `sudo redstonepanel check-updates` does
+the same check and updates.
 
 ### Java versions
 
@@ -956,6 +1002,10 @@ Get a message in Discord, or any service that takes a webhook, when something ha
    - **Server started** / **Server stopped**: every start and stop, including your own.
    - **Scheduled restart**: a [scheduled restart](#scheduled-restarts) happened, or failed.
    - **Backup finished** / **Backup failed**.
+   - **Update available**: a newer version is out for a server, once per version (see
+     [Update alerts](#update-alerts-and-automatic-bedrock-updates)).
+   - **Bedrock server updated** / **Server update failed**: a Bedrock update finished, or
+     didn't and the old version was put back.
    - **Player joined** / **Player turned away**: from the access log (see
      [Whitelist & Access](#7-configuration-player-roles-and-the-whitelist)), within about 30 seconds.
      Turned-away messages are sent at most once a minute per server.
@@ -1108,6 +1158,7 @@ Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 | `redstonepanel restore NAME` | Restore a removed server. |
 | `redstonepanel backup NAME` | Back up a server now. |
 | `redstonepanel restart-server NAME` | Warn players, then restart a server (what its restart timer runs). |
+| `redstonepanel check-updates` | Look for newer server versions and update the Bedrock servers set to update automatically (what the update timer runs every 6 hours). |
 | `redstonepanel notify-test` | Send a test notification. |
 | `redstonepanel cluster create "NAME"` | Make this panel a cluster master. |
 | `redstonepanel cluster join-code` | Make a join code (master). |

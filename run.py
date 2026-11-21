@@ -16,6 +16,8 @@
     redstonepanel backup NAME         back up a game server now (its backup timer runs this too)
     redstonepanel restart-server NAME warn players, then restart a game server (its restart timer
                                       runs this)
+    redstonepanel check-updates       look for newer server versions and update the Bedrock servers
+                                      set to update automatically (its timer runs this every 6 hours)
     redstonepanel notify-test         send a test message to the notification webhook
     redstonepanel upgrade             update the redstonepanel package (apt), as the panel's Update button does
 
@@ -131,6 +133,9 @@ def main():
     # Cluster masters: copy backups to the member chosen on each server's Backups tab (1.16.8)
     from core import backup_copies
     backup_copies.sweeper()
+    # The update check timer (1.16.12): written here so upgrading the package sets it up
+    from core import updates
+    updates.ensure_timer()
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 
@@ -380,6 +385,26 @@ def restart_server_cmd(name):
     print(f"{name}: {result}.")
 
 
+def check_updates_cmd():
+    from core import updates
+    try:
+        done = updates.run_timer()
+    except updates.UpdateError as e:
+        sys.exit(str(e))
+    state = updates.load_state()
+    for name, entry in sorted(state["servers"].items()):
+        print(f"{name}: {entry['label']} is available (runs {entry.get('current') or '?'}).")
+    for name, err in sorted(state["errors"].items()):
+        print(f"{name}: couldn't check ({err['error']}).")
+    for name, r in sorted(done.items()):
+        print(f"{name}: " + (f"updated to Bedrock {r.get('to')}." if r.get("ok") and not r.get("skipped")
+                             else "already up to date." if r.get("ok") else f"update failed: {r.get('error')}"))
+    if not state["servers"] and not state["errors"]:
+        print("Every server runs the newest version.")
+    if any(not r.get("ok") for r in done.values()):
+        sys.exit(1)
+
+
 def notify_test_cmd():
     from core import notify
     ok, err = notify.send_test()
@@ -431,6 +456,8 @@ if __name__ == "__main__":
         backup_cmd(rest[0])
     elif cmd == "restart-server" and len(rest) == 1:
         restart_server_cmd(rest[0])
+    elif cmd == "check-updates" and not rest:
+        check_updates_cmd()
     elif cmd == "notify-test" and not rest:
         notify_test_cmd()
     elif cmd == "notify-unit" and len(rest) == 2 and rest[0] in ("start", "stop"):

@@ -53,7 +53,7 @@ every feature step by step.
 
 | You want… | RedstonePanel gives you… |
 | --- | --- |
-| **Java and Bedrock** | Both, side by side. Java as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft version you pick, each with the Java it needs installed for you. |
+| **Java and Bedrock** | Both, side by side. Java as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft version you pick, each with the Java it needs installed for you. An **Update available** alert for every server, and Bedrock servers that can update themselves, with a backup first and the old version put back if the new one won't start. |
 | **Mods and plugins without the hassle** | A catalog from **Modrinth** and **Hangar** with one-click bundles (performance, essentials, Geyser for Bedrock players), dependencies installed for you, update checks and one-click undo. Or drop `.jar`, `.mcpack` and `.mcaddon` files on the server. |
 | **Worlds that are safe** | Scheduled and on-demand backups that copy running servers consistently, one-click restore (with an undo), a backup before mod updates, and uninstalled servers you can bring back. |
 | **To know what's going on** | A dashboard of the machine and every server, a **Needs attention** list, Discord or webhook alerts for crashes and backups, and a log of who joined and who was turned away. |
@@ -177,6 +177,9 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
 - notifications to Discord or any webhook when a server crashes, starts or stops, and when a
   backup finishes or fails
 - scheduled restarts that warn players in game first
+- update alerts for every server (Bedrock, Minecraft releases, Paper builds, Fabric loader),
+  checked every 6 hours, and **Update automatically** for Bedrock servers (**Maintenance**, or
+  `sudo redstonepanel check-updates`)
 - Phantom LAN proxies for Bedrock servers (**Add-ons → Server tools**): install, start, stop
   and remove one per server, so a server on another port shows up under LAN Games
 - a panel activity log, and a player access log per server: who joined, left or was turned away

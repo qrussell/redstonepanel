@@ -350,7 +350,7 @@ const ServerApp = {
                     <span class="${dot}">●</span>
                     <div class="min-w-0">
                         <div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(srv.name)}${this.hasProxyProblem(srv) || this.hasConnectProblem(srv) ? ' <span class="text-yellow-600" title="Players may not be able to connect: see Overview">⚠</span>' : ''}</div>
-                        <div class="text-xs text-gray-500">${esc(srv.edition)}${srv.version ? ' ' + esc(srv.version) : ''} • Port ${srv.port}</div>
+                        <div class="text-xs text-gray-500">${esc(srv.edition)}${srv.version ? ' ' + esc(srv.version) : ''} • Port ${srv.port}${this.updateBadge(srv)}</div>
                     </div>
                 </div>`;
         };
@@ -427,6 +427,9 @@ const ServerApp = {
             }
         } else if (!srv.version && srv.edition === 'Bedrock') {
             versionNote = `<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Shown after the server's next start</p>`;
+        }
+        if (srv.update) {
+            versionNote += `<p class="text-xs mt-1"><button onclick="ServerApp.switchTab('maintenance')" class="text-theme underline" title="Open Maintenance to update">⬆ Update available: ${esc(srv.update.label)}</button></p>`;
         }
         document.getElementById('overview-stats').innerHTML = `
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Status</p><p class="font-bold uppercase ${srv.status === 'online' ? 'text-green-500' : 'text-red-500'}">${srv.status}</p></div>
@@ -526,7 +529,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab('visual');
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadJavaChoice(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadAutoUpdate(); this.loadJavaChoice(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
@@ -1652,6 +1655,84 @@ const ServerApp = {
         }
     },
 
+    // "⬆ 1.26.10.4" next to a server's version when the update check found a newer one (1.16.12)
+    updateBadge(srv) {
+        if (!srv || !srv.update) return '';
+        return ` <span class="text-theme font-bold whitespace-nowrap" title="Update available: ${this.escapeHtml(String(srv.update.label))}">⬆ ${this.escapeHtml(String(srv.update.latest))}</span>`;
+    },
+
+    // Maintenance tab: the update check for this server and Bedrock's Update automatically
+    async loadAutoUpdate() {
+        const box = document.getElementById('autoupdate-content');
+        if (!box || !this.activeServer) return;
+        const name = this.activeServer.name;
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/updates`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        this.renderAutoUpdate(await res.json());
+    },
+
+    renderAutoUpdate(info) {
+        const box = document.getElementById('autoupdate-content');
+        if (!box) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const when = t => t ? esc(new Date(t * 1000).toLocaleString()) : '';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const found = info.update
+            ? `<p class="text-sm font-bold text-theme">⬆ Update available: ${esc(info.update.label)}</p>
+               <p class="${note}">This server runs ${esc(info.current || 'an unknown version')}. ${info.edition === 'java' ? 'Choose the version above and press Check & Update.' : 'Press Check & Update above, or let it update itself.'}</p>`
+            : info.error
+                ? `<p class="text-sm text-yellow-600 dark:text-yellow-500">Couldn't check for updates: ${esc(info.error)}</p>`
+                : `<p class="text-sm text-gray-600 dark:text-gray-300">${info.checked ? '✓ Runs the newest version' : 'Not checked yet'}${info.current ? ` (${esc(info.current)})` : ''}.</p>`;
+        const last = info.last;
+        const lastLine = last ? (last.ok
+            ? `<p class="${note}">Last update: ${when(last.at)}, ${esc(last.from || '?')} → ${esc(last.to)} (${esc(last.by || '')}).</p>`
+            : `<p class="text-xs text-red-500 mt-1">Updating to ${esc(last.to)} failed ${when(last.at)}: ${esc(last.error)}.${last.rolled_back ? ` It was put back on ${esc(last.from || 'the old version')}.` : ''}</p>`) : '';
+        const auto = info.edition === 'bedrock' ? (info.supported ? `
+            <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 mt-3">
+                <input type="checkbox" id="autoupdate-enabled" class="mt-1" ${info.auto ? 'checked' : ''} onchange="ServerApp.saveAutoUpdate(this)">
+                <span><b>Update automatically</b><span class="block ${note}">Bedrock players' apps update themselves and then can't join an older server. When a new release is out, players are warned in game, ${esc(info.warn_minutes)} minutes later the server stops, is backed up ("Before update"), updated and started. If the new version doesn't start, the old one and its world are put back.</span></span>
+            </label>` : `<p class="${note} mt-2">Bedrock servers can't run on this machine's processor, so they can't be updated here.</p>`)
+            : `<p class="${note} mt-2">Java servers are never updated automatically: a new version can break mods and plugins. You get an alert here, on the dashboard and by webhook instead.</p>`;
+        box.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm">
+                ${found}
+                ${lastLine}
+                ${auto}
+                <div class="flex flex-wrap items-center gap-3 mt-3">
+                    <button onclick="ServerApp.checkUpdatesNow(this)" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded font-bold text-sm">Check now</button>
+                    <span class="${note}">${info.checked ? `Checked ${when(info.checked)}` : ''}${info.next_check ? ` · next check ${when(info.next_check)}` : ''}</span>
+                </div>
+            </div>`;
+    },
+
+    async saveAutoUpdate(input) {
+        input.disabled = true;
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/updates`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: input.checked })
+        });
+        input.disabled = false;
+        if (!res.ok) {
+            input.checked = !input.checked;
+            return alert(`Couldn't change automatic updates: ${await this.apiError(res)}`);
+        }
+        this.renderAutoUpdate(await res.json());
+    },
+
+    async checkUpdatesNow(button) {
+        button.disabled = true;
+        button.innerText = 'Checking…';
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/updates/check`, { method: 'POST' });
+        button.disabled = false;
+        button.innerText = 'Check now';
+        if (!res.ok) return alert(`Couldn't check for updates: ${await this.apiError(res)}`);
+        this.renderAutoUpdate(await res.json());
+        this.loadServers();
+    },
+
     // --- Backups tab: schedule, list, back up now, download, restore, delete ---
     backupInfo: null,
 
@@ -1708,7 +1789,7 @@ const ServerApp = {
 
     copyRows(list, actions) {
         const esc = t => this.escapeHtml(String(t ?? ''));
-        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes' };
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes', 'pre-update': 'Before update' };
         return list.map(c => `
             <tr class="border-t border-gray-200 dark:border-gray-700">
                 <td class="rp-card-head py-2 pr-3 whitespace-nowrap">${esc(new Date(c.created * 1000).toLocaleString())}</td>
@@ -2754,7 +2835,7 @@ const ServerApp = {
         const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
         const freqOptions = Object.entries(info.frequencies)
             .map(([id, label]) => `<option value="${esc(id)}" ${id === s.frequency ? 'selected' : ''}>${esc(label)}</option>`).join('');
-        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes' };
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes', 'pre-update': 'Before update' };
 
         let last = '';
         if (info.last) {
@@ -3206,7 +3287,10 @@ const ServerApp = {
                 if (c.unknown.length) warn += `\n\nThese ${noun} couldn't be checked (not found on Modrinth or Hangar):\n- ` + c.unknown.map(m => m.title).join('\n- ');
             }
         }
-        if (!confirm(`Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.${warn}`)) return;
+        const sure = this.activeServer.edition === 'Bedrock'
+            ? `Update ${this.activeServer.name} to the newest Bedrock release? It stops, is backed up first ("Before update" on the Backups tab), and goes back to the old version and world if the new one doesn't start.`
+            : `Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.${warn}`;
+        if (!confirm(sure)) return;
         this.toggleConsole(true);
         const name = this.activeServer.name;
         const send = () => api(`/api/servers/${encodeURIComponent(name)}/update`, {
@@ -3217,6 +3301,7 @@ const ServerApp = {
         if (!res.ok) alert(`Update failed: ${await this.apiError(res)}`);
         await this.loadServers();
         this.loadUpdateOptions();
+        this.loadAutoUpdate();
         this.loadJavaChoice();
     },
 
@@ -3716,7 +3801,7 @@ const ServerApp = {
 			const backupNote = lb ? (lb.ok ? `last ${this.fmtWhen(lb.at)}` : '<span class="text-red-500">last failed</span>') : 'none yet';
 			return `
 				<tr class="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onclick="ServerApp.openServerByName(${this.jsArg(s.name)})">
-					<td class="${td}"><span class="${dot}">●</span> <b class="text-gray-900 dark:text-white">${esc(s.name)}</b><div class="${note}">${esc(s.edition)} ${esc(s.version || '')} · port ${esc(s.port)}</div></td>
+					<td class="${td}"><span class="${dot}">●</span> <b class="text-gray-900 dark:text-white">${esc(s.name)}</b><div class="${note}">${esc(s.edition)} ${esc(s.version || '')} · port ${esc(s.port)}${this.updateBadge(s)}</div></td>
 					<td class="${td}" data-label="State">${esc(stateText)}<span class="${note} md:block">${s.uptime !== null ? ' up ' + this.fmtDuration(s.uptime) : ''}</span></td>
 					<td class="${td}" data-label="CPU">${this.fmtPct(s.cpu_percent)}</td>
 					<td class="${td}" data-label="Memory">${this.fmtBytes(s.memory)}<span class="${note} md:block">${s.heap && s.heap !== 'N/A' ? ' max heap ' + esc(s.heap) : ''}</span></td>
@@ -4098,7 +4183,7 @@ const ServerApp = {
 						<span class="${s.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off'}">●</span>
 						<div class="min-w-0">
 							<div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(s.name)}</div>
-							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}</div>
+							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}${this.updateBadge(s)}</div>
 						</div>
 					</div>
 					<div class="flex flex-wrap justify-end gap-2">

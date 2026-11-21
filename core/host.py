@@ -521,6 +521,7 @@ def _servers(listed, shown, unit_cpu, fw):
             "java_required": s.get("java_required"), "java_installed": s.get("java_installed"),
             "firewall_open": None if missing is None else not missing,
             "firewall_missing": missing or [],
+            "update": s.get("update"),
             "problems": bool(s.get("signaling_closed") or s.get("transport_rejected")
                              or any(p.get("problems") for p in s.get("proxies") or [])),
         })
@@ -616,6 +617,11 @@ def _needs_attention(rep, failed, phantoms):
         out.extend(backup_copies.attention())
     except Exception:
         pass                                    # never let this break the dashboard
+    try:
+        from core import updates
+        out.extend(updates.attention())
+    except Exception:
+        pass
     order = {"error": 0, "warn": 1, "info": 2}
     return sorted(out, key=lambda a: order[a["level"]])
 

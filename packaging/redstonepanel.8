@@ -27,6 +27,8 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .B redstonepanel restart-server
 .I NAME
 .br
+.B redstonepanel check-updates
+.br
 .B redstonepanel notify-test
 .br
 .B redstonepanel upgrade
@@ -120,6 +122,20 @@ warning time set in the panel's Maintenance tab, then restart the server. A stop
 left stopped, and the restart waits for a running backup of the same server. Each server's
 restart timer, \fBredstonepanel-restart@\fINAME\fB.timer\fR, runs this command; it fires the
 warning time before the restart time shown in the panel.
+.TP
+.B check-updates
+Look for a newer release of every game server on this machine (Bedrock Dedicated Server,
+Minecraft, Paper builds and the Fabric loader; never snapshots or pre\-releases), cache what
+it finds in
+.I /var/lib/redstonepanel/updates.json
+for the panel's \fBUpdate available\fR badges, and send one webhook message per new version.
+Then update the Bedrock servers whose Maintenance tab has \fBUpdate automatically\fR on: warn
+players in game, wait five minutes, stop the server, take a "Before update" backup (the newest
+three are kept), install the new files (its server.properties, permissions.json and
+allowlist.json stay), start it and wait for "Server started.". If it doesn't start, the old
+files and the world from the backup are put back and it starts on the old version; the failure
+shows under Needs attention. \fBredstonepanel-updates.timer\fR runs this every 6 hours,
+also while the panel is stopped. Exits 1 if an update failed.
 .TP
 .B notify-test
 Send a test message to the webhook set under Panel Settings > Notifications.
@@ -229,6 +245,12 @@ the channel).
 .TP
 .I /var/lib/redstonepanel/restarts.json
 Scheduled restart times and warnings.
+.TP
+.I /var/lib/redstonepanel/updates.json
+The last update check: newer versions found per server, failed lookups, the result of each
+server's last Bedrock update, and the versions already announced. Which Bedrock servers update
+themselves is in
+.IR auto-updates.json .
 .TP
 .I /usr/local/lib/redstonepanel/phantom/
 The Phantom LAN proxy program (jhead/phantom, SHA\-256 checked) that Bedrock servers' Add\-ons

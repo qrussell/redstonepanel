@@ -22,6 +22,7 @@ import core.backups as backups
 import core.notify as notify
 import core.setup as setup_guide
 import core.restarts as restarts
+import core.updates as updates
 import core.auth as auth
 import core.settings as panel_settings
 import core.twofactor as twofactor
@@ -866,6 +867,36 @@ def set_restarts(server_name: str, req: RestartSchedule):
     _restart_call(manager._check_server, server_name)
     _restart_call(restarts.set_schedule, server_name, req.enabled, req.frequency, req.time, req.warn)
     return restarts.overview(server_name)
+
+# Update alerts and automatic Bedrock updates (1.16.12, core/updates.py)
+class AutoUpdateSetting(BaseModel):
+    enabled: bool
+
+def _alerts_call(fn, *args, **kw):
+    try:
+        return fn(*args, **kw)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except updates.UpdateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+def _actor(request):
+    return ((getattr(request.state, "user", None) or {}).get("username")) or "?"
+
+@app.get("/api/servers/{server_name}/updates")
+def get_updates(server_name: str):
+    _alerts_call(manager._check_server, server_name)
+    return _alerts_call(updates.overview, server_name)
+
+@app.put("/api/servers/{server_name}/updates")
+def set_auto_update(request: Request, server_name: str, req: AutoUpdateSetting):
+    _alerts_call(manager._check_server, server_name)
+    return _alerts_call(updates.set_auto, server_name, req.enabled, actor=_actor(request))
+
+@app.post("/api/servers/{server_name}/updates/check")
+def check_updates_now(server_name: str):
+    _alerts_call(manager._check_server, server_name)
+    return _alerts_call(updates.check_one, server_name)
 
 # Webhook notifications (admins: under /api/settings). The URL is never sent back in full.
 class NotificationSettings(BaseModel):
