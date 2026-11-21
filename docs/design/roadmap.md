@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.6 (21 Nov 2026): moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, and a folding server list shipped; two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian and ARM64 (1.16.9), a phone-friendly panel (1.16.10), pre-copy and LAN discovery (1.16.x), performance (1.17) and changing a server's type or version (1.18) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.6 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, and a folding server list shipped; two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian and ARM64 (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -124,7 +124,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    on, so "is anything wrong?" has an answer without opening each server or SSHing in.
 
    Why here: it's read-only (low risk), every admin sees it on every visit, and it builds the
-   sampler that the resource graphs need, so it takes most of the work out of item 19 (1.17)
+   sampler that the resource graphs need, so it takes most of the work out of item 21 (1.17)
    rather than adding to the plan. It comes before 2.0 because per-server permissions and API
    tokens change who can see what; a dashboard that already exists only needs a filter then.
 
@@ -403,7 +403,7 @@ refused joins, so those are Java only.
       replacing its direct `fetch` calls.
     - Both panels log the action with the master user's name (`[CLUSTER] alex@master: …`).
     - Master admins can do everything; master users only what their role allows (per-server
-      grants come in 2.0).
+      grants come in 1.18).
 
     **Create a server on a node.** New Server gets a **Where** choice. A master template is
     pushed to the node first, then deployed there. Ports are checked on the node, and a
@@ -639,8 +639,8 @@ refused joins, so those are Java only.
     server pages and the setup guide are squeezed into a strip beside it. Other panels work on
     phones; this closes that gap. It takes over the "mobile pass" from Groundwork.
 
-    Why here: after the 1.16.2–1.16.9 point releases it touches every page, so it goes last in
-    1.16.x, and before 1.17 so the performance charts are designed for small screens from the
+    Why here: after the 1.16.2–1.16.9 point releases it touches every page, so it goes after
+    them, and before 1.17 so the performance charts are designed for small screens from the
     start.
 
     - **Sidebar becomes a menu** below the `md` breakpoint: a top bar with the panel name, the
@@ -666,9 +666,76 @@ refused joins, so those are Java only.
 
     **Size:** one to two weeks; the tables and every dialog are most of it.
 
+### 1.16.11: backups off the machine, without a cluster
+
+19. **Copy every backup to an SSH server or S3-compatible storage.** 1.16.8 only helps people
+    with a second machine in a cluster, and most panels are a single machine. A backup on the
+    same disk doesn't survive the disk, and protecting worlds is the first guiding rule, so
+    this goes ahead of everything that only adds convenience.
+
+    Why here: right after 1.16.8, which adds the copy step and the remote listing this reuses,
+    and before 1.17, which is mostly read-only. It moves "copying backups off the machine" and
+    "retention by age" up from Later.
+
+    - **Panel Settings → Backup storage** (admins): add one or more targets.
+      - **SSH/rsync:** host, port, user and folder. The panel makes an SSH key for itself and
+        shows the public key to add to the target's `authorized_keys`, and checks the host key
+        on first use, as `ssh` does. Copies run `rsync -e ssh`, which can resume.
+      - **S3-compatible** (Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3): endpoint,
+        bucket, prefix, access key and secret. Uploads are signed with AWS Signature v4 using
+        Python's `hmac` and `hashlib`, in parts for archives over 100 MB, so nothing new is
+        installed.
+      - **Test** writes, lists and deletes a small file, and says which step failed.
+    - On a server's **Backups** tab, **Also keep a copy on** lists cluster members (1.16.8) and
+      these targets. Each copy is checked against the archive's SHA-256.
+    - **Retention by age** as well as by count ("keep 14 days"), for local backups and copies
+      alike, with separate settings for the copy (for example 7 here, 30 off the machine).
+    - **Restore from a copy:** the copies are listed on the Backups tab; restoring downloads
+      the archive, checks it and restores as usual. A copy can also be imported as a new server
+      on a fresh machine (Import → **From backup storage**), which is the "the machine died"
+      case.
+    - A failed copy is a **Needs attention** item and a `backup_copy_failed` webhook event, as
+      in 1.16.8. Copies run after the backup unit finishes, so a slow upload never holds the
+      server's save off.
+    - Secrets are stored in `/var/lib/redstonepanel/backup-targets.json` (0600, root only) and
+      never sent to the browser after they're saved.
+
+    **How:** `core/backup_targets.py` (rsync and S3 clients, retention), called from the copy
+    step that 1.16.8 adds to `run_backup`. `rsync` and `openssh-client` are in Ubuntu's and
+    Debian's archives; they become Recommends. Tested against a real SSH host, MinIO in the
+    test container, and one hosted S3 provider.
+
+    **Size:** about a week; S3 multipart upload and the restore-on-a-new-machine path are most
+    of it.
+
+### 1.16.12: Bedrock that keeps up, and update alerts
+
+20. **Bedrock servers that update themselves (opt-in), and a notice when any server has an
+    update.** Bedrock clients update automatically and then can't join an older server, so
+    owners update by hand within hours of every release. Java owners don't hear about new
+    Paper or Fabric builds or Minecraft releases unless they go looking.
+
+    - **Bedrock, per server:** **Update automatically** (off by default). A daily systemd timer
+      (`redstonepanel-bedrock-update@`) checks the download-links API. When there's a new
+      version it warns players in game, waits five minutes, backs up, updates and restarts, and
+      posts a webhook event. A failed update puts the old server back from the "Before update"
+      backup and shows under **Needs attention**.
+    - **Update alerts for every server:** the same daily check looks for a newer Bedrock
+      release, Minecraft release, Paper build or Fabric loader for each server, and shows
+      **Update available** on the dashboard row and the server header, with the existing
+      **Update** one click away. It also sends one webhook message per new version, never
+      repeated. Snapshots and pre-releases are ignored.
+    - Works on cluster nodes: the master shows each node's alerts, and a node runs its own timer.
+
+    **How:** `core/updates.py`, reusing the version lookups in `core/javaservers.py` and the
+    Bedrock downloader. Results are cached in `/var/lib/redstonepanel/updates.json` so the
+    dashboard never waits on the network.
+
+    **Size:** a few days.
+
 ### 1.17: server performance and tuning
 
-19. **How well each server runs, its history, and what to change.** 1.11 answers "is the
+21. **How well each server runs, its history, and what to change.** 1.11 answers "is the
     machine all right?". This answers "is the game lagging, since when, and why?", and
     suggests fixes based on what was measured, not a fixed checklist.
 
@@ -710,6 +777,11 @@ refused joins, so those are Java only.
     refuse a total across running servers that leaves under 1 GB for the system, and restart
     on request.
 
+    **Resource limits (moved up from the proposals).** Beside Memory, optional **Hard memory
+    limit** and **CPU share** per server, written as systemd `MemoryMax=` and `CPUQuota=` in the
+    unit, so one runaway server can't starve the others. The memory limit defaults to the heap
+    plus a margin for Java's own use, and the card shows when a server is being held back.
+
     **Suggestions.** Each one is shown only when its condition is measured, says what was
     seen, and links to where it's changed (the `server.properties` editor, Memory, the Mods
     tab, Backups). Nothing is applied automatically, because every change here trades world
@@ -717,7 +789,7 @@ refused joins, so those are Java only.
     - TPS under 18 for 10 minutes: lower `simulation-distance` first, then `view-distance`
       (Bedrock: `tick-distance`). Profile with **spark** (a Paper plugin and Fabric mod).
     - Fabric with no performance mods: **Lithium** (and **FerriteCore** when memory is
-      tight). Vanilla with low TPS: switch it to Paper or Fabric (1.18; until then, a new
+      tight). Vanilla with low TPS: switch it to Paper or Fabric (1.19; until then, a new
       server).
     - Paper with WorldEdit: **FastAsyncWorldEdit** does the same edits off the main thread.
     - Process memory at its `-Xmx` with frequent restarts: raise Memory, if the host has
@@ -754,17 +826,94 @@ refused joins, so those are Java only.
 
     **Size:** one to two weeks. The ring file format and the SVG charts are the fiddly parts.
 
-### 1.18: change a server's type or version
+### 1.17.1: why did it crash?
 
-20. **Turn a Vanilla server into Paper or Fabric (and any other way round), and roll back an
+22. **When a server crashes or won't start, say why in plain words, and offer the fix.** Today
+    the owner gets a "crashed" webhook and then reads `crash-reports/` and `logs/latest.log`
+    by hand. Mod and plugin conflicts, missing dependencies and the wrong Java are the
+    commonest reasons a server won't come up, and the panel already knows the mods, their
+    dependencies and the Java each version needs.
+
+    - **A "Last crash" card** on the server's Overview after a crash or a failed start: the
+      newest crash report or the end of the log, with the error lines highlighted and the
+      rest folded away.
+    - **Known causes, named:** a missing dependency ("Sodium requires Fabric API"), a mod for
+      the wrong loader or Minecraft version, the wrong Java (`UnsupportedClassVersionError`),
+      the port already in use (`FAILED TO BIND TO PORT`), out of memory, an unaccepted EULA,
+      and a corrupt chunk or `level.dat`.
+    - **The likely mod or plugin:** frames and "Suspected Mods" lines in the crash report are
+      matched against the installed list, and the card names it, with **Turn off and restart**
+      (renamed to `.disabled`, as 1.12 already does) and **Undo the last mod update** when that
+      is the most recent change.
+    - The crash webhook gains one line with the cause, and **Needs attention** links to the card.
+    - Nothing is changed without a click, and a backup runs first when the fix touches the world.
+
+    **How:** `core/crashes.py` (pattern table and matching), run from the existing
+    `ExecStopPost` notification. Tested against real crash reports for each cause, collected
+    on purpose in the systemd container.
+
+    **Size:** about a week; the pattern table is most of it and grows with what people report.
+
+### 1.18: helpers with their own access, and SFTP
+
+23. **Give a helper access to only their servers, and let people use FileZilla or WinSCP.**
+    Today any `user` account can do everything to every server, which stops owners from
+    adding a helper. SFTP is the most-noticed table-stakes gap: Pterodactyl, AMP and
+    PufferPanel all have it, and it's how people move big worlds and edit many configs with the
+    tools they know. The two go together, because an SFTP login must only reach the servers
+    its account may use.
+
+    Why here: moved up from 2.0, ahead of type switching, because it changes who can safely use
+    the panel at all, while the rest are conveniences for the owner. It comes after 1.16.7
+    (two-factor) because helpers' accounts make the sign-in matter more.
+
+    **Per-server permissions.**
+    - **Users → (account) → Servers:** for each server, tick **View**, **Console & chat**,
+      **Start/stop/restart**, **Players** (whitelist, kick, ban), **Files**, **Mods & plugins**,
+      **Settings** and **Backups** (make and download; restore stays admin-only). Presets:
+      **Moderator** (view, console, players) and **Co-owner** (everything but deleting).
+    - Admins stay admins: they're effectively root anyway. A user with no grants sees an
+      empty dashboard with a note to ask an admin.
+    - The dashboard, server list, Needs attention and webhooks list only what the user may
+      view, and every API route checks the grant, with a test per route as the cluster's
+      allowlist already has.
+    - On a cluster, grants for node servers are kept on the master, as the master's users are.
+
+    **SFTP.**
+    - A built-in SFTP server on port 2022 (configurable), run as its own systemd unit
+      `redstonepanel-sftp.service`. Sign in as `account.server` with the panel password or an
+      SSH key added under **🔑 Password → SSH keys**. Accounts with two-factor on must use a key,
+      since SFTP clients can't ask for a code.
+    - Each session sees only that server's folder, and files are read and written through the
+      same confined code as the file manager (`openat(O_NOFOLLOW)` per component, written as
+      `minecraft`). Needs the **Files** grant; admins can reach every server.
+    - The server page shows the address, port and username, with a **Copy** button and a
+      `sftp://` link that FileZilla and WinSCP open.
+    - Uploads and deletes are logged with who did them (`[SFTP] alex uploaded …`), and failed
+      sign-ins count towards the existing rate limit.
+    - Cluster nodes run their own SFTP server for their servers and check sign-ins with the
+      master over the cluster link.
+
+    **How:** grants in `/var/lib/redstonepanel/grants.json`, checked by one dependency in
+    `core/auth.py`. SFTP uses `python3-paramiko`, which is in Ubuntu's and Debian's archives, as
+    a Recommends; without it the SFTP setting explains how to install it. `core/sftp.py` maps
+    SFTP operations onto `core/files.py`.
+
+    **Size:** two to three weeks: one for the permissions and their per-route tests, the rest
+    for SFTP and its security tests (path escapes, symlinks, the sign-in limit).
+
+### 1.19: change a server's type or version
+
+24. **Turn a Vanilla server into Paper or Fabric (and any other way round), and roll back an
     update, without making a new server.** Today a server keeps the type it was created with
     (1.9 left switching out), and **Update Server** only goes up. The usual dead end: someone
     starts on Vanilla, then wants plugins or mods, and has to make a new server and copy the
     world by hand. The second one: an update breaks a mod, and there's no clean way back.
 
     Why here: it's self-contained (Maintenance tab, `core/convert.py`) and needs nothing from
-    1.16 or 1.17, so it can be pulled forward if it's asked for first. 1.17's "Vanilla with low
-    TPS" suggestion then becomes "switch to Paper" instead of "make a new server".
+    1.16, 1.17 or 1.18, so it can be pulled forward if it's asked for first. It comes before
+    1.20, which adds more types to the two families it defines. 1.17's "Vanilla with low TPS"
+    suggestion then becomes "switch to Paper" instead of "make a new server".
 
     **What changes between types.** Every type shares `server.properties`, `ops.json`, the
     whitelist and ban lists, player data, advancements, statistics, data packs
@@ -778,8 +927,8 @@ refused joins, so those are Java only.
       `plugins/`. A mod can't run as a plugin or the other way round, though many Modrinth
       projects publish both (LuckPerms, Chunky, spark, Geyser, Floodgate).
 
-    Later loaders slot into the same two families: Quilt, Forge and NeoForge use the vanilla
-    layout and mods; Purpur uses Paper's layout and plugins.
+    Later loaders (1.20) slot into the same two families: Quilt, Forge and NeoForge use the
+    vanilla layout and mods; Purpur uses Paper's layout and plugins.
 
     **Every combination, at the same Minecraft version:**
 
@@ -859,16 +1008,57 @@ refused joins, so those are Java only.
     **Size:** one to two weeks. The world moves are simple; the rollback on a failed start and
     the content-mod checks are the careful parts.
 
-### 2.0: run it for other people
+### 1.20: Forge, NeoForge, Quilt, Purpur and modpacks
 
-21. **Per-server permissions.** Today a `user` can do everything to every server. Add
-    per-server grants (view, console/chat, power, files, mods & plugins, settings) for `user`
-    accounts. Admins
-    stay admins (they're effectively root anyway). The dashboard then lists only the servers
-    a user may view.
-22. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
+25. **Run the server types and modpacks people actually ask for.** Forge, NeoForge and
+    modpacks are the commonest reason a Java owner can't use the panel at all. 1.19 sorted
+    every type into two families (vanilla layout with mods, Paper layout with plugins), so new
+    types now slot into creating, updating, switching and the catalog.
+
+    - **New types when creating a server:** **NeoForge**, **Forge** and **Quilt** (mods, vanilla
+      layout) and **Purpur** (plugins, Paper layout). Purpur and Quilt are a `server.jar` like
+      Paper and Fabric. Forge and NeoForge run their installer as `minecraft` in a staging
+      folder, and the unit starts them with the `@libraries/…/unix_args.txt` file the installer
+      writes, with `-Xms`/`-Xmx` from 1.17's Memory setting rather than `user_jvm_args.txt`.
+    - **The catalog** filters Modrinth by the new loaders, and Hangar and Modrinth plugins work
+      on Purpur as on Paper. 1.12's drop-in check accepts Forge and NeoForge mods on those
+      types instead of refusing them.
+    - **Modrinth modpacks:** **New server → From a modpack** searches Modrinth's modpacks, or
+      takes an uploaded `.mrpack`. The panel reads `modrinth.index.json`, installs the loader
+      and Minecraft version it names, downloads only server-side files (checked against the
+      pack's SHA-512 hashes, from the hosts the format allows), and copies `overrides/` and
+      `server-overrides/`. Updating to a newer pack version backs up first and keeps the world.
+    - **CurseForge server packs, by upload:** most CurseForge modpacks publish a "server pack"
+      zip. **New server → From a modpack → Upload server pack** unpacks it like an import, works
+      out the loader and version from the pack, installs that loader itself (it never runs the
+      pack's own start scripts) and keeps the pack's `mods/` and `config/`. The owner downloads
+      the pack from CurseForge, so no API key is needed and authors' download choices are
+      respected.
+    - **Java per type:** Forge and NeoForge need the same Java as their Minecraft version, which
+      the panel already installs.
+
+    **Not included, and why.** A CurseForge browser in the panel: CurseForge's API needs a key
+    issued to the project, its terms limit what third-party apps may do, and authors can
+    block third-party downloads of their files, so many installs would fail half-way. Add it
+    only if people ask, with each admin pasting their own key and blocked files linking to
+    CurseForge's download page. SpigotMC and similar sites have no file hashes and many paid or
+    external-link resources, so they stay drag-and-drop.
+
+    **How:** new type handlers in `core/javaservers.py` (Forge/NeoForge installer runs, Purpur's
+    and Quilt's download APIs), `core/modpacks.py` for `.mrpack` and server packs, built on
+    1.13's downloader. Tested end to end with a real pack of each kind, and type switching
+    (1.19) tested for Fabric ↔ Quilt and Paper ↔ Purpur.
+
+    **Size:** two to three weeks; Forge's installer and the modpack update path are the slow
+    parts.
+
+### 2.0: an API for scripts and bots
+
+26. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
-    of allowed routes, shown once, revocable.
+    of allowed routes and, after 1.18, the servers they may touch. Shown once, revocable, and
+    logged under the token's name. Per-server permissions moved to 1.18; if nothing else joins
+    this release, it can ship as a 1.20.x point release instead.
 
 ## Groundwork (do alongside, before promoting)
 
@@ -876,6 +1066,8 @@ refused joins, so those are Java only.
   root against `/opt`; cover them with a temp `SERVERS_ROOT` and a stubbed `systemctl`, and in
   the systemd test container.
 - **Security review** of sign-in, import (archive unpacking) and anything that builds paths.
+  Do it before 1.16.11 and 1.18, which add stored credentials for backup targets and an SFTP
+  server; other panels had path-traversal and XSS advisories in 2026.
 - ~~**Mobile pass**~~ on the dashboard, server list and console: *scheduled as 1.16.10
   (item 18 above).*
 - ~~**README screenshots**~~ *(done with 1.15.0: a screenshot tour in the README, retaken by
@@ -893,13 +1085,9 @@ until it's agreed.
 
 **Protect worlds (first, per the guiding rules)**
 
-- **Off-machine backups.** ~~Copy each finished backup to another cluster node~~ *(scheduled
-  as 1.16.8, item 16 above)*. Still proposed: an rsync/SFTP target or S3-compatible storage,
-  for standalone panels, with the same retention and a `Needs attention` item when a copy fails.
-- **Automatic Bedrock updates** (opt-in per server). Bedrock clients update themselves and
-  can't join an older server, so owners update by hand within hours of every release. A daily
-  timer checks the download-links API; when there's a new version it warns players, backs up,
-  updates and restarts. *Small: a few days.*
+- ~~**Off-machine backups.**~~ *Scheduled: to another cluster node as 1.16.8 (item 16), to
+  SSH/rsync or S3-compatible storage as 1.16.11 (item 19).*
+- ~~**Automatic Bedrock updates.**~~ *Scheduled as 1.16.12 (item 20 above).*
 
 **Security**
 
@@ -939,17 +1127,17 @@ until it's agreed.
   several servers at once.
 - **Scheduled commands and announcements:** a list of commands per server on a schedule
   (`redstonepanel-command@.timer`), for messages, `save-all` or event toggles.
-- **Version update alerts:** the dashboard and a notification say when a newer Minecraft
-  release or Paper/Fabric build exists for a server, with the existing **Update** one click away.
+- ~~**Version update alerts.**~~ *Scheduled with automatic Bedrock updates as 1.16.12 (item 20).*
 - **World tools:** upload a world zip into a stopped server (with a backup first), start a new
   world with a seed, and pre-generate with Chunky from a button (it's already in the catalog).
 
 **More servers and machines**
 
-- **Modrinth modpacks (`.mrpack`)** and **Forge/NeoForge**, already in Later; move them up when
-  asked, as they're the most common reason a Java owner can't use the panel.
-- **Per-server resource limits** with systemd `MemoryMax=`/`CPUQuota=`, beside 1.17's Memory
-  setting, so one server can't starve the rest.
+- ~~**Modrinth modpacks (`.mrpack`)** and **Forge/NeoForge**~~ *Scheduled as 1.20 (item 25),
+  with Quilt, Purpur and CurseForge server packs by upload.*
+- ~~**Per-server resource limits.**~~ *Scheduled with 1.17's Memory setting (item 21).*
+- ~~**SFTP access.**~~ *Not in the first review; scheduled with per-server permissions as 1.18
+  (item 23).*
 - ~~**Ubuntu 25.10 and 26.04, Debian 12/13 and ARM64** for Java servers.~~ *Scheduled as
   1.16.9 (item 17 above).*
 
@@ -967,11 +1155,8 @@ until it's agreed.
 
 ## Later (only when asked for)
 
-- Backup retention by age ("keep 30 days") as well as by count, and copying backups off the
-  machine (rsync/S3).
-- Forge and NeoForge (installer jar, `run.sh`, `user_jvm_args.txt`).
-- Modrinth modpacks (`.mrpack`), on top of 1.13's downloader. Not CurseForge: it needs an API
-  key and some packs can't be downloaded automatically.
+- A CurseForge browser in the panel, with each admin's own API key (see 1.20 for why it isn't
+  planned yet; CurseForge server packs can be uploaded from 1.20).
 - Adopting a node over SSH (fleet.md phase 4) and finding panels on the LAN.
 - Velocity proxy support, for people running a network across nodes.
 - Translations, once a contributor offers one.
@@ -984,6 +1169,6 @@ until it's agreed.
 | SPA framework rewrite | The UI is already one page with JavaScript; weeks of work for no visible gain. |
 | Load balancing / auto-migration | A Minecraft server is one stateful process; there's nothing to balance. "Move server to node" covers the real need. |
 | Converting worlds between Java and Bedrock | Different world formats; converters lose blocks, entities and redstone behaviour, and a bad conversion looks fine until players find the damage. Geyser and Floodgate (one click in the catalog) let Bedrock players join Java servers instead. |
-| Downgrading a world to an older Minecraft version | Minecraft doesn't support it and worlds break in subtle ways. 1.18's "Roll back the last update" restores the backup from before the update, with its server software. |
+| Downgrading a world to an older Minecraft version | Minecraft doesn't support it and worlds break in subtle ways. 1.19's "Roll back the last update" restores the backup from before the update, with its server software. |
 | White-label / multi-tenant hosting | A business, not a feature: tenant isolation, billing and support for other people's customers. |
 | Founders badges, premium tiers, bug bounties | An MIT project with no paid tier and no budget. |

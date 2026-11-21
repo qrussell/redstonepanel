@@ -108,21 +108,30 @@ people's worlds first**, and use systemd rather than reinventing it.
 - **Ban and unban** on Java servers, running or stopped, with a **Banned** list. Bedrock
   gets kick only, as it has no ban list.
 
-### 1.16.3: two-factor sign-in
+### 1.16.7: two-factor sign-in
 - **Authenticator app codes** at sign-in, with recovery codes, and an option to require them
   for every admin.
 
-### 1.16.4: backups on another cluster node
+### 1.16.8: backups on another cluster node
 - **A copy of each backup on another cluster member**, checked as it's copied, that you can
   restore from even if the original machine is gone.
 
-### 1.16.5: Debian and ARM64
-- **Debian 12 and 13**, and **ARM64** machines such as a Raspberry Pi for Java servers.
+### 1.16.9: newer Ubuntu, Debian and ARM64
+- **Ubuntu 25.10 and 26.04**, **Debian 12 and 13**, and **ARM64** machines such as a
+  Raspberry Pi for Java servers.
 
-### 1.16.6: a panel that works on a phone
+### 1.16.10: a panel that works on a phone
 - **Every page fits a phone:** a ☰ menu instead of the sidebar, cards instead of tables,
   and big Start, Restart and Stop buttons.
 - **Install it as an app** from your phone's browser (over HTTPS).
+
+### 1.16.11: backups off the machine, without a cluster
+- **Copy each backup to an SSH server or S3-compatible storage**, keep backups by age, and
+  restore from a copy, even on a new machine.
+
+### 1.16.12: Bedrock that keeps up, and update alerts
+- **Bedrock servers that update themselves** (opt-in), with a backup first.
+- **Update available** on the dashboard for new Minecraft, Paper, Fabric and Bedrock versions.
 
 ### 1.16.x: less downtime for big worlds
 - An optional **pre-copy** while the server keeps running.
@@ -130,8 +139,8 @@ people's worlds first**, and use systemd rather than reinventing it.
 
 ### 1.17: server performance and tuning
 - **Tick health** (TPS/MSPT) for Paper, Vanilla and Fabric 1.20.3+.
-- **Memory:** the heap limit next to what the server really uses, and a **Memory** setting
-  to change `-Xms`/`-Xmx` safely.
+- **Memory:** the heap limit next to what the server really uses, a **Memory** setting
+  to change `-Xms`/`-Xmx` safely, and hard memory and CPU limits per server.
 - **History charts:** 24 hours at 1-minute detail and 7 days at 15-minute detail, for each
   server and the host. No database or chart library needed.
 - **Suggestions based on what was measured, never applied automatically.** Examples: lower
@@ -139,7 +148,16 @@ people's worlds first**, and use systemd rather than reinventing it.
   WorldEdit, pre-generating with Chunky, or moving a busy server to a quieter node.
 - **Alerts** for low TPS or a nearly full disk (off by default).
 
-### 1.18: change a server's type or version
+### 1.17.1: why did it crash?
+- **The cause in plain words** after a crash or failed start, the likely mod or plugin named,
+  and **Turn off and restart** one click away.
+
+### 1.18: helpers with their own access, and SFTP
+- **Per-server permissions** for user accounts: view, console, power, players, files, mods,
+  settings and backups.
+- **SFTP** with your panel account, limited to the servers you may use.
+
+### 1.19: change a server's type or version
 - **Vanilla → Paper or Fabric**, and every other way round, keeping the world, settings and
   players. No more making a new server and copying the world by hand.
 - Mods and plugins carried over where the same project exists for the new type; a clear
@@ -147,11 +165,13 @@ people's worlds first**, and use systemd rather than reinventing it.
 - A backup first, a preview, and an automatic rollback if the server doesn't start.
 - **Roll back the last update**, with the server software it ran before.
 
-### 2.0: run it for other people
-- **Per-server permissions** for user accounts: view, console, power, files, mods and
-  settings.
-- **API tokens** with a limited set of allowed routes. They're shown once and can be
-  revoked.
+### 1.20: Forge, NeoForge, Quilt, Purpur and modpacks
+- **NeoForge, Forge, Quilt and Purpur** servers.
+- **Modrinth modpacks** (`.mrpack`), and **CurseForge server packs** by upload.
+
+### 2.0: an API for scripts and bots
+- **API tokens** with a limited set of allowed routes and servers. They're shown once and can
+  be revoked.
 
 ### Groundwork along the way
 - More tests and a security review of sign-in, imports and path handling.
@@ -159,20 +179,13 @@ people's worlds first**, and use systemd rather than reinventing it.
   a wiki. Still to do: a short GIF.
 
 ### Ideas we're considering (tell us which matter to you)
-- **Off-machine backups** to rsync/SFTP or S3-compatible storage, for panels without a
-  cluster.
-- **Automatic Bedrock updates**, so players on new clients can always join.
 - **Whitelist changes across servers** from the cluster master.
 - **Scheduled commands and announcements.**
-- **Update alerts** when a new Minecraft release or Paper/Fabric build is out.
 - **World tools:** upload a world, new world with a seed, pre-generate with Chunky.
-- **Per-server CPU and memory limits.**
 - **A read-only status page** for players, and a **Discord chat bridge**.
 
 ### Later, when someone asks for it
-- Backup retention by age, and off-machine copies (rsync/S3).
-- **Forge and NeoForge.**
-- **Modrinth modpacks** (`.mrpack`).
+- A **CurseForge** browser in the panel, with your own API key.
 - Adopting a node over SSH, and finding panels on the LAN.
 - **Velocity** proxy support for networks across nodes.
 - Translations, once a contributor offers one.
