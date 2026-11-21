@@ -49,6 +49,14 @@ const ServerApp = {
 
         this.applyTheme();
         this.setupDropZones();
+        // Many actions open the console; remember what was clicked so it can be kept in view
+        document.addEventListener('click', e => {
+            const el = e.target.closest && e.target.closest('button, a, input, select, label');
+            if (el) this.lastClick = { el, at: Date.now() };
+        }, true);
+        window.addEventListener('resize', () => {
+            if (this.consoleOpen()) this.setConsoleSpace(true);
+        });
         this.fetchTemplates();
         const sortDropdown = document.getElementById('server-sort');
         if (sortDropdown) sortDropdown.value = this.sortOrder;
@@ -2787,15 +2795,50 @@ const ServerApp = {
     toggleConsole(forceOpen = false, node) {
         const dock = document.getElementById('console-dock');
         if (forceOpen) {
+            const wasOpen = this.consoleOpen();
             this.logNode = node === undefined ? (this.activeServer ? this.activeServer.node || null : null) : node;
             const title = document.getElementById('console-node');
             if (title) title.innerText = this.logNode ? `(${this.nodeName(this.logNode)})` : '';
             dock.classList.remove('translate-y-full');
+            this.setConsoleSpace(true);
+            if (!wasOpen) this.revealLastClick();
             this.startLogPolling();
         } else {
             dock.classList.add('translate-y-full');
+            this.setConsoleSpace(false);
             this.stopLogPolling();
         }
+    },
+
+    consoleOpen() {
+        return !document.getElementById('console-dock').classList.contains('translate-y-full');
+    },
+
+    // The page beside the sidebar ends above the open console (see the <style> in index.html)
+    setConsoleSpace(open) {
+        const dock = document.getElementById('console-dock');
+        document.documentElement.style.setProperty('--console-space', open ? `${dock.offsetHeight}px` : '0px');
+    },
+
+    // When a click just opened the console (Back up now, Save, Start…), keep that control in
+    // view: once the page has made room, scroll it up above the console if it ended up behind it.
+    revealLastClick() {
+        const c = this.lastClick;
+        if (!c || Date.now() - c.at > 2000) return;
+        const dock = document.getElementById('console-dock');
+        let done = false;
+        const reveal = () => {
+            if (done) return;
+            done = true;
+            if (!c.el.isConnected) return;
+            const r = c.el.getBoundingClientRect();
+            // Where the console's top ends up (offsetHeight ignores the slide's transform)
+            if (r.height && r.bottom > window.innerHeight - dock.offsetHeight)
+                c.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        };
+        // Once the console has slid up and the page has made room for it (same timing)
+        dock.addEventListener('transitionend', reveal, { once: true });
+        setTimeout(reveal, 1000);   // in case no transition runs
     },
 
     startLogPolling() {

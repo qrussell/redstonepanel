@@ -11,24 +11,39 @@ every game server is a plain systemd service, and the panel installs and updates
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/hero.png"><img src="docs/guide/images/hero.png" alt="The RedstonePanel dashboard on a cluster master"></picture>
 
-**[⬇️ Install](#install)** · **[📖 User manual](docs/guide/README.md)** ·
+**[🚀 Quick start](#quick-start)** · **[⬇️ Install](#install)** · **[📖 User manual](docs/guide/README.md)** ·
 **[✨ What's new](docs/wiki/Whats-New.md)** · **[❓ Is it right for me?](docs/wiki/FAQ.md)** ·
 **[🛣️ Roadmap](docs/wiki/Roadmap.md)** · **[📚 Wiki](docs/wiki/Home.md)**
 
-## Install in one line
+## Quick start
 
-On Ubuntu 24.04 or 25.04:
+From a fresh Ubuntu 24.04 or 25.04 machine to players joining, in about five minutes:
+
+**1. Install the panel.**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install.sh | sudo sh
 ```
 
-Then open **http://&lt;your-server&gt;:8080/** and sign in with your Linux account (any member
-of the `sudo` group). The script adds the signed qrussell-repo apt repository and runs
-`apt install redstonepanel`, so `apt upgrade` keeps the panel current. A setup guide on the
-dashboard then walks you through your first server, backups, HTTPS and alerts. Prefer to do it by hand,
-or to use a `.deb`? See [Install](#install) below or the
-[installation page](docs/wiki/Installation.md).
+**2. Sign in.** Open **http://&lt;your-server&gt;:8080/** and sign in with your Linux username
+and password (any member of the `sudo` group).
+
+**3. Create a server.** Click **➕ New Server**, choose **Java** or **Bedrock** (and for Java,
+Vanilla, Paper or Fabric and a version), then click **Deploy Fresh Server**. The panel
+downloads it, installs the Java it needs, picks a free port and starts it. A Java server is
+ready in about a minute; watch it in **🖥️ Console**.
+
+**4. Join.** In Minecraft, add a server at **&lt;your-server&gt;**. The first Java server
+uses port 25565 and the first Bedrock server 19132; the server's **Overview** shows its port.
+
+That's it. The **setup guide** on the dashboard then walks you through the rest: backup
+schedules, HTTPS and crash alerts in Discord.
+
+The installer adds the signed qrussell-repo apt repository and runs
+`apt install redstonepanel`, so `apt upgrade` keeps the panel current. Prefer to do it by
+hand, or to use a `.deb`? See [Install](#install) below or the
+[installation page](docs/wiki/Installation.md). The [user manual](docs/guide/README.md) covers
+every feature step by step.
 
 ## Why RedstonePanel
 
@@ -83,6 +98,20 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**A console that makes room** *(1.16.6)*. The console used to slide up over the bottom of the
+window, hiding buttons until it was closed. While it's open, the page now ends above it and the
+sidebar stays visible. Read the [1.16.6 release notes](release-notes/v1.16.6.md).
+
+**A gameplay port for each Bedrock server** *(1.16.5)*. Since 1.16.4 every new Bedrock server
+used UDP 19132 for gameplay, so a second Bedrock server clashed with the first. Each now gets
+its own, on the same number as its port. Read the
+[1.16.5 release notes](release-notes/v1.16.5.md).
+
+**New Bedrock servers keep all their settings** *(1.16.4)*. A newly created Bedrock server's
+`server.properties` had only its ports, so **Configuration** showed almost nothing to edit. It
+now has every setting from the official Bedrock download. Read the
+[1.16.4 release notes](release-notes/v1.16.4.md).
+
 **A server list that folds** *(1.16.3)*. Click any heading in the sidebar (Java Edition,
 Bedrock Edition or a cluster node) to fold it; a folded heading shows how many of its servers
 are online, and the browser remembers what you folded. Each cluster node's servers now get their
@@ -101,7 +130,7 @@ HTTP on a network you trust) and crash alerts in Discord or any webhook. Each st
 place where it's done and ticks itself when it is. Read the
 [1.16.1 release notes](release-notes/v1.16.1.md).
 
-**Move a server to another machine.** On a cluster master's 🌐 Cluster page, **Move…** stops a
+**Move a server to another machine** *(1.16.0)*. On a cluster master's 🌐 Cluster page, **Move…** stops a
 server, streams its whole folder to another machine of the cluster (checked byte for byte), and
 starts it there with the same name and ports when they're free, the Java it needs, and its
 memory, backup and restart schedules and Phantom. The old machine keeps its files as a removed
@@ -113,6 +142,8 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
 ## All features
 
 - create, start, stop and update servers
+- a server list grouped by machine and edition, with headings that fold and show how many
+  servers are online
 - Java servers as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft
   version you choose, each run with the Java it needs
 - live chat and console commands (over RCON)
@@ -149,7 +180,6 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   players and disk use, supporting services (Java, firewall, timers, certificates,
   Phantom proxies), a list of what needs attention, and on a cluster master each node's
   resources
-
 - clusters: one master panel manages the servers of other RedstonePanels with every tab,
   creates servers on them, moves or copies servers between them, renews their certificates and
   backs the cluster up every night

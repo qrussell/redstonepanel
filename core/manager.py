@@ -79,6 +79,26 @@ def _udp_port_specs(value):
     return out
 
 
+def _udp_ports_used(value):
+    """The ports in server-udp-ports, as ints (a range counts in full, up to 1000 ports)."""
+    used = set()
+    for spec in _udp_port_specs(value):
+        lo, _, hi = spec.partition(":")
+        lo = int(lo)
+        hi = int(hi) if hi else lo
+        used.update(range(lo, min(hi, lo + 999) + 1))
+    return used
+
+
+def _follow_udp_port(props, old_port, new_port):
+    """The server-udp-ports to write when a Bedrock server's port moves from old_port to new_port:
+    a single port equal to the old one moves with it (Mojang's server.properties ships
+    server-udp-ports=19132, the same as server-port). None when it should stay as it is."""
+    cur = str(props.get("server-udp-ports", "")).strip()
+    old, new = str(old_port).strip(), str(new_port)
+    return new if cur and cur == old and old != new else None
+
+
 def is_nethernet(props):
     return str(props.get("transport") or "").strip().lower() == "nethernet"
 
@@ -190,6 +210,7 @@ def apply_template_to_server(server_name, template_id, edition=None):
     current_props = read_properties(get_server_dir(server_name))
     port = current_props.get("server-port")
     portv6 = current_props.get("server-portv6")
+    udp_ports = current_props.get("server-udp-ports")
     rcon_port = current_props.get("rcon.port")
     query_port = current_props.get("query.port")  # Extract existing query port
     
@@ -199,6 +220,9 @@ def apply_template_to_server(server_name, template_id, edition=None):
     # Re-apply the unique ports so the template does not cause conflicts
     if port: merged["server-port"] = port
     if portv6: merged["server-portv6"] = portv6
+    # Bedrock gameplay port: the server's own, never another server's from the template
+    if udp_ports: merged["server-udp-ports"] = udp_ports
+    else: merged.pop("server-udp-ports", None)
     if rcon_port: merged["rcon.port"] = rcon_port
     if query_port: merged["query.port"] = query_port  # Protect query port
         
@@ -309,6 +333,8 @@ def _used_ports(exclude_dir=None):
             v = str(props.get(k, "")).strip()
             if v.isdigit():
                 used.add(int(v))
+        if is_bedrock:
+            used |= _udp_ports_used(props.get("server-udp-ports"))
     return used
 
 def _port_bindable(port):
@@ -951,6 +977,9 @@ def _restore_ports(d, edition):
         changes["server-port"] = str(port)
         if edition == "bedrock":
             changes["server-portv6"] = str(port + 1)
+            udp = _follow_udp_port(props, old, port)
+            if udp:
+                changes["server-udp-ports"] = udp
         if str(props.get("query.port", "")).strip() in ("", old):
             changes["query.port"] = str(port)
     if changes:
@@ -1080,9 +1109,13 @@ def _import_unpacked(staging, root):
         write_log(f"[IMPORT] Imported a {edition.capitalize()} server as {svc_name} (port {port}).")
 
         props = read_properties(mc_dir)
+        old_port = props.get("server-port", "")
         props["server-port"] = str(port)
         if edition == "bedrock":
             props["server-portv6"] = str(port + 1)
+            udp = _follow_udp_port(props, old_port, port)
+            if udp:
+                props["server-udp-ports"] = udp
         write_properties(mc_dir, props)
 
         java = None
@@ -1204,8 +1237,11 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
         else:
             _fetch_bedrock(mc_dir)
             # The zip ships a full server.properties with every setting; BDS never writes missing
-            # keys back, so only the ports change and the rest stays as Mojang shipped it.
-            write_properties(mc_dir, {"server-port": port, "server-portv6": port + 1, "query.port": port})
+            # keys back, so only the ports change and the rest stays as Mojang shipped it. It also
+            # ships server-udp-ports=19132: each server gets its own (UDP on the same number as
+            # its TCP server-port), or a second Bedrock server would clash with the first.
+            write_properties(mc_dir, {"server-port": port, "server-portv6": port + 1,
+                                      "server-udp-ports": port, "query.port": port})
             write_screenrc(mc_dir)
 
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])

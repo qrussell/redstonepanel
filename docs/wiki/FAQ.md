@@ -18,7 +18,8 @@
 
 - want to sell game servers to customers. RedstonePanel has no billing, tenant isolation or
   resale features, and none are planned;
-- need Windows or macOS hosts. It runs on Ubuntu 24.04 and 25.04;
+- need a native Windows or macOS app. It runs on Ubuntu 24.04 and 25.04 (on Windows, in
+  [WSL](#can-i-run-it-on-windows-with-wsl));
 - need Forge or NeoForge today. They're on the roadmap's "when asked for" list;
 - want every server isolated in its own container. RedstonePanel deliberately uses systemd
   instead of Docker.
@@ -35,6 +36,60 @@ curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install
 ```
 
 See [Installation](Installation.md) for the other ways and what to do next.
+
+## Can I run it on Windows with WSL?
+
+Yes. Install **Ubuntu 24.04** from WSL (`wsl --install -d Ubuntu-24.04`), then run the install
+command above inside it. Ubuntu under WSL starts systemd by default, which the panel and its
+game servers need; if yours doesn't, add `systemd=true` under `[boot]` in `/etc/wsl.conf` and
+run `wsl --shutdown`.
+
+The panel then opens in your Windows browser at **http://localhost:8080/**. Players on other
+PCs need a few more steps, because by default WSL keeps Ubuntu behind its own private network:
+
+1. **Turn on mirrored networking** (Windows 11 22H2 or newer). Put this in
+   `%UserProfile%\.wslconfig`, then run `wsl --shutdown`:
+
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+
+   Ubuntu then shares your PC's network address, and players connect to your **Windows PC's
+   IP address** (from `ipconfig`).
+
+2. **Allow the game ports through the Hyper-V firewall** that sits in front of WSL. In an
+   admin PowerShell, for example for the first Bedrock server:
+
+   ```powershell
+   New-NetFirewallHyperVRule -Name "MinecraftTCP" -DisplayName "Minecraft TCP" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 19132
+   New-NetFirewallHyperVRule -Name "MinecraftUDP" -DisplayName "Minecraft UDP" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol UDP -LocalPorts 19140,7551
+   ```
+
+3. **Allow the same ports in Windows Defender Firewall**:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Minecraft TCP" -Direction Inbound -Protocol TCP -LocalPort 19132 -Action Allow
+   New-NetFirewallRule -DisplayName "Minecraft UDP" -Direction Inbound -Protocol UDP -LocalPort 19140,7551 -Action Allow
+   ```
+
+   Also make sure Windows treats your network as **Private**.
+
+Which ports? A **Java** server needs TCP on its port (25565 for the first one). Current
+**Bedrock** servers use the NetherNet transport: TCP on their `server-port` (19132 for the
+first), UDP on their `server-udp-ports` (shown in **Configuration**) and UDP 7551 for LAN
+discovery. Opening only UDP 19132, as older Bedrock guides say, isn't enough. Each new server
+gets its own ports, so add rules for those too. To open the panel from other PCs as well, allow
+TCP 8080 the same way.
+
+Two more things to know:
+
+- **WSL can stop Ubuntu when nothing on Windows is using it**, for example a while after you
+  close the last Ubuntu window, and it only starts after you sign in to Windows. Your game
+  servers stop with it. For a server that's always up, keep an Ubuntu window open, or use a
+  real Ubuntu machine or VM.
+- For players outside your home, forward the same ports on your router to your **Windows PC's**
+  IP address.
 
 ## Which Minecraft versions and server types does it support?
 
