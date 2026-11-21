@@ -6,6 +6,7 @@ Advanced options (admin only, Panel Settings):
       (custom = admin-supplied cert/key, e.g. certbot; cluster = issued by the cluster's CA,
        set only by creating or joining a cluster, see core/cluster.py)
   * login_mode: "required" | "trusted_networks"   (no sign-in from private LAN ranges)
+  * require_2fa_admins: admins must set up two-factor sign-in before they can do anything else
 """
 import ipaddress
 import json
@@ -39,6 +40,7 @@ DEFAULTS = {
     "cert_file": "",
     "key_file": "",
     "login_mode": "required",
+    "require_2fa_admins": False,
     "trusted_networks": DEFAULT_TRUSTED_NETWORKS,
     "extra_hosts": [],
     # Shown in the sidebar, browser tab and sign-in page to tell panels apart. "" = this host's name.
@@ -118,6 +120,8 @@ def validate(new):
 
     if s["login_mode"] not in ("required", "trusted_networks"):
         raise SettingsError("Unknown sign-in mode.")
+    if not isinstance(s["require_2fa_admins"], bool):
+        raise SettingsError("Require two-factor for admins must be on or off.")
     nets = []
     for raw in _as_list(s["trusted_networks"]):
         try:

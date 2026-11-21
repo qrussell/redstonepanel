@@ -13,6 +13,9 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .br
 .B redstonepanel reset-security
 .br
+.B redstonepanel reset-2fa
+.I NAME
+.br
 .B redstonepanel removed
 .br
 .B redstonepanel restore
@@ -72,6 +75,17 @@ Recovery: switch the panel back to plain HTTP on port 8080 with sign\-in require
 On a cluster member this cuts the panel off from the cluster until
 .B cluster-https
 is run.
+.TP
+.BI "reset-2fa " NAME
+Recovery: turn off two\-factor sign\-in for the panel or Linux account
+.IR NAME ,
+for example after a lost phone with no recovery codes left. The account signs in with its
+password and can set two\-factor up again (it is asked to at once when Panel Settings require
+it for admins). If
+.I /var/lib/redstonepanel/totp.json
+can't be read, it is moved aside to
+.I totp.json.damaged
+instead, which turns two\-factor off for every account.
 .TP
 .B removed
 List game servers that were uninstalled with \fBKeep World\fR: folders in
@@ -179,7 +193,7 @@ or by an admin in the panel.
 .SH FILES
 .TP
 .I /var/lib/redstonepanel/
-Panel state: users.json (scrypt password hashes), settings.json, secret.key, tls/, cluster/, templates and chat history.
+Panel state: users.json (scrypt password hashes), totp.json (two-factor secrets and hashed recovery codes), settings.json, secret.key, tls/, cluster/, templates and chat history.
 .TP
 .I /var/lib/redstonepanel/cluster/
 Cluster state (mode 0700): role, the cluster CA and this panel's certificate; on a master also the nodes and their tokens.
