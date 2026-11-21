@@ -9,6 +9,16 @@ the dashboard.
 
 ---
 
+## 1.16.13: less downtime for big worlds, and finding panels on the network *(November 2026)*
+
+- **Pre-copy while it runs**, an option in the **Move** window: the world is copied while
+  players stay on, then the server stops only while what changed is sent. The window says how
+  long it was down.
+- **Find panels on your network** under **🛡️ Settings → Cluster → Add a node**, with **Add to
+  cluster** for each one found.
+
+[Release notes](../../release-notes/v1.16.13.md)
+
 ## 1.16.12: Bedrock that keeps up, and update alerts *(November 2026)*
 
 - **Update available** on the dashboard, sidebar and a server's Overview when a newer

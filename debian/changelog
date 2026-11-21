@@ -1,3 +1,18 @@
+redstonepanel (1.16.13) noble; urgency=medium
+
+  * Pre-copy while it runs: an option in the Move window copies a server's
+    folder while it keeps running, then stops it and sends only what
+    changed, so a big world is down for seconds instead of minutes. The
+    window says how long the server was down.
+  * Find panels on your network: Panel Settings > Cluster > Add a node
+    lists the RedstonePanels on the master's private networks, marked as
+    standalone, a node here or in another cluster, with Add to cluster
+    making a join code.
+  * Cluster contract 5: a pre-copy needs 1.16.13 or later on both members;
+    plain moves still work with older nodes.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 21:50:00 +0000
+
 redstonepanel (1.16.12) noble; urgency=medium
 
   * Update available: the panel checks every 6 hours for a newer Bedrock
