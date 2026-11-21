@@ -2,7 +2,7 @@
 
 **RedstonePanel** is a free, self-hosted web panel for Minecraft **Java** and **Bedrock**
 servers on your own Ubuntu machine. Every game server is a plain systemd service; the panel
-installs and updates with `apt`. Current version: **1.15.0**.
+installs and updates with `apt`. Current version: **1.16.6**.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/hero.png"><img src="../guide/images/hero.png" alt="The RedstonePanel dashboard"></picture>
 
