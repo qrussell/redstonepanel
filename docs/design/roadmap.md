@@ -941,9 +941,18 @@ refused joins, so those are Java only.
     bytes) and the download is tried once more after 30 seconds. The screenshot demo takes
     `update-alert.png` and `bedrock-auto-update.png` in both themes.
 
-    Found while testing, not changed here: the panel's ordinary **Stop** and **Restart** of a
-    Bedrock server only run `systemctl stop`, so BDS never gets its `stop` command (no "Quit
-    correctly"). Updates send `stop` themselves.
+    **Fixed in the same release: Bedrock always saves before it stops.** Found while testing:
+    the ordinary **Stop** and **Restart** of a Bedrock server only ran `systemctl stop`, whose
+    SIGTERM goes to `screen`, which hangs up on `bedrock_server`, so it quit without saving and
+    the last minutes of play could be lost. The game servers' drop-in now has
+    `ExecStop=redstonepanel stop-unit %N $MAINPID`, which types Bedrock's own `stop` into its
+    console and waits up to 75 seconds for it to exit (it logs "Quit correctly") before systemd
+    ends what is left. Because it is in the unit, every stop is covered: Stop, Restart, backups,
+    restores, moves, updates, scheduled restarts, uninstalling and shutting the machine down.
+    Java servers are untouched (they save on SIGTERM). Tested with `tests/test_safe_stop.py`
+    and `packaging/test/test-bedrock-stop.sh` (a stand-in BDS that only writes its world when it
+    gets `stop`, through the Stop and Restart buttons, the restart timer and `systemctl stop`),
+    and a real Bedrock Dedicated Server on Quentin's PC.
 
 ### 1.17: server performance and tuning
 

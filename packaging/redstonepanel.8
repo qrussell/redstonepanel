@@ -169,8 +169,12 @@ in \fI/var/lib/redstonepanel/upgrade.log\fR and the outcome in \fIupgrade.json\f
 The package installs a systemd drop-in for every
 .BR minecraft-*.service ,
 .IR /usr/lib/systemd/system/minecraft-.service.d/redstonepanel.conf .
-It treats exit status 143 (Java stopped by SIGTERM) as a clean stop, and its
-\fBExecStartPost\fR and \fBExecStopPost\fR run \fBredstonepanel notify-unit\fR, which sends
+It treats exit status 143 (Java stopped by SIGTERM) as a clean stop. Its \fBExecStop\fR runs
+\fBredstonepanel stop-unit\fR, which types a Bedrock server's own \fBstop\fR command into its
+console and waits up to 75 seconds for it to save the world and quit before systemd ends what is
+left (Java saves on SIGTERM, so nothing is done for it). Every stop goes through it: the Stop and
+Restart buttons, backups, restores, moves, updates, scheduled restarts and shutting the machine
+down. Its \fBExecStartPost\fR and \fBExecStopPost\fR run \fBredstonepanel notify-unit\fR, which sends
 "started", "stopped" and "crashed" notifications to the webhook, if one is set. They run without
 the panel, so a crash is reported while the panel is stopped. Failures of these hooks never
 affect the game server.
