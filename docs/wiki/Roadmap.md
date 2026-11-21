@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.12**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.13**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,12 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.13: less downtime for big worlds
-
-- An optional **pre-copy** for moves: copy the world while the server keeps running, then only
-  what changed after it stops.
-- **Find panels on your network** and offer to add them to the cluster.
 
 ### 1.17: server performance and tuning
 
@@ -104,4 +98,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.12** adds update alerts and Bedrock servers that update themselves; **1.16.11** copies backups to SSH or S3-compatible storage, and **1.16.10** makes the panel work on a phone.
+See [What's New](Whats-New.md). The latest: **1.16.13** moves big worlds with seconds of downtime and finds panels on your network; **1.16.12** adds update alerts and Bedrock servers that update themselves, and **1.16.11** copies backups to SSH or S3-compatible storage.
