@@ -179,6 +179,7 @@ def upgrade_bedrock_firewall():
             rules = server_firewall_rules(s["name"])
             if shutil.which("ufw"):
                 open_firewall_rules(rules)
+                firewall_record(s["name"], rules)
                 write_log(f"[FIREWALL] {s['name']}: allowed " + ", ".join(f"{p}/{q}" for p, q in sorted(rules)) + ".")
         except Exception as e:                 # one odd server mustn't stop the others or the panel
             write_log(f"[FIREWALL] Couldn't check {s.get('name')}: {e}")
@@ -196,17 +197,145 @@ def open_firewall_rules(rules):
         open_firewall(port, proto)
 
 
+def phantom_firewall_rules(phantoms=None):
+    """The UDP ports Phantom proxies on this machine listen on: their bind port, and 19132 for
+    LAN discovery while there is any."""
+    try:
+        phantoms = proxies.find_phantoms() if phantoms is None else phantoms
+    except Exception:
+        return set()
+    rules = {(str(p["bind_port"]), "udp") for p in phantoms if str(p.get("bind_port") or "").isdigit()}
+    return rules | ({(str(proxies.PHANTOM_LAN_PORT), "udp")} if phantoms else set())
+
+
+def rules_in_use(servers=None):
+    """Every ufw rule a server on the panel or a Phantom proxy needs."""
+    needed = set()
+    for s in list_servers() if servers is None else servers:
+        needed |= {tuple(r) for r in s.get("firewall_rules") or []}
+    return needed | phantom_firewall_rules()
+
+
 def close_firewall_rules(rules):
     """Removes rules no server on the panel needs any more (another server may share one, as
     every NetherNet server shares 7551)."""
     if not rules or not shutil.which("ufw"):
         return
-    needed = set()
-    for s in list_servers():
-        needed |= {tuple(r) for r in s.get("firewall_rules") or []}
-    for port, proto in sorted(set(rules) - needed):
+    for port, proto in sorted(set(rules) - rules_in_use()):
         run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
     _firewall_changed()
+
+
+# The rules the panel last opened for each server, so a change it didn't make (server.properties
+# edited over SSH, a unit deleted by hand) can be followed: {"minecraft-x": [["19132", "tcp"], ...]}
+FIREWALL_RECORD = "firewall-rules.json"
+_fw_lock = threading.RLock()
+
+
+def _fw_path():
+    return os.path.join(DATA_DIR, FIREWALL_RECORD)
+
+
+def _fw_load():
+    try:
+        with open(_fw_path()) as f:
+            data = json.load(f)
+        return {k: {tuple(r) for r in v} for k, v in data.items() if isinstance(v, list)}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
+
+
+def _fw_save(rec):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = _fw_path() + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({k: sorted(map(list, v)) for k, v in sorted(rec.items())}, f, indent=1)
+    os.replace(tmp, _fw_path())
+
+
+def firewall_record(server_name, rules):
+    """Notes the rules the panel opened for a server (None: the server left the panel)."""
+    with _fw_lock:
+        rec = _fw_load()
+        if rules is None:
+            rec.pop(server_name, None)
+        else:
+            rec[server_name] = set(rules)
+        _fw_save(rec)
+
+
+def open_server_firewall(server_name, edition, d):
+    """Opens the rules a server needs from its server.properties, and notes them."""
+    rules = firewall_rules(edition, read_properties(d))
+    open_firewall_rules(rules)
+    firewall_record(server_name, rules)
+
+
+def sync_firewall():
+    """Keeps ufw in step with server.properties when it changed without the panel: a server whose
+    ports or transport were edited by hand gets its new rules and loses the old ones; a server
+    whose unit is gone loses its rules. Rules another server or a Phantom still needs stay.
+    A server seen for the first time is only noted (the dashboard names rules it lacks)."""
+    if not shutil.which("ufw"):
+        return []
+    done = []
+    with _fw_lock:
+        servers = list_servers()
+        with _busy_lock:
+            busy = set(_busy)
+        rec = _fw_load()
+        now = {s["name"]: {tuple(r) for r in s.get("firewall_rules") or []} for s in servers}
+        in_use = rules_in_use(servers)
+        changed = False
+        for name, need in now.items():
+            if name in busy:
+                continue
+            had = rec.get(name)
+            if had is None:
+                rec[name] = need
+                changed = True
+            elif had != need:
+                opened, closed = need - had, had - need - in_use
+                open_firewall_rules(opened)
+                for port, proto in sorted(closed):
+                    run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
+                rec[name] = need
+                changed = True
+                done.append(name)
+                write_log(f"[FIREWALL] {name}'s server.properties changed outside the panel: "
+                          + "; ".join(x for x in (
+                              opened and "allowed " + ", ".join(f"{p}/{q}" for p, q in sorted(opened)),
+                              closed and "removed " + ", ".join(f"{p}/{q}" for p, q in sorted(closed))) if x)
+                          + ".")
+        for name in sorted(set(rec) - set(now) - busy):
+            closed = rec.pop(name) - in_use
+            changed = True
+            for port, proto in sorted(closed):
+                run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
+            if closed:
+                done.append(name)
+                write_log(f"[FIREWALL] {name} is no longer on the panel: removed "
+                          + ", ".join(f"{p}/{q}" for p, q in sorted(closed)) + ".")
+        if changed:
+            _fw_save(rec)
+    if done:
+        _firewall_changed()
+    return done
+
+
+def firewall_watcher(every=120, first=20):
+    """Runs sync_firewall() in a daemon thread: shortly after start, then every two minutes."""
+    def loop():
+        time.sleep(first)
+        while True:
+            try:
+                sync_firewall()
+            except Exception as e:             # never let this take the panel down
+                write_log(f"[FIREWALL] Checking the firewall failed: {e}")
+            time.sleep(every)
+    t = threading.Thread(target=loop, name="firewall", daemon=True)
+    t.start()
+    return t
 
 
 def properties_changed(server_name, before):
@@ -216,6 +345,7 @@ def properties_changed(server_name, before):
     if after != before:
         open_firewall_rules(after - before)
         close_firewall_rules(before - after)
+    firewall_record(server_name, after)
 
 # Never part of a template: each server keeps its own RCON password. Templates saved before
 # 1.15.1 may still hold one; it's left out when they're read.
@@ -934,6 +1064,7 @@ def remove_server(server_name, keep_world, note=None):
     subprocess.run(["systemctl", "reset-failed", f"{server_name}.service"], capture_output=True)
     # Its ports are closed again unless another server uses them (restoring opens them again)
     close_firewall_rules(rules)
+    firewall_record(server_name, None)
     # Its backup and restart timers go too; the backups themselves stay in /var/backups/redstonepanel
     from core import backups, restarts
     backups.on_server_removed(server_name, purged=not keep_world)
@@ -1123,7 +1254,7 @@ def restore_server(name):
         info = _read_removed_info(d)
         heap = {k: info[k] for k in ("xms", "xmx") if isinstance(info.get(k), str) and HEAP_RE.match(info[k])}
 
-        open_firewall_rules(firewall_rules(edition, read_properties(d)))
+        open_server_firewall(name, edition, d)
         ensure_minecraft_user(d)
         run_and_log(["chown", "-R", "minecraft:minecraft", d])
         _write_unit(name, d, edition, **heap, **({"java": java} if java else {}))
@@ -1219,7 +1350,7 @@ def _import_unpacked(staging, root):
                 write_log(f"[WARNING] {e} The server was imported, but won't start until it is.")
                 java = "/usr/bin/java"
 
-        open_firewall_rules(firewall_rules(edition, read_properties(mc_dir)))
+        open_server_firewall(svc_name, edition, mc_dir)
         ensure_minecraft_user(mc_dir)
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
         _write_unit(svc_name, mc_dir, edition, **({"java": java} if java else {}))
@@ -1267,7 +1398,7 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
                 with open(eula, "w") as f:
                     f.write("eula=true\n")
         heap = {k: v for k, v in (heap or {}).items() if k in ("xms", "xmx") and HEAP_RE.match(str(v))}
-        open_firewall_rules(firewall_rules(edition, read_properties(mc_dir)))
+        open_server_firewall(name, edition, mc_dir)
         ensure_minecraft_user(mc_dir)
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
         _write_unit(name, mc_dir, edition, **heap, **({"java": java} if java else {}))
@@ -1343,7 +1474,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
             # After daemon-reload, so systemd already knows the new unit's working directory
             apply_template_to_server(svc_name, template_id, edition=edition)
         # The ports it needs, from what server.properties says now (a template may set the transport)
-        open_firewall_rules(firewall_rules(edition, read_properties(mc_dir)))
+        open_server_firewall(svc_name, edition, mc_dir)
         run_and_log(["systemctl", "enable", f"{svc_name}.service"])
         run_and_log(["systemctl", "start", f"{svc_name}.service"])
         return svc_name

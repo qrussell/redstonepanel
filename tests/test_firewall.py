@@ -158,3 +158,84 @@ class UpgradeOnce(unittest.TestCase):
             M.upgrade_bedrock_firewall()
         self.assertEqual(self.cmds, [])
         self.assertEqual(M.read_properties(self.bedrock)["server-udp-ports"], "19140")
+
+
+class Sync(unittest.TestCase):
+    """Following server.properties edited outside the panel, and servers removed by hand."""
+    def setUp(self):
+        self.data = tempfile.mkdtemp(dir=TMP)
+        self.cmds = []
+        self.servers = []
+        self.phantoms = []
+        for p in (mock.patch.object(M, "DATA_DIR", self.data),
+                  mock.patch.object(M, "run_and_log", lambda cmd, shell=False: self.cmds.append(" ".join(cmd))),
+                  mock.patch.object(M.shutil, "which", lambda n: "/usr/sbin/ufw"),
+                  mock.patch.object(M, "list_servers", lambda: self.servers),
+                  mock.patch.object(M.proxies, "find_phantoms", lambda: self.phantoms)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def serve(self, **rules):
+        self.servers = [{"name": n, "firewall_rules": sorted(map(list, r))} for n, r in rules.items()]
+
+    def log(self):
+        with open(os.environ["RP_LOG_FILE"]) as f:
+            return f.read()
+
+    def test_first_sight_only_notes(self):
+        self.serve(**{"minecraft-b": {("19132", "tcp"), ("7551", "udp")}})
+        self.assertEqual(M.sync_firewall(), [])
+        self.assertEqual(self.cmds, [])
+        self.assertEqual(M._fw_load(), {"minecraft-b": {("19132", "tcp"), ("7551", "udp")}})
+
+    def test_hand_edited_port(self):
+        M.firewall_record("minecraft-b", {("19132", "tcp"), ("19132", "udp"), ("7551", "udp")})
+        self.serve(**{"minecraft-b": {("19140", "tcp"), ("19140", "udp"), ("7551", "udp")}})
+        self.assertEqual(M.sync_firewall(), ["minecraft-b"])
+        self.assertEqual(self.cmds, ["ufw allow 19140/tcp", "ufw allow 19140/udp",
+                                     "ufw delete allow 19132/tcp", "ufw delete allow 19132/udp"])
+        self.assertIn("minecraft-b's server.properties changed outside the panel: allowed 19140/tcp, 19140/udp; "
+                      "removed 19132/tcp, 19132/udp.", self.log())
+        self.cmds.clear()
+        self.assertEqual(M.sync_firewall(), [])                  # nothing more to do
+        self.assertEqual(self.cmds, [])
+
+    def test_shared_rules_stay(self):
+        # 7551 is still another server's; 19300 is a Phantom's
+        M.firewall_record("minecraft-a", {("19132", "tcp"), ("7551", "udp"), ("19300", "udp")})
+        self.serve(**{"minecraft-a": {("19132", "udp")}, "minecraft-b": {("19150", "tcp"), ("7551", "udp")}})
+        self.phantoms = [{"bind_port": 19300}]
+        M.firewall_record("minecraft-b", {("19150", "tcp"), ("7551", "udp")})
+        M.sync_firewall()
+        self.assertEqual(self.cmds, ["ufw allow 19132/udp", "ufw delete allow 19132/tcp"])
+
+    def test_server_gone_without_the_panel(self):
+        M.firewall_record("minecraft-gone", {("25570", "tcp")})
+        M.firewall_record("minecraft-b", {("7551", "udp"), ("19132", "tcp")})
+        self.serve(**{"minecraft-b": {("7551", "udp"), ("19132", "tcp")}})
+        self.assertEqual(M.sync_firewall(), ["minecraft-gone"])
+        self.assertEqual(self.cmds, ["ufw delete allow 25570/tcp"])
+        self.assertNotIn("minecraft-gone", M._fw_load())
+        self.assertIn("minecraft-gone is no longer on the panel: removed 25570/tcp.", self.log())
+
+    def test_busy_server_left_alone(self):
+        M.firewall_record("minecraft-new", {("19134", "tcp")})
+        with mock.patch.object(M, "_busy", {"minecraft-new"}):
+            M.sync_firewall()                    # being deployed or moved: its unit isn't there yet
+        self.assertEqual(self.cmds, [])
+        self.assertIn("minecraft-new", M._fw_load())
+
+    def test_without_ufw(self):
+        with mock.patch.object(M.shutil, "which", lambda n: None):
+            self.assertEqual(M.sync_firewall(), [])
+        self.assertEqual(M._fw_load(), {})
+
+    def test_panel_changes_are_noted(self):
+        # A change made in the panel isn't reported as made outside it
+        after = {("19140", "tcp"), ("7551", "udp")}
+        self.serve(**{"minecraft-b": after})
+        with mock.patch.object(M, "server_firewall_rules", lambda s: after):
+            M.properties_changed("minecraft-b", {("19132", "tcp"), ("7551", "udp")})
+        self.cmds.clear()
+        self.assertEqual(M.sync_firewall(), [])
+        self.assertEqual(self.cmds, [])

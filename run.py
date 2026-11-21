@@ -137,6 +137,8 @@ def main():
         manager.upgrade_bedrock_firewall()
     except Exception as e:
         manager.write_log(f"[FIREWALL] Bedrock firewall check failed: {e}")
+    # Follow server.properties edited outside the panel, and servers removed by hand (1.16.11)
+    manager.firewall_watcher()
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 

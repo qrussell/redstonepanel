@@ -358,7 +358,8 @@ it runs (`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`, or `…-arm64` on ARM64)
 `ufw` is also recommended. When it is installed, the panel opens each game server's ports
 in it (for Bedrock servers, which use NetherNet unless `transport=raknet` is set: TCP
 server-port, UDP server-udp-ports and UDP 7551) and keeps them in step with the server's
-settings.
+settings, also when server.properties is edited by hand. The dashboard points out game-port
+rules that no server uses any more.
 
 | What | Where |
 | --- | --- |

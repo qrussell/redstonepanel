@@ -118,8 +118,11 @@ Install `ufw` too if you want the panel to open each game server's ports in the 
 you: TCP for Java, and for Bedrock (NetherNet, the default since Bedrock 1.26.50, also when
 server.properties has no `transport` line) TCP on its port, UDP on its `server-udp-ports` and
 UDP 7551 for LAN discovery. A Bedrock server set to `transport=raknet` gets UDP on its port and
-its IPv6 port instead. It follows port and transport changes you make in Configuration, and closes the
-ports again when the server is removed (7551 stays open while another NetherNet server needs it).
+its IPv6 port instead. It follows port and transport changes you make in Configuration, and
+closes the ports again when the server is removed (7551 stays open while another NetherNet
+server needs it). If you edit server.properties by hand, the panel moves the rules within two
+minutes or when you open the dashboard. The dashboard also names any game-port rule that no
+server uses, with the command to close it.
 
 **Updating.** When a new version is out, the dashboard's **Needs attention** says so and the
 **Host** card shows **Update now** (admins). Click it: the panel updates its package with apt,

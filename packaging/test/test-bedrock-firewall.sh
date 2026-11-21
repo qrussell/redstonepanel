@@ -1,7 +1,9 @@
 #!/bin/bash
 # End-to-end test of the ufw rules for Bedrock servers (1.16.11). Bedrock 1.26.50 and later use
 # NetherNet when server.properties has no transport line: TCP server-port, UDP server-udp-ports
-# and UDP 7551. Older panels opened only UDP server-port for such servers.
+# and UDP 7551. Older panels opened only UDP server-port for such servers. Also checks that the
+# panel follows server.properties edited by hand and units deleted by hand, and warns about
+# game-port rules no server uses.
 # One throwaway systemd container with ufw, installing the .deb from dist/. The imported server
 # is a stand-in (a bedrock_server script that sleeps). With the internet, a real Bedrock server
 # is deployed too and the ports it listens on are compared with the rules the panel opened.
@@ -84,6 +86,28 @@ dx "ufw delete allow 7551/udp" >/dev/null
 restart_panel
 has 7551/udp && bad "a rule the admin removed came back on the next start" || ok "it only does this once: a rule removed afterwards stays removed"
 dx "ufw allow 7551/udp" >/dev/null
+
+# --- server.properties edited by hand: opening the dashboard follows it
+dx "sed -i 's/^server-port=.*/server-port=19150/; s/^server-portv6=.*/server-portv6=19151/; s/^server-udp-ports=.*/server-udp-ports=19150/' /opt/$SRV/server.properties"
+api GET /api/host >/dev/null
+[ "$(rules)" = "19150/tcp 19150/udp 7551/udp" ] && ok "a port changed by hand: the panel moves the rules to 19150" || bad "rules after a hand edit: $(rules)"
+dx "grep -F '[FIREWALL]' /var/log/redstonepanel/panel.log" | grep -q "changed outside the panel" && ok "and logs it" || bad "hand edit log line"
+P=19150
+
+# --- a rule nothing uses gets a warning with the command to close it
+dx "ufw allow 19170/udp" >/dev/null
+api GET /api/host | json "[a['text'] for a in d['attention']]" | grep -q "sudo ufw delete allow 19170/udp" \
+    && ok "a game-port rule no server uses gets a warning" || bad "leftover warning"
+dx "ufw delete allow 19170/udp" >/dev/null
+
+# --- a server whose unit was deleted by hand loses its rules; shared 7551 stays
+SRV2=$(dx "curl -s -b /tmp/jar -F file=@/tmp/srv.zip http://127.0.0.1:8080/api/servers/import" | json "d['server']")
+P2=$(prop "$SRV2" server-port)
+[ "$(rules)" = "$(printf '%s\n' $P/tcp $P/udp $P2/tcp $P2/udp 7551/udp | sort | tr '\n' ' ' | sed 's/ $//')" ] \
+    && ok "a second server: $P2/tcp and $P2/udp added" || bad "rules with two servers: $(rules)"
+dx "systemctl disable --now $SRV2 >/dev/null 2>&1; rm -f /etc/systemd/system/$SRV2.service; systemctl daemon-reload"
+api GET /api/host >/dev/null
+[ "$(rules)" = "$P/tcp $P/udp 7551/udp" ] && ok "its unit deleted by hand: its rules go, 7551 stays for the other" || bad "rules after unit deleted: $(rules)"
 
 # --- removing the server closes its rules
 api DELETE "/api/servers/$SRV?keep_world=false" >/dev/null

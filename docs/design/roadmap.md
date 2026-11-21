@@ -381,6 +381,14 @@ ports from the kernel's random range; it never writes keys back to server.proper
 give a server without `server-udp-ports` its own server-port, as new servers get. Once after
 upgrading, the panel does the same for existing Bedrock servers and opens the rules they need,
 closing nothing (`/var/lib/redstonepanel/bedrock-firewall-1.16.11` records that it ran).
+The panel also keeps ufw in step when server.properties changes without it: it notes the rules
+it opened for each server (`firewall-rules.json`), and every two minutes and whenever the
+dashboard loads it opens what a hand-edited server now needs, closes what it no longer needs,
+and closes the rules of a server whose unit was deleted by hand (never a rule another server or
+a Phantom still uses). A rule on a game port (7551, 19132-19999, 25565-25999) that no server
+needs gets a dashboard note with the `ufw delete` command; the panel doesn't close rules it
+didn't open. A rule the panel opened and an admin later deleted isn't put back; the dashboard
+names it as missing.
 
 ### 1.14.2: who joined, who was turned away *(Nov 2026)*
 
