@@ -789,7 +789,11 @@ refused joins, so those are Java only.
     once-per-failure webhook, fetch and import); by hand against a real OpenSSH server and the
     moto S3 server (12 MB multipart upload, download, delete); and
     `packaging/test/test-offsite.sh` (panel, SSH storage, MinIO and a second panel as the new
-    machine) in Docker. TEST-RESULTS
+    machine) in Docker: in a cloud thread all 32 SSH checks passed (copy after Back up now and
+    after scheduled backups with the panel stopped, retention on the storage, a storage that's
+    down, restore, a damaged copy refused, a changed host key, the new machine's import); the
+    MinIO and online-import checks run where the MinIO image and the internet are reachable
+    (GitHub Actions, Quentin's PC).
 
 ### 1.16.12: Bedrock that keeps up, and update alerts
 
