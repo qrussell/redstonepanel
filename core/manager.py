@@ -908,7 +908,7 @@ def _fetch_bedrock(d):
     """Downloads the latest Bedrock Dedicated Server and unpacks it into d."""
     fetch_cmd = """
     SERVER_URL=$(curl -s https://net-secondary.web.minecraft-services.net/api/v1.0/download/links | jq -r '.result.links[] | select(.downloadType=="serverBedrockLinux") | .downloadUrl' 2>/dev/null)
-    if [ -z "$SERVER_URL" ] || [ "$SERVER_URL" == "null" ]; then
+    if [ -z "$SERVER_URL" ] || [ "$SERVER_URL" = "null" ]; then
         SERVER_URL=$(curl -s -H "User-Agent: Mozilla/4.0" https://www.minecraft.net/en-us/download/server/bedrock | grep -o 'https://[^"]*/bin-linux/bedrock-server-[^"]*\\.zip' | head -n 1)
     fi
     wget "$SERVER_URL" -O """ + d + "/bedrock-server.zip"
@@ -1208,9 +1208,11 @@ def _restore_ports(d, edition):
             write_log(f"[RESTORE] RCON port {rcon_port} is used by another server; moved it.")
     return port, (old if str(port) != old else None)
 
-def restore_server(name):
+def restore_server(name, same_version=False):
     """Brings a removed server back: downloads the server binary only if it's missing, keeps
-    its port unless it's taken, writes a new systemd unit, then enables and starts it."""
+    its port unless it's taken, writes a new systemd unit, then enables and starts it.
+    same_version: a missing Java server.jar is downloaded at the Minecraft version the folder
+    records (a server made from an off-site backup, 1.16.11), not the newest."""
     match = next((s for s in list_removed_servers() if s["name"] == name), None)
     if not match:
         raise ServerError(f"There's no removed server called '{name}'.")
@@ -1233,7 +1235,8 @@ def restore_server(name):
             write_log(f"[RESTORE] {name} has no server binary; downloading the latest {edition.capitalize()} release.")
             if edition == "java":
                 current = javaservers.read_info(d)
-                _install_java(d, current.get("loader") or "vanilla", None, current)
+                _install_java(d, current.get("loader") or "vanilla",
+                              current.get("minecraft") if same_version else None, current)
             else:
                 _fetch_bedrock(d)
             downloaded = True

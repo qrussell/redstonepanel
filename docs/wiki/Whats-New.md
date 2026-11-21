@@ -9,6 +9,28 @@ the dashboard.
 
 ---
 
+## 1.16.10: a panel that works on a phone *(November 2026)*
+
+- **Every page fits a phone:** a ☰ menu instead of the sidebar, big **Start**, **Restart** and
+  **Stop** buttons, tables as cards and full-screen dialogs.
+- **Install it as an app** from your phone's browser over HTTPS, so it opens like any other
+  app.
+- **📱 Open on your phone** on the desktop shows a QR code of the panel's address.
+
+[Release notes](../../release-notes/v1.16.10.md)
+
+## 1.16.9: newer Ubuntu, Debian, ARM64 and Raspberry Pi *(November 2026)*
+
+- **Ubuntu 26.04 LTS and 26.10, Debian 13**, as well as Ubuntu 24.04, on x86-64 and ARM64.
+- **Raspberry Pi 4 or 5** with the 64-bit Raspberry Pi OS, for Java servers. See
+  [On a Raspberry Pi](Installation.md#on-a-raspberry-pi) for memory, storage and cooling.
+- **Bedrock is x86-64 only**, so it's greyed out on ARM64 machines and nodes; Bedrock players
+  can join a Java server through Geyser.
+- **The Java versions your system packages** (Debian has 21 and 25), with a note when a
+  Minecraft version needs one it doesn't have.
+
+[Release notes](../../release-notes/v1.16.9.md)
+
 ## 1.16.8: backups on another cluster node *(November 2026)*
 
 - **Also keep a copy on** another cluster member, from a server's **Backups** tab on the
