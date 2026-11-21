@@ -1203,8 +1203,9 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
                 f.write(f"server-port={port}\nquery.port={port}\nmotd=A Managed Java Minecraft Server\n")
         else:
             _fetch_bedrock(mc_dir)
-            with open(f"{mc_dir}/server.properties", "w") as f:
-                f.write(f"server-port={port}\nserver-portv6={port+1}\nquery.port={port}\n")
+            # The zip ships a full server.properties with every setting; BDS never writes missing
+            # keys back, so only the ports change and the rest stays as Mojang shipped it.
+            write_properties(mc_dir, {"server-port": port, "server-portv6": port + 1, "query.port": port})
             write_screenrc(mc_dir)
 
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
