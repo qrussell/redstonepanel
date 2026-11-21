@@ -9,6 +9,16 @@ the dashboard.
 
 ---
 
+## 1.16.7: two-factor sign-in *(November 2026)*
+
+- **A code from your phone after your password**, for panel and Linux accounts. Set it up
+  under **🔑 Password** by scanning a QR code with any authenticator app.
+- **Ten recovery codes** for a lost phone, and **Reset two-factor** for admins
+  (`sudo redstonepanel reset-2fa NAME` on the server).
+- **Require two-factor for admins**, an optional setting under **🛡️ Settings → Sign-in**.
+
+[Release notes](../../release-notes/v1.16.7.md)
+
 ## 1.16.6: a console that makes room *(November 2026)*
 
 - **The console no longer hides the page.** While it's open, the page beside the sidebar ends

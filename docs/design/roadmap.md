@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.6 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, and a folding server list shipped; two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian and ARM64 (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.7 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list and two-factor sign-in (1.16.7) shipped; backups on another node (1.16.8), newer Ubuntu, Debian and ARM64 (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -23,13 +23,13 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.16.6)
+## What already exists (1.16.7)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
 zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
-trusted-LAN sign-in, clusters (managing every node's servers from the master, with real
+trusted-LAN sign-in, two-factor sign-in with recovery codes, clusters (managing every node's servers from the master, with real
 certificates for a master on the internet, and moving or copying servers between members), a first-run setup guide, kick, ban and unban, the redstone logo and theme, a server list that folds by node and edition, the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
@@ -560,7 +560,7 @@ refused joins, so those are Java only.
     button that opened it is scrolled back into view. The planned point releases below each
     moved up one number again.
 
-### 1.16.7: two-factor sign-in
+### 1.16.7: two-factor sign-in *(released 21 Nov 2026)*
 
 15. **A second step at sign-in for admin accounts.** An admin is effectively root, and a
     password alone is a thin wall once the panel is reachable from outside the home network.

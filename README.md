@@ -98,6 +98,10 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**Two-factor sign-in** *(1.16.7)*. Any account can ask for a code from an authenticator app
+after its password, with ten recovery codes for a lost phone, and admins can require it for
+every admin. Read the [1.16.7 release notes](release-notes/v1.16.7.md).
+
 **A console that makes room** *(1.16.6)*. The console used to slide up over the bottom of the
 window, hiding buttons until it was closed. While it's open, the page now ends above it and the
 sidebar stays visible. Read the [1.16.6 release notes](release-notes/v1.16.6.md).
