@@ -584,6 +584,32 @@ refused joins, so those are Java only.
 
     **Size:** about a week, most of it the sign-in flow and recovery.
 
+    **As built:** `core/twofactor.py` (RFC 6238 TOTP with `hmac`, SHA-1, 30-second steps, one
+    step of drift either way, a used code can't be replayed) and `core/qr.py`, a small QR
+    encoder (byte mode, level M, versions 1-10). The QR code is drawn on the server as an SVG
+    rather than by a script in the page: same result, nothing new installed, and the encoder
+    is unit-tested in Python. Accounts are keyed `panel:NAME` / `linux:NAME` in
+    `data/totp.json` (0600); recovery codes are stored as SHA-256 only. Sign-in: the right
+    password on an account with 2FA returns `code_needed` and a five-minute ticket in its own
+    cookie (`rp_2fa`, path `/api/auth/login`, signed with a key derived for that purpose so it
+    can never pass as a session); `POST /api/auth/login/code` exchanges it for the session.
+    The password step no longer resets the failure count when a code is still needed, so
+    re-entering the password can't be used to keep guessing codes. Sessions record that they
+    passed the second step, so turning 2FA on signs out every other session (this browser
+    gets a fresh cookie). **Require two-factor for admins** is enforced in the API, not just
+    the page: until they set it up, such an admin reaches only `/api/auth/me`,
+    `/api/auth/2fa*` and sign-out. The panel refuses to turn the setting on for an admin who
+    hasn't set up 2FA themselves, and while it's on admins can't turn their own off.
+    Additions to the plan: **Reset two-factor** for panel accounts on the Users screen, new
+    recovery codes from **🔑 Password**, a **2FA** badge on Users, `redstonepanel status`
+    lists who has it, and the 🔑 Password button now shows for Linux accounts too. A damaged
+    `totp.json` asks every account for a code (fails closed); `reset-2fa` moves it aside.
+    Tested: 27 new unit tests (RFC 6238 vectors, replay, recovery codes, the rate limit,
+    enforcement, admin reset), every QR version and mask decoded by an independent decoder
+    (zxing-cpp), and the whole flow in Chromium against a running panel (setup, sign-in with
+    a code, a wrong code, a recovery code, a second admin forced through setup), including
+    decoding the QR code from the screenshot.
+
 ### 1.16.8: backups on another cluster node
 
 16. **A copy of every backup off the machine it protects.** A backup on the same disk doesn't

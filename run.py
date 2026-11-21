@@ -9,6 +9,8 @@
     redstonepanel set-name "NAME"     name shown in the panel to tell servers apart
                                       ("" = use this server's host name)
     redstonepanel reset-security      recovery: plain HTTP on 8080, sign-in required, restart
+    redstonepanel reset-2fa NAME      recovery: turn off two-factor sign-in for an account
+                                      (panel or Linux) that lost its authenticator app
     redstonepanel removed             list game servers uninstalled with "Keep World"
     redstonepanel restore NAME        give a removed server a systemd service again and start it
     redstonepanel backup NAME         back up a game server now (its backup timer runs this too)
@@ -52,6 +54,29 @@ def reset_security():
         import subprocess
         r = subprocess.run(["systemctl", "restart", "redstonepanel.service"])
         print("Restarted redstonepanel." if r.returncode == 0 else "Restart it with: sudo systemctl restart redstonepanel")
+
+
+def reset_2fa(name):
+    """Turns two-factor sign-in off for one account, e.g. after a lost phone. Takes effect at once."""
+    from core import twofactor
+    if twofactor._load().get("damaged"):
+        os.replace(twofactor.TOTP_FILE, twofactor.TOTP_FILE + ".damaged")
+        print(f"{twofactor.TOTP_FILE} could not be read, so every account was being asked for a "
+              f"code it can't give. Moved it to {twofactor.TOTP_FILE}.damaged: every account now signs in "
+              "with its password only and can set up two-factor again.")
+        return
+    name = name.strip()
+    removed = [src for src in ("panel", "linux") if twofactor.remove(twofactor.account_key(src, name))]
+    if not removed:
+        sys.exit(f"'{name}' doesn't have two-factor sign-in set up.")
+    print(f"Two-factor sign-in turned off for {name}. They sign in with their password and can set it up "
+          "again under the Password button" + (" (it is required for admins on this panel, so they will be "
+                                                "asked to)." if settings.load().get("require_2fa_admins") else "."))
+    try:
+        from core import manager
+        manager.write_log(f"[AUTH] two-factor sign-in reset for '{name}' from the command line")
+    except Exception:
+        pass
 
 
 def main():
@@ -117,10 +142,15 @@ def status():
     print(f"Service:   {active}")
     print(f"Address:   {settings.panel_url(s, ip)}/")
     print(f"HTTPS:     {s['https_mode']}" + (f" (HTTP port {s['http_port']} redirects)" if s["https_mode"] != "off" else ""))
-    print(f"Sign-in:   {'required' if s['login_mode'] == 'required' else 'not required from ' + ', '.join(s['trusted_networks'])}")
+    print(f"Sign-in:   {'required' if s['login_mode'] == 'required' else 'not required from ' + ', '.join(s['trusted_networks'])}"
+          + ("; two-factor required for admins" if s.get("require_2fa_admins") else ""))
     print(f"Linux:     members of {' or '.join(auth.ALLOWED_LINUX_GROUPS)} can sign in")
     users = auth.list_panel_users()
-    print(f"Panel users: {', '.join(u['username'] + ' (' + u['role'] + (', disabled' if u['disabled'] else '') + ')' for u in users) or 'none'}")
+    print(f"Panel users: {', '.join(u['username'] + ' (' + u['role'] + (', 2FA' if u['two_factor'] else '') + (', disabled' if u['disabled'] else '') + ')' for u in users) or 'none'}")
+    from core import twofactor
+    linux_2fa = sorted(k.split(":", 1)[1] for k in twofactor.enabled_keys() if k.startswith("linux:"))
+    if linux_2fa:
+        print(f"Two-factor (Linux accounts): {', '.join(linux_2fa)}")
     from core import cluster
     st = cluster.state()
     print(f"Cluster:   {st['role']}" + (f" of '{st.get('name') or st.get('cluster_name')}'" if st["role"] != "standalone" else "")
@@ -386,6 +416,8 @@ if __name__ == "__main__":
         main()
     elif cmd == "reset-security" and not rest:
         reset_security()
+    elif cmd == "reset-2fa" and len(rest) == 1:
+        reset_2fa(rest[0])
     elif cmd == "status" and not rest:
         status()
     elif cmd == "add-user":

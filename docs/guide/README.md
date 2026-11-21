@@ -194,6 +194,30 @@ There are two kinds of account:
 Admins can turn sign-in off for devices on your home network; see
 [Panel Settings](#17-panel-settings-name-https-sign-in).
 
+### Two-factor sign-in
+
+Any account, panel or Linux, can ask for a second step after the password: a six-digit code
+from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, Aegis,
+1Password, Bitwarden and so on).
+
+1. Click **🔑 Password** in the sidebar, then **Set Up Two-Factor**.
+2. Scan the QR code with the app, or type the key under it.
+3. Type the code the app shows and click **Turn On**.
+4. **Save the ten recovery codes** it shows (Copy, Download, or print them). Each one signs you
+   in once if you lose your phone. They aren't shown again.
+
+From then on the sign-in page asks for a code after your password. Turning it on signs out
+your other browsers, which sign in again with a code. Under **🔑 Password** you can also see
+how many recovery codes are left, make new ones, or turn it off (both need a current code).
+
+Lost your phone and your recovery codes? Another admin can click **Reset two-factor** for a
+panel account under **👥 Users**, or root runs `sudo redstonepanel reset-2fa NAME` (this works
+for Linux accounts too). Wrong codes count towards the same limit as wrong passwords: five
+in ten minutes and that account and address wait a few minutes.
+
+Admins can make it compulsory for every admin; see
+[Panel Settings](#17-panel-settings-name-https-sign-in).
+
 **On a phone or tablet**, use the browser's **Add to Home Screen** (Safari's Share menu, or
 Chrome's ⋮ menu). The panel gets its own RedstonePanel icon and opens without the browser's
 address bar.
@@ -263,7 +287,7 @@ The sidebar on the left holds everything that isn't about one server:
 | **Sort by** | Name A–Z, Z–A, or online servers first. |
 | Server list | Every server, grouped by edition: green dot = running, grey = stopped, with its version and port. Click one to open it. On a cluster master, each node's servers follow under the node's 🌐 name, grouped by edition the same way. Click a heading to fold it; a folded heading shows how many of its servers are online, and the panel remembers what you folded in this browser. |
 | **♻️ N removed servers: restore** | Shown when servers were uninstalled with **Keep World**. |
-| **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts). |
+| **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts) and two-factor sign-in (all accounts). |
 
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
 (**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
@@ -810,6 +834,8 @@ sudo redstonepanel restore minecraft-java-2
     restore backups, and delete backups and removed servers.
 - For each account you can change the role, **Reset password**, **Disable** (it can't sign
   in until enabled again) or **Delete**.
+- Accounts with two-factor sign-in on show **2FA**. **Reset two-factor** turns it off for
+  someone who lost their phone; they sign in with their password and set it up again.
 - Linux accounts aren't listed here; they're managed with the usual Linux tools.
 
 An admin account controls a service that runs as root, so treat it like `sudo` access.
@@ -882,6 +908,15 @@ Other services receive a JSON POST with the fields `text`, `event`, `server`, `p
     admin sign-in;
   - it never applies to requests coming through a reverse proxy;
   - everyone on those networks gets in, including guests on your Wi-Fi.
+
+**Require two-factor for admins** (off by default): an admin without
+[two-factor sign-in](#two-factor-sign-in) is sent to set it up right after signing in, and
+can't do anything else until they have. Set it up for your own account first; the panel won't
+turn this on before you do. While it's on, admins can't turn their own two-factor off (another
+admin or `reset-2fa` can reset it). Users (not admins) can still choose.
+
+Trusted-network access is unchanged by two-factor: it never gives admin rights. Cluster nodes
+don't use it either: the master reaches them with its node token, not a person's sign-in.
 
 If a change locks you out, run `sudo redstonepanel reset-security` on the machine (see
 [Troubleshooting](#20-troubleshooting)).
@@ -993,6 +1028,7 @@ Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 | `redstonepanel add-user NAME [--role admin\|user]` | Create a panel account (asks for the password). |
 | `redstonepanel set-name "NAME"` | Set the panel name (`""` = host name). |
 | `redstonepanel reset-security` | Back to plain HTTP on 8080 with sign-in required. |
+| `redstonepanel reset-2fa NAME` | Turn off two-factor sign-in for an account that lost its phone and recovery codes. |
 | `redstonepanel removed` | List servers uninstalled with Keep World. |
 | `redstonepanel restore NAME` | Restore a removed server. |
 | `redstonepanel backup NAME` | Back up a server now. |
@@ -1024,6 +1060,14 @@ sudo redstonepanel reset-security
 It switches the panel back to plain HTTP on port 8080 with sign-in required. If HTTPS is
 turned on but its certificate can't be used, the panel starts on HTTP by itself and warns
 admins in the sidebar.
+
+**I lost the phone with my authenticator app.** Sign in with one of your recovery codes
+instead of the app's code, then set two-factor up again under **🔑 Password**. No codes left?
+Another admin can **Reset two-factor** under **👥 Users**, or run this on the machine:
+
+```bash
+sudo redstonepanel reset-2fa NAME
+```
 
 **Players can't connect.** Check:
 

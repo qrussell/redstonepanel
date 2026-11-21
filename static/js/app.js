@@ -41,6 +41,13 @@ const ServerApp = {
         if (!me.ok) return;
         this.currentUser = await me.json();
         this.renderCurrentUser();
+        // Panel Settings require two-factor for admins and this admin hasn't set it up yet:
+        // nothing else works until they do (the API refuses it too).
+        if (this.currentUser.needs_2fa_setup) {
+            this.applyTheme();
+            this.openAccountModal({ forced: true });
+            return;
+        }
         const ver = document.getElementById('panel-version');
         if (ver && this.currentUser.panel_version) {
             ver.innerText = 'v' + this.currentUser.panel_version;
@@ -3005,7 +3012,7 @@ const ServerApp = {
 		signOut.onclick = trusted ? () => window.location.assign('/static/login.html') : () => this.logout();
 		document.getElementById('btn-manage-users').classList.toggle('hidden', u.role !== 'admin');
 		document.getElementById('btn-panel-settings').classList.toggle('hidden', u.role !== 'admin');
-		document.getElementById('btn-change-password').classList.toggle('hidden', u.source !== 'panel');
+		document.getElementById('btn-change-password').classList.toggle('hidden', trusted);
 		// Uninstall and purge are admin-only (the API refuses them too)
 		document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', u.role !== 'admin'));
 		document.getElementById('uninstall-admin-note').classList.toggle('hidden', u.role === 'admin');
@@ -3095,6 +3102,10 @@ const ServerApp = {
 				${radio('login_mode', 'required', s.login_mode, 'Always required (recommended)', 'Everyone signs in with a Linux or panel account.')}
 				${radio('login_mode', 'trusted_networks', s.login_mode, 'Not required on the local network', 'Devices on the networks below can manage servers without signing in. Users and these settings still need an admin sign-in.')}
 			</div>
+			<label class="flex items-start gap-2 mb-3 text-sm cursor-pointer">
+				<input type="checkbox" id="set-require-2fa" ${s.require_2fa_admins ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Require two-factor for admins</b><br><span class="text-xs text-gray-500 dark:text-gray-400">Admins without it are sent to set it up (🔑 Password) right after signing in, before they can do anything else. Set it up for your own account first.</span></span>
+			</label>
 			<div id="set-trusted" class="mb-3">
 				<label class="text-xs text-gray-500 dark:text-gray-400">Trusted networks (private ranges only, one per line)
 					<textarea id="set-trusted-networks" rows="4" class="${field} mt-1 font-mono">${esc(s.trusted_networks.join('\n'))}</textarea></label>
@@ -3208,6 +3219,7 @@ const ServerApp = {
 			cert_file: val('set-cert-file'),
 			key_file: val('set-key-file'),
 			login_mode: document.querySelector('input[name="login_mode"]:checked').value,
+			require_2fa_admins: document.getElementById('set-require-2fa').checked,
 			trusted_networks: lines('set-trusted-networks'),
 			extra_hosts: lines('set-extra-hosts'),
 			panel_name: val('set-panel-name'),
@@ -4261,8 +4273,16 @@ const ServerApp = {
 	},
 
 	openChangePasswordModal() {
+		this.openAccountModal({});
+	},
+
+	// 🔑 Password: the signed-in account's password (panel accounts) and two-factor sign-in (all accounts)
+	async openAccountModal(opts) {
+		this.accountForced = !!(opts && opts.forced);
+		const me = this.currentUser || {};
 		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white mb-3';
-		document.getElementById('modal-content').innerHTML = `
+		const grey = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white';
+		const password = me.source === 'panel' && !this.accountForced ? `<div id="pw-section">
 			<h3 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Change Password</h3>
 			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Current password</label>
 			<input type="password" id="pw-current" autocomplete="current-password" class="${field}">
@@ -4271,11 +4291,174 @@ const ServerApp = {
 			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Repeat new password</label>
 			<input type="password" id="pw-new2" autocomplete="new-password" class="${field}">
 			<p id="pw-error" class="hidden text-sm text-red-500 mb-3"></p>
-			<div class="flex gap-2">
-				<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>
-				<button onclick="ServerApp.changeOwnPassword()" class="flex-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Change</button>
-			</div>`;
+			<button onclick="ServerApp.changeOwnPassword()" class="w-full px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold mb-6">Change Password</button></div>`
+			: (me.source === 'linux' && !this.accountForced ? `<div id="pw-section">
+			<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Your Account</h3>
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-6">This is a Linux account: change its password on the server with <span class="font-mono">passwd</span>.</p></div>` : '');
+		const forcedIntro = this.accountForced ? `
+			<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Set Up Two-Factor Sign-In</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-4">This panel requires a second step at sign-in for admins. Set it up now to continue.</p>` : '';
+		const footer = this.accountForced
+			? `<button onclick="ServerApp.logout()" class="mt-4 w-full ${grey}">Sign out</button>`
+			: `<button onclick="ServerApp.closeModal()" class="mt-4 w-full ${grey}">Close</button>`;
+		document.getElementById('modal-content').innerHTML = `
+			${password}${forcedIntro}
+			<div id="tf-box"><p class="text-sm text-gray-500">Loading two-factor sign-in...</p></div>
+			${footer}`;
 		document.getElementById('modal-overlay').classList.remove('hidden');
+		const res = await fetch('/api/auth/2fa');
+		if (!res.ok) { this.tfBox(`<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`); return; }
+		this.tfStatus = await res.json();
+		if (this.accountForced && !this.tfStatus.enabled) return this.startTwoFactorSetup();
+		this.renderTwoFactor();
+	},
+
+	// The password part hides while setting up or showing codes, so the dialog stays short
+	tfBox(html, focused) {
+		const box = document.getElementById('tf-box');
+		if (box) box.innerHTML = html;
+		const pw = document.getElementById('pw-section');
+		if (pw) pw.classList.toggle('hidden', !!focused);
+	},
+
+	renderTwoFactor() {
+		const st = this.tfStatus || {};
+		const grey = 'px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white';
+		const heading = '<h4 class="font-bold text-gray-900 dark:text-white mb-1">Two-factor sign-in</h4>';
+		if (!st.enabled) {
+			this.tfBox(`${heading}
+				<p class="text-sm text-gray-500 dark:text-gray-400 mb-3">Off. Ask for a six-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator, Aegis, 1Password, Bitwarden...) after your password.${st.required ? ' <b>Required for admins on this panel.</b>' : ''}</p>
+				<p id="tf-error" class="hidden text-sm text-red-500 mb-2"></p>
+				<button onclick="ServerApp.startTwoFactorSetup()" class="w-full px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Set Up Two-Factor</button>`);
+			return;
+		}
+		const low = st.recovery_left <= 3;
+		this.tfBox(`${heading}
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-1"><span class="text-green-600 dark:text-green-400 font-bold">On.</span> You'll be asked for a code from your app after your password.</p>
+			<p class="text-sm mb-3 ${low ? 'text-yellow-700 dark:text-yellow-300' : 'text-gray-500 dark:text-gray-400'}">${st.recovery_left} of 10 recovery codes left.${low ? ' Make new ones soon.' : ''}</p>
+			<label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">To change it, enter a current code from your app</label>
+			<input id="tf-code" autocomplete="one-time-code" placeholder="123456" maxlength="20" class="w-full mb-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 font-mono tracking-widest text-gray-900 dark:text-white">
+			<p id="tf-error" class="hidden text-sm text-red-500 mb-2"></p>
+			<div class="flex gap-2">
+				<button onclick="ServerApp.newRecoveryCodes()" class="flex-1 ${grey}">New recovery codes</button>
+				${st.required ? '' : `<button onclick="ServerApp.disableTwoFactor()" class="flex-1 px-3 py-2 text-sm bg-red-600 hover:bg-red-700 rounded text-white">Turn off</button>`}
+			</div>
+			${st.required ? '<p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Required for admins on this panel, so it can\'t be turned off here. New phone? Another admin can reset it (Users), or run <span class="font-mono">sudo redstonepanel reset-2fa NAME</span>.</p>' : ''}`);
+	},
+
+	tfError(msg) {
+		const err = document.getElementById('tf-error');
+		if (!err) return alert(msg);
+		err.innerText = msg;
+		err.classList.toggle('hidden', !msg);
+	},
+
+	async startTwoFactorSetup() {
+		const res = await fetch('/api/auth/2fa/setup', { method: 'POST' });
+		if (!res.ok) return this.tfError(await this.apiError(res));
+		const d = await res.json();
+		const key = d.secret.replace(/(.{4})/g, '$1 ').trim();
+		const grey = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white';
+		this.tfBox(`
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">1. Scan this with your authenticator app</h4>
+			<div class="w-48 h-48 mx-auto my-3 rounded overflow-hidden border border-gray-200 dark:border-gray-700">${d.qr_svg}</div>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Can't scan? Add an account by key (time-based) and type:</p>
+			<p class="font-mono text-sm text-center select-all break-all bg-gray-100 dark:bg-gray-900 rounded p-2 mb-4 text-gray-900 dark:text-white">${this.escapeHtml(key)}</p>
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">2. Enter the code it shows</h4>
+			<input id="tf-code" autocomplete="one-time-code" inputmode="numeric" placeholder="123456" maxlength="7"
+				onkeydown="if (event.key === 'Enter') ServerApp.confirmTwoFactor()"
+				class="w-full mb-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 font-mono tracking-widest text-lg text-gray-900 dark:text-white">
+			<p id="tf-error" class="hidden text-sm text-red-500 mb-2"></p>
+			<div class="flex gap-2">
+				${this.accountForced ? '' : `<button onclick="ServerApp.cancelTwoFactorSetup()" class="flex-1 ${grey}">Cancel</button>`}
+				<button onclick="ServerApp.confirmTwoFactor()" class="flex-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Turn On</button>
+			</div>`, true);
+		const input = document.getElementById('tf-code');
+		if (input) input.focus();
+	},
+
+	async cancelTwoFactorSetup() {
+		await fetch('/api/auth/2fa/disable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: '' }) });
+		this.renderTwoFactor();
+	},
+
+	async confirmTwoFactor() {
+		const code = document.getElementById('tf-code').value;
+		const res = await fetch('/api/auth/2fa/confirm', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
+		});
+		if (!res.ok) return this.tfError(await this.apiError(res));
+		const d = await res.json();
+		this.tfStatus = Object.assign({}, this.tfStatus, { enabled: true, recovery_left: d.recovery_codes.length });
+		if (this.currentUser) { this.currentUser.two_factor = true; this.currentUser.needs_2fa_setup = false; }
+		this.showRecoveryCodes(d.recovery_codes, 'Two-factor sign-in is on.');
+	},
+
+	showRecoveryCodes(codes, title) {
+		this.recoveryCodes = codes;
+		this.tfBox(`
+			<h4 class="font-bold text-green-600 dark:text-green-400 mb-1">${this.escapeHtml(title)}</h4>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3"><b>Save these recovery codes</b> somewhere safe (a password manager, or printed). Each one signs you in once if you lose your phone. They won't be shown again.</p>
+			<ol class="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-sm bg-gray-100 dark:bg-gray-900 rounded p-3 mb-3 text-gray-900 dark:text-white list-decimal list-inside">
+				${codes.map(c => `<li>${this.escapeHtml(c)}</li>`).join('')}
+			</ol>
+			<div class="flex gap-2">
+				<button onclick="ServerApp.copyRecoveryCodes()" class="flex-1 px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Copy</button>
+				<button onclick="ServerApp.downloadRecoveryCodes()" class="flex-1 px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Download</button>
+				<button onclick="ServerApp.recoveryCodesSaved()" class="flex-1 px-3 py-2 text-sm bg-theme hover-bg-theme rounded text-white font-bold">I saved them</button>
+			</div>`, true);
+	},
+
+	recoveryCodesText() {
+		const me = this.currentUser || {};
+		return `RedstonePanel recovery codes for ${me.username || ''} on ${document.title}\n`
+			+ `Each code signs in once, instead of a code from your authenticator app.\n\n`
+			+ (this.recoveryCodes || []).join('\n') + '\n';
+	},
+
+	copyRecoveryCodes() {
+		const text = this.recoveryCodesText();
+		if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).catch(() => prompt('Copy the codes:', text));
+		else prompt('Copy the codes:', (this.recoveryCodes || []).join(' '));
+	},
+
+	downloadRecoveryCodes() {
+		const a = document.createElement('a');
+		a.href = URL.createObjectURL(new Blob([this.recoveryCodesText()], { type: 'text/plain' }));
+		a.download = 'redstonepanel-recovery-codes.txt';
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	},
+
+	recoveryCodesSaved() {
+		this.recoveryCodes = null;
+		if (this.accountForced) { window.location.reload(); return; }
+		this.renderTwoFactor();
+	},
+
+	async newRecoveryCodes() {
+		const code = document.getElementById('tf-code').value;
+		const res = await fetch('/api/auth/2fa/recovery-codes', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
+		});
+		if (!res.ok) return this.tfError(await this.apiError(res));
+		const d = await res.json();
+		this.tfStatus.recovery_left = d.recovery_codes.length;
+		this.showRecoveryCodes(d.recovery_codes, 'New recovery codes. The old ones no longer work.');
+	},
+
+	async disableTwoFactor() {
+		const code = document.getElementById('tf-code').value;
+		if (!code.trim()) return this.tfError('Enter a current code from your app first.');
+		if (!confirm('Turn off two-factor sign-in? Your password alone will sign you in.')) return;
+		const res = await fetch('/api/auth/2fa/disable', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
+		});
+		if (!res.ok) return this.tfError(await this.apiError(res));
+		this.tfStatus = Object.assign({}, this.tfStatus, { enabled: false, recovery_left: 0 });
+		if (this.currentUser) this.currentUser.two_factor = false;
+		this.renderTwoFactor();
 	},
 
 	async changeOwnPassword() {
@@ -4314,6 +4497,7 @@ const ServerApp = {
 					<div class="min-w-0">
 						<span class="font-bold text-gray-900 dark:text-white">${esc(u.username)}</span>
 						${u.disabled ? '<span class="text-xs ml-1 px-2 py-0.5 rounded border border-red-400 text-red-500">disabled</span>' : ''}
+						${u.two_factor ? '<span class="text-xs ml-1 px-2 py-0.5 rounded border border-green-500 text-green-600 dark:text-green-400" title="Two-factor sign-in is on">2FA</span>' : ''}
 						${self ? '<span class="text-xs ml-1 text-gray-500">(you)</span>' : ''}
 						<div class="text-xs text-gray-500 dark:text-gray-400">Last sign-in: ${esc(when(u.last_login))}</div>
 					</div>
@@ -4324,6 +4508,7 @@ const ServerApp = {
 				</div>
 				<div class="flex gap-2 mt-2 text-xs">
 					<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserPassword(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset password</button>
+					${u.two_factor && !self ? `<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserTwoFactor(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset two-factor</button>` : ''}
 					${self ? '' : `<button data-user="${esc(u.username)}" onclick="ServerApp.updateUser(this.dataset.user, {disabled: ${!u.disabled}})" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">${u.disabled ? 'Enable' : 'Disable'}</button>
 					<button data-user="${esc(u.username)}" onclick="ServerApp.deleteUser(this.dataset.user)" class="px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white">Delete</button>`}
 				</div>
@@ -4332,7 +4517,7 @@ const ServerApp = {
 
 		content.innerHTML = `
 			<h3 class="text-xl font-bold mb-1 text-gray-900 dark:text-white">Panel Users</h3>
-			<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here.</p>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here (two-factor for them: <span class="font-mono">sudo redstonepanel reset-2fa NAME</span>).</p>
 			<div class="max-h-72 overflow-y-auto mb-4">${rows}</div>
 			<div class="border-t border-gray-200 dark:border-gray-700 pt-4">
 				<p class="text-sm font-bold mb-2 text-gray-900 dark:text-white">Add user</p>
@@ -4377,6 +4562,13 @@ const ServerApp = {
 		const pw = prompt(`New password for ${username} (8+ characters). They will be signed out everywhere.`);
 		if (pw === null) return;
 		await this.updateUser(username, { password: pw });
+	},
+
+	async resetUserTwoFactor(username) {
+		if (!confirm(`Turn off two-factor sign-in for '${username}'? Use this when they lost their phone: they sign in with their password and set it up again.`)) return;
+		const res = await fetch(`/api/users/${encodeURIComponent(username)}/reset-2fa`, { method: 'POST' });
+		if (!res.ok) alert(`Not reset: ${await this.apiError(res)}`);
+		this.openUsersModal();
 	},
 
 	async deleteUser(username) {

@@ -24,6 +24,8 @@ import core.setup as setup_guide
 import core.restarts as restarts
 import core.auth as auth
 import core.settings as panel_settings
+import core.twofactor as twofactor
+import core.qr as qr
 from core.version import panel_version
 import core.cluster as cluster
 import core.cluster_client as cluster_client
@@ -93,7 +95,7 @@ async def no_stale_static(request: Request, call_next):
 # ---------------------------------------------------------------------------
 # /api/panel-info only says which panel this is (shown on the sign-in page), nothing more.
 # /api/cluster/ca(.crt) is the cluster's public CA certificate; /api/cluster/join checks a join code.
-PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/health", "/api/panel-info",
+PUBLIC_API = {"/api/auth/login", "/api/auth/login/code", "/api/auth/logout", "/api/health", "/api/panel-info",
               "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join"}
 ADMIN_API = ("/api/users", "/api/settings")
 NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates",
@@ -101,6 +103,8 @@ NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/
 CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster/nodes/", "/api/cluster/moves",
                     "/api/cluster/moved/")
 STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
+# An admin who must set up two-factor (Panel Settings > Sign-in) can reach only these until they do
+TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
 
 @app.middleware("http")
 async def access_control(request: Request, call_next):
@@ -132,6 +136,9 @@ async def access_control(request: Request, call_next):
                     user = panel_settings.trusted_network_user(ip, request.headers, request.method)
                 if not user:
                     return JSONResponse({"detail": "Not signed in."}, status_code=401)
+                if user.get("needs_2fa_setup") and not path.startswith(TWO_FACTOR_SETUP_API):
+                    return JSONResponse({"detail": "Set up two-factor sign-in first (this panel requires it "
+                                                   "for admins)."}, status_code=403)
                 if path.startswith(NODE_ONLY_API):
                     return JSONResponse({"detail": "Only the cluster's master can use this."}, status_code=403)
                 if path.startswith(CLUSTER_USER_API) and user["source"] == "trusted":
@@ -156,6 +163,12 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+def _set_session_cookie(request: Request, response: Response, identity):
+    token = auth.make_session_token(identity)
+    response.set_cookie(auth.SESSION_COOKIE, token, max_age=auth.SESSION_SECONDS,
+                        httponly=True, samesite="strict", secure=request.url.scheme == "https", path="/")
+    return token
+
 @app.post("/api/auth/login")
 def login_api(req: LoginRequest, request: Request, response: Response):
     ip = request.client.host if request.client else "unknown"
@@ -164,14 +177,113 @@ def login_api(req: LoginRequest, request: Request, response: Response):
     except auth.AuthError as e:
         manager.write_log(f"[AUTH] Failed sign-in for '{req.username[:64]}' from {ip}")
         raise HTTPException(status_code=401, detail=str(e))
+    if identity.get("pending"):
+        # Right password; the session comes after the code (POST /api/auth/login/code)
+        response.set_cookie(auth.PENDING_COOKIE, auth.make_pending_token(identity), max_age=auth.PENDING_SECONDS,
+                            httponly=True, samesite="strict", secure=request.url.scheme == "https",
+                            path="/api/auth/login")
+        return {"code_needed": True}
     manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip}")
-    response.set_cookie(auth.SESSION_COOKIE, auth.make_session_token(identity), max_age=auth.SESSION_SECONDS,
-                        httponly=True, samesite="strict", secure=request.url.scheme == "https", path="/")
-    return auth.read_session_token(auth.make_session_token(identity))
+    return auth.read_session_token(_set_session_cookie(request, response, identity))
+
+class CodeRequest(BaseModel):
+    code: str
+
+@app.post("/api/auth/login/code")
+def login_code_api(req: CodeRequest, request: Request, response: Response):
+    ip = request.client.host if request.client else "unknown"
+    ticket = request.cookies.get(auth.PENDING_COOKIE)
+    who = (auth.read_pending_token(ticket) or {}).get("u", "?")
+    try:
+        identity = auth.complete_two_factor(ticket, req.code, ip)
+    except auth.AuthError as e:
+        manager.write_log(f"[AUTH] Failed two-factor code for '{str(who)[:64]}' from {ip}")
+        raise HTTPException(status_code=401, detail=str(e))
+    response.delete_cookie(auth.PENDING_COOKIE, path="/api/auth/login")
+    how = "a recovery code" if identity["used"] == "recovery" else "an app code"
+    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip} with {how}")
+    user = auth.read_session_token(_set_session_cookie(request, response, identity))
+    if user and identity["used"] == "recovery":
+        user["recovery_left"] = twofactor.status(twofactor.account_key(identity["src"], identity["u"]))["recovery_left"]
+    return user
 
 @app.post("/api/auth/logout")
 def logout_api(response: Response):
     response.delete_cookie(auth.SESSION_COOKIE, path="/")
+    response.delete_cookie(auth.PENDING_COOKIE, path="/api/auth/login")
+    return {"status": "success"}
+
+# --- Two-factor sign-in for the signed-in account (panel and Linux accounts alike) ---
+def _tf_account(request: Request):
+    user = request.state.user
+    if user["source"] not in ("panel", "linux"):
+        raise HTTPException(status_code=400, detail="Sign in with your account to set up two-factor sign-in.")
+    return user, twofactor.account_key(user["source"], user["username"])
+
+def _tf_check_code(user, key, code, request: Request):
+    """A current code (or recovery code) before changing two-factor; wrong ones count as failed sign-ins."""
+    ip = request.client.host if request.client else "unknown"
+    keys = (f"user:{user['username'].lower()}", f"ip:{ip}")
+    if auth._throttled(keys):
+        raise HTTPException(status_code=429, detail="Too many wrong codes. Try again in a few minutes.")
+    if not twofactor.verify(key, code):
+        auth._record_fail(keys)
+        raise HTTPException(status_code=400, detail="That code is wrong or was already used.")
+
+@app.get("/api/auth/2fa")
+def two_factor_status_api(request: Request):
+    user, key = _tf_account(request)
+    st = twofactor.status(key)
+    st["required"] = auth.two_factor_required_for(user["role"])
+    return st
+
+@app.post("/api/auth/2fa/setup")
+def two_factor_setup_api(request: Request):
+    user, key = _tf_account(request)
+    try:
+        secret = twofactor.begin_setup(key)
+    except twofactor.TwoFactorError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    uri = twofactor.provisioning_uri(secret, user["username"], panel_settings.display_name())
+    return {"secret": secret, "uri": uri, "qr_svg": qr.svg(uri)}
+
+@app.post("/api/auth/2fa/confirm")
+def two_factor_confirm_api(req: CodeRequest, request: Request, response: Response):
+    user, key = _tf_account(request)
+    try:
+        codes = twofactor.confirm_setup(key, req.code)
+    except twofactor.TwoFactorError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) turned on two-factor sign-in")
+    # Sessions that never passed the second step stop working; this browser just did, so keep it
+    v = next((u.get("session_version", 1) for u in auth._load_users() if u["username"] == user["username"]), 1) \
+        if user["source"] == "panel" else 0
+    _set_session_cookie(request, response, {"u": user["username"], "src": user["source"], "v": v, "m": 1})
+    return {"recovery_codes": codes}
+
+@app.post("/api/auth/2fa/recovery-codes")
+def two_factor_new_codes_api(req: CodeRequest, request: Request):
+    user, key = _tf_account(request)
+    if not twofactor.is_enabled(key):
+        raise HTTPException(status_code=400, detail="Two-factor sign-in is not on for this account.")
+    _tf_check_code(user, key, req.code, request)
+    codes = twofactor.new_recovery_codes(key)
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) made new two-factor recovery codes")
+    return {"recovery_codes": codes}
+
+@app.post("/api/auth/2fa/disable")
+def two_factor_disable_api(req: CodeRequest, request: Request):
+    user, key = _tf_account(request)
+    if not twofactor.is_enabled(key):
+        twofactor.remove(key)   # forget an unfinished setup
+        return {"status": "success"}
+    if auth.two_factor_required_for(user["role"]):
+        raise HTTPException(status_code=400, detail="This panel requires two-factor sign-in for admins. To move it to "
+                                                    "a new phone, ask another admin to reset it, or run "
+                                                    f"'sudo redstonepanel reset-2fa {user['username']}' on the server.")
+    _tf_check_code(user, key, req.code, request)
+    twofactor.remove(key)
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) turned off two-factor sign-in")
     return {"status": "success"}
 
 @app.get("/api/auth/me")
@@ -251,10 +363,14 @@ def update_settings_api(request: Request, new: dict = Body(...)):
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Could not create the certificate: {e}")
 
+    if s["require_2fa_admins"] and not old["require_2fa_admins"] and not request.state.user.get("two_factor"):
+        raise HTTPException(status_code=400, detail="Set up two-factor sign-in for your own account first "
+                                                    "(Password button), so this doesn't lock you out.")
     panel_settings.save(s)
     me = request.state.user["username"]
     manager.write_log(f"[SETTINGS] {me} changed panel settings: HTTPS={s['https_mode']}, "
                       f"ports {s['http_port']}/{s['https_port']}, sign-in={s['login_mode']}, "
+                      f"2FA for admins={'required' if s['require_2fa_admins'] else 'optional'}, "
                       f"name={panel_settings.display_name(s)!r}")
     url = panel_settings.panel_url(s, request.headers.get("host"))
     if restart:
@@ -284,10 +400,8 @@ def change_password_api(req: PasswordChange, request: Request, response: Respons
         raise HTTPException(status_code=400, detail=str(e))
     # The change signs out all sessions, so issue a fresh cookie for this browser
     u = next(x for x in auth._load_users() if x["username"] == user["username"])
-    response.set_cookie(auth.SESSION_COOKIE,
-                        auth.make_session_token({"u": u["username"], "src": "panel", "v": u["session_version"]}),
-                        max_age=auth.SESSION_SECONDS, httponly=True, samesite="strict",
-                        secure=request.url.scheme == "https", path="/")
+    _set_session_cookie(request, response, {"u": u["username"], "src": "panel", "v": u["session_version"],
+                                            "m": 1 if user.get("two_factor") else 0})
     return {"status": "success"}
 
 # --- Panel user management (admins only; enforced in the middleware) ---
@@ -325,6 +439,19 @@ def update_user_api(username: str, req: PanelUserUpdate, request: Request):
         raise HTTPException(status_code=400, detail=str(e))
     changed = [k for k, v in (("password", req.password), ("role", req.role), ("disabled", req.disabled)) if v is not None]
     manager.write_log(f"[AUTH] {me['username']} updated panel user '{username}': {', '.join(changed)}")
+    return {"status": "success"}
+
+@app.post("/api/users/{username}/reset-2fa")
+def reset_user_2fa_api(username: str, request: Request):
+    """An admin turns off another panel account's two-factor (lost phone). Linux accounts: reset-2fa."""
+    me = request.state.user
+    if me["source"] == "panel" and me["username"] == username:
+        raise HTTPException(status_code=400, detail="Use the Password button to change your own two-factor sign-in.")
+    if not any(u["username"] == username for u in auth._load_users()):
+        raise HTTPException(status_code=404, detail=f"Panel user '{username}' not found.")
+    if not twofactor.remove(twofactor.account_key("panel", username)):
+        raise HTTPException(status_code=400, detail=f"'{username}' doesn't have two-factor sign-in set up.")
+    manager.write_log(f"[AUTH] {me['username']} reset two-factor sign-in for panel user '{username}'")
     return {"status": "success"}
 
 @app.delete("/api/users/{username}")
