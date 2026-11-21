@@ -329,6 +329,7 @@ The sidebar on the left holds everything that isn't about one server:
 | **➕ New Server** | Create a server, import one, or restore a removed one. |
 | **📊 Dashboard** | This machine's resources, services and what needs attention (above). |
 | **🌐 Cluster** | On a cluster master: every panel's servers (see [Clusters](#18-clusters)). |
+| **🔀 Port forwarding** | Admins: what to set up on your internet router so players outside your home can join (see [Port forwarding](#port-forwarding)). |
 | **🖥️ Console** | The panel's live activity log. |
 | **📋 Templates** | Saved server settings to reuse. |
 | **⚙️** | Appearance: **Color Mode** (dark or light) and **Accent Palette**: **Redstone Red** (the default), Diamond Blue, Emerald Green or Amethyst Purple. Saved in your browser. |
@@ -336,6 +337,49 @@ The sidebar on the left holds everything that isn't about one server:
 | Server list | Every server, grouped by edition: green dot = running, grey = stopped, with its version and port. Click one to open it. On a cluster master, each node's servers follow under the node's 🌐 name, grouped by edition the same way. Click a heading to fold it; a folded heading shows how many of its servers are online, and the panel remembers what you folded in this browser. |
 | **♻️ N removed servers: restore** | Shown when servers were uninstalled with **Keep World**. |
 | **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts) and two-factor sign-in (all accounts). |
+
+### Port forwarding
+
+Players on your home network join with the machine's LAN address. Players anywhere else reach
+your internet address, so your internet router (pfSense, or the box from your provider) has to
+pass each game port on to the right machine. **🔀 Port forwarding** (admins) lists exactly what
+to forward, for every server on this panel and, on a cluster master, on every node, with each
+machine's LAN address. This is about the router in front of your machines; the panel already
+looks after the firewall (`ufw`) on each machine.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/port-forwarding.png"><img src="images/port-forwarding.png" alt="The Port forwarding page on a cluster master"></picture>
+
+- **Your internet address**: type your router's WAN address, or a dynamic DNS name for it.
+  **Ask the router** asks your own router with NAT-PMP or UPnP (on pfSense: Services > UPnP &
+  NAT-PMP, off by default). The panel never asks an outside "what's my IP" website. If the
+  address starts with 100.64 to 100.127, your provider shares it between customers (carrier-grade
+  NAT) and port forwarding can't work; a private address (192.168.x.x, 10.x.x.x) means a second
+  router in front of yours.
+- **Forward these**: one line per forward: outside port, protocol, the machine's LAN address and
+  inside port, and what it's for. **Copy as text** copies the list.
+  - Java: TCP on the server port. If they're set up, also Geyser (UDP, Bedrock players on a
+    Java server) and Simple Voice Chat (UDP).
+  - Bedrock 1.26.50 and later (NetherNet, the default): TCP on the server port and UDP on its
+    `server-udp-ports` (the panel sets both to the same port). Keep the outside and inside port
+    the same. Bedrock with `transport=raknet`: UDP on the server port.
+- **Two servers want the same outside port**: with one internet address, each outside port can
+  go to only one server. Two servers on different machines that both use 25565 can't both be
+  forwarded; give one another port in its **Configuration** tab.
+- **Check from here** connects to your internet address from this machine and, for Java and
+  RakNet servers, asks the server for its name so it can tell when the wrong server answered.
+  It only works when the router loops connections back inside (pfSense: **NAT Reflection**);
+  "No answer" doesn't prove a forward is wrong. The real test is a phone on mobile data.
+- **How to set it up**: step-by-step for **pfSense** (Firewall > NAT > Port Forward, with the
+  exact values for each rule, and TCP/UDP in one rule where a port needs both) and for **other
+  routers**. Give each machine a fixed address first (a DHCP static mapping or reservation), or a
+  forward stops working when its address changes.
+- **Only if you need them**: Query (UDP), for server-list websites.
+- **Leave these closed**: RCON, NetherNet LAN discovery (UDP 7551) and Phantom are for the home
+  network only. The panel's own port is listed as optional and not recommended: a VPN into
+  your home (pfSense has WireGuard and OpenVPN) is safer than putting the panel on the internet.
+  If you do forward it, use HTTPS and two-factor sign-in for every admin.
+
+Nodes older than 1.16.14 show only their game ports, with the address the master knows them by.
 
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
 (**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
@@ -1196,7 +1240,7 @@ Every screenshot in this manual, in the theme you pick:
 <tr><td><img src="images/console.png" width="280" alt="Console (dark theme)"><br>Console</td><td><img src="images/templates.png" width="280" alt="Template manager (dark theme)"><br>Template manager</td><td><img src="images/users.png" width="280" alt="Panel users (dark theme)"><br>Panel users</td></tr>
 <tr><td><img src="images/panel-settings.png" width="280" alt="Panel Settings: name, notifications and cluster (dark theme)"><br>Panel Settings: name, notifications and cluster</td><td><img src="images/panel-settings-1.png" width="280" alt="Panel Settings on a cluster master: connection and sign-in (dark theme)"><br>Panel Settings on a cluster master: connection and sign-in</td><td><img src="images/notifications.png" width="280" alt="Notification settings (dark theme)"><br>Notification settings</td></tr>
 <tr><td><img src="images/cluster.png" width="280" alt="The Cluster page (dark theme)"><br>The Cluster page</td><td><img src="images/node-server.png" width="280" alt="A node's Fabric server opened from the master (dark theme)"><br>A node's Fabric server opened from the master</td><td><img src="images/cluster-move.png" width="280" alt="Moving a server to another cluster member (dark theme)"><br>Moving a server to another cluster member</td></tr>
-<tr><td><img src="images/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (dark theme)"><br>A finished move, with the old copy still kept</td></tr>
+<tr><td><img src="images/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (dark theme)"><br>A finished move, with the old copy still kept</td><td><img src="images/port-forwarding.png" width="280" alt="The Port forwarding page (dark theme)"><br>The Port forwarding page</td></tr>
 </table>
 
 </details>
@@ -1215,7 +1259,7 @@ Every screenshot in this manual, in the theme you pick:
 <tr><td><img src="images/light/console.png" width="280" alt="Console (light theme)"><br>Console</td><td><img src="images/light/templates.png" width="280" alt="Template manager (light theme)"><br>Template manager</td><td><img src="images/light/users.png" width="280" alt="Panel users (light theme)"><br>Panel users</td></tr>
 <tr><td><img src="images/light/panel-settings.png" width="280" alt="Panel Settings: name, notifications and cluster (light theme)"><br>Panel Settings: name, notifications and cluster</td><td><img src="images/light/panel-settings-1.png" width="280" alt="Panel Settings on a cluster master: connection and sign-in (light theme)"><br>Panel Settings on a cluster master: connection and sign-in</td><td><img src="images/light/notifications.png" width="280" alt="Notification settings (light theme)"><br>Notification settings</td></tr>
 <tr><td><img src="images/light/cluster.png" width="280" alt="The Cluster page (light theme)"><br>The Cluster page</td><td><img src="images/light/node-server.png" width="280" alt="A node's Fabric server opened from the master (light theme)"><br>A node's Fabric server opened from the master</td><td><img src="images/light/cluster-move.png" width="280" alt="Moving a server to another cluster member (light theme)"><br>Moving a server to another cluster member</td></tr>
-<tr><td><img src="images/light/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (light theme)"><br>A finished move, with the old copy still kept</td></tr>
+<tr><td><img src="images/light/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (light theme)"><br>A finished move, with the old copy still kept</td><td><img src="images/light/port-forwarding.png" width="280" alt="The Port forwarding page (light theme)"><br>The Port forwarding page</td></tr>
 </table>
 
 </details>

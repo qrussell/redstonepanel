@@ -26,6 +26,7 @@ import core.auth as auth
 import core.settings as panel_settings
 import core.twofactor as twofactor
 import core.qr as qr
+import core.portforward as portforward
 from core.version import panel_version
 import core.cluster as cluster
 import core.cluster_client as cluster_client
@@ -1336,6 +1337,40 @@ def cluster_receive_template_api(request: Request, body: dict = Body(...)):
     templates = [x for x in manager.load_templates() if x.get("id") != t["id"]] + [t]
     manager.save_templates(templates)
     return {"status": "success", "id": t["id"]}
+
+# --- 1.16.14: what to forward on the internet router, per server and per cluster member (admins)
+def _ports_call(fn, *a, **kw):
+    try:
+        return fn(*a, **kw)
+    except portforward.ForwardError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/port-forwarding")
+def port_forwarding_api(request: Request):
+    _require_admin(request, "see port forwarding")
+    return portforward.overview(actor=request.state.user["username"])
+
+@app.get("/api/port-forwarding/local")
+def port_forwarding_local_api(request: Request):
+    """This panel's own rows; the cluster master reads it from each node."""
+    _require_admin(request, "see port forwarding")
+    return portforward.local_report()
+
+@app.put("/api/port-forwarding/settings")
+def port_forwarding_settings_api(request: Request, body: dict = Body(...)):
+    _require_admin(request, "change port forwarding")
+    return _ports_call(portforward.save, str(body.get("public_address") or ""), request.state.user["username"])
+
+@app.post("/api/port-forwarding/lookup")
+def port_forwarding_lookup_api(request: Request):
+    """Asks the router (NAT-PMP, then UPnP) for its internet address. Nothing else is asked."""
+    _require_admin(request, "change port forwarding")
+    return _ports_call(portforward.lookup_public_address)
+
+@app.post("/api/port-forwarding/check")
+def port_forwarding_check_api(request: Request):
+    _require_admin(request, "check port forwarding")
+    return _ports_call(portforward.check, portforward.overview(actor=request.state.user["username"]))
 
 # --- Master: the cluster dashboard (signed-in users; trusted-LAN visitors are refused)
 def _need_master():

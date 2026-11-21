@@ -90,7 +90,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies, test-bedrock-firewall]
+        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies, test-bedrock-firewall, test-port-forwarding]
     name: ${{ matrix.script }}
     steps:
       - uses: actions/checkout@v4

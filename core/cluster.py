@@ -94,6 +94,8 @@ NODE_ROUTES = (
     ("GET|PUT|DELETE", r"/api/cluster/held-backups/(master|n-[0-9a-f]{4,32})/minecraft[A-Za-z0-9_.-]*/[^/]+"),
     ("GET", r"/api/cluster/held-backups/(master|n-[0-9a-f]{4,32})/minecraft[A-Za-z0-9_.-]*/[^/]+/sha256"),
     ("PUT", r"/api/cluster/held-backups/into/minecraft[A-Za-z0-9_.-]*/[^/]+"),
+    # 1.16.14: the node's own port forwarding rows, for the master's Port forwarding page
+    ("GET", r"/api/port-forwarding/local"),
 )
 # What the master's proxy (/api/cluster/nodes/{id}/proxy/...) passes on for its users: the node
 # routes except the cluster's own plumbing, which only the master itself calls.

@@ -174,6 +174,13 @@ Yes, with a **cluster** (1.5 and newer, fully managed from the master since 1.15
 the master, add the others with a join code, and the master's sidebar lists every machine's
 servers with all their tabs. See the [User Manual](../guide/README.md#18-clusters).
 
+## How do friends outside my home join?
+
+Forward the game ports on your internet router to the machine the server runs on. **🔀 Port
+forwarding** (1.16.14, admins) lists each one, with the machine's LAN address, steps for
+pfSense and other routers, and a warning if your provider uses carrier-grade NAT, which makes
+forwarding impossible. See the [User Manual](../guide/README.md#port-forwarding).
+
 ## Can I import a server I already have?
 
 Yes: **➕ New Server → Import Existing** takes a `.zip`, `.tar.gz` or `.tar` of the server

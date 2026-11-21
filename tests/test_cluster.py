@@ -504,9 +504,12 @@ class RouteCoverage(unittest.TestCase):
                 ("GET", "/api/cluster/held-backups/{panel}/{server_name}/{filename}/sha256"),
                 ("PUT", "/api/cluster/held-backups/{panel}/{server_name}/{filename}"),
                 ("DELETE", "/api/cluster/held-backups/{panel}/{server_name}/{filename}"),
-                ("PUT", "/api/cluster/held-backups/into/{server_name}/{filename}")}
+                ("PUT", "/api/cluster/held-backups/into/{server_name}/{filename}"),
+                # 1.16.14: a node's own port forwarding rows (read-only, admins)
+                ("GET", "/api/port-forwarding/local")}
     NEVER = ("/api/users", "/api/settings", "/api/auth", "/api/panel", "/api/cluster/overview",
-             "/api/cluster/nodes", "/api/cluster/join", "/api/templates/", "/api/cluster/backup-copies")
+             "/api/cluster/nodes", "/api/cluster/join", "/api/templates/", "/api/cluster/backup-copies",
+             "/api/port-forwarding/settings", "/api/port-forwarding/lookup", "/api/port-forwarding/check")
 
     @staticmethod
     def _sample(path):
