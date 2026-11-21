@@ -1,7 +1,7 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.16.1**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.16.4**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
 "Creative Lab" running a Fabric server with mods.
 
@@ -38,6 +38,19 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Turn on HTTPS | [Panel Settings](#17-panel-settings-name-https-sign-in) |
 | Manage servers on several machines | [Clusters](#18-clusters) |
 | Fix "players can't connect" or a lock-out | [Troubleshooting](#20-troubleshooting) |
+
+**New in 1.16**
+
+| Version | What's new | Where |
+| --- | --- | --- |
+| 1.16.4 | New Bedrock servers keep every setting from the Bedrock download, so **Configuration** lists them all. | [Configuration](#7-configuration-player-roles-and-the-whitelist) |
+| 1.16.3 | Fold the server list by edition and by cluster node; a folded heading shows how many servers are online. | [The dashboard](#3-the-dashboard) |
+| 1.16.2 | **Kick**, **Ban** and **Unban** players, and a **Banned** list for Java servers. | [Kick, ban and unban](#7-configuration-player-roles-and-the-whitelist) |
+| 1.16.2 | The RedstonePanel logo, a stone-and-redstone theme with **Redstone Red** accents, and an icon for a phone's home screen. | [The dashboard](#3-the-dashboard), [Sign in](#2-sign-in) |
+| 1.16.1 | A setup guide on a new panel's dashboard: first server, backups, HTTPS and alerts. | [The dashboard](#3-the-dashboard) |
+| 1.16.0 | Move or copy a server to another machine of a cluster. | [Clusters](#18-clusters) |
+
+Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 
 **Contents**
 
@@ -179,6 +192,10 @@ There are two kinds of account:
 Admins can turn sign-in off for devices on your home network; see
 [Panel Settings](#17-panel-settings-name-https-sign-in).
 
+**On a phone or tablet**, use the browser's **Add to Home Screen** (Safari's Share menu, or
+Chrome's ⋮ menu). The panel gets its own RedstonePanel icon and opens without the browser's
+address bar.
+
 ## 3. The dashboard
 
 When no server is selected, the right side shows the state of this machine and everything the
@@ -234,20 +251,20 @@ The sidebar on the left holds everything that isn't about one server:
 
 | Item | What it does |
 | --- | --- |
-| **RedstonePanel v1.15.0 / Survival Box** | The version, and the panel's name, so you can tell several panels apart. |
+| **RedstonePanel** logo, version and name | The redstone "R" logo, the panel's version (for example `v1.16.4`) and its name, such as **Survival Box**, so you can tell several panels apart. |
 | **➕ New Server** | Create a server, import one, or restore a removed one. |
 | **📊 Dashboard** | This machine's resources, services and what needs attention (above). |
 | **🌐 Cluster** | On a cluster master: every panel's servers (see [Clusters](#18-clusters)). |
 | **🖥️ Console** | The panel's live activity log. |
 | **📋 Templates** | Saved server settings to reuse. |
-| **⚙️** | Appearance: dark or light mode and the accent colour. Saved in your browser. |
+| **⚙️** | Appearance: **Color Mode** (dark or light) and **Accent Palette**: **Redstone Red** (the default), Diamond Blue, Emerald Green or Amethyst Purple. Saved in your browser. |
 | **Sort by** | Name A–Z, Z–A, or online servers first. |
 | Server list | Every server, grouped by edition: green dot = running, grey = stopped, with its version and port. Click one to open it. On a cluster master, each node's servers follow under the node's 🌐 name, grouped by edition the same way. Click a heading to fold it; a folded heading shows how many of its servers are online, and the panel remembers what you folded in this browser. |
 | **♻️ N removed servers: restore** | Shown when servers were uninstalled with **Keep World**. |
 | **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts). |
 
-On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top,
-with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
+On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
+(**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
 **Mods**, **Plugins** or **Add-ons**.
 
 ## 4. Create or import a server
@@ -285,6 +302,9 @@ The panel then:
   server launcher for the chosen version (always saved as `server.jar`), or the latest
   Bedrock Dedicated Server. Vanilla and Paper downloads are checked against their published
   checksums;
+- sets the server's ports in its `server.properties`. A Bedrock server keeps the full file
+  that comes with the Bedrock download, so every setting is there to change in
+  **Configuration**;
 - accepts the Minecraft EULA for you (`eula=true`), so by deploying a server you agree to it;
 - creates a systemd service that runs as the `minecraft` user and restarts the server if it
   crashes;
@@ -352,6 +372,14 @@ Click **Save Changes**, then **Restart** the server so it reads the new settings
 
 **Raw Text** is the same file as plain text, for pasting a whole configuration or editing
 settings the form doesn't know.
+
+**A Bedrock server that shows only its ports?** Bedrock servers created before 1.16.4 got a
+`server.properties` with only `server-port`, `server-portv6` and `query.port`. They run on
+Bedrock's built-in defaults, but the form has nothing else to show. Updating the server's
+Bedrock version doesn't replace that file. Either add the settings you want as lines in **Raw
+Text** (for example `difficulty=normal`), or stop the server, copy `server.properties` from a
+fresh Bedrock download into its folder with **Files**, set `server-port` and `server-portv6`
+back to the values it had, and start it again.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/configuration-raw.png"><img src="images/configuration-raw.png" alt="Raw server.properties"></picture>
 
