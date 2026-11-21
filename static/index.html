@@ -10,6 +10,13 @@
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="#1b1a19">
     <link rel="stylesheet" href="/static/css/tailwind.css">
+    <style>
+        /* While the console is open, the page beside the sidebar ends above it instead of
+           running underneath, so everything can still be scrolled into view (and pages that
+           fill the window, like Live Chat, get shorter). ServerApp.setConsoleSpace sets the
+           height; the timing matches the console's slide (transition-transform). */
+        body > main { padding-bottom: var(--console-space, 0px); transition: padding-bottom .15s cubic-bezier(.4, 0, .2, 1); }
+    </style>
     <script>
         // Tailwind's dark: variants match elements inside .dark, so the class goes on <html>
         // (on <body> it missed body's own dark: colours). Set before first paint.
@@ -371,7 +378,9 @@
         <div id="modal-content" class="bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 w-full max-w-md p-6"></div>
     </div>
 
-    <div id="console-dock" class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-700 transition-transform transform translate-y-full z-40 flex flex-col" style="height: 300px;">
+    <!-- Starts at the sidebar's edge (w-72) so it never covers the sidebar's buttons; while it's
+         open, the page beside the sidebar gets the same room at the bottom (--console-space) -->
+    <div id="console-dock" class="fixed bottom-0 right-0 bg-black border-t border-gray-700 transition-transform transform translate-y-full z-40 flex flex-col" style="left: 18rem; height: min(300px, 35vh);">
         <div class="flex justify-between items-center bg-gray-900 px-4 py-2 border-b border-gray-700">
             <h3 class="text-sm font-bold text-gray-300">Live Action Console <span id="console-node" class="font-normal text-gray-400"></span></h3>
             <button onclick="ServerApp.toggleConsole(false)" class="text-gray-400 hover:text-white font-bold">❌ Close</button>
