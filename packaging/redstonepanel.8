@@ -62,9 +62,10 @@ Supported systems: Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64\-bit Raspberr
 openjdk\-N\-jre\-headless versions the system's apt sources have (Debian 13: 21 and 25).
 Bedrock Dedicated Server only exists for x86\-64, so on ARM64 the panel refuses to create,
 import, restore, update or receive Bedrock servers and runs Java servers only. A new Java
-server gets a 2 GB heap (1 GB on a machine with 3 GB of memory or less); change it with
-.B systemctl edit \-\-full
-.IR minecraft-NAME .
+server gets a 2 GB heap (1 GB on a machine with 3 GB of memory or less); change it on the
+server's Maintenance tab (Memory and limits), which also sets optional hard memory and CPU
+limits as a systemd drop\-in,
+.IR /etc/systemd/system/minecraft-NAME.service.d/redstonepanel-limits.conf .
 .SH COMMANDS
 .TP
 .B status

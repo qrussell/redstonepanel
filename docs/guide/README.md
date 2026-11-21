@@ -29,6 +29,8 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Make someone an operator, or whitelist them | [Player roles and the whitelist](#7-configuration-player-roles-and-the-whitelist) |
 | Back up a world, or put one back | [Backups](#9-backups) |
 | Restart a server every night | [Scheduled restarts](#scheduled-restarts) |
+| Find out why a server lags | [Performance](#performance) |
+| Give a server more memory, or limit it | [Memory and limits](#memory-and-limits) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
 | Add mods, plugins or Bedrock add-ons | [Mods, plugins and add-ons](#12-mods-plugins-and-add-ons) |
 | Let Bedrock players join a Java server | [Finding mods and plugins](#finding-mods-and-plugins) (the **Bedrock players** bundle) |
@@ -156,8 +158,9 @@ servers; a Bedrock server can't be moved to a Pi.
 | 8 GB | Two or three servers at 2 GB, or one at 4 to 5 GB. |
 | 16 GB | Several servers; the CPU is the limit. |
 
-To change a server's limit, run `sudo systemctl edit --full minecraft-java` (with the server's
-name), change `-Xmx2G` to, say, `-Xmx4G`, and restart the server. Updates and moves keep it.
+To change a server's memory, use **Maintenance → [Memory and limits](#memory-and-limits)**.
+On a machine with 3 GB or less (a 2 GB Pi reports about 1.8 GB) the panel keeps 768 MB for the
+system instead of 1 GB, so the default 1 GB heap still fits. Updates and moves keep the setting.
 
 **Java.** Raspberry Pi OS (like Debian 13) packages Java 21 and 25, which run Minecraft 1.17 and
 newer. For older versions, which ask for Java 8, the panel says the Pi doesn't have it and
@@ -298,8 +301,12 @@ it back. It refreshes every 10 seconds while the page is open.
   in apt. Items about a server have an **Open** link.
 - **CPU, Memory, Disk, Game servers**: use right now, with the load average, swap, the free
   space where the servers live, players online and network traffic.
+- **History**: charts of the machine's CPU, memory, the disk holding the servers, and network
+  traffic in and out, for the **Last 24 hours** (one point a minute) or the **Last 7 days**
+  (15-minute averages). The panel measures every minute whether anyone is watching. Point at
+  a chart, or touch it on a phone, to read a value.
 - **Game servers**: one row per server with its state and uptime, CPU (a share of the whole
-  machine), memory, players online (Java servers with RCON set up), folder size, backups and
+  machine), memory, players online and **TPS** (Java servers with RCON set up), folder size, backups and
   when the next backup and restart are due. Click a row to open the server. Folder sizes are
   measured in the background every 10 minutes, so a new server shows *measuring…* at first.
 - **Host**: host name, Ubuntu release, kernel, uptime, time zone, addresses, the panel's
@@ -405,6 +412,41 @@ The **Overview** tab (shown in [The dashboard](#3-the-dashboard)) shows quick st
 - the Java heap limit.
 
 For Java servers it also shows which Java version the server needs and which one is installed.
+
+### Performance
+
+Under the quick stats, **Performance** answers "is the game lagging, since when, and why?". It
+refreshes every 10 seconds while the tab is open, and says when it was last updated, so a stale
+view is obvious.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/performance.png"><img src="images/performance.png" alt="The Performance card of a Java server"></picture>
+
+- **Tick health (TPS)**: Minecraft aims for 20 ticks a second. 19 or more is **Smooth**, 15 to
+  19 is **Some lag**, under 15 is **Lagging**. Paper servers report the 1, 5 and 15 minute
+  averages and milliseconds per tick (`tps`, `mspt`); Vanilla and Fabric 1.20.3 and newer report
+  milliseconds per tick (`tick query`). The panel only asks; it never changes the tick rate.
+  It needs RCON (turn it on in **Live Chat**). Older Java versions and Bedrock have no such
+  command, so the card says *Not available* rather than guessing.
+- **Memory**: what the whole server process uses, next to its heap (**Max heap**) and hard
+  limit, if it has one. Java uses some memory outside the heap, so the process is normally a
+  little bigger than the heap.
+- **Players** and the number of connections to the game port; **World** size and how many
+  plugins or mods are installed.
+- **Held back by its limits**: shown when the server's [CPU limit](#memory-and-limits) slowed it
+  down in the last minute, when it's at its hard memory limit, or when systemd stopped it for
+  going over.
+- **History**: CPU, memory, players and TPS for the last 24 hours or 7 days, written every
+  minute whether anyone is watching. A gap means the server (or the panel) wasn't running.
+- **Suggestions**, each shown only when what it's about was measured, with a link to where it's
+  changed. Nothing is applied for you, because each change trades how the world plays for speed:
+  - TPS under 18 for 10 minutes: lower `simulation-distance`, then `view-distance`; profile
+    with **spark**. On Vanilla, Paper or Fabric run the same world much faster.
+  - A Fabric server without **Lithium** (and **FerriteCore** when memory is tight); a Paper
+    server with WorldEdit but not **FastAsyncWorldEdit**.
+  - A server that uses all of its memory and keeps restarting, or that hit its hard limit;
+    all Java servers together promised more memory than the machine has; swap in use.
+  - A world over 4 GB with no world border: set one and pre-generate it with **Chunky**.
+  - No backup schedule, a `logs` folder over 1 GB, or worlds on a spinning hard disk.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/overview-bedrock.png"><img src="images/overview-bedrock.png" alt="Bedrock server overview"></picture>
 
@@ -527,6 +569,33 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
   needs a Java that isn't installed, you're asked to install it first.
 - **Java** (admins, Java servers): which Java the server runs on and which it needs. Choose
   another installed Java that's new enough and click **Use**; a running server restarts.
+- **Memory and limits**: see below.
+
+### Memory and limits
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/memory-and-limits.png"><img src="images/memory-and-limits.png" alt="Memory and limits on the Maintenance tab"></picture>
+
+Everyone can see these; only admins can change them.
+
+- **Memory (Java heap)**: how much memory the server starts with (**To start**, `-Xms`) and may
+  use at most (**At most**, `-Xmx`). Write sizes like `2G` or `1536M`. A new server gets 1 to 2 GB
+  (512 MB to 1 GB on a machine with 3 GB or less). The panel refuses a size that, with the other
+  *running* Java servers, would leave under 1 GB for the system (768 MB on a machine with 3 GB or
+  less). A running server uses the new size after a restart: tick **Restart now if the memory
+  changes**, or restart it later. The server keeps its Java, and updates, moves and restores keep
+  the setting.
+- **Hard memory limit** (systemd `MemoryMax=`): if the whole server process goes over it, systemd
+  stops the server (and, as after any crash, starts it again 20 seconds later). It stops one
+  runaway server from starving the others. **Automatic** is the heap plus half again (at least
+  512 MB more), for what Java uses outside the heap; a custom size must be at least 256 MB more
+  than the heap. Bedrock servers take a custom size.
+- **CPU limit** (systemd `CPUQuota=`): the most CPU the server may use, in cores; `0` is no
+  limit. Minecraft's main loop runs on one core, so a limit under 1 makes it lag.
+
+Limits apply at once, without a restart, and are kept in a drop-in file
+(`/etc/systemd/system/minecraft-NAME.service.d/redstonepanel-limits.conf`), so rewriting the
+server's unit keeps them. Uninstalling a server removes the drop-in; restoring it puts it back.
+Limits belong to the machine, so a server moved to another cluster member doesn't take them along.
 
 ### Java versions
 
@@ -959,6 +1028,9 @@ Get a message in Discord, or any service that takes a webhook, when something ha
    - **Player joined** / **Player turned away**: from the access log (see
      [Whitelist & Access](#7-configuration-player-roles-and-the-whitelist)), within about 30 seconds.
      Turned-away messages are sent at most once a minute per server.
+   - **TPS under 15 for 5 minutes** (Java servers whose tick health the panel can read) and
+     **Disk over 95 % full** (any disk holding servers, backups or panel data): at most once an
+     hour per server or disk. Both are off until you tick them.
 3. Click **Save notifications**, then **Send a test**.
 
 Setting up a whole Discord for your community, with a private space per Minecraft server, is
