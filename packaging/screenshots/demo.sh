@@ -120,7 +120,7 @@ api POST /api/servers/minecraft-java/chat '{"message":"Welcome to Survival Box!"
 say "off-site copies: an SSH storage (on Creative Lab) for the master's servers"
 dx $N "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openssh-server rsync >/dev/null 2>&1 \
     && (id mcbackup >/dev/null 2>&1 || useradd -m -s /bin/bash mcbackup) && install -d -m 700 -o mcbackup -g mcbackup /home/mcbackup/.ssh \
-    && systemctl enable --now ssh >/dev/null 2>&1"
+    && systemctl enable --now ssh >/dev/null 2>&1 && (ufw allow 22/tcp >/dev/null 2>&1 || true)"
 dx $M "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends rsync openssh-client >/dev/null 2>&1"
 KEY=$(api GET /api/settings/backup-storage | python3 -c "import json,sys; print(json.load(sys.stdin)['public_key'])" 2>/dev/null \
       || api GET /api/settings/backup-storage | python -c "import json,sys; print(json.load(sys.stdin)['public_key'])")
