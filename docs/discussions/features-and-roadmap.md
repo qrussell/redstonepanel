@@ -139,6 +139,14 @@ people's worlds first**, and use systemd rather than reinventing it.
   WorldEdit, pre-generating with Chunky, or moving a busy server to a quieter node.
 - **Alerts** for low TPS or a nearly full disk (off by default).
 
+### 1.18: change a server's type or version
+- **Vanilla → Paper or Fabric**, and every other way round, keeping the world, settings and
+  players. No more making a new server and copying the world by hand.
+- Mods and plugins carried over where the same project exists for the new type; a clear
+  warning before dropping mods that add blocks or dimensions.
+- A backup first, a preview, and an automatic rollback if the server doesn't start.
+- **Roll back the last update**, with the server software it ran before.
+
 ### 2.0: run it for other people
 - **Per-server permissions** for user accounts: view, console, power, files, mods and
   settings.
