@@ -88,7 +88,8 @@ def packaged_javas(refresh=False):
                                    if m and int(m.group(1)) >= 8}))
         except (OSError, subprocess.SubprocessError, ValueError):
             pass
-        _packaged.update(at=time.time(), majors=majors or UBUNTU_JAVA)
+        # A fallback is only kept for a minute, so a slow or busy apt is asked again soon
+        _packaged.update(at=time.time() - (0 if majors else CACHE_SECONDS - 60), majors=majors or UBUNTU_JAVA)
         return _packaged["majors"]
 
 

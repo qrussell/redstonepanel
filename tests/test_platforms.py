@@ -55,6 +55,10 @@ class PackagedJava(unittest.TestCase):
         self.assertEqual(J.packaged_javas(), J.UBUNTU_JAVA)
         self.out = OSError("no apt-cache")
         self.assertEqual(J.packaged_javas(refresh=True), J.UBUNTU_JAVA)
+        self.out = DEBIAN_13
+        self.assertEqual(J.packaged_javas(), J.UBUNTU_JAVA, "the fallback is kept for a minute")
+        with mock.patch.object(J.time, "time", return_value=J.time.time() + 61):
+            self.assertEqual(J.packaged_javas(), (21, 25), "then apt is asked again")
 
     def test_debian_13_gets_the_closest_newer_java(self):
         self.assertEqual(J.java_package(8), "openjdk-21-jre-headless")
