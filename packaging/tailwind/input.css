@@ -131,6 +131,12 @@ body.h-screen { height: 100vh; height: 100dvh; }
         visibility: hidden;
     }
     body.rp-nav-open .rp-sidebar { transform: none; visibility: visible; }
+    /* The whole menu scrolls as one page, so on a short phone the account footer comes after
+       the last server instead of being pinned over the server list (which left room for only a
+       server or two, with the last ones hidden behind the footer). */
+    .rp-sidebar { overflow-y: auto; overscroll-behavior: contain; }
+    .rp-sidebar > #server-list { flex: 0 0 auto; overflow: visible; }
+    .rp-sidebar > .rp-sidebar-footer { margin-top: auto; padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
     body.rp-nav-open { overscroll-behavior: contain; }
 
     /* Dialogs fill the screen */

@@ -57,5 +57,31 @@ class AppFiles(unittest.TestCase):
         self.assertNotIn("caches.", sw)
 
 
+class PhoneMenu(unittest.TestCase):
+    """On a phone the ☰ menu scrolls as one page: the account footer follows the server list
+    instead of being pinned over it, where it hid the last servers on short screens."""
+    def _phone_css(self, path):
+        with open(os.path.join(ROOT, *path)) as f:
+            css = f.read()
+        i = css.find("@media (max-width:767.98px)")
+        if i < 0:
+            i = css.find("@media (max-width: 767.98px)")
+        self.assertGreaterEqual(i, 0, "no phone section in " + "/".join(path))
+        return css[i:].replace(" ", "").replace("\n", "")
+
+    def test_menu_scrolls_as_one(self):
+        for path in (("packaging", "tailwind", "input.css"), ("static", "css", "tailwind.css")):
+            css = self._phone_css(path)
+            self.assertIn(".rp-sidebar{overflow-y:auto;", css, path)
+            self.assertIn(".rp-sidebar>#server-list{flex:00auto;overflow:visible", css, path)
+            self.assertIn(".rp-sidebar>.rp-sidebar-footer{margin-top:auto;", css, path)
+
+    def test_footer_is_marked(self):
+        with open(os.path.join(ROOT, "static", "index.html")) as f:
+            html = f.read()
+        self.assertIn('class="rp-sidebar-footer ', html)
+        self.assertLess(html.index('id="server-list"'), html.index("rp-sidebar-footer"))
+
+
 if __name__ == "__main__":
     unittest.main()
