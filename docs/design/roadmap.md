@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.9 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8) and newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9) shipped; a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.10 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8) newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9) and a phone-friendly panel (1.16.10) shipped; backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -23,12 +23,12 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.16.9)
+## What already exists (1.16.10)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore (and, in a cluster, a copy on another member), webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore (and, in a cluster, a copy on another member), webhook notifications, scheduled restarts, dark/light themes, a layout for phones and an installable app (PWA), an activity log, HTTPS modes,
 trusted-LAN sign-in, two-factor sign-in with recovery codes, clusters (managing every node's servers from the master, with real
 certificates for a master on the internet, and moving or copying servers between members), a first-run setup guide, kick, ban and unban, the redstone logo and theme, a server list that folds by node and edition, the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
@@ -709,7 +709,7 @@ refused joins, so those are Java only.
     systems on amd64 plus Ubuntu 26.04 and Debian 13 on GitHub's ARM64 runners, including
     Paper booting on ARM Java and Bedrock refused with nothing left behind.
 
-### 1.16.10: a panel that works on a phone
+### 1.16.10: a panel that works on a phone *(released 21 Nov 2026)*
 
 18. **Every page usable on a phone, and the panel installable as an app.** Restarting a
     crashed server or answering "is it up?" from a phone is one of the commonest reasons to
@@ -743,6 +743,20 @@ refused joins, so those are Java only.
     installing; it caches nothing). No framework, no new dependency.
 
     **Size:** one to two weeks; the tables and every dialog are most of it.
+
+    **As built:** below `md` the sidebar is a slide-in menu under a top bar
+    (`ServerApp.openNav/closeNav`, `.rp-sidebar` in `input.css`), and closes when something in
+    it is picked. The dashboard's server table, backups (and backup copies from 1.16.8), the
+    file manager and the access log turn into cards through one CSS rule (`table.rp-cards`,
+    labels from `data-label`). The PWA keeps the existing `manifest.json` (adding `id`, `scope`
+    and `description`) rather than a new `.webmanifest`, and `static/sw.js` caches nothing,
+    only replacing the browser's error page when the panel can't be reached; it registers only
+    in a secure context. Added on request: **📱 Open on your phone**, a QR code of the panel's
+    address made by `core/qr.py` (`GET /api/phone-qr`, http/https addresses only, signed-in
+    users only), offering the machine's addresses when the panel was opened as localhost.
+    The screenshot demo takes phone pictures at 390x844. Tested in Chromium with phone
+    emulation (390x844), the installability check and against a QR reader. Not yet tried on
+    a real iPhone or Android phone.
 
 ### 1.16.11: backups off the machine, without a cluster
 

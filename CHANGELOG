@@ -4,6 +4,15 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.16.10 (2026-11-21)
+
+Release notes: release-notes/v1.16.10.md
+
+- Works on a phone: below 768 px the sidebar becomes a menu under a top bar, Start, Restart and Stop are large buttons, tabs scroll sideways, tables become cards and dialogs fill the screen.
+- Fields no longer make iOS zoom in, Live Chat stays above the on-screen keyboard, and touch screens get 44 px controls.
+- Installable as an app over HTTPS (a manifest and a service worker that caches nothing but shows a "Can't reach the panel" page when offline).
+- Open on your phone: a QR code of the panel's address on the desktop, made by the panel itself, offering the machine's network addresses when the panel was opened as localhost.
+
 ## 1.16.9 (2026-11-21)
 
 Release notes: release-notes/v1.16.9.md
