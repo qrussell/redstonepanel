@@ -39,6 +39,8 @@ ready in about a minute; watch it in **🖥️ Console**.
 
 **4. Join.** In Minecraft, add a server at **&lt;your-server&gt;**. The first Java server
 uses port 25565 and the first Bedrock server 19132; the server's **Overview** shows its port.
+Players outside your home also need port forwards on your internet router: **🔀 Port
+forwarding** lists exactly which, with steps for pfSense and other routers.
 
 That's it. The **setup guide** on the dashboard then walks you through the rest: backup
 schedules, HTTPS and crash alerts in Discord.
@@ -214,6 +216,9 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   players and disk use, supporting services (Java, firewall, timers, certificates,
   Phantom proxies), a list of what needs attention, and on a cluster master each node's
   resources
+- a port forwarding guide for your internet router: which ports, TCP or UDP, to which
+  machine's LAN address, for every server and cluster member, with pfSense steps, a check
+  through your internet address, and warnings for shared ports and carrier-grade NAT
 - clusters: one master panel manages the servers of other RedstonePanels with every tab,
   creates servers on them, moves or copies servers between them, renews their certificates and
   backs the cluster up every night

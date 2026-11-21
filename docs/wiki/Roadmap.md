@@ -10,6 +10,14 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 
 ## Next up
 
+### 1.16.14: port forwarding, for players outside your home
+
+- **🔀 Port forwarding** lists what to forward on your internet router for every server, and
+  on a cluster for every machine with its LAN address: ports, TCP or UDP, and what each is for.
+- **Step-by-step for pfSense** and for other routers, a warning when two servers want the
+  same outside port, and a check through your internet address.
+- Your internet address is asked of your own router, never an outside website.
+
 ### 1.17: server performance and tuning
 
 - **Tick health** (TPS and MSPT) for Paper, Vanilla and Fabric 1.20.3+.

@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.13 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) and pre-copy and LAN discovery (1.16.13) shipped; performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.13 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) and pre-copy and LAN discovery (1.16.13) shipped; a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1000,6 +1000,49 @@ refused joins, so those are Java only.
     here) and a third, standalone panel on the same /24 in about 12 seconds; a master user
     (not admin) is refused. Not tested: a multi-gigabyte world, and real Java/Bedrock servers
     (the pre-copy doesn't depend on the edition: it reads files, never the game).
+
+### 1.16.14: port forwarding, for players outside your home
+
+21. **A page that says what to forward on the internet router.** Asked for by Quentin
+    (21 Nov 2026). The panel already keeps `ufw` on each machine in step, but players outside
+    the house also need port forwards on the router in front (pfSense here), and which ports
+    a server needs isn't obvious: Bedrock 1.26.50+ uses TCP plus fixed UDP ports, Java servers
+    may also run Geyser or a voice-chat plugin, and in a cluster each server lives on a
+    different machine behind one public address.
+
+    - **🔀 Port forwarding** (admins): per server and per cluster member, the outside port,
+      protocol, the machine's LAN address and inside port, and what each is for. Rows say
+      **forward**, **only if you need them** (Query) or **leave closed** (RCON, NetherNet LAN
+      discovery on UDP 7551, Phantom, the panel itself).
+    - The game ports come from `manager.firewall_rules()`, the same logic ufw uses (1.16.11),
+      so the router list and ufw never disagree. Extras read from the server folder: Query,
+      RCON, Geyser (`bedrock: port`, `clone-remote-port`), Simple Voice Chat.
+    - Two servers that want the same outside port on the one public address are called out.
+    - The public address is typed in, or asked of the router itself (NAT-PMP, then UPnP on the
+      default gateway); never an outside "what's my IP" service. Carrier-grade NAT (100.64/10)
+      and double NAT are explained.
+    - **Check from here** connects to the public address (Java status ping and RakNet ping
+      confirm it's the right server; NetherNet TCP connect), with a plain note that it needs
+      NAT reflection and that a phone on mobile data is the real test.
+    - Step-by-step for pfSense (Firewall > NAT > Port Forward, the exact values per rule,
+      TCP/UDP in one rule, static DHCP mappings, NAT reflection, IPv6, dynamic DNS) and for
+      other routers.
+
+    **How:** `core/portforward.py`; `GET /api/port-forwarding` (the master asks each node's
+    `GET /api/port-forwarding/local`, added to the node allowlist; nodes older than 1.16.14
+    fall back to their server list). `CLUSTER_API` unchanged. No new dependencies.
+
+    **Size:** a few days.
+
+    **As built (MR, 21 Nov 2026):** as planned. Tested with `tests/test_portforward.py` (34
+    tests: port parsing, Geyser and voice-chat configs, Bedrock NetherNet/RakNet rows, clashes,
+    old-node fallback, NAT-PMP against a stand-in, Java status and RakNet pings against stand-in
+    servers, the API and admin-only access) and the new `packaging/test/test-port-forwarding.sh`
+    (master + node in Docker with ufw, stand-in Bedrock servers, 26 checks: each machine's LAN
+    address, rows per server, the clash and its fix after a port change, double NAT and CGNAT
+    warnings, no NAT-PMP/UPnP on Docker's gateway, and Check from here before and after a
+    listener), run in a cloud thread. Not tested: a real pfSense with NAT-PMP or UPnP turned on,
+    and a Bedrock player joining through a real port forward from outside.
 
 ### 1.17: server performance and tuning
 

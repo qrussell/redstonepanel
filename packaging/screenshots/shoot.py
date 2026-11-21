@@ -141,6 +141,19 @@ class Shooter:
             page.evaluate("ServerApp.closeModal()")
         step("cluster", cluster)
 
+        # Port forwarding (1.16.14): what to forward on the internet router, master and node
+        def port_forwarding():
+            page.evaluate("ServerApp.openPorts()")
+            page.wait_for_selector("text=Forward these", timeout=30000)
+            page.wait_for_timeout(1500)
+            # The page scrolls inside #ports-body, so grow the window to fit it for one picture
+            size = page.viewport_size
+            tall = page.evaluate("document.getElementById('ports-body').scrollHeight + 200")
+            page.set_viewport_size({"width": size["width"], "height": max(size["height"], tall)})
+            shot("port-forwarding")
+            page.set_viewport_size(size)
+        step("port forwarding", port_forwarding)
+
         def master_java():
             self.open_server("minecraft-java")
             shot("overview")
@@ -313,6 +326,13 @@ class Shooter:
                 page.wait_for_timeout(2500)
                 shot(f"phone-{tab}")
         step("phone server", server)
+
+        def ports():
+            page.evaluate("ServerApp.openPorts()")
+            page.wait_for_selector("text=Forward these", timeout=30000)
+            page.wait_for_timeout(1500)
+            shot("phone-port-forwarding")
+        step("phone port forwarding", ports)
 
     def move(self, server):
         """Moves a server to the other panel from the cluster page, pictures the finished move,

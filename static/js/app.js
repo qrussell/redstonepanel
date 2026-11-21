@@ -4030,6 +4030,7 @@ const ServerApp = {
 	},
 
 	hideDashboard() {
+		this.closePorts();
 		clearInterval(this.dashTimer);
 		this.dashTimer = null;
 		document.getElementById('dashboard').classList.add('hidden');
@@ -4501,6 +4502,276 @@ const ServerApp = {
 		error: 'Something went wrong talking to this panel.',
 	},
 
+	// --- Port forwarding (1.16.14, admins): what to forward on the internet router so players
+	// outside the home can join, per server and per cluster member (core/portforward.py)
+	portsData: null,
+	portsCheck: null,
+	portsRouter: (() => { try { return localStorage.getItem('rp_portsRouter') || 'pfsense'; } catch (e) { return 'pfsense'; } })(),
+
+	openPorts() {
+		this.hideDashboard();
+		this.closeCluster();
+		this.activeServer = null;
+		this.renderSidebar();
+		document.getElementById('workspace').classList.add('hidden');
+		document.getElementById('ports-view').classList.remove('hidden');
+		this.setMobileTitle('🔀 Port forwarding', this.panelName);
+		this.loadPorts();
+	},
+
+	closePorts() {
+		const v = document.getElementById('ports-view');
+		if (v) v.classList.add('hidden');
+	},
+
+	async loadPorts() {
+		const body = document.getElementById('ports-body');
+		if (!this.portsData) body.innerHTML = '<p class="text-gray-500">Loading...</p>';
+		try {
+			const res = await fetch('/api/port-forwarding');
+			if (!res.ok) throw new Error(await this.apiError(res));
+			this.portsData = await res.json();
+		} catch (e) {
+			body.innerHTML = `<p class="text-red-500">Couldn't load port forwarding: ${this.escapeHtml(e.message)}</p>`;
+			return;
+		}
+		this.renderPorts();
+	},
+
+	setPortsRouter(kind) {
+		this.portsRouter = kind;
+		try { localStorage.setItem('rp_portsRouter', kind); } catch (e) { /* only a convenience */ }
+		this.renderPorts();
+	},
+
+	async savePublicAddress() {
+		const value = document.getElementById('ports-public').value.trim();
+		const res = await fetch('/api/port-forwarding/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ public_address: value }) });
+		if (!res.ok) { alert(await this.apiError(res)); return; }
+		this.portsCheck = null;
+		this.loadPorts();
+	},
+
+	async lookupPublicAddress(btn) {
+		const note = document.getElementById('ports-lookup-note');
+		btn.disabled = true;
+		note.className = 'text-xs text-gray-500 mt-2';
+		note.innerText = 'Asking the router...';
+		const res = await fetch('/api/port-forwarding/lookup', { method: 'POST' });
+		btn.disabled = false;
+		if (!res.ok) {
+			note.className = 'text-xs text-yellow-700 dark:text-yellow-300 mt-2';
+			note.innerText = await this.apiError(res);
+			return;
+		}
+		const d = await res.json();
+		document.getElementById('ports-public').value = d.address;
+		note.innerText = `The router at ${d.gateway} says its internet address is ${d.address} (asked with ${d.method}). Press Save to keep it.`;
+	},
+
+	async checkPorts(btn) {
+		btn.disabled = true;
+		btn.innerText = 'Checking...';
+		const res = await fetch('/api/port-forwarding/check', { method: 'POST' });
+		btn.disabled = false;
+		btn.innerText = 'Check from here';
+		if (!res.ok) { alert(await this.apiError(res)); return; }
+		this.portsCheck = await res.json();
+		this.renderPorts();
+	},
+
+	// Every row of every server on every member, with where it goes
+	portsRows() {
+		const out = [];
+		for (const m of this.portsData.members) {
+			for (const s of m.servers || []) {
+				for (const r of s.rows || []) out.push({ m, s, r, ip: m.forward_to || '?' });
+			}
+			for (const r of m.machine || []) out.push({ m, s: null, r, ip: m.forward_to || '?' });
+		}
+		return out;
+	},
+
+	portsJoinAddress(s, rows) {
+		const addr = this.portsData.public_address || 'your-public-address';
+		const game = rows.find(x => x.s === s && x.r.kind === 'forward');
+		if (!game) return null;
+		if (s.edition === 'Java') return game.r.port === '25565' ? addr : `${addr}:${game.r.port}`;
+		return `${addr}, port ${game.r.port}`;
+	},
+
+	portsText() {
+		return this.portsRows().filter(x => x.r.kind === 'forward').map(x =>
+			`${x.r.proto.toUpperCase()} ${x.r.port.replace(':', '-')} -> ${x.ip}:${x.r.inside.replace(':', '-')}  ${x.s.name} (${x.r.what})${x.m.local ? '' : ' on ' + x.m.name}`).join('\n');
+	},
+
+	copyPorts() {
+		const text = this.portsText();
+		if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).catch(() => prompt('Copy the list:', text));
+		else prompt('Copy the list:', text);
+	},
+
+	// pfSense takes TCP and UDP for the same port in one rule (Protocol: TCP/UDP)
+	portsRules() {
+		const rules = [];
+		for (const x of this.portsRows().filter(x => x.r.kind === 'forward')) {
+			const same = rules.find(y => y.ip === x.ip && y.port === x.r.port && y.inside === x.r.inside && y.server === x.s.name);
+			if (same) { if (!same.protos.includes(x.r.proto)) same.protos.push(x.r.proto); continue; }
+			rules.push({ ip: x.ip, port: x.r.port, inside: x.r.inside, protos: [x.r.proto], server: x.s.name,
+				member: x.m.local ? '' : x.m.name });
+		}
+		return rules;
+	},
+
+	portsCheckCell(x) {
+		if (!this.portsCheck || !x.s) return '';
+		const hit = this.portsCheck.results.find(c => c.member === x.m.id && c.server === x.s.name && c.port === x.r.port && c.proto === x.r.proto);
+		if (!hit) return '';
+		if (hit.result === 'reached') {
+			return hit.same_server === false
+				? `<span class="text-yellow-700 dark:text-yellow-300" title="${this.escapeHtml(hit.answer?.motd || '')}">⚠️ Another server answered</span>`
+				: '<span class="text-green-700 dark:text-green-400">✅ Reached</span>';
+		}
+		if (hit.result === 'no_answer') return `<span class="text-gray-600 dark:text-gray-300" title="${this.escapeHtml(hit.error || '')}">❔ No answer</span>`;
+		return '<span class="text-gray-400" title="UDP ports without a ping can\'t be tried this way">— Not tried</span>';
+	},
+
+	renderPorts() {
+		const d = this.portsData, esc = t => this.escapeHtml(String(t ?? ''));
+		const rows = this.portsRows();
+		const fwd = rows.filter(x => x.r.kind === 'forward');
+		const optional = rows.filter(x => x.r.kind === 'optional');
+		const closed = rows.filter(x => ['lan', 'never', 'ipv6'].includes(x.r.kind));
+		const card = 'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4';
+		const h = 'text-lg font-bold text-gray-900 dark:text-white mb-2';
+		const btn = 'px-3 py-2 rounded text-sm font-bold transition';
+		const grey = `${btn} bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white`;
+		const warn = t => `<p class="text-sm p-3 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700">${t}</p>`;
+		const memberLabel = m => m.local ? esc(m.name) : `🌐 ${esc(m.name)}`;
+		const multi = d.members.length > 1;
+		const proto = p => p.toUpperCase();
+		const port = p => esc(String(p).replace(':', '–'));
+
+		document.getElementById('ports-subtitle').innerText = fwd.length
+			? `${fwd.length} port${fwd.length === 1 ? '' : 's'} to forward on your internet router so players outside your home can join.`
+			: 'What to set up on your internet router so players outside your home can join.';
+
+		// 1. The public address
+		const kindNote = {
+			cgnat: warn(`<b>${esc(d.public_address)}</b> is a carrier-grade NAT address: your internet provider shares one address between many customers, so forwarding ports on your own router can't work. Ask the provider for a public IPv4 address (often called a static or dedicated IP).`),
+			private: warn(`<b>${esc(d.public_address)}</b> is a private address, so there's another router in front of yours (double NAT), usually the provider's modem. Put the modem in bridge mode, or forward the same ports on the modem to your router's WAN address as well.`),
+		}[d.public_kind] || '';
+		const addressCard = `<div class="${card}">
+			<h3 class="${h}">Your internet address</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">The address players type to reach you from outside: your router's WAN address, or a dynamic DNS name that points to it. The panel only asks your own router for it, never an outside website.</p>
+			<div class="flex flex-wrap gap-2">
+				<input id="ports-public" value="${esc(d.public_address)}" placeholder="e.g. 81.2.69.160 or play.example.com" class="flex-1 min-w-0 sm:min-w-[16rem] p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+				<button onclick="ServerApp.savePublicAddress()" class="${btn} bg-theme hover-bg-theme text-white">Save</button>
+				<button onclick="ServerApp.lookupPublicAddress(this)" class="${grey}">Ask the router</button>
+			</div>
+			<p id="ports-lookup-note" class="text-xs text-gray-500 mt-2">“Ask the router” uses NAT-PMP or UPnP on your router (${esc(d.members[0].gateway || 'no gateway found')}). On pfSense they're under Services &gt; UPnP &amp; NAT-PMP and are off by default; the WAN address is also on the pfSense Dashboard.</p>
+			${kindNote ? `<div class="mt-3">${kindNote}</div>` : ''}
+		</div>`;
+
+		// 2. Ports two servers both need on the one public address
+		const clashes = (d.conflicts || []).map(c => `<li><b>${proto(c.proto)} ${port(c.port)}</b>: ${c.users.map(u => `${esc(u.server)}${multi ? ' on ' + esc(u.member) : ''}`).join(' and ')}</li>`).join('');
+		const clashCard = clashes ? `<div class="p-4 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 text-sm text-red-800 dark:text-red-200">
+			<p class="font-bold mb-1">Two servers want the same outside port</p>
+			<p class="mb-2">You have one internet address, so the router can send each outside port to only one server. Give one of them another port in its Configuration tab (a Java server's players then add <code>:port</code> to the address).</p>
+			<ul class="list-disc ml-5">${clashes}</ul></div>` : '';
+
+		// 3. What to forward
+		const issues = d.members.flatMap(m => (m.servers || []).flatMap(s => (s.issues || []).map(i => `<li><b>${esc(s.name)}</b>${multi ? ' on ' + memberLabel(m) : ''}: ${esc(i)}</li>`))).join('');
+		const memberNotes = d.members.map(m => {
+			if (m.state !== 'ok') return `<li>${memberLabel(m)}: couldn't be reached (${esc(m.error || m.state)}), so its servers aren't listed.</li>`;
+			if (m.old) return `<li>${memberLabel(m)} runs an older RedstonePanel: only its game ports are listed, and its address comes from the cluster (${esc(m.url_host)}). Update it for the full list.</li>`;
+			if (!m.lan_ip) return `<li>${memberLabel(m)}: couldn't tell which address the router reaches it on.</li>`;
+			return '';
+		}).join('');
+		const table = (list, closed = false) => { const checks = this.portsCheck && !closed; return `<div class="overflow-x-auto -mx-3 sm:mx-0"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">
+			<thead><tr class="text-left text-xs uppercase text-gray-500 border-b border-gray-200 dark:border-gray-700">
+				<th class="py-2 pr-3">Server</th><th class="py-2 pr-3">${closed ? 'Port' : 'Outside port'}</th><th class="py-2 pr-3">Protocol</th>
+				<th class="py-2 pr-3">${closed ? 'Machine' : 'Forward to'}</th><th class="py-2 pr-3">What it's for</th>${checks ? '<th class="py-2 pr-3">From here</th>' : ''}</tr></thead>
+			<tbody>${list.map(x => `<tr class="border-b border-gray-100 dark:border-gray-700/60 align-top">
+				<td class="rp-card-head py-2 pr-3">${x.s ? esc(x.s.name) : 'This machine'}${multi ? `<div class="text-xs text-gray-500 font-normal">${memberLabel(x.m)}</div>` : ''}</td>
+				<td data-label="${closed ? 'Port' : 'Outside port'}" class="py-2 pr-3 font-mono">${port(x.r.port)}</td>
+				<td data-label="Protocol" class="py-2 pr-3 font-mono">${proto(x.r.proto)}</td>
+				<td data-label="${closed ? 'Machine' : 'Forward to'}" class="py-2 pr-3 font-mono">${closed ? esc(x.ip) : `${esc(x.ip)}:${port(x.r.inside)}`}</td>
+				<td data-label="For" class="py-2 pr-3">${esc(x.r.what)}${x.r.note ? `<div class="text-xs text-gray-500">${esc(x.r.note)}</div>` : ''}${x.r.ufw === false ? '<div class="text-xs text-yellow-700 dark:text-yellow-300">ufw on this machine doesn\'t allow it yet.</div>' : ''}</td>
+				${checks ? `<td data-label="From here" class="py-2 pr-3">${this.portsCheckCell(x)}</td>` : ''}
+			</tr>`).join('')}</tbody></table></div>`; };
+		const joins = d.members.flatMap(m => (m.servers || []).map(s => ({ s, a: this.portsJoinAddress(s, rows) })))
+			.filter(j => j.a).map(j => `<li><b>${esc(j.s.name)}</b> (${esc(j.s.edition)}): <code>${esc(j.a)}</code></li>`).join('');
+		const forwardCard = `<div class="${card}">
+			<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+				<h3 class="text-lg font-bold text-gray-900 dark:text-white">Forward these</h3>
+				<div class="flex flex-wrap gap-2">
+					${fwd.length ? `<button onclick="ServerApp.copyPorts()" class="${grey}">Copy as text</button>
+					<button onclick="ServerApp.checkPorts(this)" ${d.public_address ? '' : 'disabled title="Save your internet address first"'} class="${grey}">Check from here</button>` : ''}
+				</div>
+			</div>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">One port forward per line, from your internet address to the machine the server runs on. Keep the outside port the same as the inside port unless you have a reason not to (Bedrock needs them the same).</p>
+			${fwd.length ? table(fwd) : '<p class="text-sm text-gray-500">No servers yet, so there\'s nothing to forward.</p>'}
+			${issues ? `<div class="mt-3">${warn('<b>Fix these first</b><ul class="list-disc ml-5 mt-1">' + issues + '</ul>')}</div>` : ''}
+			${memberNotes ? `<ul class="list-disc ml-5 mt-3 text-sm text-gray-600 dark:text-gray-300">${memberNotes}</ul>` : ''}
+			${this.portsCheck ? `<p class="text-xs text-gray-500 mt-3">Checked ${esc(new Date(this.portsCheck.checked * 1000).toLocaleTimeString())} by connecting from ${esc(d.members[0].name)} to ${esc(this.portsCheck.address)}. This only works when the router loops connections back to the inside (pfSense: NAT reflection). “No answer” doesn't prove the forward is wrong: the surest test is a phone on mobile data, with Wi-Fi off.</p>` : ''}
+			${joins ? `<p class="text-sm font-bold text-gray-900 dark:text-white mt-4">Players outside join with</p><ul class="list-disc ml-5 text-sm text-gray-700 dark:text-gray-300">${joins}</ul>` : ''}
+		</div>`;
+
+		// 4. Optional and closed ports
+		const optionalCard = optional.length ? `<div class="${card}"><h3 class="${h}">Only if you need them</h3>${table(optional, false)}</div>` : '';
+		const web = d.members[0].web || {};
+		const closedCard = `<div class="${card}">
+			<h3 class="${h}">Leave these closed</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Don't forward these. They're only for your home network, or they'd let strangers try to take control.</p>
+			${closed.length ? table(closed, true) : ''}
+			<div class="mt-3 text-sm text-gray-700 dark:text-gray-300">
+				<p class="font-bold">The panel itself (${esc((web.scheme || 'http').toUpperCase())} ${esc(web.port || '')}): optional, and not recommended</p>
+				<p class="mt-1">Forward it only if you must manage servers from outside, and then only with HTTPS, two-factor sign-in for every admin, and trusted-LAN sign-in off. A VPN into your home network (pfSense has WireGuard and OpenVPN) is safer: the panel then never faces the internet.${web.scheme !== 'https' ? ' <b class="text-red-600 dark:text-red-400">This panel is on plain HTTP: never forward it as it is.</b>' : ''}</p>
+				${multi ? '<p class="mt-2">Cluster members talk to each other over the home network; there\'s nothing to forward for the cluster.</p>' : ''}
+			</div>
+		</div>`;
+
+		// 5. How to do it on the router
+		const tabBtn = (k, label) => `<button onclick="ServerApp.setPortsRouter('${k}')" class="py-2 px-4 text-sm font-bold ${this.portsRouter === k ? 'tab-active' : 'text-gray-500 dark:text-gray-400'}">${label}</button>`;
+		const ips = [...new Set(d.members.filter(m => m.forward_to).map(m => `${m.local && !multi ? 'this machine' : m.name} (${m.forward_to})`))].join(', ');
+		const rules = this.portsRules();
+		const pfRules = rules.map(r => `<tr class="border-b border-gray-100 dark:border-gray-700/60">
+			<td class="rp-card-head py-1.5 pr-3">${esc(r.server)}${r.member ? ` <span class="text-xs text-gray-500 font-normal">on ${esc(r.member)}</span>` : ''}</td>
+			<td data-label="Protocol" class="py-1.5 pr-3 font-mono">${r.protos.length > 1 ? 'TCP/UDP' : proto(r.protos[0])}</td>
+			<td data-label="Port range" class="py-1.5 pr-3 font-mono">${port(r.port)}</td>
+			<td data-label="Target IP" class="py-1.5 pr-3 font-mono">${esc(r.ip)}</td>
+			<td data-label="Target port" class="py-1.5 pr-3 font-mono">${port(r.inside)}</td>
+			<td data-label="Description" class="py-1.5 pr-3">RedstonePanel ${esc(r.server.replace(/^minecraft-/, ''))}${r.member ? ' ' + esc(r.member) : ''}</td></tr>`).join('');
+		const pfsense = `<ol class="list-decimal ml-5 space-y-2">
+			<li><b>Give each machine a fixed address</b> so a forward keeps pointing at the right one: Services &gt; DHCP Server &gt; LAN &gt; DHCPv4 Static Mappings (pfSense with Kea: the same page) for ${esc(ips || 'each machine')}.</li>
+			<li>Go to <b>Firewall &gt; NAT &gt; Port Forward</b> and press <b>Add</b> (the arrow pointing down adds at the bottom).</li>
+			<li>For each line below set <b>Interface</b> WAN, <b>Address Family</b> IPv4, the <b>Protocol</b>, <b>Destination</b> “WAN address”, the <b>Destination port range</b> (From and To), the <b>Redirect target IP</b> (type “Address or Alias”) and <b>Redirect target port</b>, a <b>Description</b>, and leave <b>Filter rule association</b> on “Add associated filter rule”. Save.
+				${pfRules ? `<div class="overflow-x-auto -mx-3 sm:mx-0 mt-2"><table class="rp-cards w-full text-sm"><thead><tr class="text-left text-xs uppercase text-gray-500 border-b border-gray-200 dark:border-gray-700">
+				<th class="py-1.5 pr-3">Server</th><th class="py-1.5 pr-3">Protocol</th><th class="py-1.5 pr-3">Destination port range</th><th class="py-1.5 pr-3">Redirect target IP</th><th class="py-1.5 pr-3">Redirect target port</th><th class="py-1.5 pr-3">Description</th></tr></thead><tbody>${pfRules}</tbody></table></div>` : ''}</li>
+			<li>Press <b>Apply Changes</b>. pfSense adds a matching pass rule under Firewall &gt; Rules &gt; WAN for each forward.</li>
+			<li><b>Optional, for players at home who use the internet address:</b> System &gt; Advanced &gt; Firewall &amp; NAT, set <b>NAT Reflection mode for port forwards</b> to “Pure NAT”, or set it on each forward. It's also what lets “Check from here” work. Players at home can always use the LAN address instead.</li>
+			<li><b>IPv6:</b> IPv6 isn't forwarded. If your provider gives you IPv6 and you want players to use it, add a pass rule on Firewall &gt; Rules &gt; WAN to each machine's IPv6 address for the same ports.</li>
+			<li><b>If the WAN address changes</b> (most home connections), set up Services &gt; Dynamic DNS and give players the name instead.</li>
+		</ol>`;
+		const generic = `<ol class="list-decimal ml-5 space-y-2">
+			<li>Sign in to your router (usually <code>http://${esc(d.members[0].gateway || '192.168.1.1')}</code>). The setting is called <b>Port Forwarding</b>, <b>Virtual Servers</b>, <b>NAT</b> or <b>Applications &amp; Gaming</b>, depending on the make.</li>
+			<li><b>Give each machine a fixed address</b> first, so the forwards keep working after a restart: look for <b>DHCP reservation</b>, <b>Static lease</b> or <b>Address reservation</b>, for ${esc(ips || 'each machine')}.</li>
+			<li>Add one forward per line in <b>Forward these</b>: the outside (external/public/WAN) port, the protocol, the inside (internal/private/LAN) address and port. If a line needs both TCP and UDP, pick <b>Both</b> or add two forwards.</li>
+			<li>Leave <b>UPnP</b> as it is: the panel doesn't need it, and it doesn't open anything itself.</li>
+			<li>Some routers have a separate firewall page; if so, allow the same ports there too.</li>
+			<li>Test from outside: a phone on mobile data (Wi-Fi off), joining the address under <b>Players outside join with</b>. Many home routers can't loop back, so the internet address may not work from inside your home even when everything is right.</li>
+		</ol>`;
+		const howCard = `<div class="${card}">
+			<h3 class="${h}">How to set it up</h3>
+			<div class="rp-tabs flex border-b border-gray-200 dark:border-gray-700 mb-3">${tabBtn('pfsense', 'pfSense')}${tabBtn('generic', 'Other routers')}</div>
+			<div class="text-sm text-gray-700 dark:text-gray-300">${this.portsRouter === 'generic' ? generic : pfsense}</div>
+		</div>`;
+
+		document.getElementById('ports-body').innerHTML = addressCard + clashCard + forwardCard + howCard + optionalCard + closedCard;
+	},
+
 	openCluster() {
 		this.hideDashboard();
 		this.activeServer = null;
@@ -4514,6 +4785,7 @@ const ServerApp = {
 	},
 
 	closeCluster() {
+		this.closePorts();
 		clearInterval(this.clusterTimer);
 		this.clusterTimer = null;
 		document.getElementById('cluster-view').classList.add('hidden');
