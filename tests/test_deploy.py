@@ -109,6 +109,15 @@ class BedrockUdpPorts(unittest.TestCase):
         self.assertEqual((port, old), (19134, "19132"))
         self.assertEqual(M.read_properties(d)["server-udp-ports"], "19134")
 
+    def test_restore_gives_a_fixed_udp_port(self):
+        # An old backup without server-udp-ports: BDS would use random UDP ports no rule can match
+        d = self.server("minecraft-bedrock-2", {"server-port": 19140, "server-portv6": 19141})
+        port, old = M._restore_ports(d, "bedrock")
+        self.assertEqual((port, old), (19140, None))
+        self.assertEqual(M.read_properties(d)["server-udp-ports"], "19140")
+        self.assertEqual(M.firewall_rules("bedrock", M.read_properties(d)),
+                         {("19140", "tcp"), ("19140", "udp"), ("7551", "udp")})
+
     def test_template_keeps_the_servers_udp_port(self):
         d = self.server("minecraft-bedrock-2", {"server-port": 19134, "server-portv6": 19135, "server-udp-ports": 19134})
         template = {"properties": {"difficulty": "hard", "server-port": "19132", "server-udp-ports": "19132"},

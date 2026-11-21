@@ -1,4 +1,4 @@
-.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.16.7" "System Administration"
+.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.16.11" "System Administration"
 .SH NAME
 redstonepanel \- manage the RedstonePanel Minecraft server panel
 .SH SYNOPSIS
@@ -23,6 +23,11 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .br
 .B redstonepanel backup
 .I NAME
+.br
+.B redstonepanel offsite-copy
+.I NAME
+.br
+.B redstonepanel offsite-key
 .br
 .B redstonepanel restart-server
 .I NAME
@@ -114,7 +119,22 @@ Back up a game server now, into
 A running Java server stops writing to disk during the copy (over RCON), a running Bedrock
 server through \fBsave hold\fR. Backups taken this way are never pruned. Each server's backup
 timer, \fBredstonepanel-backup@\fINAME\fB.timer\fR, runs the same command for scheduled
-backups, which keep only the number set in the panel's Backups tab.
+backups, which keep only the number (and, if set, the number of days) set in the panel's
+Backups tab. If the server's backups are copied to backup storage, the copy starts afterwards in
+its own transient unit,
+.BI redstonepanel\-offsite\- NAME .service ,
+so a slow upload never holds the backup up.
+.TP
+.BI "offsite-copy " NAME
+Copy a game server's backups to every backup storage (SSH or S3-compatible, set under Panel
+Settings > Backup storage) that keeps them, now: every manual backup and the scheduled ones the
+storage's retention keeps, each checked with SHA\-256. Old scheduled copies beyond the storage's
+count or age are deleted there; the newest copy is never deleted by age.
+.TP
+.B offsite-key
+Print this panel's SSH public key (made on first use). Add it to the
+.I ~/.ssh/authorized_keys
+of the user the panel signs in as on SSH backup storage.
 .TP
 .BI "restart-server " NAME
 Warn the server's players in game (Java over RCON, Bedrock through its console), wait the
@@ -238,6 +258,17 @@ needs, written at every download.
 .I /var/backups/redstonepanel/
 Backups, one folder per server (mode 0700). Kept when a server is uninstalled or the package
 is purged. Schedules are in /var/lib/redstonepanel/backups.json.
+.TP
+.I /var/lib/redstonepanel/backup-targets.json
+Backup storage (SSH and S3-compatible) and which servers' backups go there, including S3 secret
+keys (mode 0600; never sent back to the browser). This panel's SSH key and the storage host keys
+are in
+.IR /var/lib/redstonepanel/ssh/ .
+On the storage, copies are kept under
+.IR FOLDER/PANEL\-ID/SERVER/ ,
+each with a
+.I .sha256
+file next to it.
 .TP
 .I /var/lib/redstonepanel/notifications.json
 The notification webhook URL and the events to send (mode 0600: the URL lets anyone post to
