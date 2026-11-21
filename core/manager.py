@@ -727,7 +727,7 @@ def _fetch_bedrock(d):
     """Downloads the latest Bedrock Dedicated Server and unpacks it into d."""
     fetch_cmd = """
     SERVER_URL=$(curl -s https://net-secondary.web.minecraft-services.net/api/v1.0/download/links | jq -r '.result.links[] | select(.downloadType=="serverBedrockLinux") | .downloadUrl' 2>/dev/null)
-    if [ -z "$SERVER_URL" ] || [ "$SERVER_URL" == "null" ]; then
+    if [ -z "$SERVER_URL" ] || [ "$SERVER_URL" = "null" ]; then
         SERVER_URL=$(curl -s -H "User-Agent: Mozilla/4.0" https://www.minecraft.net/en-us/download/server/bedrock | grep -o 'https://[^"]*/bin-linux/bedrock-server-[^"]*\\.zip' | head -n 1)
     fi
     wget "$SERVER_URL" -O """ + d + "/bedrock-server.zip"

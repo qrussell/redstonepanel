@@ -1,7 +1,7 @@
 #!/bin/bash
 # End-to-end test of backup copies off the machine (1.16.11): a panel (offp) copies a server's
-# backups to an SSH server (offs, openssh-server + rsync) and, when the MinIO image can be
-# pulled, to MinIO (S3); a second panel (offn) plays the new machine that brings the server back
+# backups to an SSH server (offs, openssh-server + rsync) and to SeaweedFS's S3 server (offs3,
+# which checks request signatures like real S3); a second panel (offn) plays the new machine that brings the server back
 # from the SSH storage. Throwaway systemd containers on one Docker network, installing the .deb
 # from dist/. The game server is a stand-in Bedrock server (a bedrock_server script that sleeps).
 # Bringing it back on the new machine downloads the real Bedrock server, so that last part needs
@@ -15,10 +15,11 @@ HOST_PWD=$(pwd -W 2>/dev/null || pwd)
 FAILS=0
 NET=rp-offsite-test
 IMG=rp-systemd:24.04
-MINIO_IMAGE=${MINIO_IMAGE:-minio/minio:latest}
-ALL="offp offn offs offminio"
+# MinIO no longer publishes images anyone can pull, so the S3 stand-in is SeaweedFS (pinned)
+S3_IMAGE=${S3_IMAGE:-chrislusf/seaweedfs:3.80}
+ALL="offp offn offs offs3"
 SSH_IP=172.30.83.10
-MINIO_IP=172.30.83.11
+S3_IP=172.30.83.11
 PASS_ADMIN='offsite-test-admin-1'       # throwaway accounts and keys inside the test containers only
 PASS_USER='offsite-test-user-1'
 S3_KEY='rptestaccess'
@@ -59,12 +60,13 @@ docker network create --subnet 172.30.83.0/24 "$NET" >/dev/null
 docker run -d --privileged --cgroupns=private --name offp --hostname survival-box --network "$NET" -v "$HOST_PWD/dist:/dist:ro" "$IMG" >/dev/null
 docker run -d --privileged --cgroupns=private --name offn --hostname new-box --network "$NET" -v "$HOST_PWD/dist:/dist:ro" "$IMG" >/dev/null
 docker run -d --privileged --cgroupns=private --name offs --hostname nas --network "$NET" --ip "$SSH_IP" "$IMG" >/dev/null
-MINIO=0
-if docker run -d --name offminio --network "$NET" --ip "$MINIO_IP" -e MINIO_ROOT_USER="$S3_KEY" \
-        -e MINIO_ROOT_PASSWORD="$S3_SECRET" "$MINIO_IMAGE" server /data >/dev/null 2>&1; then
-    MINIO=1
+S3=0
+S3_CONF="{\"identities\":[{\"name\":\"rp\",\"credentials\":[{\"accessKey\":\"$S3_KEY\",\"secretKey\":\"$S3_SECRET\"}],\"actions\":[\"Admin\",\"Read\",\"Write\",\"List\",\"Tagging\"]}]}"
+if docker run -d --name offs3 --network "$NET" --ip "$S3_IP" --entrypoint sh "$S3_IMAGE" \
+        -c "echo '$S3_CONF' > /tmp/s3.json && exec weed server -s3 -s3.config=/tmp/s3.json -dir=/data" >/dev/null 2>&1; then
+    S3=1
 else
-    skip "MinIO ($MINIO_IMAGE) can't be pulled here: the S3 checks are skipped"
+    skip "the S3 server image ($S3_IMAGE) can't be pulled here: the S3 checks are skipped"
 fi
 sleep 3
 for c in offp offn; do
@@ -86,11 +88,13 @@ login offp jar admin "$PASS_ADMIN"; login offp ujar alex "$PASS_USER"; login off
 # --- a stand-in Bedrock server with a 2 MB world
 dx offp "rm -rf /tmp/srv && mkdir -p /tmp/srv/worlds/Home/db && cd /tmp/srv && printf '#!/bin/sh\nexec sleep infinity\n' > bedrock_server && chmod +x bedrock_server \
     && printf 'server-port=19140\nserver-portv6=19141\nlevel-name=Home\nserver-name=Island\n' > server.properties \
-    && printf '[]' > permissions.json && head -c 2000000 /dev/urandom > worlds/Home/db/000005.ldb && zip -qr /tmp/srv.zip ."
+    && printf '[]' > permissions.json && head -c 2000000 /dev/urandom > worlds/Home/db/000005.ldb \
+    && head -c 1000 /dev/urandom > worlds/Home/marker.bin && zip -qr /tmp/srv.zip ."
 SRV=$(dx offp "curl -s -b /tmp/jar -F file=@/tmp/srv.zip http://127.0.0.1:8080/api/servers/import" | json "d['server']")
 [ "$SRV" = minecraft-bedrock ] && ok "stand-in server: $SRV" || bad "stand-in server"
 dx offp "systemctl stop $SRV"
 WORLD=$(dx offp "sha256sum < /opt/$SRV/worlds/Home/db/000005.ldb")
+MARKER=$(dx offp "sha256sum < /opt/$SRV/worlds/Home/marker.bin")
 
 # --- who may do what
 [ "$(code offp ujar GET /api/settings/backup-storage)" = 403 ] && ok "a user can't see backup storage" || bad "user can't see storage"
@@ -165,15 +169,15 @@ api offp jar POST "/api/settings/backup-storage/$TS/forget-host-key" >/dev/null
 api offp jar POST /api/settings/backup-storage/test "{\"id\":\"$TS\"}" | json "d['ok']" | grep -qx True \
     && ok "Forget host key, then it works again" || bad "forget host key"
 
-# --- S3 (MinIO): a backup over 100 MB goes up in parts
-if [ "$MINIO" = 1 ]; then
-    for _ in $(seq 1 30); do dx offp "curl -s -o /dev/null http://$MINIO_IP:9000/minio/health/live" && break; sleep 1; done
-    S3_T="{\"type\":\"s3\",\"name\":\"MinIO\",\"endpoint\":\"http://$MINIO_IP:9000\",\"bucket\":\"rp-backups\",\"prefix\":\"mc\",\"region\":\"us-east-1\",\"access_key\":\"$S3_KEY\",\"secret_key\":\"$S3_SECRET\"}"
-    docker run --rm --network "$NET" --entrypoint sh "$MINIO_IMAGE" -c \
-        "mc alias set m http://$MINIO_IP:9000 $S3_KEY $S3_SECRET >/dev/null && mc mb -q m/rp-backups" >/dev/null 2>&1 \
-        || dx offp "true"     # older images have no mc; then make the bucket by hand first
+# --- S3: a backup over 100 MB goes up in parts
+if [ "$S3" = 1 ]; then
+    for _ in $(seq 1 60); do dx offp "curl -s -o /dev/null http://$S3_IP:8333/" && break; sleep 1; done
+    S3_T="{\"type\":\"s3\",\"name\":\"Bucket\",\"endpoint\":\"http://$S3_IP:8333\",\"bucket\":\"rp-backups\",\"prefix\":\"mc\",\"region\":\"us-east-1\",\"access_key\":\"$S3_KEY\",\"secret_key\":\"$S3_SECRET\"}"
+    # make the bucket with the panel's own S3 client
+    dx offp "cd /usr/share/redstonepanel && python3 -c \"from core import backup_targets as T; T.S3Target({'endpoint': 'http://$S3_IP:8333', 'bucket': 'rp-backups', 'prefix': '', 'region': 'us-east-1', 'access_key': '$S3_KEY', 'secret_key': '$S3_SECRET'}).request('PUT', '')\"" \
+        && ok "S3 bucket made" || bad "S3 bucket made"
     OUT=$(api offp jar POST /api/settings/backup-storage "$S3_T")
-    T3=$(echo "$OUT" | json "[t['id'] for t in d['targets'] if t['name']=='MinIO'][0]")
+    T3=$(echo "$OUT" | json "[t['id'] for t in d['targets'] if t['name']=='Bucket'][0]")
     echo "$OUT" | grep -q "$S3_SECRET" && bad "the secret is never sent back" || ok "the secret is never sent back"
     api offp jar POST /api/settings/backup-storage/test "{\"id\":\"$T3\"}" | json "d['ok'] and ','.join(d['steps'])" \
         | grep -qx "wrote a file,listed it,deleted it" && ok "S3 Test: writes, lists, deletes" || bad "S3 test"
@@ -188,7 +192,7 @@ if [ "$MINIO" = 1 ]; then
     done
     api offp jar GET "/api/servers/$SRV/offsite" | json "[c['size'] for t in d['targets'] if t['id']=='$T3' for c in t['copies'] if c['file']=='$BIG'][0]" \
         | grep -qx "$(dx offp "stat -c %s /var/backups/redstonepanel/$SRV/$BIG")" && ok "a 110 MB backup went up in parts" || bad "S3 multipart copy"
-    dx offp "grep -q \"Copied .* of $SRV to 'MinIO'\" /var/log/redstonepanel/panel.log" && ok "logged" || bad "S3 copy logged"
+    dx offp "grep -q \"Copied .* of $SRV to 'Bucket'\" /var/log/redstonepanel/panel.log" && ok "logged" || bad "S3 copy logged"
     dx offp "rm -f /var/backups/redstonepanel/$SRV/$BIG"
     [ "$(api offp jar POST "/api/servers/$SRV/offsite/$T3/fetch" "{\"file\":\"$BIG\"}" | json "d['file']")" = "$BIG" ] \
         && ok "and comes back checked" || bad "S3 fetch"
@@ -205,7 +209,8 @@ api offn jar GET "/api/settings/backup-storage/$TN/browse" | json "sorted({c['pa
 NEWEST=$(api offn jar GET "/api/settings/backup-storage/$TN/browse" | json "[c['file'] for c in d['copies'] if c['panel']=='$PID'][0]")
 ONLINE=0; dx offn "curl -s -m 10 -o /dev/null https://net-secondary.web.minecraft-services.net/api/v1.0/download/links" && ONLINE=1
 OUT=$(api offn jar POST "/api/settings/backup-storage/$TN/import" "{\"panel\":\"$PID\",\"server\":\"$SRV\",\"file\":\"$NEWEST\"}")
-[ "$(dx offn "sha256sum < /opt/$SRV/worlds/Home/db/000005.ldb 2>/dev/null")" = "$WORLD" ] && ok "the world arrived on the new machine" || bad "world on new machine"
+# (a file Bedrock leaves alone: a real Bedrock server replaces the stand-in's LevelDB files)
+[ "$(dx offn "sha256sum < /opt/$SRV/worlds/Home/marker.bin 2>/dev/null")" = "$MARKER" ] && ok "the world folder arrived on the new machine" || bad "world on new machine"
 if [ "$ONLINE" = 1 ]; then
     echo "$OUT" | json "d['name']" | grep -qx "$SRV" && ok "it's a server again, with its old name" || { bad "imported server"; echo "$OUT"; }
     check "its Bedrock server was downloaded again and it runs" dx offn "[ -x /opt/$SRV/bedrock_server ] && systemctl is-enabled --quiet $SRV"

@@ -652,7 +652,7 @@ bash packaging/test/test-cluster.sh          # create, join, node allowlist, ren
 bash packaging/test/test-cluster-phase2.sh   # a master running game servers on its nodes
 bash packaging/test/test-move.sh             # move and copy servers between panels
 bash packaging/test/test-backup-copies.sh    # backup copies kept on another member (1.16.8)
-bash packaging/test/test-offsite.sh          # backup copies on SSH and S3 (MinIO) storage (1.16.11)
+bash packaging/test/test-offsite.sh          # backup copies on SSH and S3 (SeaweedFS) storage (1.16.11)
 ```
 
 ### The stylesheet

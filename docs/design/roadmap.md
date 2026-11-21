@@ -788,12 +788,13 @@ refused joins, so those are Java only.
     including multipart and paged listings, a stand-in `ssh` with real rsync, retention, the
     once-per-failure webhook, fetch and import); by hand against a real OpenSSH server and the
     moto S3 server (12 MB multipart upload, download, delete); and
-    `packaging/test/test-offsite.sh` (panel, SSH storage, MinIO and a second panel as the new
-    machine) in Docker: in a cloud thread all 32 SSH checks passed (copy after Back up now and
-    after scheduled backups with the panel stopped, retention on the storage, a storage that's
-    down, restore, a damaged copy refused, a changed host key, the new machine's import); the
-    MinIO and online-import checks run where the MinIO image and the internet are reachable
-    (GitHub Actions, Quentin's PC).
+    `packaging/test/test-offsite.sh` (panel, SSH storage, SeaweedFS's S3 server, which checks
+    signatures like real S3, and a second panel as the new machine) in Docker: 39 checks passed
+    in a cloud thread (copy after Back up now and after scheduled backups with the panel
+    stopped, retention on the storage, a storage that's down, restore, a damaged copy refused, a
+    changed host key, a 110 MB multipart S3 upload and download, the new machine's import), and
+    on Quentin's PC with the internet the import downloaded the real Bedrock server and started
+    it. MinIO no longer publishes images that can be pulled, so the test uses SeaweedFS 3.80.
 
 ### 1.16.12: Bedrock that keeps up, and update alerts
 
