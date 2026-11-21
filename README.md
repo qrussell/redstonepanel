@@ -356,8 +356,9 @@ Several Java versions can be installed side by side; each server's systemd unit 
 it runs (`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`, or `…-arm64` on ARM64).
 
 `ufw` is also recommended. When it is installed, the panel opens each game server's ports
-in it (for NetherNet Bedrock servers: TCP server-port, UDP server-udp-ports and UDP 7551) and
-keeps them in step with the server's settings.
+in it (for Bedrock servers, which use NetherNet unless `transport=raknet` is set: TCP
+server-port, UDP server-udp-ports and UDP 7551) and keeps them in step with the server's
+settings.
 
 | What | Where |
 | --- | --- |

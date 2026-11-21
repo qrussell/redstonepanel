@@ -131,6 +131,12 @@ def main():
     # Cluster masters: copy backups to the member chosen on each server's Backups tab (1.16.8)
     from core import backup_copies
     backup_copies.sweeper()
+    # Once after upgrading to 1.16.11: open TCP server-port and UDP 7551 for Bedrock servers
+    # without a transport line (NetherNet by default), which only had UDP server-port
+    try:
+        manager.upgrade_bedrock_firewall()
+    except Exception as e:
+        manager.write_log(f"[FIREWALL] Bedrock firewall check failed: {e}")
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 

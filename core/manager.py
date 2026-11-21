@@ -117,14 +117,24 @@ def _follow_udp_port(props, old_port, new_port):
     return new if cur and cur == old and old != new else None
 
 
+def bedrock_transport(props):
+    """The transport a Bedrock server really uses. BDS 1.26.50 and later default to NetherNet
+    when server.properties has no transport line (checked on 1.26.66.1: TCP server-port and UDP
+    7551, nothing on UDP server-port), and the panel only ever downloads the latest BDS. Only an
+    explicit transport=raknet means RakNet."""
+    return "raknet" if str(props.get("transport") or "").strip().lower() == "raknet" else "nethernet"
+
+
 def is_nethernet(props):
-    return str(props.get("transport") or "").strip().lower() == "nethernet"
+    return bedrock_transport(props) == "nethernet"
 
 
 def firewall_rules(edition, props):
     """The ufw rules (port spec, proto) a server needs, from its server.properties.
-    Java: TCP server-port. Bedrock over RakNet: UDP server-port. Bedrock over NetherNet: TCP
-    server-port (signaling), UDP server-udp-ports (gameplay) and UDP 7551 (LAN discovery)."""
+    Java: TCP server-port. Bedrock over NetherNet (the default): TCP server-port (signaling, one
+    dual-stack socket, so server-portv6 isn't used), UDP server-udp-ports (gameplay, opened once a
+    player connects) and UDP 7551 (LAN discovery, open even with enable-lan-visibility=false).
+    Bedrock over RakNet: UDP server-port and server-portv6."""
     port = str(props.get("server-port", "")).strip()
     if not port.isdigit():
         return set()
@@ -133,7 +143,48 @@ def firewall_rules(edition, props):
     if is_nethernet(props):
         return {(port, "tcp"), (str(NETHERNET_LAN_PORT), "udp")} | \
             {(p, "udp") for p in _udp_port_specs(props.get("server-udp-ports"))}
-    return {(port, "udp")}
+    v6 = str(props.get("server-portv6", "")).strip()
+    return {(port, "udp")} | ({(v6, "udp")} if v6.isdigit() else set())
+
+
+def fixed_udp_ports(d):
+    """A Bedrock server without server-udp-ports gets gameplay ports from the kernel's random
+    range, which no firewall rule or router forward can match. Gives it UDP on its own
+    server-port, as a new server gets (takes effect at its next start). True if it changed."""
+    props = read_properties(d)
+    port = str(props.get("server-port", "")).strip()
+    if str(props.get("server-udp-ports", "")).strip() or not port.isdigit():
+        return False
+    write_properties(d, {"server-udp-ports": port})
+    return True
+
+
+BEDROCK_FIREWALL_DONE = "bedrock-firewall-1.16.11"
+
+
+def upgrade_bedrock_firewall():
+    """Once, after upgrading to 1.16.11: Bedrock servers whose server.properties has no transport
+    line were treated as RakNet, so only UDP server-port was opened and players couldn't reach
+    them. Gives them a fixed gameplay port and opens what they need now. Nothing is closed."""
+    marker = os.path.join(DATA_DIR, BEDROCK_FIREWALL_DONE)
+    if os.path.exists(marker):
+        return
+    for s in list_servers():
+        if s.get("edition") != "Bedrock":
+            continue
+        try:
+            if fixed_udp_ports(s["directory"]):
+                write_log(f"[FIREWALL] {s['name']} had no server-udp-ports; set it to {s['port']} "
+                          f"(used from its next restart).")
+            rules = server_firewall_rules(s["name"])
+            if shutil.which("ufw"):
+                open_firewall_rules(rules)
+                write_log(f"[FIREWALL] {s['name']}: allowed " + ", ".join(f"{p}/{q}" for p, q in sorted(rules)) + ".")
+        except Exception as e:                 # one odd server mustn't stop the others or the panel
+            write_log(f"[FIREWALL] Couldn't check {s.get('name')}: {e}")
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(marker, "w") as f:
+        f.write("done\n")
 
 
 def server_firewall_rules(server_name):
@@ -494,7 +545,7 @@ def list_servers():
         ver = server_version(d, "java" in exec_start, svc)
         is_bedrock = "java" not in exec_start and "bedrock" in exec_start
         proxy_list = []
-        transport = (props.get("transport") or "").lower() or None if is_bedrock else None
+        transport = bedrock_transport(props) if is_bedrock else None
         udp_ports = props.get("server-udp-ports", "")
         start = bedrock_start_status(d) if is_bedrock else None
         if is_bedrock:
@@ -1017,6 +1068,8 @@ def _restore_ports(d, edition):
             changes["query.port"] = str(port)
     if changes:
         write_properties(d, changes)
+    if edition == "bedrock" and fixed_udp_ports(d):
+        write_log(f"[RESTORE] server-udp-ports wasn't set; gameplay now uses UDP {port}.")
     if edition == "java":
         rcon_port = str(props.get("rcon.port", "")).strip()
         if rcon_port.isdigit() and int(rcon_port) in used | {port}:
@@ -1133,7 +1186,6 @@ def _import_unpacked(staging, root):
     if edition == "java" and not os.path.isfile(os.path.join(root, "server.jar")):
         write_log("[WARNING] The backup has no server.jar; use Update on the new server to download one.")
 
-    proto = "tcp" if edition == "java" else "udp"
     svc_name, port = _reserve_name(edition)       # auto-allocated name and port
     try:
         mc_dir = os.path.join(SERVERS_ROOT, svc_name)
@@ -1153,6 +1205,8 @@ def _import_unpacked(staging, root):
             if udp:
                 props["server-udp-ports"] = udp
         write_properties(mc_dir, props)
+        if edition == "bedrock" and fixed_udp_ports(mc_dir):
+            write_log(f"[IMPORT] server-udp-ports wasn't set; gameplay uses UDP {port}.")
 
         java = None
         if edition == "bedrock":

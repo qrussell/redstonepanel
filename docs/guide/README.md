@@ -115,9 +115,10 @@ offers to install the Java that Minecraft version needs (see [Java versions](#ja
 so a machine that only runs Bedrock never gets Java.
 
 Install `ufw` too if you want the panel to open each game server's ports in the firewall for
-you: TCP for Java, UDP for Bedrock, and for a Bedrock server using the NetherNet transport
-(`transport=nethernet`) TCP on its port, UDP on its `server-udp-ports` and UDP 7551 for LAN
-discovery. It follows port and transport changes you make in Configuration, and closes the
+you: TCP for Java, and for Bedrock (NetherNet, the default since Bedrock 1.26.50, also when
+server.properties has no `transport` line) TCP on its port, UDP on its `server-udp-ports` and
+UDP 7551 for LAN discovery. A Bedrock server set to `transport=raknet` gets UDP on its port and
+its IPv6 port instead. It follows port and transport changes you make in Configuration, and closes the
 ports again when the server is removed (7551 stays open while another NetherNet server needs it).
 
 **Updating.** When a new version is out, the dashboard's **Needs attention** says so and the

@@ -237,10 +237,17 @@ class Report(unittest.TestCase):
         self.assertTrue(any("needs Java 25" in t and "openjdk-25-jre-headless" in t for t in texts))
         self.assertEqual(r["services"]["java_needed"], [{"major": 25, "servers": ["minecraft-java"],
                                                          "package": "openjdk-25-jre-headless"}])
-        self.assertTrue(any("doesn't allow 19140/udp for minecraft-bedrock" in t and "sudo ufw allow 19140/udp" in t
-                            for t in texts))
+        # No transport line: NetherNet, the default since BDS 1.26.50 (TCP signaling + UDP 7551)
+        self.assertTrue(any("doesn't allow 19140/tcp, 7551/udp for minecraft-bedrock" in t
+                            and "sudo ufw allow 19140/tcp && sudo ufw allow 7551/udp" in t for t in texts))
         failed = next(a for a in r["attention"] if "has failed" in a["text"])
         self.assertEqual(failed["server"], "minecraft-other")
+
+    def test_raknet_server(self):
+        self.servers = [_server("minecraft-bedrock", edition="Bedrock", port="19140", java_required=None,
+                                transport="raknet")]
+        texts = [a["text"] for a in self.report()["attention"]]
+        self.assertTrue(any("doesn't allow 19140/udp for minecraft-bedrock" in t for t in texts))
 
     def test_nethernet_lan_port(self):
         self.servers = [_server("minecraft-bedrock", edition="Bedrock", port="19132", java_required=None,
