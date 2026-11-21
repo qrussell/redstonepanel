@@ -133,6 +133,7 @@
                 <h3 class="text-lg font-bold mb-4 text-gray-900 dark:text-white">Quick Stats</h3>
                 <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4" id="overview-stats"></div>
                 <div class="mt-4 space-y-2" id="overview-notes"></div>
+                <div class="mt-6" id="overview-perf"></div>
             </div>
 			<div id="tab-chat" class="hidden-tab flex flex-col h-full">
 				<div class="flex flex-wrap gap-2 justify-between items-center mb-4">
@@ -310,6 +311,12 @@
                     <h3 class="text-lg font-bold mb-2 text-gray-900 dark:text-white">Java</h3>
                     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm">
                         <div id="java-card-body"><p class="text-sm text-gray-500">Loading…</p></div>
+                    </div>
+                </div>
+                <div id="resources-card" class="hidden">
+                    <h3 class="text-lg font-bold mb-2 text-gray-900 dark:text-white">Memory and limits</h3>
+                    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm">
+                        <div id="resources-body"><p class="text-sm text-gray-500">Loading…</p></div>
                     </div>
                 </div>
                 <p id="uninstall-admin-note" class="hidden text-sm text-gray-500 dark:text-gray-400 max-w-xl">Only an admin can uninstall or purge a server.</p>

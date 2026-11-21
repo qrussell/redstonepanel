@@ -436,6 +436,8 @@ const ServerApp = {
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Max RAM</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.ram}</p></div>
         `;
         document.getElementById('overview-notes').innerHTML = this.serverNotes(srv);
+        this.perfData = null;
+        document.getElementById('overview-perf').innerHTML = '<p class="text-sm text-gray-500">Loading performance…</p>';
 
         // A search typed for the previous server shouldn't hide this one's properties
         const propSearch = document.getElementById('prop-search');
@@ -519,6 +521,7 @@ const ServerApp = {
         if (activeTab) activeTab.classList.remove('hidden-tab');
         if (activeBtn) activeBtn.classList.add('tab-active');
         
+        if (tabId === 'overview') this.startPerfPolling(); else this.stopPerfPolling();
         // Clear chat polling if we navigate away
         if (this.chatInterval) {
             clearInterval(this.chatInterval);
@@ -526,7 +529,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab('visual');
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadJavaChoice(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadJavaChoice(); this.loadResources(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
@@ -1554,6 +1557,431 @@ const ServerApp = {
     },
 
     // Maintenance tab: which Java this server runs on, and switching to another installed one
+    // -----------------------------------------------------------------------------------------
+    // 1.17: performance. The Overview's Performance card (tick health, memory, history charts,
+    // suggestions), Maintenance > Memory and limits, and the dashboard's history charts.
+    // Charts are inline SVG: one measure per chart (small multiples), never two y-scales.
+    // -----------------------------------------------------------------------------------------
+    perfRange: 'day',
+    perfTimer: null,
+    perfData: null,
+    charts: {},
+    hostHistory: null,
+    hostHistoryAt: 0,
+    hostRange: 'day',
+
+    startPerfPolling() {
+        this.stopPerfPolling();
+        this.loadPerf();
+        this.perfTimer = setInterval(() => {
+            const tab = document.getElementById('tab-overview');
+            const ws = document.getElementById('workspace');
+            if (!this.activeServer || !tab || tab.classList.contains('hidden-tab') || ws.classList.contains('hidden')) {
+                this.stopPerfPolling();
+                return;
+            }
+            this.tickPerfUpdated();
+            if (!document.hidden) this.loadPerf();
+        }, 10000);
+    },
+
+    stopPerfPolling() {
+        clearInterval(this.perfTimer);
+        this.perfTimer = null;
+    },
+
+    setPerfRange(r) {
+        this.perfRange = r;
+        this.loadPerf();
+    },
+
+    async loadPerf() {
+        const box = document.getElementById('overview-perf');
+        const srv = this.activeServer;
+        if (!box || !srv) return;
+        let p;
+        try {
+            const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/perf?range=${this.perfRange}`);
+            if (!res.ok) throw new Error(await this.apiError(res));
+            p = await res.json();
+        } catch (e) {
+            if (!this.perfData || this.perfData.server !== srv.name) {
+                box.innerHTML = `<p class="text-sm text-red-500">Couldn't load performance: ${this.escapeHtml(e.message)}</p>`;
+            }
+            this.tickPerfUpdated();
+            return;
+        }
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        this.perfData = p;
+        box.innerHTML = this.perfHtml(p);
+    },
+
+    tickPerfUpdated() {
+        const el = document.getElementById('perf-updated');
+        if (!el) return;
+        const ago = Math.max(0, Math.round(Date.now() / 1000 - (+el.dataset.t)));
+        el.textContent = ago < 5 ? 'updated just now' : `updated ${this.fmtDuration(ago)} ago`;
+        el.classList.toggle('text-yellow-600', ago > 60);
+    },
+
+    // TPS as a state with an icon and a word, never colour alone
+    tpsState(tps) {
+        if (tps === null || tps === undefined) return null;
+        if (tps >= 19) return { icon: '●', word: 'Smooth', cls: 'text-green-600 dark:text-green-400' };
+        if (tps >= 15) return { icon: '▲', word: 'Some lag', cls: 'text-yellow-600 dark:text-yellow-400' };
+        return { icon: '■', word: 'Lagging', cls: 'text-red-600 dark:text-red-400' };
+    },
+
+    perfHtml(p) {
+        const esc = t => this.escapeHtml(t === null || t === undefined ? '' : String(t));
+        const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const tile = (title, big, lines, extra = '') => `
+            <div class="${card} p-4 min-w-0">
+                <p class="${note}">${title}</p>
+                <p class="text-xl font-bold text-gray-900 dark:text-white mt-1">${big}</p>${extra}
+                <p class="${note} mt-1">${lines}</p>
+            </div>`;
+        const t = p.tick || {};
+        let tickTile;
+        if (t.available) {
+            const st = this.tpsState(t.tps);
+            const more = t.source === 'tps'
+                ? `5 min ${esc(t.tps_5m)} · 15 min ${esc(t.tps_15m)}${t.mspt !== null && t.mspt !== undefined ? ` · ${esc(t.mspt)} ms per tick` : ''}`
+                : `${esc(t.mspt)} ms per tick${t.p95 ? ` · 95 % under ${esc(t.p95)} ms` : ''}${t.state && t.state !== 'normal' ? ` · ${esc(t.state)}` : ''}`;
+            tickTile = tile('Tick health (TPS)', `${esc(t.tps)} <span class="text-sm font-bold ${st.cls}">${st.icon} ${st.word}</span>`, more);
+        } else {
+            tickTile = tile('Tick health (TPS)', '<span class="text-base text-gray-500 dark:text-gray-400">Not available</span>', esc(t.why || ''));
+        }
+        const m = p.memory || {};
+        const cap = m.limit || m.heap_bytes;
+        const memLines = [m.heap ? `Max heap ${esc(m.heap)}` : null, m.limit ? `hard limit ${this.fmtBytes(m.limit)}` : null,
+            p.cpu_limit ? `CPU limit ${esc(p.cpu_limit)} cores` : null].filter(Boolean).join(' · ') || 'No limits set';
+        const memTile = tile('Memory (whole process)', m.used !== null && m.used !== undefined ? this.fmtBytes(m.used) : '—', memLines,
+            cap && m.used ? `<div class="mt-2">${this.bar(100 * m.used / cap)}</div>` : '');
+        const playersTile = tile('Players', p.players !== null && p.players !== undefined ? `${p.players} / ${p.max_players}` : '—',
+            p.connections !== null && p.connections !== undefined ? `${p.connections} connection${p.connections === 1 ? '' : 's'} to port ${esc(p.port)}` : (p.edition === 'Bedrock' ? 'Not counted for Bedrock' : 'Shown while it runs, with RCON on'));
+        const worldTile = tile('World', p.world_size !== null && p.world_size !== undefined ? this.fmtBytes(p.world_size) : '<span class="text-base text-gray-500">measuring…</span>',
+            p.addons !== null && p.addons !== undefined ? `${p.addons} ${p.addons_folder === 'plugins' ? 'plugin' : 'mod'}${p.addons === 1 ? '' : 's'} installed` : esc(p.edition));
+        const held = (p.held_back || []).length ? `<div class="p-3 rounded border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/30 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm">▲ <b>Held back by its limits:</b> ${p.held_back.map(esc).join(' ')}</div>` : '';
+
+        // History: small multiples, one measure each
+        const h = p.history || { points: [], fields: [] };
+        const col = f => h.points.map(r => [r[0], r[1 + h.fields.indexOf(f)]]);
+        const w = this.chartWidth('overview-perf', 2, 2);
+        const charts = [
+            this.chartCard(`perf-cpu`, 'CPU (% of the machine)', col('cpu'), { fmt: v => `${v.toFixed(1)} %`, max: null, range: h.range, step: h.step, w }),
+            this.chartCard(`perf-mem`, 'Memory', col('memory'), { fmt: v => this.fmtBytes(v), max: m.limit || null, range: h.range, step: h.step, w }),
+            this.chartCard(`perf-players`, 'Players online', col('players'), { fmt: v => `${Math.round(v * 10) / 10}`, max: null, minMax: 5, range: h.range, step: h.step, w }),
+        ];
+        if (p.edition === 'Java') {
+            charts.push(this.chartCard(`perf-tps`, 'TPS', col('tps'), { fmt: v => v.toFixed(1), max: 20, range: h.range, step: h.step, w,
+                empty: 'Nothing measured yet. TPS needs Java 1.20.3 or newer (or Paper) and RCON on.' }));
+        }
+        const rangeBtn = (r, label) => `<button onclick="ServerApp.setPerfRange('${r}')" class="px-3 py-1 text-sm rounded ${this.perfRange === r ? 'subtab-active' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}" aria-pressed="${this.perfRange === r}">${label}</button>`;
+
+        // Suggestions
+        const where = { properties: ['properties', 'Open Configuration'], memory: ['maintenance', 'Open Memory and limits'],
+            addons: ['addons', 'Open Mods'], backups: ['backups', 'Open Backups'], files: ['files', 'Open Files'], chat: ['chat', 'Open Live Chat'] };
+        const sug = (p.suggestions || []).map(s => {
+            const w = where[s.where];
+            const tabBtn = w && document.getElementById(`tab-btn-${w[0]}`);
+            const link = tabBtn && !tabBtn.classList.contains('hidden')
+                ? ` <button onclick="ServerApp.switchTab('${w[0]}')" class="underline text-theme whitespace-nowrap">${w[0] === 'maintenance' ? w[1] : 'Open ' + esc(tabBtn.textContent.trim())}</button>` : '';
+            const warn = s.level === 'warn';
+            return `<li class="p-3 rounded border ${warn ? 'border-yellow-300 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/30' : 'border-gray-200 dark:border-gray-700'} text-sm text-gray-800 dark:text-gray-200">${warn ? '▲' : '💡'} ${esc(s.text)}${link}</li>`;
+        }).join('');
+
+        return `
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                <h3 class="text-lg font-bold text-theme">Performance</h3>
+                <p class="${note}">${p.address ? `${esc(p.address)} · ` : ''}<span id="perf-updated" data-t="${p.updated}">updated just now</span></p>
+            </div>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">${tickTile}${memTile}${playersTile}${worldTile}</div>
+            ${held ? `<div class="mt-3">${held}</div>` : ''}
+            <div class="flex flex-wrap items-center justify-between gap-2 mt-4 mb-2">
+                <h4 class="font-bold text-gray-900 dark:text-white">History</h4>
+                <div class="flex gap-1" role="group" aria-label="History range">${rangeBtn('day', 'Last 24 hours')}${rangeBtn('week', 'Last 7 days')}</div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">${charts.join('')}</div>
+            <p class="${note} mt-2">Measured every minute whether anyone is watching; the last 7 days are kept as 15-minute averages.</p>
+            ${sug ? `<h4 class="font-bold text-gray-900 dark:text-white mt-4 mb-2">Suggestions</h4><ul class="space-y-2">${sug}</ul>
+                <p class="${note} mt-1">Nothing here is changed for you: each change trades how the world plays for speed.</p>` : ''}`;
+    },
+
+    // One chart in a card: title, latest value, the SVG (or a note when nothing was measured)
+    chartCard(id, title, pts, opts) {
+        const esc = t => this.escapeHtml(String(t));
+        const vals = pts.filter(p => p[1] !== null && p[1] !== undefined);
+        const last = vals.length ? vals[vals.length - 1][1] : null;
+        const body = vals.length ? this.chartSvg(id, title, pts, opts)
+            : `<p class="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">${esc(opts.empty || 'Nothing measured yet: the first point is written a minute after the panel starts.')}</p>`;
+        return `
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm p-3 min-w-0">
+                <div class="flex justify-between gap-2 text-sm"><span class="font-bold text-gray-900 dark:text-white">${esc(title)}</span>
+                <span class="text-gray-700 dark:text-gray-300">${last !== null ? esc(opts.fmt(last)) : ''}</span></div>
+                ${body}
+            </div>`;
+    },
+
+    // The drawing width of one chart in a grid of cards (1 column on phones, md and xl columns above)
+    chartWidth(containerId, mdCols, xlCols) {
+        const el = document.getElementById(containerId);
+        const full = el && el.clientWidth ? el.clientWidth : 640;
+        const vw = window.innerWidth;
+        const cols = vw >= 1280 ? xlCols : vw >= 768 ? mdCols : 1;
+        return (full - 16 * (cols - 1)) / cols - 26;
+    },
+
+    niceMax(v) {
+        if (!(v > 0)) return 1;
+        const p = Math.pow(10, Math.floor(Math.log10(v)));
+        const n = v / p;
+        return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+    },
+
+    // An SVG line chart. series: [[t, v], ...] (opts.series2: a second line of the same unit,
+    // with a legend). Lines break where nothing was measured. Hover or touch shows the value.
+    chartSvg(id, title, pts, opts) {
+        // Drawn at the size it's shown (opts.w), so text and lines stay 1:1 on phones and wide screens
+        const W = Math.max(240, Math.round(opts.w || 320)), H = 130, L = 52, R = 8, T = 8, B = 20;
+        const span = opts.range === 'week' ? 7 * 86400 : 86400;
+        const now = Math.floor(Date.now() / 1000);
+        const t0 = now - span;
+        const all = pts.concat(opts.series2 || []).filter(p => p[1] !== null && p[1] !== undefined);
+        const top = opts.max || this.niceMax(Math.max(opts.minMax || 0, ...all.map(p => p[1])));
+        const x = t => L + (W - L - R) * Math.max(0, Math.min(1, (t - t0) / span));
+        const y = v => T + (H - T - B) * (1 - Math.max(0, Math.min(1, v / top)));
+        const gap = (opts.step || 60) * 2.5;
+        const path = series => {
+            let d = '', prev = null;
+            series.forEach(([t, v]) => {
+                if (v === null || v === undefined || t < t0) { prev = null; return; }
+                d += `${prev === null || t - prev > gap ? 'M' : 'L'}${x(t).toFixed(1)},${y(v).toFixed(1)}`;
+                prev = t;
+            });
+            return d;
+        };
+        const d1 = path(pts);
+        const fmt = opts.fmt;
+        const grid = [0, 0.5, 1].map(f => {
+            const yy = y(top * f).toFixed(1);
+            return `<line class="grid" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text class="axis" x="${L - 4}" y="${+yy + 3}" text-anchor="end">${this.escapeHtml(fmt(top * f))}</text>`;
+        }).join('');
+        const xl = `<text class="axis" x="${L}" y="${H - 4}">${opts.range === 'week' ? '7 days ago' : '24 h ago'}</text><text class="axis" x="${W - R}" y="${H - 4}" text-anchor="end">now</text>`;
+        const vals = all.map(p => p[1]);
+        const summary = vals.length ? `${title}: lowest ${fmt(Math.min(...vals))}, highest ${fmt(Math.max(...vals))}, latest ${fmt(vals[vals.length - 1])}` : title;
+        this.charts[id] = { pts, s2: opts.series2 || null, x, y, t0, span, L, R, W, fmt, names: opts.names || null };
+        const legend = opts.series2 ? `<p class="text-xs text-gray-600 dark:text-gray-300 mt-1"><span class="rp-swatch" style="background:var(--chart-1)"></span> ${this.escapeHtml(opts.names[0])} &nbsp; <span class="rp-swatch" style="background:var(--chart-2)"></span> ${this.escapeHtml(opts.names[1])}</p>` : '';
+        return `
+            <div class="relative mt-1">
+                <svg class="rp-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${this.escapeHtml(summary)}">
+                    ${grid}${xl}
+                    ${opts.series2 ? '' : `<path class="area" d="${this.areaPath(d1, y(0))}"/>`}
+                    <path class="line s1" d="${d1}"/>
+                    ${opts.series2 ? `<path class="line s2" d="${path(opts.series2)}"/>` : ''}
+                    <g id="${id}-hover" style="display:none"><line class="cross" y1="${T}" y2="${H - B}"/><circle class="dot s1" r="4"/>${opts.series2 ? '<circle class="dot s2" r="4"/>' : ''}</g>
+                    <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"
+                        onpointermove="ServerApp.chartHover(event, '${id}')" onpointerdown="ServerApp.chartHover(event, '${id}')" onpointerleave="ServerApp.chartLeave('${id}')"/>
+                </svg>
+                <div id="${id}-tip" class="hidden absolute z-10 pointer-events-none px-2 py-1 rounded text-xs bg-gray-900 text-white shadow whitespace-nowrap"></div>
+                ${legend}
+            </div>`;
+    },
+
+    // The area under a line: each drawn segment closed down to the baseline
+    areaPath(d, base) {
+        return (d.match(/M[^M]*/g) || []).map(seg => {
+            const pts = seg.slice(1).split('L');
+            const first = pts[0].split(','), last = pts[pts.length - 1].split(',');
+            return `${seg}L${last[0]},${base}L${first[0]},${base}Z`;
+        }).join('');
+    },
+
+    chartHover(ev, id) {
+        const c = this.charts[id];
+        const svg = ev.currentTarget.ownerSVGElement;
+        if (!c || !svg) return;
+        const box = svg.getBoundingClientRect();
+        const sx = (ev.clientX - box.left) * (c.W / box.width);
+        const t = c.t0 + (sx - c.L) / (c.W - c.L - c.R) * c.span;
+        const near = series => series.reduce((best, p) => p[1] !== null && p[1] !== undefined && (!best || Math.abs(p[0] - t) < Math.abs(best[0] - t)) ? p : best, null);
+        const p = near(c.pts);
+        if (!p) return;
+        const g = document.getElementById(`${id}-hover`);
+        const tip = document.getElementById(`${id}-tip`);
+        const px = c.x(p[0]);
+        g.style.display = '';
+        const line = g.querySelector('line');
+        line.setAttribute('x1', px); line.setAttribute('x2', px);
+        const dots = g.querySelectorAll('circle');
+        dots[0].setAttribute('cx', px); dots[0].setAttribute('cy', c.y(p[1]));
+        let text = `${this.fmtChartTime(p[0], c.span)} · ${c.names ? c.names[0] + ' ' : ''}${c.fmt(p[1])}`;
+        if (c.s2) {
+            const q = c.s2.find(r => r[0] === p[0]);
+            if (q && q[1] !== null) {
+                dots[1].setAttribute('cx', px); dots[1].setAttribute('cy', c.y(q[1]));
+                text += ` · ${c.names[1]} ${c.fmt(q[1])}`;
+            }
+        }
+        tip.textContent = text;
+        tip.classList.remove('hidden');
+        const left = px / c.W * box.width;
+        tip.style.top = '0px';
+        tip.style.left = `${Math.min(Math.max(0, left - tip.offsetWidth / 2), box.width - tip.offsetWidth)}px`;
+    },
+
+    chartLeave(id) {
+        const g = document.getElementById(`${id}-hover`), tip = document.getElementById(`${id}-tip`);
+        if (g) g.style.display = 'none';
+        if (tip) tip.classList.add('hidden');
+    },
+
+    fmtChartTime(t, span) {
+        const d = new Date(t * 1000);
+        const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return span > 86400 ? `${d.toLocaleDateString([], { weekday: 'short' })} ${hm}` : hm;
+    },
+
+    // Maintenance > Memory and limits
+    async loadResources() {
+        const card = document.getElementById('resources-card');
+        const body = document.getElementById('resources-body');
+        const srv = this.activeServer;
+        if (!card || !srv) return;
+        card.classList.remove('hidden');
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/resources`);
+        if (!res.ok) { body.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+        const r = await res.json();
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        this.resourcesData = r;
+        body.innerHTML = this.resourcesHtml(r);
+        this.onLimitModeChange();
+    },
+
+    resourcesHtml(r) {
+        const esc = t => this.escapeHtml(t === null || t === undefined ? '' : String(t));
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const input = 'bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-1 text-sm text-gray-900 dark:text-white';
+        const admin = this.isAdmin();
+        const limitNow = r.memory_limit === 'auto' ? `Automatic (${this.fmtBytes(r.memory_max)})`
+            : r.memory_limit === 'off' ? 'Off' : this.fmtBytes(r.memory_limit);
+        const machine = `This machine has ${this.fmtBytes(r.host_memory)} of memory and ${esc(r.cores)} CPU core${r.cores === 1 ? '' : 's'}.`
+            + (r.java ? ` Other running Java servers use up to ${this.fmtBytes(r.others_running)}; ${this.fmtBytes(r.room)} is left after ${this.fmtBytes(r.reserve)} for the system.` : '');
+        if (!admin) {
+            return `<p class="text-sm text-gray-700 dark:text-gray-300">${r.java ? `Memory: <b>${esc(r.xms)}</b> to start, at most <b>${esc(r.xmx)}</b>. ` : ''}
+                Hard memory limit: <b>${esc(limitNow)}</b>. CPU limit: <b>${r.cpu_limit ? esc(r.cpu_limit) + ' cores' : 'none'}</b>.</p>
+                <p class="${note} mt-2">Only an admin can change these.</p>`;
+        }
+        const custom = typeof r.memory_limit === 'number';
+        return `
+            <p class="${note} mb-3">${machine}</p>
+            ${r.java ? `
+            <p class="text-sm font-bold text-gray-900 dark:text-white">Memory (Java heap)</p>
+            <div class="flex flex-wrap items-end gap-3 mt-1">
+                <label class="text-sm text-gray-700 dark:text-gray-300">To start <input id="res-xms" class="${input} w-24 block mt-1" value="${esc(r.xms)}" placeholder="1G" autocomplete="off"></label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">At most <input id="res-xmx" class="${input} w-24 block mt-1" value="${esc(r.xmx)}" placeholder="2G" autocomplete="off"></label>
+            </div>
+            <p class="${note} mt-1">Write sizes like 2G or 1536M. A new server on this machine gets ${esc(r.default_heap.xms)} to ${esc(r.default_heap.xmx)}. A running server uses a new size after it restarts.</p>` : ''}
+            <p class="text-sm font-bold text-gray-900 dark:text-white mt-4">Hard memory limit</p>
+            <div class="flex flex-wrap items-center gap-2 mt-1">
+                <select id="res-limit-mode" onchange="ServerApp.onLimitModeChange()" class="${input}">
+                    <option value="off" ${r.memory_limit === 'off' ? 'selected' : ''}>Off</option>
+                    ${r.java ? `<option value="auto" ${r.memory_limit === 'auto' ? 'selected' : ''}>Automatic (${this.fmtBytes(r.auto_limit)})</option>` : ''}
+                    <option value="custom" ${custom ? 'selected' : ''}>Custom</option>
+                </select>
+                <input id="res-limit" class="${input} w-24" value="${custom ? esc(this.heapText(r.memory_limit)) : ''}" placeholder="3G" autocomplete="off">
+            </div>
+            <p class="${note} mt-1">systemd stops the server if its whole process goes over this, so one runaway server can't starve the others.${r.java ? ' Automatic is its memory plus half again, for what Java uses outside the heap.' : ''}</p>
+            <p class="text-sm font-bold text-gray-900 dark:text-white mt-4">CPU limit</p>
+            <label class="flex flex-wrap items-center gap-2 mt-1 text-sm text-gray-700 dark:text-gray-300">
+                <input id="res-cpu" type="number" min="0" max="${esc(r.cores)}" step="0.5" class="${input} w-24" value="${r.cpu_limit || 0}"> cores (0 = no limit)
+            </label>
+            <p class="${note} mt-1">Limits apply at once, without a restart. Minecraft's main loop uses one core, so a limit under 1 makes it lag.</p>
+            ${r.java && r.running ? `<label class="flex items-center gap-2 mt-4 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" id="res-restart"> Restart now if the memory changes</label>` : ''}
+            <div class="mt-4 flex items-center gap-3">
+                <button onclick="ServerApp.saveResources()" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold text-sm">Save</button>
+                <span id="res-status" class="text-sm"></span>
+            </div>`;
+    },
+
+    heapText(n) {
+        return n % (1024 ** 3) === 0 ? `${n / 1024 ** 3}G` : `${Math.max(1, Math.floor(n / 1024 ** 2))}M`;
+    },
+
+    onLimitModeChange() {
+        const mode = document.getElementById('res-limit-mode'), box = document.getElementById('res-limit');
+        if (mode && box) box.classList.toggle('hidden', mode.value !== 'custom');
+    },
+
+    async saveResources() {
+        const srv = this.activeServer, r = this.resourcesData;
+        if (!srv || !r) return;
+        const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : null; };
+        const mode = val('res-limit-mode');
+        const body = {
+            memory: mode === 'custom' ? val('res-limit') : mode,
+            cpu: parseFloat(val('res-cpu') || '0') || 0,
+            restart: !!(document.getElementById('res-restart') || {}).checked,
+        };
+        if (r.java) { body.xms = val('res-xms'); body.xmx = val('res-xmx'); }
+        const status = document.getElementById('res-status');
+        status.className = 'text-sm text-gray-500';
+        status.textContent = 'Saving…';
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/resources`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+            status.className = 'text-sm text-red-500';
+            status.textContent = await this.apiError(res);
+            return;
+        }
+        const out = await res.json();
+        this.resourcesData = out;
+        document.getElementById('resources-body').innerHTML = this.resourcesHtml(out);
+        this.onLimitModeChange();
+        const st = document.getElementById('res-status');
+        st.className = 'text-sm text-green-600 dark:text-green-400';
+        st.textContent = out.restarted ? 'Saved and restarted.' : out.restart_needed ? 'Saved. The new memory is used after the next restart.' : 'Saved.';
+        this.loadServers();
+    },
+
+    // Dashboard: host history (fetched at most once a minute; the tiles refresh every 10 s)
+    async loadHostHistory(force) {
+        if (!force && this.hostHistory && Date.now() - this.hostHistoryAt < 55000) return;
+        try {
+            const r = await fetch(`/api/host/history?range=${this.hostRange}`);
+            if (r.ok) { this.hostHistory = await r.json(); this.hostHistoryAt = Date.now(); }
+        } catch (e) { /* keep the last answer */ }
+    },
+
+    async setHostRange(r) {
+        this.hostRange = r;
+        await this.loadHostHistory(true);
+        if (this.dashData) this.renderDashboard();
+    },
+
+    hostHistoryHtml() {
+        const h = this.hostHistory;
+        if (!h) return '';
+        const col = f => h.points.map(r => [r[0], r[1 + h.fields.indexOf(f)]]);
+        const btn = (r, label) => `<button onclick="ServerApp.setHostRange('${r}')" class="px-3 py-1 text-sm rounded ${this.hostRange === r ? 'subtab-active' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}" aria-pressed="${this.hostRange === r}">${label}</button>`;
+        const o = { range: h.range, step: h.step, w: this.chartWidth('dash-body', 2, 4) };
+        return `
+            <section>
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <h3 class="font-bold text-gray-900 dark:text-white">History</h3>
+                    <div class="flex gap-1" role="group" aria-label="History range">${btn('day', 'Last 24 hours')}${btn('week', 'Last 7 days')}</div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    ${this.chartCard('host-cpu', 'CPU', col('cpu'), { ...o, fmt: v => `${Math.round(v)} %`, max: 100 })}
+                    ${this.chartCard('host-mem', 'Memory used', col('memory'), { ...o, fmt: v => `${Math.round(v)} %`, max: 100 })}
+                    ${this.chartCard('host-disk', 'Game servers disk', col('disk'), { ...o, fmt: v => `${Math.round(v)} %`, max: 100 })}
+                    ${this.chartCard('host-net', 'Network', col('rx'), { ...o, fmt: v => this.fmtRate(v), series2: col('tx'), names: ['↓ in', '↑ out'] })}
+                </div>
+            </section>`;
+    },
+
     async loadJavaChoice() {
         const card = document.getElementById('java-card');
         const body = document.getElementById('java-card-body');
@@ -3606,6 +4034,7 @@ const ServerApp = {
 		} else {
 			this.setupData = null;
 		}
+		await this.loadHostHistory();
 		if (!document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard();
 	},
 
@@ -3721,6 +4150,7 @@ const ServerApp = {
 					<td class="${td}" data-label="CPU">${this.fmtPct(s.cpu_percent)}</td>
 					<td class="${td}" data-label="Memory">${this.fmtBytes(s.memory)}<span class="${note} md:block">${s.heap && s.heap !== 'N/A' ? ' max heap ' + esc(s.heap) : ''}</span></td>
 					<td class="${td}" data-label="Players">${s.players !== null ? `${s.players} / ${s.max_players}` : '—'}</td>
+					<td class="${td}" data-label="TPS">${s.tps !== null && s.tps !== undefined ? `<span class="${this.tpsState(s.tps).cls}">${this.tpsState(s.tps).icon}</span> ${s.tps}` : '—'}</td>
 					<td class="${td}" data-label="Folder">${s.folder_size !== null ? this.fmtBytes(s.folder_size) : '<span class="' + note + '">measuring…</span>'}</td>
 					<td class="${td}" data-label="Backups">${s.backups ? `${s.backups} · ${this.fmtBytes(s.backups_size)}` : '—'}<span class="${note} md:block"> ${backupNote}</span></td>
 					<td class="${td}" data-label="Next backup">${s.next_backup ? this.fmtWhen(s.next_backup) : '—'}</td>
@@ -3733,7 +4163,7 @@ const ServerApp = {
 				${servers.length ? `<div class="overflow-x-auto"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">
 					<thead class="text-xs text-gray-500 dark:text-gray-400"><tr>
 						<th class="${th}">Server</th><th class="${th}">State</th><th class="${th}">CPU</th><th class="${th}">Memory</th>
-						<th class="${th}">Players</th><th class="${th}">Folder</th><th class="${th}">Backups</th>
+						<th class="${th}">Players</th><th class="${th}">TPS</th><th class="${th}">Folder</th><th class="${th}">Backups</th>
 						<th class="${th}">Next backup</th><th class="${th}">Next restart</th>
 					</tr></thead><tbody>${serverRows}</tbody></table></div>
 					<p class="${note} px-4 py-2">CPU is a share of the whole machine. Folder sizes are measured in the background every 10 minutes.</p>`
@@ -3796,7 +4226,7 @@ const ServerApp = {
 				</section>`;
 		}
 
-		document.getElementById('dash-body').innerHTML = this.setupCard() + attentionHtml + tiles + serverTable
+		document.getElementById('dash-body').innerHTML = this.setupCard() + attentionHtml + tiles + this.hostHistoryHtml() + serverTable
 			+ `<section class="grid grid-cols-1 lg:grid-cols-3 gap-4">${host}${disks}${services}</section>` + nodes
 			+ (d.redacted ? `<p class="${note}">You're on the trusted local network without signing in, so addresses, versions and settings are hidden.</p>` : '');
 	},
