@@ -38,8 +38,8 @@ from core.version import panel_version
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
-CLUSTER_API = 4                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
-                                # 4: backup copies on another member (1.16.8)
+CLUSTER_API = 5                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
+                                # 4: backup copies on another member (1.16.8), 5: pre-copy moves (1.16.13)
 MIN_JOIN_API = 1                # oldest node contract a master still lets join (phase 1 nodes)
 PROXY_API = 2                   # a node needs this for the master's proxy (phase 2, 1.15)
 JOIN_TTL = 3600                 # join codes are single-use and valid for an hour
@@ -86,6 +86,7 @@ NODE_ROUTES = (
     ("POST", r"/api/cluster/transfers/(export|import)"),
     ("GET|PUT", r"/api/cluster/transfers/[0-9a-f]{32}/archive"),
     ("POST", r"/api/cluster/transfers/[0-9a-f]{32}/(finish|install|confirm)"),
+    ("POST", r"/api/cluster/transfers/[0-9a-f]{32}/stage"),            # 1.16.13: a pre-copy
     ("DELETE", r"/api/cluster/transfers/[0-9a-f]{32}"),
     ("DELETE", r"/api/cluster/transfers/moved/minecraft[A-Za-z0-9_.@-]*"),
     # 1.16.8: copies of other members' backups kept here, and a copy put into a server's backups

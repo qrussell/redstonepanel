@@ -496,7 +496,8 @@ class RouteCoverage(unittest.TestCase):
                 ("POST", "/api/cluster/transfers/export"), ("POST", "/api/cluster/transfers/import"),
                 ("GET", "/api/cluster/transfers/{tid}/archive"), ("PUT", "/api/cluster/transfers/{tid}/archive"),
                 ("POST", "/api/cluster/transfers/{tid}/finish"), ("POST", "/api/cluster/transfers/{tid}/install"),
-                ("POST", "/api/cluster/transfers/{tid}/confirm"), ("DELETE", "/api/cluster/transfers/{tid}"),
+                ("POST", "/api/cluster/transfers/{tid}/confirm"), ("POST", "/api/cluster/transfers/{tid}/stage"),
+                ("DELETE", "/api/cluster/transfers/{tid}"),
                 ("DELETE", "/api/cluster/transfers/moved/{server_name}"),
                 # 1.16.8: backup copies kept for other members (cluster plumbing, core/backup_copies.py)
                 ("GET", "/api/cluster/held-backups"),

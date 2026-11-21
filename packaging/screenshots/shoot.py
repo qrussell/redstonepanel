@@ -9,8 +9,12 @@ matches the reader's theme (see docs/guide/README.md, "About the screenshots").
 Phone pictures (1.16.10) are 390x844, like a phone, and named phone-*.png. The QR code dialog
 (phone-qr.png) is the desktop's.
 
-The last step moves the demo's Bedrock server to the node and back (cluster-moved.png), so it
-runs after everything else.
+update-alert.png and bedrock-auto-update.png (1.16.12) are the Maintenance tab's Update Server
+card: demo.sh deploys Paper 1.21.4 so there is something newer, turns on Update automatically
+for the Bedrock server and runs the update check.
+
+The last step moves the demo's Bedrock server to the node and back (cluster-moved.png), with a
+pre-copy (1.16.13) so the picture shows how long it was down, so it runs after everything else.
 """
 import os
 import sys
@@ -68,7 +72,7 @@ class Shooter:
 
     def close_modals(self):
         self.page.keyboard.press("Escape")
-        self.page.evaluate("""() => document.querySelectorAll('#modal-overlay, .modal-overlay, [id$="-modal"], #template-workspace')
+        self.page.evaluate("""() => document.querySelectorAll('#modal-overlay, #settings-overlay, .modal-overlay, [id$="-modal"], #template-workspace')
                            .forEach(e => e.classList.add('hidden'))""")
         self.page.wait_for_timeout(300)
 
@@ -132,6 +136,8 @@ class Shooter:
             shot("cluster")
             page.locator("button", has_text="Move…").first.click()
             shot("cluster-move")
+            page.check("#move-precopy")                  # 1.16.13
+            shot("cluster-precopy", element="#modal-content")
             page.evaluate("ServerApp.closeModal()")
         step("cluster", cluster)
 
@@ -177,6 +183,16 @@ class Shooter:
             self.scroll_to_text("Scheduled Restarts")
             shot("scheduled-restarts")
         step("scheduled restarts", restarts)
+
+        # 1.16.12: the Paper server (1.21.4 in the demo) has an update alert; Bedrock updates itself
+        def updates():
+            self.open_server("minecraft-java", tab="maintenance")
+            page.wait_for_selector("#autoupdate-content div", timeout=15000)
+            shot("update-alert", element="div:has(> #autoupdate-content)")
+            self.open_server("minecraft-bedrock", tab="maintenance")
+            page.wait_for_selector("#autoupdate-enabled", timeout=15000)
+            shot("bedrock-auto-update", element="div:has(> #autoupdate-content)")
+        step("updates", updates)
 
         def file_editor():
             self.open_server("minecraft-java", tab="files")
@@ -258,10 +274,30 @@ class Shooter:
             shot("panel-settings")
             self.scroll_to_text("Notifications")
             shot("notifications")
+            self.scroll_to_text("Backup storage")   # 1.16.11: the demo's SSH storage on Creative Lab
+            shot("backup-storage")
             self.scroll_to_text("Connection")    # on a master this also shows Nightly backups
             shot("panel-settings-1")
             self.close_modals()
         step("settings", settings)
+
+        # 1.16.11: off-site copies of the Paper server's backups on the SSH storage
+        def offsite():
+            self.open_server("minecraft-java", tab="backups")
+            page.wait_for_selector("#offsite-box:has-text('Copy to')", timeout=20000)
+            page.evaluate("document.getElementById('offsite-box').scrollIntoView({block: 'start'})")
+            shot("offsite-copies")
+        step("offsite copies", offsite)
+
+        def find_panels():                               # 1.16.13: Settings > Cluster > Add a node
+            page.evaluate("ServerApp.openPanelSettings()")
+            page.wait_for_timeout(3500)
+            page.click("#cl-find")
+            page.wait_for_selector("#cl-found :text('Searched')", timeout=60000)
+            page.locator("#cl-find").scroll_into_view_if_needed()
+            shot("cluster-find", element="div.p-3:has(#cl-find)")
+            self.close_modals()
+        step("find panels", find_panels)
 
         def phone_qr():
             page.evaluate("ServerApp.openPhoneQr()")
@@ -313,6 +349,7 @@ class Shooter:
                 ServerApp.openMoveDialog('move', n.id, server);
             }""", server)
             page.wait_for_timeout(800)
+            page.check("#move-precopy")
             page.click("#move-go")
             page.wait_for_selector("text=Delete the old copy", timeout=180000)
             self.shot("cluster-moved")

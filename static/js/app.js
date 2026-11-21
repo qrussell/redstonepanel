@@ -350,7 +350,7 @@ const ServerApp = {
                     <span class="${dot}">●</span>
                     <div class="min-w-0">
                         <div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(srv.name)}${this.hasProxyProblem(srv) || this.hasConnectProblem(srv) ? ' <span class="text-yellow-600" title="Players may not be able to connect: see Overview">⚠</span>' : ''}</div>
-                        <div class="text-xs text-gray-500">${esc(srv.edition)}${srv.version ? ' ' + esc(srv.version) : ''} • Port ${srv.port}</div>
+                        <div class="text-xs text-gray-500">${esc(srv.edition)}${srv.version ? ' ' + esc(srv.version) : ''} • Port ${srv.port}${this.updateBadge(srv)}</div>
                     </div>
                 </div>`;
         };
@@ -427,6 +427,9 @@ const ServerApp = {
             }
         } else if (!srv.version && srv.edition === 'Bedrock') {
             versionNote = `<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Shown after the server's next start</p>`;
+        }
+        if (srv.update) {
+            versionNote += `<p class="text-xs mt-1"><button onclick="ServerApp.switchTab('maintenance')" class="text-theme underline" title="Open Maintenance to update">⬆ Update available: ${esc(srv.update.label)}</button></p>`;
         }
         document.getElementById('overview-stats').innerHTML = `
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Status</p><p class="font-bold uppercase ${srv.status === 'online' ? 'text-green-500' : 'text-red-500'}">${srv.status}</p></div>
@@ -526,7 +529,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab('visual');
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadJavaChoice(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadAutoUpdate(); this.loadJavaChoice(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
@@ -1358,6 +1361,11 @@ const ServerApp = {
                 <p class="text-xs text-gray-500 mb-2">A backup wrapped in a single folder is fine; its contents are used.</p>
                 <button onclick="ServerApp.executeImport()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-white font-bold transition">Upload & Import</button>
             </div>
+            ${!this.deployNode && this.currentUser && this.currentUser.role === 'admin' ? `<div class="mb-6">
+                <label class="block text-sm text-gray-400 mb-1">From backup storage</label>
+                <p class="text-xs text-gray-500 mb-2">Bring a server back from its off-site copies on SSH or S3 storage, for example after its machine died.</p>
+                <div id="storage-import"><button onclick="ServerApp.openStorageImport()" class="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 py-2 rounded text-gray-900 dark:text-white font-bold transition">Choose a backup…</button></div>
+            </div>` : ''}
             <div id="removed-servers" class="mb-6">${this.removedServersHtml()}</div>
             <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white transition">Cancel</button>
         `;
@@ -1652,6 +1660,84 @@ const ServerApp = {
         }
     },
 
+    // "⬆ 1.26.10.4" next to a server's version when the update check found a newer one (1.16.12)
+    updateBadge(srv) {
+        if (!srv || !srv.update) return '';
+        return ` <span class="text-theme font-bold whitespace-nowrap" title="Update available: ${this.escapeHtml(String(srv.update.label))}">⬆ ${this.escapeHtml(String(srv.update.latest))}</span>`;
+    },
+
+    // Maintenance tab: the update check for this server and Bedrock's Update automatically
+    async loadAutoUpdate() {
+        const box = document.getElementById('autoupdate-content');
+        if (!box || !this.activeServer) return;
+        const name = this.activeServer.name;
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/updates`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        this.renderAutoUpdate(await res.json());
+    },
+
+    renderAutoUpdate(info) {
+        const box = document.getElementById('autoupdate-content');
+        if (!box) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const when = t => t ? esc(new Date(t * 1000).toLocaleString()) : '';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const found = info.update
+            ? `<p class="text-sm font-bold text-theme">⬆ Update available: ${esc(info.update.label)}</p>
+               <p class="${note}">This server runs ${esc(info.current || 'an unknown version')}. ${info.edition === 'java' ? 'Choose the version above and press Check & Update.' : 'Press Check & Update above, or let it update itself.'}</p>`
+            : info.error
+                ? `<p class="text-sm text-yellow-600 dark:text-yellow-500">Couldn't check for updates: ${esc(info.error)}</p>`
+                : `<p class="text-sm text-gray-600 dark:text-gray-300">${info.checked ? '✓ Runs the newest version' : 'Not checked yet'}${info.current ? ` (${esc(info.current)})` : ''}.</p>`;
+        const last = info.last;
+        const lastLine = last ? (last.ok
+            ? `<p class="${note}">Last update: ${when(last.at)}, ${esc(last.from || '?')} → ${esc(last.to)} (${esc(last.by || '')}).</p>`
+            : `<p class="text-xs text-red-500 mt-1">Updating to ${esc(last.to)} failed ${when(last.at)}: ${esc(last.error)}.${last.rolled_back ? ` It was put back on ${esc(last.from || 'the old version')}.` : ''}</p>`) : '';
+        const auto = info.edition === 'bedrock' ? (info.supported ? `
+            <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 mt-3">
+                <input type="checkbox" id="autoupdate-enabled" class="mt-1" ${info.auto ? 'checked' : ''} onchange="ServerApp.saveAutoUpdate(this)">
+                <span><b>Update automatically</b><span class="block ${note}">Bedrock players' apps update themselves and then can't join an older server. When a new release is out, players are warned in game, ${esc(info.warn_minutes)} minutes later the server stops, is backed up ("Before update"), updated and started. If the new version doesn't start, the old one and its world are put back.</span></span>
+            </label>` : `<p class="${note} mt-2">Bedrock servers can't run on this machine's processor, so they can't be updated here.</p>`)
+            : `<p class="${note} mt-2">Java servers are never updated automatically: a new version can break mods and plugins. You get an alert here, on the dashboard and by webhook instead.</p>`;
+        box.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm">
+                ${found}
+                ${lastLine}
+                ${auto}
+                <div class="flex flex-wrap items-center gap-3 mt-3">
+                    <button onclick="ServerApp.checkUpdatesNow(this)" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded font-bold text-sm">Check now</button>
+                    <span class="${note}">${info.checked ? `Checked ${when(info.checked)}` : ''}${info.next_check ? ` · next check ${when(info.next_check)}` : ''}</span>
+                </div>
+            </div>`;
+    },
+
+    async saveAutoUpdate(input) {
+        input.disabled = true;
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/updates`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: input.checked })
+        });
+        input.disabled = false;
+        if (!res.ok) {
+            input.checked = !input.checked;
+            return alert(`Couldn't change automatic updates: ${await this.apiError(res)}`);
+        }
+        this.renderAutoUpdate(await res.json());
+    },
+
+    async checkUpdatesNow(button) {
+        button.disabled = true;
+        button.innerText = 'Checking…';
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/updates/check`, { method: 'POST' });
+        button.disabled = false;
+        button.innerText = 'Check now';
+        if (!res.ok) return alert(`Couldn't check for updates: ${await this.apiError(res)}`);
+        this.renderAutoUpdate(await res.json());
+        this.loadServers();
+    },
+
     // --- Backups tab: schedule, list, back up now, download, restore, delete ---
     backupInfo: null,
 
@@ -1676,6 +1762,7 @@ const ServerApp = {
         this.backupCopiesAll = null;
         this.renderBackups();
         this.loadBackupCopies();
+        this.loadOffsite();
     },
 
     // --- 1.16.8: copies of a server's backups on another cluster member (set on the master) ---
@@ -1708,7 +1795,7 @@ const ServerApp = {
 
     copyRows(list, actions) {
         const esc = t => this.escapeHtml(String(t ?? ''));
-        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes' };
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes', 'pre-update': 'Before update' };
         return list.map(c => `
             <tr class="border-t border-gray-200 dark:border-gray-700">
                 <td class="rp-card-head py-2 pr-3 whitespace-nowrap">${esc(new Date(c.created * 1000).toLocaleString())}</td>
@@ -2754,7 +2841,7 @@ const ServerApp = {
         const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
         const freqOptions = Object.entries(info.frequencies)
             .map(([id, label]) => `<option value="${esc(id)}" ${id === s.frequency ? 'selected' : ''}>${esc(label)}</option>`).join('');
-        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes' };
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes', 'pre-update': 'Before update' };
 
         let last = '';
         if (info.last) {
@@ -2792,7 +2879,9 @@ const ServerApp = {
                     <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">Keep
                         <input type="number" id="backup-keep" min="1" max="365" value="${esc(s.keep)}" class="${field} w-20"></label>
                 </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">The time is the server's clock${info.timezone ? ` (${esc(info.timezone)})` : ''}, not your browser's. Runs as a systemd timer, so backups happen even while the panel is stopped. Only scheduled backups are pruned to the number kept; manual ones stay until you delete them.</p>
+                <label class="flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3">Also delete them after
+                    <input type="number" id="backup-keep-days" min="0" max="3650" value="${s.keep_days ? esc(s.keep_days) : ''}" placeholder="never" class="${field} w-24"> days</label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">The time is the server's clock${info.timezone ? ` (${esc(info.timezone)})` : ''}, not your browser's. Runs as a systemd timer, so backups happen even while the panel is stopped. Only scheduled backups are pruned to the number (and age) kept, and the newest one always stays; manual ones stay until you delete them.</p>
                 ${info.next_run && s.enabled ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Next backup: ${esc(info.next_run)}</p>` : ''}
                 ${last}
                 <div class="flex flex-wrap gap-2 mt-3">
@@ -2814,7 +2903,8 @@ const ServerApp = {
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Restore replaces the current world with the backup's. The server is stopped while that happens, and the world it replaces is saved first as a "Before restore" backup.</p>`
                 : `<p class="text-sm text-gray-500 dark:text-gray-400">No backups yet.</p>`}
             </div>
-            <div id="backup-copies-box"></div>`;
+            <div id="backup-copies-box"></div>
+            <div id="offsite-box"></div>`;
     },
 
     async saveBackupSchedule(button) {
@@ -2823,6 +2913,7 @@ const ServerApp = {
             frequency: document.getElementById('backup-frequency').value,
             time: document.getElementById('backup-time').value,
             keep: parseInt(document.getElementById('backup-keep').value, 10) || 0,
+            keep_days: parseInt(document.getElementById('backup-keep-days').value, 10) || 0,
         };
         button.disabled = true;
         const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/schedule`, {
@@ -2918,6 +3009,362 @@ const ServerApp = {
         const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(file)}`, { method: 'DELETE' });
         if (!res.ok) alert(`Delete failed: ${await this.apiError(res)}`);
         this.loadBackups();
+    },
+
+    // --- 1.16.11: copies on SSH or S3-compatible backup storage (Panel Settings → Backup storage) ---
+    offsite: null,
+
+    async loadOffsite() {
+        const box = document.getElementById('offsite-box');
+        if (!box || !this.activeServer) return;
+        const name = this.activeServer.name;
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/offsite`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        box.className = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 shadow-sm';
+        if (res.status === 404 && (await res.clone().json().catch(() => ({}))).detail === 'Not Found') {
+            box.innerHTML = `<p class="text-xs text-gray-500 dark:text-gray-400">Off-site copies need RedstonePanel 1.16.11 or later on ${this.escapeHtml(this.activeServer.node_name || 'this machine')}.</p>`;
+            return;
+        }
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">Off-site copies: ${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        this.offsite = await res.json();
+        this.renderOffsite();
+    },
+
+    renderOffsite() {
+        const box = document.getElementById('offsite-box');
+        const v = this.offsite;
+        if (!box || !v) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const isAdmin = this.currentUser && this.currentUser.role === 'admin';
+        const onNode = !!(this.activeServer && this.activeServer.node);
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const btn = 'px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual' };
+        const head = `<p class="text-sm font-bold text-gray-900 dark:text-white mb-1">Off-site copies</p>`;
+        if (!v.targets.length) {
+            box.innerHTML = `${head}<p class="${note}">A backup on the same disk doesn't survive losing the disk. Copy these backups to an SSH server (a NAS, another PC, a VPS) or S3-compatible storage (Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3)${onNode
+                ? `: add the storage in Panel Settings → Backup storage on ${esc(this.activeServer.node_name || 'the node')}'s own panel, since each machine copies its own servers' backups.`
+                : isAdmin ? ` under <button onclick="ServerApp.openPanelSettings('storage')" class="underline text-theme">Panel Settings → Backup storage</button>.` : '. An admin adds it under Panel Settings → Backup storage.'}</p>`;
+            return;
+        }
+        const blocks = v.targets.map(t => {
+            const st = t.status;
+            let state = '';
+            if (t.enabled && st) {
+                const when = new Date(st.at * 1000).toLocaleString();
+                state = st.ok
+                    ? `<p class="${note}">Last checked ${esc(when)}: every backup it keeps has its copy${st.last_copied_at ? `; last copied ${esc(new Date(st.last_copied_at * 1000).toLocaleString())}` : ''}.</p>`
+                    : `<p class="text-xs text-red-500">Copying failed (${esc(when)}): ${esc(st.error)}</p>`;
+            } else if (t.enabled) {
+                state = `<p class="${note}">Not copied yet: the first copy starts within a few minutes.</p>`;
+            }
+            const rows = t.copies.map(c => `
+                <tr class="border-t border-gray-200 dark:border-gray-700">
+                    <td class="rp-card-head py-2 pr-3 whitespace-nowrap">${esc(new Date(c.created * 1000).toLocaleString())}</td>
+                    <td class="py-2 pr-3" data-label="Type">${esc(kindLabel[c.kind] || c.kind)}</td>
+                    <td class="py-2 pr-3 text-right whitespace-nowrap" data-label="Size">${esc(this.formatSize(c.size))}</td>
+                    <td class="rp-card-actions py-2 text-right whitespace-nowrap">${isAdmin ? `
+                        <button onclick="ServerApp.restoreOffsite(${this.jsArg(t.id)}, ${this.jsArg(c.file)})" class="px-2 py-1 rounded bg-yellow-600 hover:bg-yellow-700 text-white" title="Download it, check it, and restore its world">Restore</button>
+                        <button onclick="ServerApp.deleteOffsite(${this.jsArg(t.id)}, ${this.jsArg(c.file)})" class="${btn} hover:bg-red-700 hover:text-white" title="Delete this copy">🗑</button>` : ''}</td>
+                </tr>`).join('');
+            const retention = `keeps ${esc(t.keep)} scheduled${t.keep_days ? `, at most ${esc(t.keep_days)} days old` : ''}, and every manual one`;
+            return `<div class="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
+                <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 ${isAdmin ? 'cursor-pointer' : ''}">
+                    <input type="checkbox" class="mt-1" ${t.enabled ? 'checked' : ''} ${isAdmin ? '' : 'disabled'} onchange="ServerApp.toggleOffsite(${this.jsArg(t.id)}, this.checked, this)">
+                    <span>Copy to <b class="text-gray-900 dark:text-white">${esc(t.name)}</b> <span class="${note}">${t.type === 's3' ? 'S3' : 'SSH'} · <span class="break-all">${esc(t.where)}</span> · ${retention}</span></span>
+                </label>
+                ${state}
+                ${t.error ? `<p class="text-xs text-red-500">Couldn't list the copies: ${esc(t.error)}</p>` : ''}
+                ${t.copies.length ? `<div class="overflow-x-auto -mx-3 sm:mx-0 mt-2"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">
+                    <thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pb-1">Taken</th><th class="pb-1">Type</th><th class="pb-1 text-right">Size</th><th></th></tr></thead>
+                    <tbody>${rows}</tbody></table></div>` : t.enabled && !t.error ? `<p class="${note} mt-1">No copies there yet.</p>` : ''}
+            </div>`;
+        }).join('');
+        const anyOn = v.targets.some(t => t.enabled);
+        box.innerHTML = `${head}
+            <p class="${note}">Copied after each scheduled or manual backup, checked with SHA-256 when it arrives and again before a restore. Copies run in the background, so a slow upload never holds the server up. Old scheduled copies are deleted there by the storage's own Keep; the newest copy always stays.</p>
+            ${blocks}
+            ${anyOn ? `<div class="flex flex-wrap gap-2 mt-3"><button onclick="ServerApp.offsiteCopyNow(this)" class="${btn} text-sm font-bold px-3 py-1.5">Copy now</button></div>` : ''}
+            ${isAdmin && anyOn ? `<p class="${note} mt-2"><b>Restore</b> downloads the copy into the backups above, checks it, then restores its world as usual (the current world is saved first).</p>` : ''}`;
+    },
+
+    async toggleOffsite(tid, enabled, input) {
+        input.disabled = true;
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/offsite/${encodeURIComponent(tid)}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled })
+        });
+        if (!res.ok) alert(`Couldn't change it: ${await this.apiError(res)}`);
+        this.loadOffsite();
+    },
+
+    async offsiteCopyNow(button) {
+        button.disabled = true;
+        button.innerText = 'Copying…';
+        this.toggleConsole(true);
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/offsite/sync`, { method: 'POST' });
+        if (!res.ok) { alert(await this.apiError(res)); button.disabled = false; button.innerText = 'Copy now'; return; }
+        setTimeout(() => this.loadOffsite(), 4000);
+    },
+
+    async restoreOffsite(tid, file) {
+        const name = this.activeServer.name;
+        if (!confirm(`Restore ${name}'s world from the off-site copy ${file}?\n\nThe copy is downloaded into this server's backups and checked first. Then the server stops while its world is replaced; the current world is saved first as a "Before restore" backup.`)) return;
+        this.toggleConsole(true);
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/offsite/${encodeURIComponent(tid)}/fetch`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file })
+        });
+        if (!res.ok) { alert(`Couldn't download the copy: ${await this.apiError(res)}`); return; }
+        const got = await res.json();
+        const r = await api(`/api/servers/${encodeURIComponent(name)}/backups/${encodeURIComponent(got.file)}/restore`, { method: 'POST' });
+        if (!r.ok) alert(`The copy is in the backups list as ${got.file}, but restoring failed: ${await this.apiError(r)}`);
+        else alert('World restored from the off-site copy.');
+        this.loadBackups();
+    },
+
+    async deleteOffsite(tid, file) {
+        if (!confirm(`Delete the off-site copy ${file}? This can't be undone.`)) return;
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/offsite/${encodeURIComponent(tid)}/${encodeURIComponent(file)}`, { method: 'DELETE' });
+        if (!res.ok) alert(`Delete failed: ${await this.apiError(res)}`);
+        this.loadOffsite();
+    },
+
+    // Import → From backup storage: a new server from a copy (the machine it came from is gone)
+    async openStorageImport() {
+        const box = document.getElementById('storage-import');
+        if (!box) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const field = 'w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white text-sm mb-2';
+        box.innerHTML = `<p class="text-xs text-gray-500">Loading…</p>`;
+        const res = await fetch('/api/settings/backup-storage');
+        if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${esc(await this.apiError(res))}</p>`; return; }
+        const d = await res.json();
+        if (!d.targets.length) {
+            box.innerHTML = `<p class="text-xs text-gray-500">No backup storage yet. Add the storage the old machine copied to under <button onclick="ServerApp.openPanelSettings('storage')" class="underline text-theme">Panel Settings → Backup storage</button>, then come back here.</p>`;
+            return;
+        }
+        box.innerHTML = `<select id="storage-import-target" onchange="ServerApp.browseStorage(this.value)" class="${field}">
+                ${d.targets.map(t => `<option value="${esc(t.id)}">${esc(t.name)} (${esc(t.where)})</option>`).join('')}
+            </select>
+            <div id="storage-import-list"><p class="text-xs text-gray-500">Loading…</p></div>`;
+        this.browseStorage(d.targets[0].id);
+    },
+
+    async browseStorage(tid) {
+        const list = document.getElementById('storage-import-list');
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        list.innerHTML = `<p class="text-xs text-gray-500">Loading…</p>`;
+        const res = await fetch(`/api/settings/backup-storage/${encodeURIComponent(tid)}/browse`);
+        if (!res.ok) { list.innerHTML = `<p class="text-sm text-red-500">${esc(await this.apiError(res))}</p>`; return; }
+        const d = await res.json();
+        this.storageCopies = d.copies;
+        if (!d.copies.length) { list.innerHTML = `<p class="text-xs text-gray-500">No backups there.</p>`; return; }
+        const field = 'w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white text-sm mb-2';
+        list.innerHTML = `<select id="storage-import-copy" class="${field}">
+                ${d.copies.map((c, i) => `<option value="${i}">${esc(c.server)} · ${esc(new Date(c.created * 1000).toLocaleString())} · ${esc(this.formatSize(c.size))} · from ${esc(c.panel)}${c.panel === d.panel_id ? ' (this machine)' : ''}</option>`).join('')}
+            </select>
+            <p class="text-xs text-gray-500 mb-2">The server gets its old name if it's free here. Its server software is downloaded again (a Java server at the same Minecraft version and type), then it starts.</p>
+            <button onclick="ServerApp.importFromStorage(this)" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-white font-bold transition">Import from backup storage</button>`;
+    },
+
+    async importFromStorage(button) {
+        const tid = document.getElementById('storage-import-target').value;
+        const c = this.storageCopies[parseInt(document.getElementById('storage-import-copy').value, 10)];
+        if (!c) return;
+        button.disabled = true;
+        button.innerText = 'Downloading, checking and setting up…';
+        this.toggleConsole(true);
+        const res = await fetch(`/api/settings/backup-storage/${encodeURIComponent(tid)}/import`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ panel: c.panel, server: c.server, file: c.file })
+        });
+        if (!res.ok) {
+            alert(`Import failed: ${await this.apiError(res)}`);
+            button.disabled = false;
+            button.innerText = 'Import from backup storage';
+            return;
+        }
+        const r = await res.json();
+        document.getElementById('modal-overlay').classList.add('hidden');
+        alert(`Imported as ${r.name} (port ${r.port}).${r.old_port ? ` Its old port ${r.old_port} is in use here.` : ''}`);
+        this.loadServers && this.loadServers();
+    },
+
+    // Panel Settings → Backup storage
+    storage: null,
+    storageEdit: null,
+
+    async loadStorageSettings() {
+        const box = document.getElementById('set-storage');
+        if (!box) return;
+        const res = await fetch('/api/settings/backup-storage');
+        if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+        this.storage = await res.json();
+        this.renderStorageSettings();
+    },
+
+    renderStorageSettings(message, ok) {
+        const box = document.getElementById('set-storage');
+        const d = this.storage;
+        if (!box || !d) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const small = 'text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-3 py-1.5 rounded font-bold transition';
+        const rows = d.targets.map(t => `
+            <div class="border border-gray-200 dark:border-gray-700 rounded p-3 mb-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-sm text-gray-900 dark:text-white"><b>${esc(t.name)}</b> <span class="${note}">${t.type === 's3' ? 'S3' : 'SSH'} · <span class="break-all">${esc(t.where)}</span></span></p>
+                    <div class="flex flex-wrap gap-1">
+                        <button onclick="ServerApp.testStorage(${this.jsArg(t.id)}, this)" class="${small}">Test</button>
+                        <button onclick="ServerApp.editStorage(${this.jsArg(t.id)})" class="${small}">Edit</button>
+                        <button onclick="ServerApp.removeStorage(${this.jsArg(t.id)})" class="${small}">Remove</button>
+                    </div>
+                </div>
+                <p class="${note} mt-1">${t.servers === 'all' ? 'Every server' : t.servers.length ? `${t.servers.length} server${t.servers.length === 1 ? '' : 's'}: ${esc(t.servers.join(', '))}` : 'No servers yet: tick it on a server\'s Backups tab'} ·
+                    keeps ${t.keep_count ? `${esc(t.keep_count)} scheduled copies` : 'as many scheduled copies as each server keeps'}${t.keep_days ? `, at most ${esc(t.keep_days)} days old` : ''}</p>
+                ${t.type === 'ssh' ? `<p class="${note} mt-1">Host key: ${t.host_key ? `<span class="font-mono break-all">${esc(t.host_key)}</span> <button onclick="ServerApp.forgetHostKey(${this.jsArg(t.id)})" class="underline text-theme">Forget host key</button>` : 'not seen yet (recorded on the first connection)'}</p>` : ''}
+            </div>`).join('');
+        box.innerHTML = `
+            <p class="${note} mb-2">Copies of the game servers' backups off this machine, so they survive losing its disk. Each server's <b>Backups</b> tab says which storage gets its copies and lets you restore from them. A server can also be brought back on a new machine from here (Import → From backup storage).</p>
+            ${rows || `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">No backup storage yet.</p>`}
+            ${message ? `<p class="text-sm mb-2 ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}">${esc(message)}</p>` : ''}
+            ${d.public_key ? `<details class="mb-2"><summary class="text-sm cursor-pointer text-gray-700 dark:text-gray-300">This panel's SSH key</summary>
+                <p class="${note} mt-1">For SSH storage, add this line to <span class="font-mono">~/.ssh/authorized_keys</span> of the user the panel signs in as there (one line, on that machine):</p>
+                <textarea readonly rows="2" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white mt-1">${esc(d.public_key)}</textarea>
+            </details>` : `<p class="${note} mb-2">SSH storage needs openssh-client and rsync: <span class="font-mono">sudo apt install openssh-client rsync</span></p>`}
+            ${d.tools && !d.tools.rsync ? `<p class="text-xs text-yellow-600 dark:text-yellow-500 mb-2">rsync isn't installed, so SSH copies can't run. Install it with: <span class="font-mono">sudo apt install rsync</span></p>` : ''}
+            <div id="storage-form">${this.storageEdit ? this.storageFormHtml(this.storageEdit) : `<button onclick="ServerApp.editStorage(null)" class="${small}">Add storage</button>`}</div>`;
+    },
+
+    storageFormHtml(t) {
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white mt-1';
+        const label = 'text-xs text-gray-500 dark:text-gray-400';
+        const small = 'text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-3 py-1.5 rounded font-bold transition';
+        const s3 = t.type === 's3';
+        const radio = (v, text) => `<label class="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300"><input type="radio" name="st-type" value="${v}" ${t.type === v ? 'checked' : ''} onchange="ServerApp.storageType(this.value)"> ${text}</label>`;
+        return `<div class="border border-gray-300 dark:border-gray-600 rounded p-3">
+            <p class="text-sm font-bold text-gray-900 dark:text-white mb-2">${t.id ? `Edit ${esc(t.name)}` : 'Add storage'}</p>
+            ${t.id ? '' : `<div class="flex gap-4 mb-2">${radio('ssh', 'SSH server (rsync)')}${radio('s3', 'S3-compatible')}</div>`}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label class="${label} sm:col-span-2">Name<input id="st-name" value="${esc(t.name)}" placeholder="${s3 ? 'Backblaze B2' : 'NAS'}" class="${field}"></label>
+                ${s3 ? `
+                <label class="${label} sm:col-span-2">Endpoint<input id="st-endpoint" value="${esc(t.endpoint)}" placeholder="https://s3.eu-central-003.backblazeb2.com" class="${field} font-mono"></label>
+                <label class="${label}">Bucket<input id="st-bucket" value="${esc(t.bucket)}" class="${field} font-mono"></label>
+                <label class="${label}">Folder in the bucket (optional)<input id="st-prefix" value="${esc(t.prefix)}" placeholder="minecraft" class="${field} font-mono"></label>
+                <label class="${label}">Region<input id="st-region" value="${esc(t.region || '')}" placeholder="us-east-1 (R2: auto)" class="${field} font-mono"></label>
+                <label class="${label} flex items-end gap-2 pb-2"><input type="checkbox" id="st-path-style" ${t.path_style === false ? '' : 'checked'}> Path-style addresses (MinIO, most providers)</label>
+                <label class="${label}">Access key<input id="st-access" autocomplete="off" placeholder="${t.id ? 'unchanged' : ''}" class="${field} font-mono"></label>
+                <label class="${label}">Secret key<input id="st-secret" type="password" autocomplete="new-password" placeholder="${t.id ? 'unchanged' : ''}" class="${field} font-mono"></label>`
+                : `
+                <label class="${label}">Host<input id="st-host" value="${esc(t.host)}" placeholder="nas.lan or 192.168.1.20" class="${field} font-mono"></label>
+                <label class="${label}">Port<input id="st-port" type="number" min="1" max="65535" value="${esc(t.port || 22)}" class="${field}"></label>
+                <label class="${label}">User<input id="st-user" value="${esc(t.user)}" placeholder="backup" class="${field} font-mono"></label>
+                <label class="${label}">Folder<input id="st-folder" value="${esc(t.folder || 'redstonepanel-backups')}" class="${field} font-mono"></label>`}
+                <label class="${label}">Scheduled copies to keep<input id="st-keep" type="number" min="0" max="365" value="${esc(t.keep_count || '')}" placeholder="same as each server" class="${field}"></label>
+                <label class="${label}">Delete copies after (days)<input id="st-days" type="number" min="0" max="3650" value="${esc(t.keep_days || '')}" placeholder="never" class="${field}"></label>
+                <label class="${label} sm:col-span-2 flex items-center gap-2"><input type="checkbox" id="st-all" ${t.servers === 'all' ? 'checked' : ''}> Copy every server's backups (or choose on each server's Backups tab)</label>
+            </div>
+            <p class="${label} mt-2">${s3 ? 'Give the key read, write, list and delete on the bucket only. The secret is kept on this machine (root only) and never shown again.'
+                : 'The panel signs in with its own SSH key (above) and records the host key on the first connection, as ssh does. The folder is relative to that user\'s home unless it starts with /. That machine needs rsync.'}</p>
+            <p id="st-msg" class="hidden text-sm mt-2"></p>
+            <div class="flex flex-wrap gap-2 mt-3">
+                <button onclick="ServerApp.saveStorage(this)" class="bg-theme hover-bg-theme text-white px-3 py-1.5 rounded font-bold text-xs">Save</button>
+                <button onclick="ServerApp.testStorage(null, this)" class="${small}">Test</button>
+                <button onclick="ServerApp.storageEdit = null; ServerApp.renderStorageSettings()" class="${small}">Cancel</button>
+            </div>
+        </div>`;
+    },
+
+    editStorage(tid) {
+        const t = tid ? this.storage.targets.find(x => x.id === tid) : null;
+        this.storageEdit = t ? { ...t } : { type: 'ssh', servers: 'all', port: 22, folder: 'redstonepanel-backups' };
+        this.renderStorageSettings();
+        const el = document.getElementById('storage-form');
+        if (el) el.scrollIntoView({ block: 'nearest' });
+    },
+
+    storageType(type) {
+        this.storageEdit = { ...this.storageFields(), type, servers: this.storageEdit.servers };
+        document.getElementById('storage-form').innerHTML = this.storageFormHtml(this.storageEdit);
+    },
+
+    storageFields() {
+        const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+        const t = this.storageEdit || {};
+        const f = { type: t.type, name: val('st-name'), keep_count: parseInt(val('st-keep'), 10) || 0,
+                    keep_days: parseInt(val('st-days'), 10) || 0 };
+        const all = document.getElementById('st-all');
+        f.servers = all && all.checked ? 'all' : (t.servers === 'all' ? [] : (t.servers || []));
+        if (t.type === 's3') {
+            Object.assign(f, { endpoint: val('st-endpoint'), bucket: val('st-bucket'), prefix: val('st-prefix'),
+                region: val('st-region'), access_key: val('st-access'), secret_key: val('st-secret'),
+                path_style: !!(document.getElementById('st-path-style') || {}).checked });
+        } else {
+            Object.assign(f, { host: val('st-host'), port: parseInt(val('st-port'), 10) || 22, user: val('st-user'), folder: val('st-folder') });
+        }
+        return f;
+    },
+
+    storageMessage(text, ok) {
+        const el = document.getElementById('st-msg');
+        if (!el) return this.renderStorageSettings(text, ok);
+        el.innerText = text;
+        el.className = `text-sm mt-2 ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`;
+    },
+
+    async saveStorage(button) {
+        const t = this.storageEdit;
+        button.disabled = true;
+        const res = await fetch(t.id ? `/api/settings/backup-storage/${encodeURIComponent(t.id)}` : '/api/settings/backup-storage', {
+            method: t.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.storageFields())
+        });
+        button.disabled = false;
+        if (!res.ok) return this.storageMessage(await this.apiError(res), false);
+        this.storage = await res.json();
+        this.storageEdit = null;
+        this.renderStorageSettings('Saved. Use Test to check it can write there.', true);
+    },
+
+    async testStorage(tid, button) {
+        const old = button.innerText;
+        button.disabled = true;
+        button.innerText = 'Testing…';
+        const body = tid ? { id: tid } : { id: this.storageEdit.id || null, fields: this.storageFields() };
+        const res = await fetch('/api/settings/backup-storage/test', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        button.disabled = false;
+        button.innerText = old;
+        if (!res.ok) return this.storageMessage(await this.apiError(res), false);
+        const r = await res.json();
+        const done = r.steps.length ? ` (${r.steps.join(', ')})` : '';
+        const text = r.ok ? `It works: ${r.steps.join(', ')}.${r.host_key ? ` Host key ${r.host_key}.` : ''}` : `${r.error}${done ? ` Done before that: ${r.steps.join(', ')}.` : ''}`;
+        if (tid) {
+            await this.loadStorageSettings();
+            this.renderStorageSettings(text, r.ok);
+        } else {
+            this.storageMessage(text, r.ok);
+        }
+    },
+
+    async removeStorage(tid) {
+        const t = this.storage.targets.find(x => x.id === tid);
+        if (!confirm(`Remove the backup storage ${t ? t.name : tid}?\n\nNo more copies go there. The copies already there stay there; delete them on the storage itself if you want them gone.`)) return;
+        const res = await fetch(`/api/settings/backup-storage/${encodeURIComponent(tid)}`, { method: 'DELETE' });
+        if (!res.ok) return this.renderStorageSettings(await this.apiError(res), false);
+        this.storage = await res.json();
+        this.renderStorageSettings('Removed.', true);
+    },
+
+    async forgetHostKey(tid) {
+        if (!confirm('Forget the host key recorded for this storage?\n\nOnly do this if that machine was reinstalled or its SSH keys changed on purpose: the next connection accepts whatever key it finds then.')) return;
+        const res = await fetch(`/api/settings/backup-storage/${encodeURIComponent(tid)}/forget-host-key`, { method: 'POST' });
+        if (!res.ok) return this.renderStorageSettings(await this.apiError(res), false);
+        this.storage = await res.json();
+        this.renderStorageSettings('Host key forgotten. Use Test to connect and record the new one.', true);
     },
 
     // --- Removed servers: uninstalled with "Keep World", files still in /opt ---
@@ -3206,7 +3653,10 @@ const ServerApp = {
                 if (c.unknown.length) warn += `\n\nThese ${noun} couldn't be checked (not found on Modrinth or Hangar):\n- ` + c.unknown.map(m => m.title).join('\n- ');
             }
         }
-        if (!confirm(`Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.${warn}`)) return;
+        const sure = this.activeServer.edition === 'Bedrock'
+            ? `Update ${this.activeServer.name} to the newest Bedrock release? It stops, is backed up first ("Before update" on the Backups tab), and goes back to the old version and world if the new one doesn't start.`
+            : `Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.${warn}`;
+        if (!confirm(sure)) return;
         this.toggleConsole(true);
         const name = this.activeServer.name;
         const send = () => api(`/api/servers/${encodeURIComponent(name)}/update`, {
@@ -3217,6 +3667,7 @@ const ServerApp = {
         if (!res.ok) alert(`Update failed: ${await this.apiError(res)}`);
         await this.loadServers();
         this.loadUpdateOptions();
+        this.loadAutoUpdate();
         this.loadJavaChoice();
     },
 
@@ -3357,6 +3808,9 @@ const ServerApp = {
 			<h4 id="set-section-notifications" class="font-bold text-gray-900 dark:text-white mb-2">Notifications</h4>
 			<div id="set-notifications" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
+			<h4 id="set-section-storage" class="font-bold text-gray-900 dark:text-white mb-2">Backup storage</h4>
+			<div id="set-storage" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
@@ -3414,6 +3868,8 @@ const ServerApp = {
 		document.getElementById('set-https-port').disabled = clusterRole !== 'standalone';
 		this.loadClusterSettings();
 		this.loadNotificationSettings();
+		this.storageEdit = null;
+		this.loadStorageSettings();
 		this.loadSetupSettings();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
@@ -3717,7 +4173,7 @@ const ServerApp = {
 			const backupNote = lb ? (lb.ok ? `last ${this.fmtWhen(lb.at)}` : '<span class="text-red-500">last failed</span>') : 'none yet';
 			return `
 				<tr class="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onclick="ServerApp.openServerByName(${this.jsArg(s.name)})">
-					<td class="${td}"><span class="${dot}">●</span> <b class="text-gray-900 dark:text-white">${esc(s.name)}</b><div class="${note}">${esc(s.edition)} ${esc(s.version || '')} · port ${esc(s.port)}</div></td>
+					<td class="${td}"><span class="${dot}">●</span> <b class="text-gray-900 dark:text-white">${esc(s.name)}</b><div class="${note}">${esc(s.edition)} ${esc(s.version || '')} · port ${esc(s.port)}${this.updateBadge(s)}</div></td>
 					<td class="${td}" data-label="State">${esc(stateText)}<span class="${note} md:block">${s.uptime !== null ? ' up ' + this.fmtDuration(s.uptime) : ''}</span></td>
 					<td class="${td}" data-label="CPU">${this.fmtPct(s.cpu_percent)}</td>
 					<td class="${td}" data-label="Memory">${this.fmtBytes(s.memory)}<span class="${note} md:block">${s.heap && s.heap !== 'N/A' ? ' max heap ' + esc(s.heap) : ''}</span></td>
@@ -4370,7 +4826,7 @@ const ServerApp = {
 						<span class="${s.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off'}">●</span>
 						<div class="min-w-0">
 							<div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(s.name)}</div>
-							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}</div>
+							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}${this.updateBadge(s)}</div>
 						</div>
 					</div>
 					<div class="flex flex-wrap justify-end gap-2">
@@ -4412,6 +4868,13 @@ const ServerApp = {
 			.filter(n => n.state === 'ok' && (n.local || (n.cluster_api || 1) >= 3) && (kind === 'copy' || n.id !== from));
 	},
 
+	// 1.16.13: a pre-copy needs both ends on cluster contract 5 (the master itself always is)
+	precopyBlocked(from) {
+		const old = n => n && !n.local && (n.cluster_api || 1) < 5;
+		const nodes = this.clusterData ? this.clusterData.nodes : [];
+		return old(nodes.find(n => n.id === from)) || nodes.some(n => old(n));
+	},
+
 	openMoveDialog(kind, from, server) {
 		const esc = t => this.escapeHtml(t);
 		const targets = this.moveTargets(kind, from);
@@ -4429,7 +4892,9 @@ const ServerApp = {
 			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">To</label>
 			<select id="move-to" class="${field} mb-3">${targets.map(n =>
 				`<option value="${esc(n.id)}">${esc(n.name)}${n.local ? ' (this panel)' : ''}${n.id === from ? ' (same panel)' : ''}</option>`).join('')}</select>
-			${move ? '' : `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-start"> Start the copy when it's ready</label>`}
+			${move ? `<label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-precopy" class="mt-1">
+				<span><b>Pre-copy while it runs</b> (for big worlds): copy everything first while players stay on, then stop it and copy only what changed. The server is down for seconds instead of minutes.${this.precopyBlocked(from) ? ` <span class="text-xs text-gray-500 dark:text-gray-400">Needs RedstonePanel 1.16.13 or later on both members.</span>` : ''}</span></label>`
+				: `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-start"> Start the copy when it's ready</label>`}
 			<div class="flex gap-2">
 				<button id="move-go" onclick="ServerApp.startMove(${this.jsArg(kind)}, ${this.jsArg(from)}, ${this.jsArg(server)})" class="flex-1 px-4 py-2 bg-theme hover-bg-theme text-white rounded font-bold">${move ? 'Move' : 'Copy'}</button>
 				<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>
@@ -4440,10 +4905,12 @@ const ServerApp = {
 	async startMove(kind, from, server) {
 		const to = document.getElementById('move-to').value;
 		const startBox = document.getElementById('move-start');
+		const preBox = document.getElementById('move-precopy');
 		document.getElementById('move-go').disabled = true;
 		const res = await fetch('/api/cluster/moves', {
 			method: 'POST', headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ kind, server, from_node: from, to_node: to, start: !!(startBox && startBox.checked) })
+			body: JSON.stringify({ kind, server, from_node: from, to_node: to, start: !!(startBox && startBox.checked),
+				precopy: !!(preBox && preBox.checked) })
 		});
 		if (!res.ok) {
 			document.getElementById('move-go').disabled = false;
@@ -4482,6 +4949,7 @@ const ServerApp = {
 			const changes = [r.renamed ? `its name was taken there, so it's now <b>${esc(r.name)}</b>` : '',
 				r.old_port ? `port ${esc(r.old_port)} was taken there, so it now uses port <b>${esc(r.port)}</b>` : ''].filter(Boolean);
 			body = `<p class="text-sm text-green-600 dark:text-green-400 font-bold mb-2">${move ? 'Moved' : 'Copied'} to ${esc(job.to.name)} as ${esc(r.name)} (port ${esc(r.port)}).</p>
+				${job.downtime !== null && job.downtime !== undefined ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">It was down for ${esc(job.downtime < 60 ? `${job.downtime} s` : `${Math.floor(job.downtime / 60)} min ${job.downtime % 60} s`)}${job.precopy ? ' (with a pre-copy)' : ''}.</p>` : ''}
 				${changes.length ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">Note: ${changes.join('; ')}.</p>` : ''}
 				${job.warning ? `<p class="text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 mb-2">⚠️ ${esc(job.warning)}</p>` : ''}
 				${move && !job.warning ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">The old files on ${esc(job.from.name)} are kept as a removed server, ${esc(job.server)}. Once the server works on ${esc(job.to.name)}, delete them to free the space.</p>
@@ -4491,7 +4959,7 @@ const ServerApp = {
 				<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">${esc(job.step)}</p>`;
 		}
 		box.innerHTML = `
-			<h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">${move ? 'Moving' : 'Copying'} ${esc(job.server)}</h2>
+			<h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">${move ? 'Moving' : 'Copying'} ${esc(job.server)}${job.precopy ? ' <span class="text-xs font-normal text-gray-500 dark:text-gray-400">with a pre-copy</span>' : ''}</h2>
 			<p class="text-xs text-gray-500 dark:text-gray-400 mb-3">${esc(job.from.name)} → ${esc(job.to.name)}</p>
 			${body}
 			<button onclick="ServerApp.closeModal()" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Close</button>`;
@@ -4669,7 +5137,11 @@ const ServerApp = {
 				<p class="font-bold text-sm text-gray-900 dark:text-white mb-2">Add a node</p>
 				<label class="${note}">Address nodes use to reach this master
 					<input id="cl-join-url" value="${esc(d.join_url)}" class="${field} mt-1 mb-2 font-mono"></label>
-				<button onclick="ServerApp.makeJoinCode()" class="${small}">Make a join code</button>
+				<div class="flex flex-wrap gap-2">
+					<button onclick="ServerApp.makeJoinCode()" class="${small}">Make a join code</button>
+					<button id="cl-find" onclick="ServerApp.findPanels()" class="${small}">Find panels on your network</button>
+				</div>
+				<div id="cl-found" class="hidden mt-3"></div>
 				<div id="cl-join-out" class="hidden mt-3"></div>
 				${joins ? `<div class="mt-2">${joins}</div>` : ''}
 			</div>
@@ -4761,13 +5233,43 @@ const ServerApp = {
 		if (data) this.showRestarting(data.url, '');
 	},
 
-	async makeJoinCode() {
+	// 1.16.13: Find panels on your network (RedstonePanels on this master's private networks)
+	async findPanels() {
+		const box = document.getElementById('cl-found'), button = document.getElementById('cl-find');
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		box.innerHTML = `<p class="${note}">Looking on your network for other RedstonePanels (on ports 8443 and 8080). This takes up to half a minute…</p>`;
+		box.classList.remove('hidden');
+		button.disabled = true;
+		const d = await this.clusterPost('/api/settings/cluster/discover');
+		button.disabled = false;
+		if (!d) { box.classList.add('hidden'); return; }
+		const state = p => p.node ? `already a node here (${esc(p.node)})`
+			: p.cluster === 'master' ? 'the master of another cluster'
+			: p.cluster === 'node' ? 'a node of another cluster'
+			: p.cluster === 'standalone' ? 'not in a cluster' : 'an older RedstonePanel (before 1.16.13)';
+		const canAdd = p => !p.node && (p.cluster === 'standalone' || !p.cluster);
+		const rows = d.panels.map(p => `
+			<div class="flex items-center justify-between gap-2 py-2 border-t border-gray-200 dark:border-gray-700">
+				<div class="min-w-0">
+					<p class="text-sm font-bold text-gray-900 dark:text-white truncate">${esc(p.name)} <a href="${esc(p.url)}/" target="_blank" rel="noopener" class="font-normal font-mono text-xs underline text-theme">${esc(p.url)} ↗</a></p>
+					<p class="${note}">${state(p)}</p>
+				</div>
+				${canAdd(p) ? `<button onclick="ServerApp.makeJoinCode(${this.jsArg(p.name)}, ${this.jsArg(p.url)})" class="text-xs bg-theme hover-bg-theme text-white px-3 py-1.5 rounded font-bold whitespace-nowrap">Add to cluster</button>` : ''}
+			</div>`).join('');
+		box.innerHTML = `
+			<p class="${note} mb-1">Searched ${esc(d.networks.join(', '))} in ${esc(d.seconds)} s: ${d.panels.length ? `found ${d.panels.length} other panel${d.panels.length === 1 ? '' : 's'}.` : 'no other RedstonePanels answered. A panel behind a firewall, or on another port, can still join with a join code.'}</p>
+			${rows}`;
+	},
+
+	async makeJoinCode(forName, forUrl) {
 		const url = document.getElementById('cl-join-url').value.trim();
 		const j = await this.clusterPost('/api/settings/cluster/joins', { url });
 		if (!j) return;
 		const esc = t => this.escapeHtml(t);
 		const out = document.getElementById('cl-join-out');
-		out.innerHTML = `
+		const where = forUrl ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">To add <b>${esc(forName)}</b>: <a href="${esc(forUrl)}/" target="_blank" rel="noopener" class="underline text-theme">open it ↗</a>, sign in as an admin, and paste this code into <b>Panel Settings › Cluster › Join a cluster</b>. It shows up under Nodes here once it has joined.</p>` : '';
+		out.innerHTML = where + `
 			<p class="text-xs text-yellow-700 dark:text-yellow-300 mb-1">Shown only once. Works once, until ${esc(this.fmtTime(j.expires))}. Anyone with it can add a server to this cluster, so treat it like a password.</p>
 			<p class="text-xs text-gray-500 dark:text-gray-400">On the new server (with RedstonePanel installed), run:</p>
 			<textarea readonly rows="3" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white mb-1">${esc(j.command)}</textarea>
