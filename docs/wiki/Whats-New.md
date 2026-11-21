@@ -9,6 +9,20 @@ the dashboard.
 
 ---
 
+## 1.16.11: backups off the machine, without a cluster *(November 2026)*
+
+- **Copy backups to an SSH server or S3-compatible storage**, set up under **🛡️ Settings →
+  Backup storage** and chosen per server on its **Backups** tab. Each copy is checked with
+  SHA-256.
+- **Keep backups by age** ("14 days") as well as by count, for local backups and for each
+  storage.
+- **Restore from a copy**, or bring a server back on a new machine with **New Server → From
+  backup storage**.
+- **Bedrock firewall fix:** servers using Bedrock's default NetherNet transport get TCP and
+  UDP 7551 opened, and the panel follows **server.properties** edited by hand.
+
+[Release notes](../../release-notes/v1.16.11.md)
+
 ## 1.16.10: a panel that works on a phone *(November 2026)*
 
 - **Every page fits a phone:** a ☰ menu instead of the sidebar, big **Start**, **Restart** and

@@ -1,3 +1,26 @@
+redstonepanel (1.16.11) noble; urgency=medium
+
+  * Off-site backup copies: Panel Settings > Backup storage adds SSH
+    servers (rsync, the panel's own key) and S3-compatible storage
+    (Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3). A server's
+    Backups tab picks where its backups are copied; each copy is checked
+    with SHA-256.
+  * Copies run after each backup, even while the panel is stopped, and a
+    failed copy shows under Needs attention and sends one
+    backup_copy_failed webhook until it works again.
+  * Retention by age: backup storage keeps its own count and age, and
+    local schedules can also delete backups after N days. The newest one
+    is never deleted by age.
+  * Restore from an off-site copy, or bring a server back on a new machine
+    with New Server > From backup storage.
+  * Bedrock firewall: servers without a transport line (NetherNet, the
+    default since Bedrock 1.26.50) now get TCP server-port and UDP 7551
+    opened. Existing Bedrock servers are fixed once after the upgrade.
+  * The panel keeps ufw in step with server.properties edited by hand and
+    with servers removed by hand, and notes game-port rules nothing uses.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 18:40:00 +0000
+
 redstonepanel (1.16.10) noble; urgency=medium
 
   * Works on a phone: below 768 px the sidebar becomes a menu under a top
