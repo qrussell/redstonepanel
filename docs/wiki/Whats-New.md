@@ -9,6 +9,14 @@ the dashboard.
 
 ---
 
+## 1.16.4: Bedrock settings fix *(November 2026)*
+
+- **New Bedrock servers keep all their settings.** A newly created Bedrock server's
+  `server.properties` had only its ports, so Configuration showed almost nothing to edit. It
+  now has every setting from the official Bedrock download.
+
+[Release notes](../../release-notes/v1.16.4.md)
+
 ## 1.16.3: a server list that folds *(November 2026)*
 
 A long server list, especially on a cluster, is now easy to tidy.
