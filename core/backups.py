@@ -124,14 +124,17 @@ def _edition(server, d):
         return "bedrock"
     return "java" if manager._is_java(server) or os.path.isfile(os.path.join(d, "server.jar")) else "bedrock"
 
-def _skipped(rel):
-    """rel: path inside the server folder, '/'-separated."""
+def _skipped(rel, full=False):
+    """rel: path inside the server folder, '/'-separated. full=True (moving a server to another
+    cluster member) keeps everything but the removed-server note."""
     top = rel.split("/", 1)[0]
+    if full:
+        return rel == manager.REMOVED_INFO
     if top in SKIP_TOP or top.startswith(SKIP_TOP_PREFIXES):
         return True
     return any(rel == p or rel.startswith(p) for p in SKIP_PACK_PREFIXES)
 
-def _add_tree(tar, d, skip_dirs=()):
+def _add_tree(tar, d, skip_dirs=(), full=False):
     """Adds the server folder to tar, minus _skipped() paths and skip_dirs (relative)."""
     for root, dirs, files in os.walk(d):
         rel_root = os.path.relpath(root, d).replace(os.sep, "/")
@@ -139,22 +142,22 @@ def _add_tree(tar, d, skip_dirs=()):
         keep_dirs = []
         for name in sorted(dirs):
             rel = f"{rel_root}/{name}" if rel_root else name
-            full = os.path.join(root, name)
-            if _skipped(rel) or rel in skip_dirs:
+            path = os.path.join(root, name)
+            if _skipped(rel, full) or rel in skip_dirs:
                 continue
-            if os.path.islink(full):
-                tar.add(full, arcname=rel, recursive=False)   # the link itself, never its target
+            if os.path.islink(path):
+                tar.add(path, arcname=rel, recursive=False)   # the link itself, never its target
                 continue
-            tar.add(full, arcname=rel, recursive=False)
+            tar.add(path, arcname=rel, recursive=False)
             keep_dirs.append(name)
         dirs[:] = keep_dirs
         for name in sorted(files):
             rel = f"{rel_root}/{name}" if rel_root else name
-            if _skipped(rel):
+            if _skipped(rel, full):
                 continue
-            full = os.path.join(root, name)
+            path = os.path.join(root, name)
             try:
-                tar.add(full, arcname=rel, recursive=False)
+                tar.add(path, arcname=rel, recursive=False)
             except FileNotFoundError:
                 pass          # deleted by the running server while we walked
 
@@ -322,12 +325,12 @@ def _run_backup_locked(server, kind):
     finally:
         os.close(fd)
 
-def _backup_running_java(server, d, tar):
+def _backup_running_java(server, d, tar, full=False):
     send = _java_rcon(d)
     if not send:
         manager.write_log(f"[WARNING] {server} is running without RCON, so the backup copies files the server may be "
                           f"writing. Open its Live Chat tab once to set RCON up for consistent backups.")
-        _add_tree(tar, d)
+        _add_tree(tar, d, full=full)
         return False
     try:
         send("save-off")
@@ -338,10 +341,10 @@ def _backup_running_java(server, d, tar):
             send("save-on")
         except rcon.RconError:
             pass
-        _add_tree(tar, d)
+        _add_tree(tar, d, full=full)
         return False
     try:
-        _add_tree(tar, d)
+        _add_tree(tar, d, full=full)
     finally:
         try:
             send("save-on")
@@ -350,18 +353,18 @@ def _backup_running_java(server, d, tar):
                               f"Run 'save-on' in its console, or restart it.")
     return True
 
-def _backup_running_bedrock(server, d, tar):
+def _backup_running_bedrock(server, d, tar, full=False):
     files = _bedrock_hold(server, d)
     try:
         if files is None:
             manager.write_log(f"[WARNING] {server} didn't answer 'save query' through screen; copying its files live.")
-            _add_tree(tar, d)
+            _add_tree(tar, d, full=full)
             return False
         # The world comes only from the held list; everything else from the folder as usual.
         # The world folder is taken from that list, not level-name: without a level-name line,
         # Bedrock 1.26 names the folder "level".
         held = {f"worlds/{p.split('/', 1)[0]}" for p, _ in files}
-        _add_tree(tar, d, skip_dirs=held)
+        _add_tree(tar, d, skip_dirs=held, full=full)
         _add_held_files(tar, d, files)
         return True
     finally:

@@ -52,5 +52,28 @@ class Pages(unittest.TestCase):
             self.assertEqual(r.headers.get("Cache-Control"), expected, path)
 
 
+class Packaging(unittest.TestCase):
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def test_every_static_file_is_installed(self):
+        # debian/redstonepanel.install names each file, so a new icon or page left out of it
+        # would be missing from the .deb (a broken image or 404 only on real installs)
+        with open(os.path.join(self.ROOT, "debian", "redstonepanel.install")) as f:
+            listed = {p for line in f for p in line.split()[:-1]}
+        for dirpath, _, files in os.walk(os.path.join(self.ROOT, "static")):
+            for name in files:
+                rel = os.path.relpath(os.path.join(dirpath, name), self.ROOT).replace(os.sep, "/")
+                self.assertIn(rel, listed, f"{rel} is not in debian/redstonepanel.install")
+
+    def test_pages_link_the_icons(self):
+        for page in ("index.html", "login.html"):
+            with open(os.path.join(self.ROOT, "static", page), encoding="utf-8") as f:
+                html = f.read()
+            for href in ("/static/img/redstonepanel-icon.svg", "/static/img/favicon.ico",
+                         "/static/img/apple-touch-icon.png", "/static/manifest.json"):
+                self.assertIn(f'href="{href}"', html, page)
+                self.assertTrue(os.path.isfile(os.path.join(self.ROOT, href.lstrip("/"))), href)
+
+
 if __name__ == "__main__":
     unittest.main()

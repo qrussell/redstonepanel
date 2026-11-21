@@ -1,3 +1,106 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---------------------------------------------------------------------------------------------
+   RedstonePanel theme tokens, shared by the dashboard and the sign-in page.
+   Settings → Accent Palette sets data-theme on <html>; Redstone is the default. Each palette has
+     --accent-base   buttons, active tabs, progress bars (white text on it)
+     --accent-hover  hovered buttons
+     --accent-text   accent-coloured text and links (a darker shade in the light theme)
+     --accent-glow   the soft glow around focused fields and powered elements
+   Plain CSS (outside @layer) so Tailwind always keeps it.
+   --------------------------------------------------------------------------------------------- */
+:root,
+[data-theme="redstone"] {
+    --accent-base: #d9261b;
+    --accent-hover: #b31d14;
+    --accent-text: #ff5a4a;
+    --accent-glow: rgba(255, 59, 47, 0.45);
+}
+[data-theme="diamond"] {
+    --accent-base: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-text: #60a5fa;
+    --accent-glow: rgba(59, 130, 246, 0.45);
+}
+[data-theme="emerald"] {
+    --accent-base: #059669;
+    --accent-hover: #047857;
+    --accent-text: #34d399;
+    --accent-glow: rgba(16, 185, 129, 0.45);
+}
+[data-theme="amethyst"] {
+    --accent-base: #7c3aed;
+    --accent-hover: #6d28d9;
+    --accent-text: #a78bfa;
+    --accent-glow: rgba(139, 92, 246, 0.45);
+}
+/* Light theme: accent text needs a darker shade to stay readable on white */
+html:not(.dark),
+html:not(.dark)[data-theme="redstone"] { --accent-text: #b31d14; --accent-glow: rgba(217, 38, 27, 0.30); }
+html:not(.dark)[data-theme="diamond"] { --accent-text: #1d4ed8; --accent-glow: rgba(37, 99, 235, 0.30); }
+html:not(.dark)[data-theme="emerald"] { --accent-text: #047857; --accent-glow: rgba(5, 150, 105, 0.30); }
+html:not(.dark)[data-theme="amethyst"] { --accent-text: #6d28d9; --accent-glow: rgba(124, 58, 237, 0.30); }
+
+body { transition: background-color 0.3s, color 0.3s; }
+
+.hidden-tab, .hidden { display: none !important; }
+
+/* Accent utilities used across the UI */
+.bg-theme { background-color: var(--accent-base); }
+.hover-bg-theme:hover { background-color: var(--accent-hover); }
+.text-theme { color: var(--accent-text); }
+.border-theme { border-color: var(--accent-base); }
+
+/* Accent buttons: a slight block-like bevel, and they light up when hovered */
+button.bg-theme, a.bg-theme {
+    box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.22);
+    transition: background-color 0.15s, box-shadow 0.15s;
+}
+button.bg-theme:hover:not(:disabled), a.bg-theme:hover {
+    box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.22), 0 0 14px var(--accent-glow);
+}
+
+/* Tabs */
+.tab-active {
+    border-bottom: 2px solid var(--accent-base);
+    color: var(--accent-text);
+    box-shadow: 0 8px 10px -10px var(--accent-glow);
+}
+.subtab-active { background-color: var(--accent-base); color: #fff; }
+
+/* The selected server in the sidebar: a powered line on its left edge */
+.rp-active { box-shadow: inset 3px 0 0 var(--accent-base); }
+
+/* A signal line under the headers: fades in from the edges and glows in the dark theme */
+.rp-signal {
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-base) 20%, var(--accent-base) 80%, transparent);
+    opacity: 0.85;
+}
+.dark .rp-signal { box-shadow: 0 0 8px var(--accent-glow); }
+
+/* Status lamps: online servers glow, stopped ones are unlit */
+.rp-lamp-on { color: #22c55e; text-shadow: 0 0 6px rgba(34, 197, 94, 0.7); }
+.rp-lamp-off { color: #99948f; }
+
+/* Usage bars (dashboard tiles): the level glows like a powered line */
+.rp-level { box-shadow: 0 0 6px currentColor; }
+.rp-level-ok { background-color: #22c55e; color: rgba(34, 197, 94, 0.55); }
+.rp-level-warn { background-color: #f5a524; color: rgba(245, 165, 36, 0.55); }
+.rp-level-high { background-color: #ff3b2f; color: rgba(255, 59, 47, 0.6); }
+
+/* Keyboard focus: an accent ring on everything; fields also get the accent border and glow */
+:focus-visible {
+    outline: 2px solid var(--accent-base);
+    outline-offset: 2px;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--accent-base) !important;
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+input[type="checkbox"], input[type="radio"], input[type="range"], progress { accent-color: var(--accent-base); }

@@ -14,7 +14,8 @@
 #   SETUP=0 bash packaging/screenshots/demo.sh    retake the screenshots on a demo kept earlier
 #
 # If taking the screenshots fails, the containers are kept so SETUP=0 can try again.
-# Screenshots are written to docs/guide/images/ (see shoot.py for the list). The demo account's
+# Screenshots are written to docs/guide/images/ in the dark theme and docs/guide/images/light/
+# in the light theme (see shoot.py for the list). The demo account's
 # password is random and only exists inside the containers.
 set -uo pipefail
 export MSYS_NO_PATHCONV=1

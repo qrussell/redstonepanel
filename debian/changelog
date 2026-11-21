@@ -1,3 +1,93 @@
+redstonepanel (1.16.4) noble; urgency=medium
+
+  * New Bedrock servers keep the full server.properties that comes with
+    the Bedrock download; only the ports are set. Before, every setting
+    except server-port, server-portv6 and query.port was dropped, so
+    Configuration showed almost nothing to edit.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 03:00:00 +0000
+
+redstonepanel (1.16.3) noble; urgency=medium
+
+  * Server list: every heading folds with a click (this machine's Java
+    and Bedrock Edition, each cluster node), and a folded heading shows
+    how many of its servers are online. What's folded is remembered in
+    the browser.
+  * A cluster node's servers get their own Java Edition and Bedrock
+    Edition headings, like this machine's. A node's warnings stay
+    visible while it is folded.
+  * Server names in the server list are HTML-escaped.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 02:30:00 +0000
+
+redstonepanel (1.16.2) noble; urgency=medium
+
+  * Kick, ban and unban from Whitelist & Access: Online now lists the
+    players on the server with Kick (and Ban on Java), a Banned list with
+    Unban and a form to ban by name, Unban on players turned away for a
+    ban, and Kick/Ban on each access log row. A running server is told
+    through its console (Java over RCON, Bedrock through screen); a stopped
+    Java server's banned-players.json is edited directly. Bedrock has no
+    ban list, so it gets kick only. Bans are by name and UUID, never by
+    address. Each action is logged with who did it.
+  * GET /api/servers/{name}/moderation and POST
+    /api/servers/{name}/players/kick|ban|unban, reachable by the cluster
+    master.
+  * A new look: an original RedstonePanel logo and favicon, warm stone
+    greys with redstone-red accents in both the dark and light themes,
+    glowing focus rings, status lamps and usage bars. Redstone Red is the
+    default accent palette; a palette you picked before is kept.
+  * Stop is an outlined red button, so it no longer looks like Restart.
+  * Packaging: build-deb.sh no longer strips carriage returns from binary
+    files, which corrupted PNG images.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 00:30:00 +0000
+
+redstonepanel (1.16.1) noble; urgency=medium
+
+  * First-run setup guide: a Set up RedstonePanel card at the top of the
+    dashboard (admins) with four steps: create your first server, give
+    every server a backup schedule, choose HTTPS or keep plain HTTP on a
+    network you trust, and send crash and backup alerts to a webhook. Each
+    step opens the dialog that already does the job.
+  * Steps are ticked from the panel's real state, so work done from the
+    command line or by another admin counts, and an upgraded panel only
+    shows what's still missing. The card says when ufw is missing or off,
+    since the panel opens game ports only through it.
+  * Hide guide hides it for every admin; Panel Settings > Setup guide shows
+    it again, and takes back "keep HTTP". Only those two answers are stored,
+    in setup.json.
+  * On a cluster node joining the cluster ticks the HTTPS step; a master
+    counts its nodes' servers.
+  * GET/PUT /api/settings/setup (admins).
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Fri, 20 Nov 2026 23:59:59 +0000
+
+redstonepanel (1.16.0) noble; urgency=medium
+
+  * Move a server to another cluster member: on the master's cluster page,
+    admins get Move and Copy for every server. A move stops the server,
+    packs its whole folder, streams it through the master to the other
+    member (checked against its SHA-256, no size cap), installs it there
+    under the same name and ports when they're free, installs the Java it
+    needs, carries over its memory, backup and restart schedules and
+    Phantom, starts it and checks it keeps running. Only then does the old
+    member take it off the panel, keeping its files as a removed server
+    marked "moved to", until an admin deletes them. Any failure undoes the
+    new copy and starts the server where it was.
+  * Copy a server, to another member or the same one, without stopping it
+    (the world is saved first, as backups do), under a new name where
+    needed, started or not.
+  * Templates between members: copy one of the master's templates to a
+    node, or a node's own template to the master.
+  * While a server is being moved it can't be started on the old member.
+  * Cluster contract 3: nodes accept /api/cluster/transfers/... from their
+    master (a master admin only, never through the proxy). The only files a
+    master can delete on a node are those a move left behind.
+  * Template names are escaped in the template manager.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Fri, 20 Nov 2026 23:59:00 +0000
+
 redstonepanel (1.15.0) noble; urgency=medium
 
   * Clusters phase 2: manage every node's servers from the master. The

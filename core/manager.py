@@ -128,9 +128,21 @@ def properties_changed(server_name, before):
         open_firewall_rules(after - before)
         close_firewall_rules(before - after)
 
+# Never part of a template: each server keeps its own RCON password. Templates saved before
+# 1.15.1 may still hold one; it's left out when they're read.
+TEMPLATE_SKIP = ("rcon.password",)
+
+def template_properties(props):
+    """A server's properties as a template keeps them: without the server's own secrets."""
+    return {k: v for k, v in (props or {}).items() if k not in TEMPLATE_SKIP}
+
 def load_templates():
     if not os.path.exists(TEMPLATE_FILE): return []
-    with open(TEMPLATE_FILE, 'r') as f: return json.load(f)
+    with open(TEMPLATE_FILE, 'r') as f: data = json.load(f)
+    for t in data:
+        if isinstance(t, dict) and isinstance(t.get("properties"), dict):
+            t["properties"] = template_properties(t["properties"])
+    return data
 
 def save_templates(data):
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -138,7 +150,7 @@ def save_templates(data):
 
 def save_server_as_template(server_name, template_name):
     templates = load_templates()
-    props = read_properties(get_server_dir(server_name))
+    props = template_properties(read_properties(get_server_dir(server_name)))
     perms = read_permissions(server_name)
     
     exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"], capture_output=True, text=True).stdout.strip()
@@ -181,7 +193,8 @@ def apply_template_to_server(server_name, template_id, edition=None):
     rcon_port = current_props.get("rcon.port")
     query_port = current_props.get("query.port")  # Extract existing query port
     
-    merged = {**current_props, **temp["properties"]}
+    # The server keeps its own RCON password (template_properties leaves it out)
+    merged = {**current_props, **template_properties(temp["properties"])}
     
     # Re-apply the unique ports so the template does not cause conflicts
     if port: merged["server-port"] = port
@@ -197,7 +210,7 @@ def update_template(template_id, properties, permissions):
     templates = load_templates()
     for t in templates:
         if t["id"] == template_id:
-            t["properties"] = properties
+            t["properties"] = template_properties(properties)
             t["permissions"] = permissions
     save_templates(templates)
 
@@ -737,6 +750,10 @@ def control_server(server_name, action):
     if not SERVICE_NAME_RE.match(server_name or "") or \
             not os.path.isfile(f"/etc/systemd/system/{server_name}.service"):
         raise ServerError(f"No Minecraft server called '{server_name}' on this panel.")
+    if action != "stop":
+        from core import transfer
+        if transfer.is_moving(server_name):
+            raise ServerError(f"{server_name} is being moved to another cluster member; it can't be started here.")
     run_and_log(["sudo", "systemctl", action, f"{server_name}.service"])
 
 def _unit_path(server_name):
@@ -787,10 +804,11 @@ def _release_name(name):
     with _busy_lock:
         _busy.discard(name)
 
-def remove_server(server_name, keep_world):
+def remove_server(server_name, keep_world, note=None):
     """Stops the server and deletes its systemd unit, so it leaves the panel.
     keep_world=True keeps the whole folder (server binary included), so it can be restored
-    later; keep_world=False deletes the folder too."""
+    later; keep_world=False deletes the folder too. note: more fields for the removed-server
+    note (a move adds moved_to)."""
     _check_server(server_name)
     d = get_server_dir(server_name)
     exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
@@ -822,6 +840,7 @@ def remove_server(server_name, keep_world):
             info = {"edition": "java" if "java" in exec_start else "bedrock" if "bedrock" in exec_start else None,
                     "removed_at": int(time.time())}
             info.update(unit_heap(exec_start))
+            info.update(note or {})
             try:
                 with open(os.path.join(d, REMOVED_INFO), "w") as f:
                     json.dump(info, f)
@@ -908,6 +927,8 @@ def list_removed_servers():
             "has_binary": bool(edition) and os.path.isfile(os.path.join(d, binary)),
             "removed_at": removed_at if isinstance(removed_at, int) else None,
             "can_restore": edition is not None,
+            # Left behind by a move to another cluster member (1.16): its name there
+            "moved_to": info["moved_to"][:100] if isinstance(info.get("moved_to"), str) else None,
         })
     return removed
 
@@ -1085,6 +1106,64 @@ def _import_unpacked(staging, root):
     finally:
         _release_name(svc_name)
 
+def _reserve_exact(name):
+    """Holds this exact name if no server, folder or deploy has it. True if it's now ours."""
+    if not (SERVICE_NAME_RE.match(name or "") and name.startswith("minecraft-")):
+        return False
+    with _busy_lock:
+        if name in _busy or os.path.lexists(os.path.join(SERVERS_ROOT, name)) or os.path.exists(_unit_path(name)):
+            return False
+        _busy.add(name)
+        return True
+
+def import_transferred(root, edition, prefer_name=None, heap=None, java=None, start=True, on_placed=None):
+    """A server folder moved or copied from another cluster member (1.16), unpacked at root.
+    Keeps prefer_name and the server's ports when they're free here, else picks others.
+    on_placed(name) is called once the folder is in place, so a failure after it can be undone.
+    Returns {name, port, old_port, renamed}."""
+    name = prefer_name if prefer_name and _reserve_exact(prefer_name) else None
+    if not name:
+        name, _ = _reserve_name(edition)
+    try:
+        mc_dir = os.path.join(SERVERS_ROOT, name)
+        os.rename(root, mc_dir)
+        if on_placed:
+            on_placed(name)
+        if os.path.exists(os.path.join(mc_dir, REMOVED_INFO)):
+            os.remove(os.path.join(mc_dir, REMOVED_INFO))
+        port, old_port = _restore_ports(mc_dir, edition)
+        if edition == "bedrock":
+            run_and_log(["chmod", "+x", f"{mc_dir}/bedrock_server"])
+            write_screenrc(mc_dir)
+        else:
+            java = java or java_for_folder(mc_dir)
+            eula = os.path.join(mc_dir, "eula.txt")
+            if not os.path.exists(eula):
+                with open(eula, "w") as f:
+                    f.write("eula=true\n")
+        heap = {k: v for k, v in (heap or {}).items() if k in ("xms", "xmx") and HEAP_RE.match(str(v))}
+        open_firewall_rules(firewall_rules(edition, read_properties(mc_dir)))
+        ensure_minecraft_user(mc_dir)
+        run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+        _write_unit(name, mc_dir, edition, **heap, **({"java": java} if java else {}))
+        run_and_log(["systemctl", "enable", f"{name}.service"])
+        if start:
+            run_and_log(["systemctl", "start", f"{name}.service"])
+        write_log(f"[MOVE] Installed {name} here (port {port}"
+                  + (f", was {old_port}" if old_port else "") + ").")
+        return {"name": name, "port": port, "old_port": old_port, "renamed": bool(prefer_name) and name != prefer_name}
+    finally:
+        _release_name(name)
+
+def discard_server(name):
+    """Undoes import_transferred: its unit, timers, firewall rules and folder go."""
+    if os.path.exists(_unit_path(name)):
+        remove_server(name, keep_world=False)
+        return
+    d = os.path.realpath(os.path.join(SERVERS_ROOT, name))
+    if SERVICE_NAME_RE.match(name or "") and os.path.dirname(d) == os.path.realpath(SERVERS_ROOT) and os.path.isdir(d):
+        run_and_log(["rm", "-rf", d])
+
 def deploy_server(edition, template_id=None, loader="vanilla", version=None):
     """A new server. Java: loader is vanilla, paper or fabric and version a Minecraft release
     (default: the newest the loader offers)."""
@@ -1124,8 +1203,9 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
                 f.write(f"server-port={port}\nquery.port={port}\nmotd=A Managed Java Minecraft Server\n")
         else:
             _fetch_bedrock(mc_dir)
-            with open(f"{mc_dir}/server.properties", "w") as f:
-                f.write(f"server-port={port}\nserver-portv6={port+1}\nquery.port={port}\n")
+            # The zip ships a full server.properties with every setting; BDS never writes missing
+            # keys back, so only the ports change and the rest stays as Mojang shipped it.
+            write_properties(mc_dir, {"server-port": port, "server-portv6": port + 1, "query.port": port})
             write_screenrc(mc_dir)
 
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
