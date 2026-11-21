@@ -82,7 +82,25 @@ api jar GET /api/cluster/overview | json "[n.get('cluster_api') for n in d['node
     && ok "the node speaks cluster contract 3 or later" || bad "the node speaks cluster contract 3 or later"
 
 # --- a stand-in Bedrock server on the master, imported through the panel so it makes the unit
-dx mvm "mkdir -p /tmp/srv/worlds/Home/db && cd /tmp/srv && printf '#!/bin/sh\n[ -f /tmp/fail-here ] && exit 1\ncd \"\$(dirname \"\$0\")\"\nwhile :; do date +%%s%%N >> worlds/Home/db/000009.log; sleep 0.1; done\n' > bedrock_server && chmod +x bedrock_server \
+# It quits on Bedrock's own `stop` (sent by the panel before systemd stops it, since 1.16.12),
+# so a stop takes moments rather than the 75 s the panel waits for a server that ignores it.
+dx mvm "mkdir -p /tmp/srv/worlds/Home/db"
+docker exec -i mvm bash -c 'cat > /tmp/srv/bedrock_server' <<'EOF2'
+#!/bin/sh
+[ -f /tmp/fail-here ] && exit 1
+cd "$(dirname "$0")"
+( while :; do date +%s%N >> worlds/Home/db/000009.log; sleep 0.1; done ) &
+W=$!
+trap 'kill $W; exit 0' TERM HUP
+while :; do
+    if read -r line; then
+        [ "$line" = stop ] && { kill $W; echo "Quit correctly"; exit 0; }
+    else
+        sleep 1
+    fi
+done
+EOF2
+dx mvm "cd /tmp/srv && chmod +x bedrock_server \
     && printf 'server-port=19140\nserver-portv6=19141\nlevel-name=Home\nserver-name=Island\n' > server.properties \
     && printf '[]' > permissions.json && head -c 3000000 /dev/urandom > worlds/Home/db/000005.ldb && zip -qr /tmp/srv.zip ."
 r=$(dx mvm "curl -sk -b /tmp/jar -F file=@/tmp/srv.zip https://127.0.0.1:8443/api/servers/import")
