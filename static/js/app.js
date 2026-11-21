@@ -56,6 +56,7 @@ const ServerApp = {
 
         this.applyTheme();
         this.setupDropZones();
+        this.setupPhone();
         // Many actions open the console; remember what was clicked so it can be kept in view
         document.addEventListener('click', e => {
             const el = e.target.closest && e.target.closest('button, a, input, select, label');
@@ -86,6 +87,107 @@ const ServerApp = {
     // "minecraft-java-1" here, or "minecraft-java-1 · Basement" for a node's server
     serverLabel(srv) {
         return srv.node ? `${srv.name} · ${srv.nodeName}` : srv.name;
+    },
+
+    // --- Phones (1.16.10) ---
+    // Below the md breakpoint the sidebar is a menu behind the ☰ button in the top bar.
+    // Picking anything in it (a server, Dashboard, New Server…) closes it again; folding a group
+    // or changing the sort order doesn't.
+    setupPhone() {
+        const aside = document.getElementById('sidebar');
+        aside.addEventListener('click', e => {
+            const hit = e.target.closest('button, [onclick]');
+            if (hit && !hit.hasAttribute('aria-expanded') && aside.contains(hit)) this.closeNav();
+        });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && this.navOpen()) this.closeNav(); });
+        window.matchMedia('(min-width: 768px)').addEventListener('change', e => { if (e.matches) this.closeNav(); });
+        this.registerServiceWorker();
+    },
+
+    navOpen() {
+        return document.body.classList.contains('rp-nav-open');
+    },
+
+    openNav() {
+        document.body.classList.add('rp-nav-open');
+        document.getElementById('nav-backdrop').classList.remove('hidden');
+        document.getElementById('btn-nav').setAttribute('aria-expanded', 'true');
+    },
+
+    closeNav() {
+        if (!this.navOpen()) return;
+        document.body.classList.remove('rp-nav-open');
+        document.getElementById('nav-backdrop').classList.add('hidden');
+        document.getElementById('btn-nav').setAttribute('aria-expanded', 'false');
+    },
+
+    // What the phone's top bar says: the open server, the dashboard or the cluster page
+    setMobileTitle(title, subtitle) {
+        document.getElementById('mobile-title').innerText = title;
+        document.getElementById('mobile-subtitle').innerText = subtitle || '';
+    },
+
+    // Live Chat on a phone: once the on-screen keyboard has opened (and the page has shrunk to
+    // the space above it), bring the message box back into view.
+    keepInView(el) {
+        if (window.matchMedia('(min-width: 768px)').matches) return;
+        setTimeout(() => el.scrollIntoView({ block: 'nearest' }), 300);
+    },
+
+    // Installing the panel as an app needs a service worker. It caches nothing (a panel that
+    // can't reach its server has nothing true to show); when the server can't be reached it
+    // says so instead of the browser's error page. Browsers only allow it over HTTPS (or on
+    // localhost), so on plain HTTP this quietly does nothing.
+    registerServiceWorker() {
+        if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+        navigator.serviceWorker.register('/static/sw.js', { scope: '/static/' }).catch(() => { /* an app is optional */ });
+    },
+
+    // --- "Open on your phone" (desktop): a QR code of this panel's address ---
+    // Made by this panel (core/qr.py, GET /api/phone-qr), never an outside service. If the panel
+    // was opened as localhost, a phone can't use that, so the machine's network addresses are
+    // offered instead (from the dashboard's host info).
+    async openPhoneQr() {
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const here = window.location;
+        const port = here.port ? `:${here.port}` : '';
+        const local = /^(localhost|127\.|\[::1\]$|::1$)/.test(here.hostname);
+        let urls = local ? [] : [`${here.protocol}//${here.host}/`];
+        let ips = [];
+        try {
+            if (!this.dashData) {
+                const res = await fetch('/api/host');
+                if (res.ok) this.dashData = await res.json();
+            }
+            ips = (this.dashData && this.dashData.host && this.dashData.host.ips) || [];
+        } catch (e) { /* the current address is enough */ }
+        ips.filter(ip => !/^(127\.|::1$|fe80:)/i.test(ip)).forEach(ip => {
+            const u = `${here.protocol}//${ip.includes(':') ? `[${ip}]` : ip}${port}/`;
+            if (!urls.includes(u)) urls.push(u);
+        });
+        if (!urls.length) urls = [`${here.protocol}//${here.host}/`];
+        const https = here.protocol === 'https:';
+        document.getElementById('modal-content').innerHTML = `
+            <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1">📱 Open on your phone</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Point your phone's camera at the code. Your phone needs to be able to reach this address, usually by being on the same network.</p>
+            <div class="rp-qr mx-auto w-60 max-w-full" id="phone-qr"></div>
+            ${urls.length > 1 ? `<select id="phone-qr-url" onchange="ServerApp.drawPhoneQr(this.value)" class="mt-3 w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-sm text-gray-900 dark:text-white">
+                ${urls.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('')}</select>`
+                : `<p class="mt-3 text-center font-mono text-sm break-all text-gray-900 dark:text-gray-200" id="phone-qr-text">${esc(urls[0])}</p>`}
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">${https
+                ? `To keep it on your home screen, choose <b>Install app</b> (Android) or <b>Share → Add to Home Screen</b> (iPhone). It opens without the browser's bars.${/^self/.test(((this.dashData || {}).services || {}).https ? this.dashData.services.https.mode : '') ? ' With a self-signed certificate your phone will warn you first, as this browser did.' : ''}`
+                : `The panel uses plain HTTP, so phones can only add it to the home screen as a bookmark. To install it as an app, turn on HTTPS in Panel Settings.`}</p>
+            <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="mt-4 w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white font-bold transition">Close</button>`;
+        document.getElementById('modal-overlay').classList.remove('hidden');
+        this.drawPhoneQr(urls[0]);
+    },
+
+    drawPhoneQr(url) {
+        const box = document.getElementById('phone-qr');
+        box.innerHTML = `<img src="/api/phone-qr?url=${encodeURIComponent(url)}" alt="QR code for ${this.escapeHtml(url)}" class="block w-full h-auto">`;
+        box.querySelector('img').onerror = () => {
+            box.innerHTML = `<p class="text-sm text-red-600 p-4">Couldn't make a QR code for this address.</p>`;
+        };
     },
 
     async loadServers() {
@@ -306,6 +408,7 @@ const ServerApp = {
         document.getElementById('ws-title').innerText = srv.name;
         document.getElementById('ws-subtitle').innerText = srv.node ? `🌐 ${srv.nodeName}: ${srv.directory}` : srv.directory;
         document.getElementById('ws-status').innerText = srv.status === 'online' ? '🟢' : '🔴';
+        this.setMobileTitle(`${srv.status === 'online' ? '🟢' : '🔴'} ${srv.name}`, srv.node ? `🌐 ${srv.nodeName}` : `${srv.edition}${srv.version ? ' ' + srv.version : ''}`);
         
         // Populate the live chat RCON port badge
         const rconBadge = document.getElementById('chat-rcon-port');
@@ -752,7 +855,7 @@ const ServerApp = {
 			// Without a name we can't write a proper entry, so the role can only be changed in the raw editor
 			const disabled = p.name_known ? '' : 'disabled title="Name unknown: edit this entry in Permissions (Raw)"';
 			return `
-			<div class="flex justify-between items-center gap-4 p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm">
+			<div class="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm">
 				<div class="min-w-0">
 					<div class="flex items-center gap-2 flex-wrap"><span class="font-bold text-gray-900 dark:text-white">${esc(p.name)}</span>${badges}</div>
 					${idLine}
@@ -879,10 +982,10 @@ const ServerApp = {
 			: `<span class="text-red-600 dark:text-red-400">Turned away</span> <span class="text-gray-500 dark:text-gray-400">(${esc(reasons[e.reason] || e.reason || 'refused')})</span>`;
 		rows.innerHTML = d.events.length ? d.events.map(e => `
 			<tr class="border-t border-gray-100 dark:border-gray-700">
-				<td class="p-2 whitespace-nowrap text-gray-600 dark:text-gray-300">${esc(new Date(e.ts * 1000).toLocaleString())}</td>
-				<td class="p-2 font-bold text-gray-900 dark:text-white">${esc(e.name)}</td>
-				<td class="p-2">${label(e)}</td>
-				<td class="p-2 text-right whitespace-nowrap">${this.modActions(e.name, 'text-xs')}</td>
+				<td class="p-2 whitespace-nowrap text-gray-600 dark:text-gray-300" data-label="Time">${esc(new Date(e.ts * 1000).toLocaleString())}</td>
+				<td class="p-2 font-bold text-gray-900 dark:text-white" data-label="Player">${esc(e.name)}</td>
+				<td class="p-2" data-label="Event">${label(e)}</td>
+				<td class="rp-card-actions p-2 text-right whitespace-nowrap">${this.modActions(e.name, 'text-xs')}</td>
 			</tr>`).join('') : `<tr><td colspan="4" class="p-2 text-gray-500 dark:text-gray-400">Nothing in this period.</td></tr>`;
 		document.getElementById('al-count').innerText = d.events.length >= 500
 			? 'Showing the newest 500; narrow the filter to see more.'
@@ -1599,11 +1702,11 @@ const ServerApp = {
                 `<button onclick="ServerApp.deleteFile('${attr(full)}', '${e.type}')" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white">Delete</button>`,
             ].join(' ');
             return `<tr class="border-t border-gray-200 dark:border-gray-700">
-                <td class="py-1.5 pl-3 pr-2 w-6">${icon}</td>
-                <td class="py-1.5 pr-3 break-all">${name}</td>
-                <td class="py-1.5 pr-3 text-right whitespace-nowrap text-gray-500 dark:text-gray-400">${e.size === null ? '' : esc(this.formatSize(e.size))}</td>
-                <td class="py-1.5 pr-3 whitespace-nowrap text-gray-500 dark:text-gray-400">${esc(new Date(e.modified * 1000).toLocaleString())}</td>
-                <td class="py-1.5 pr-3 text-right whitespace-nowrap">${actions}</td>
+                <td class="rp-card-icon py-1.5 pl-3 pr-2 w-6">${icon}</td>
+                <td class="rp-card-head py-1.5 pr-3 break-all">${name}</td>
+                <td class="py-1.5 pr-3 text-right whitespace-nowrap text-gray-500 dark:text-gray-400" ${e.size === null ? '' : 'data-label="Size"'}>${e.size === null ? '' : esc(this.formatSize(e.size))}</td>
+                <td class="py-1.5 pr-3 whitespace-nowrap text-gray-500 dark:text-gray-400" data-label="Changed">${esc(new Date(e.modified * 1000).toLocaleString())}</td>
+                <td class="rp-card-actions py-1.5 pr-3 text-right whitespace-nowrap">${actions}</td>
             </tr>`;
         }).join('');
 
@@ -1622,7 +1725,7 @@ const ServerApp = {
             ${(notice || []).length ? `<div class="${card} p-3 mb-2 text-sm space-y-1 text-gray-800 dark:text-gray-200">${notice.map(m => `<p>${esc(m)}</p>`).join('')}<p class="text-xs text-gray-500 dark:text-gray-400">Restart the server to load them.</p></div>` : ''}
             <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Drop files anywhere on this tab to upload them here.${this.addonKind(this.activeServer) ? ` Mods, plugins and add-ons dropped at the top are checked and put in the right folder.` : ''}</p>
             <div class="${card} overflow-x-auto">
-                <table class="w-full text-sm">
+                <table class="rp-cards w-full text-sm">
                     <tbody>${rows || '<tr><td class="p-3 text-gray-500">This folder is empty.</td></tr>'}</tbody>
                 </table>
             </div>
@@ -2484,10 +2587,10 @@ const ServerApp = {
 
         const rows = info.backups.map(b => `
             <tr class="border-t border-gray-200 dark:border-gray-700">
-                <td class="py-2 pr-3 whitespace-nowrap">${esc(new Date(b.created * 1000).toLocaleString())}</td>
-                <td class="py-2 pr-3">${esc(kindLabel[b.kind] || b.kind)}</td>
-                <td class="py-2 pr-3 text-right whitespace-nowrap">${esc(this.formatSize(b.size))}</td>
-                <td class="py-2 text-right whitespace-nowrap">
+                <td class="rp-card-head py-2 pr-3 whitespace-nowrap">${esc(new Date(b.created * 1000).toLocaleString())}</td>
+                <td class="py-2 pr-3" data-label="Type">${esc(kindLabel[b.kind] || b.kind)}</td>
+                <td class="py-2 pr-3 text-right whitespace-nowrap" data-label="Size">${esc(this.formatSize(b.size))}</td>
+                <td class="rp-card-actions py-2 text-right whitespace-nowrap">
                     <a href="${apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(b.file)}`)}" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white" title="Download">⬇</a>
                     ${isAdmin ? `<button onclick="ServerApp.restoreBackup('${esc(b.file)}')" class="px-2 py-1 rounded bg-yellow-600 hover:bg-yellow-700 text-white" title="Restore this world">Restore</button>
                     <button onclick="ServerApp.deleteBackup('${esc(b.file)}')" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-red-700 hover:text-white text-gray-900 dark:text-white" title="Delete">🗑</button>` : ''}
@@ -2511,19 +2614,19 @@ const ServerApp = {
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">The time is the server's clock${info.timezone ? ` (${esc(info.timezone)})` : ''}, not your browser's. Runs as a systemd timer, so backups happen even while the panel is stopped. Only scheduled backups are pruned to the number kept; manual ones stay until you delete them.</p>
                 ${info.next_run && s.enabled ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Next backup: ${esc(info.next_run)}</p>` : ''}
                 ${last}
-                <div class="flex gap-2 mt-3">
+                <div class="flex flex-wrap gap-2 mt-3">
                     <button onclick="ServerApp.saveBackupSchedule(this)" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold text-sm">Save schedule</button>
                     <button onclick="ServerApp.backupNow(this)" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-4 py-2 rounded font-bold text-sm">Back up now</button>
                 </div>
                 ${javaNoRcon ? `<p class="text-xs text-yellow-600 dark:text-yellow-500 mt-3">RCON isn't set up for this server, so backups taken while it runs copy files it may be writing. Open the Live Chat tab once to set RCON up.</p>` : ''}
             </div>
             <div class="${card}">
-                <div class="flex items-center justify-between mb-2">
+                <div class="flex flex-wrap gap-x-3 items-center justify-between mb-2">
                     <p class="text-sm font-bold text-gray-900 dark:text-white">Backups</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400" title="${esc(info.directory)}">${info.backups.length} · ${esc(this.formatSize(info.total_size))} in ${esc(info.directory)}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 break-all" title="${esc(info.directory)}">${info.backups.length} · ${esc(this.formatSize(info.total_size))} in ${esc(info.directory)}</p>
                 </div>
                 ${info.backups.length ? `
-                <div class="overflow-x-auto"><table class="w-full text-sm text-gray-700 dark:text-gray-300">
+                <div class="overflow-x-auto -mx-3 sm:mx-0"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">
                     <thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pb-1">Taken</th><th class="pb-1">Type</th><th class="pb-1 text-right">Size</th><th></th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table></div>
@@ -3278,6 +3381,7 @@ const ServerApp = {
 		this.closeCluster();
 		document.getElementById('workspace').classList.add('hidden');
 		document.getElementById('dashboard').classList.remove('hidden');
+		this.setMobileTitle('📊 Dashboard', this.panelName);
 		this.loadDashboard();
 		clearInterval(this.dashTimer);
 		this.dashTimer = setInterval(() => { if (!document.hidden) this.loadDashboard(); }, 10000);
@@ -3427,20 +3531,20 @@ const ServerApp = {
 			return `
 				<tr class="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onclick="ServerApp.openServerByName(${this.jsArg(s.name)})">
 					<td class="${td}"><span class="${dot}">●</span> <b class="text-gray-900 dark:text-white">${esc(s.name)}</b><div class="${note}">${esc(s.edition)} ${esc(s.version || '')} · port ${esc(s.port)}</div></td>
-					<td class="${td}">${esc(stateText)}<div class="${note}">${s.uptime !== null ? 'up ' + this.fmtDuration(s.uptime) : ''}</div></td>
-					<td class="${td}">${this.fmtPct(s.cpu_percent)}</td>
-					<td class="${td}">${this.fmtBytes(s.memory)}<div class="${note}">${s.heap && s.heap !== 'N/A' ? 'max heap ' + esc(s.heap) : ''}</div></td>
-					<td class="${td}">${s.players !== null ? `${s.players} / ${s.max_players}` : '—'}</td>
-					<td class="${td}">${s.folder_size !== null ? this.fmtBytes(s.folder_size) : '<span class="' + note + '">measuring…</span>'}</td>
-					<td class="${td}">${s.backups ? `${s.backups} · ${this.fmtBytes(s.backups_size)}` : '—'}<div class="${note}">${backupNote}</div></td>
-					<td class="${td}">${s.next_backup ? this.fmtWhen(s.next_backup) : '—'}</td>
-					<td class="${td}">${s.next_restart ? this.fmtWhen(s.next_restart) : '—'}</td>
+					<td class="${td}" data-label="State">${esc(stateText)}<span class="${note} md:block">${s.uptime !== null ? ' up ' + this.fmtDuration(s.uptime) : ''}</span></td>
+					<td class="${td}" data-label="CPU">${this.fmtPct(s.cpu_percent)}</td>
+					<td class="${td}" data-label="Memory">${this.fmtBytes(s.memory)}<span class="${note} md:block">${s.heap && s.heap !== 'N/A' ? ' max heap ' + esc(s.heap) : ''}</span></td>
+					<td class="${td}" data-label="Players">${s.players !== null ? `${s.players} / ${s.max_players}` : '—'}</td>
+					<td class="${td}" data-label="Folder">${s.folder_size !== null ? this.fmtBytes(s.folder_size) : '<span class="' + note + '">measuring…</span>'}</td>
+					<td class="${td}" data-label="Backups">${s.backups ? `${s.backups} · ${this.fmtBytes(s.backups_size)}` : '—'}<span class="${note} md:block"> ${backupNote}</span></td>
+					<td class="${td}" data-label="Next backup">${s.next_backup ? this.fmtWhen(s.next_backup) : '—'}</td>
+					<td class="${td}" data-label="Next restart">${s.next_restart ? this.fmtWhen(s.next_restart) : '—'}</td>
 				</tr>`;
 		}).join('');
 		const serverTable = `
 			<section class="${card}">
 				<h3 class="${h3} p-4 pb-2">Game servers</h3>
-				${servers.length ? `<div class="overflow-x-auto"><table class="w-full text-sm text-gray-700 dark:text-gray-300">
+				${servers.length ? `<div class="overflow-x-auto"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">
 					<thead class="text-xs text-gray-500 dark:text-gray-400"><tr>
 						<th class="${th}">Server</th><th class="${th}">State</th><th class="${th}">CPU</th><th class="${th}">Memory</th>
 						<th class="${th}">Players</th><th class="${th}">Folder</th><th class="${th}">Backups</th>
@@ -3659,8 +3763,8 @@ const ServerApp = {
 			{ s: step.connection, title: 'Choose how the panel is reached',
 			  body: step.connection.cluster_role === 'node' ? 'HTTPS comes from the cluster.'
 				: step.connection.https_mode !== 'off' ? 'The panel uses HTTPS.'
-				: step.connection.http_ok ? 'You chose plain HTTP on a network you trust.'
-				: `The panel uses plain HTTP, so anyone who can watch your network can read passwords as you sign in. That's usually fine on a home network you trust. Elsewhere, turn on HTTPS.`,
+				: step.connection.http_ok ? 'You chose plain HTTP on a network you trust. Phones can only add it to the home screen as a bookmark; installing it as an app needs HTTPS.'
+				: `The panel uses plain HTTP, so anyone who can watch your network can read passwords as you sign in. That's usually fine on a home network you trust. Elsewhere, turn on HTTPS. HTTPS also lets phones install the panel as an app.`,
 			  action: step.connection.done ? ''
 				: `<div class="flex flex-wrap gap-3 items-center"><button onclick="ServerApp.openPanelSettings('connection')" class="${btn}">Turn on HTTPS</button>
 				   <button onclick="ServerApp.setupAnswer({ http_ok: true })" class="${link}">Keep HTTP, this is my home network</button></div>` },
@@ -3761,6 +3865,7 @@ const ServerApp = {
 		this.renderSidebar();
 		document.getElementById('workspace').classList.add('hidden');
 		document.getElementById('cluster-view').classList.remove('hidden');
+		this.setMobileTitle('🌐 Cluster', this.panelName);
 		this.loadCluster();
 		clearInterval(this.clusterTimer);
 		this.clusterTimer = setInterval(() => { if (!document.hidden) this.loadCluster(); }, 15000);

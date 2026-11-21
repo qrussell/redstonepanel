@@ -159,6 +159,17 @@ def panel_info():
     """Which panel this is, so several servers' panels can be told apart (also before sign-in)."""
     return {"name": panel_settings.display_name()}
 
+@app.get("/api/phone-qr")
+def phone_qr_api(url: str):
+    """Desktop → "Open on your phone" (1.16.10): the panel's address as a QR code (SVG), made here
+    with core/qr.py so the address never goes to an outside service. Only web addresses."""
+    if not url.startswith(("http://", "https://")) or any(c in url for c in "\r\n"):
+        raise HTTPException(status_code=400, detail="Only an http:// or https:// address.")
+    try:
+        return Response(qr.svg(url), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
+    except qr.QRError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 class LoginRequest(BaseModel):
     username: str
     password: str
