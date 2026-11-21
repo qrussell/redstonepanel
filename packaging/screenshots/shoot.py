@@ -9,6 +9,10 @@ matches the reader's theme (see docs/guide/README.md, "About the screenshots").
 Phone pictures (1.16.10) are 390x844, like a phone, and named phone-*.png. The QR code dialog
 (phone-qr.png) is the desktop's.
 
+update-alert.png and bedrock-auto-update.png (1.16.12) are the Maintenance tab's Update Server
+card: demo.sh deploys Paper 1.21.4 so there is something newer, turns on Update automatically
+for the Bedrock server and runs the update check.
+
 The last step moves the demo's Bedrock server to the node and back (cluster-moved.png), with a
 pre-copy (1.16.13) so the picture shows how long it was down, so it runs after everything else.
 """
@@ -166,6 +170,16 @@ class Shooter:
             self.scroll_to_text("Scheduled Restarts")
             shot("scheduled-restarts")
         step("scheduled restarts", restarts)
+
+        # 1.16.12: the Paper server (1.21.4 in the demo) has an update alert; Bedrock updates itself
+        def updates():
+            self.open_server("minecraft-java", tab="maintenance")
+            page.wait_for_selector("#autoupdate-content div", timeout=15000)
+            shot("update-alert", element="div:has(> #autoupdate-content)")
+            self.open_server("minecraft-bedrock", tab="maintenance")
+            page.wait_for_selector("#autoupdate-enabled", timeout=15000)
+            shot("bedrock-auto-update", element="div:has(> #autoupdate-content)")
+        step("updates", updates)
 
         def file_editor():
             self.open_server("minecraft-java", tab="files")

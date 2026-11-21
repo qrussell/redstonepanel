@@ -894,6 +894,66 @@ refused joins, so those are Java only.
 
     **Size:** a few days.
 
+    **As built:** `core/updates.py`. Changes from the plan:
+    - **One timer for the machine, every 6 hours** (`redstonepanel-updates.timer`, 00:15, 06:15,
+      12:15, 18:15 plus up to 15 minutes' random delay, `Persistent=true`) instead of a daily
+      `redstonepanel-bedrock-update@` per server: one look at Mojang's API covers every Bedrock
+      server, and a day's wait would lock Bedrock players out for most of it. It runs
+      `redstonepanel check-updates`, so it works while the panel is stopped. The panel writes and
+      enables the units when it starts, so upgrading the package sets it up.
+    - **The download comes first.** The zip is downloaded (minecraft.net and
+      minecraft-services.net hosts only, also after redirects) and checked (a real zip, no
+      `..`, absolute paths or links, has `bedrock_server`) before anyone is warned, so a failed
+      download changes nothing. The panel now unpacks Bedrock in Python instead of `curl | jq`,
+      `wget` and `unzip`, for new servers and the Update button too.
+    - **Rollback** keeps every file the zip replaces in a staging folder, so the old program goes
+      back exactly. The world comes back from the "Before update" backup (`pre-update`, the
+      newest three kept); the world the new version may have converted is kept as a "Before
+      restore" backup. "Started" means BDS logged `Server started.` within 3 minutes; screen
+      exiting means it stopped. The stop before the backup sends Bedrock's own `stop` first, so
+      it saves the world.
+    - **The Update button uses the same path** (no warning, since someone pressed it).
+    - **Java servers are never updated automatically**; they get the alert only, because a new
+      Minecraft version can break mods and plugins. The alert covers a newer release (vanilla,
+      Paper, Fabric), a newer stable Paper build of the same release, and a newer stable Fabric
+      loader.
+    - **Clusters:** alerts travel in the `update` field of each server in `/api/servers`, which
+      the master already reads from its nodes, so no new cluster routes; the settings routes are
+      under `/api/servers/{name}/updates`, which nodes already accept from the master.
+    - Webhook events `update_available` (on by default, once per version per server), `updated`
+      and `update_failed` (on by default). Failures show under **Needs attention** until the next
+      successful update.
+
+    **Tested:** `tests/test_updates.py` (30 tests: the links API and a retried non-zip download, and host allowlist, Java alert
+    rules, unsafe zips, symlinks in the server folder, keep-files, put-back, alert once per
+    version, stale alerts, warning steps and order, failed download/backup/start, rollback,
+    stopped servers stay stopped, the timer only updates opted-in servers). End to end,
+    `packaging/test/test-bedrock-update.sh` (43 checks, in CI with the cluster scripts): a
+    stand-in BDS and a stand-in download API in a systemd container; the timer's run warns,
+    stops with `stop`, backs up, keeps settings and world, starts 1.0.0.2; a release that dies
+    on start is rolled back to 1.0.0.2 with its world; the Update button; refused hosts and
+    damaged zips leave the server running. With a real Bedrock Dedicated Server on Quentin's PC
+    (Docker, 21 Nov 2026): a new server got 1.26.66.1 from minecraft.net and stayed up; the
+    timer updated a real 1.26.65.1 server to 1.26.66.1 (warnings in chat, `stop` and "Quit
+    correctly", Before update backup, settings kept, "Server started."); the Update button
+    reinstalled it the same way. Once minecraft.net answered a third download in five minutes
+    with something that wasn't a zip, so a non-zip answer is now logged (size, type, first
+    bytes) and the download is tried once more after 30 seconds. The screenshot demo takes
+    `update-alert.png` and `bedrock-auto-update.png` in both themes.
+
+    **Fixed in the same release: Bedrock always saves before it stops.** Found while testing:
+    the ordinary **Stop** and **Restart** of a Bedrock server only ran `systemctl stop`, whose
+    SIGTERM goes to `screen`, which hangs up on `bedrock_server`, so it quit without saving and
+    the last minutes of play could be lost. The game servers' drop-in now has
+    `ExecStop=redstonepanel stop-unit %N $MAINPID`, which types Bedrock's own `stop` into its
+    console and waits up to 75 seconds for it to exit (it logs "Quit correctly") before systemd
+    ends what is left. Because it is in the unit, every stop is covered: Stop, Restart, backups,
+    restores, moves, updates, scheduled restarts, uninstalling and shutting the machine down.
+    Java servers are untouched (they save on SIGTERM). Tested with `tests/test_safe_stop.py`
+    and `packaging/test/test-bedrock-stop.sh` (a stand-in BDS that only writes its world when it
+    gets `stop`, through the Stop and Restart buttons, the restart timer and `systemctl stop`),
+    and a real Bedrock Dedicated Server on Quentin's PC.
+
 ### 1.16.13: less downtime for big worlds, and finding panels on the network
 
 20a. **The rest of 1.16's moves: a pre-copy, and Find panels.** Left over from 1.16.0 (item 12)

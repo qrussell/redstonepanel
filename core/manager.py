@@ -683,8 +683,15 @@ def list_servers():
                 phantoms = proxies.find_phantoms()
             proxy_list = proxies.proxies_for_server(phantoms, props.get("server-port", "19132"))
 
+        try:
+            from core import updates
+            update = updates.server_update(svc, d, "java" in exec_start)
+        except Exception:
+            update = None                       # never let the alert break the server list
         servers.append({
             "name": svc,
+            # A newer release than it runs (cached by the update check, core/updates.py), or None
+            "update": update,
             # Minecraft version of the installed server, and (Java) the Java it needs vs. what's installed
             "version": ver["version"],
             "java_required": ver["java_required"],
@@ -813,8 +820,6 @@ def get_recent_players(server_name):
     result = sorted(players.values(), key=lambda p: (ROLE_RANK.get(p["role"], 9), p["name"].lower()))
     return {"players": result, "roles": JAVA_ROLES if is_java else BEDROCK_ROLES, "file": perm_file}
 
-BEDROCK_KEEP_FILES = ("server.properties", "permissions.json", "allowlist.json", "whitelist.json")
-
 def _unit_exec_start(server_name):
     return subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
                           capture_output=True, text=True).stdout.strip()
@@ -849,7 +854,14 @@ def update_server_binary(server_name, version=None):
         if version:
             raise ServerError("Bedrock servers always update to the newest release.")
         require_bedrock_machine()
-        require_tools("curl", "wget", "jq", "unzip")
+        # Downloaded and checked first, a "Before update" backup, and the old version put back
+        # if the new one doesn't start (core/updates.py, 1.16.12)
+        from core import updates
+        try:
+            updates.run_update(server_name, actor="Update button", force=True)
+        except updates.UpdateError as e:
+            raise ServerError(f"Bedrock update failed: {e}")
+        return
 
     if is_java:
         current = javaservers.read_info(d)
@@ -866,9 +878,8 @@ def update_server_binary(server_name, version=None):
         if os.path.realpath(unit_java(exec_start) or "") != os.path.realpath(java):
             _write_unit(server_name, d, "java", java=java, **unit_heap(exec_start))
         write_log(f"[UPDATE] {server_name} now runs {javaservers.describe(info)} with {java}.")
-    else:
-        run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
-        _fetch_bedrock(d)
+    from core import updates
+    updates.forget(server_name)
     run_and_log(["chown", "-R", "minecraft:minecraft", d])
     run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
 
@@ -905,35 +916,14 @@ def java_for_folder(d):
         raise JavaMissing(e)
 
 def _fetch_bedrock(d):
-    """Downloads the latest Bedrock Dedicated Server and unpacks it into d."""
-    fetch_cmd = """
-    SERVER_URL=$(curl -s https://net-secondary.web.minecraft-services.net/api/v1.0/download/links | jq -r '.result.links[] | select(.downloadType=="serverBedrockLinux") | .downloadUrl' 2>/dev/null)
-    if [ -z "$SERVER_URL" ] || [ "$SERVER_URL" = "null" ]; then
-        SERVER_URL=$(curl -s -H "User-Agent: Mozilla/4.0" https://www.minecraft.net/en-us/download/server/bedrock | grep -o 'https://[^"]*/bin-linux/bedrock-server-[^"]*\\.zip' | head -n 1)
-    fi
-    wget "$SERVER_URL" -O """ + d + "/bedrock-server.zip"
-    
-    run_and_log(fetch_cmd, shell=True)
-
-    # The official zip ships default copies of these files; unzip -o would overwrite
-    # the server's ports, operators and allowlist. Keep ours and put them back.
-    saved = {}
-    for name in BEDROCK_KEEP_FILES:
-        p = os.path.join(d, name)
-        if os.path.exists(p):
-            with open(p, "rb") as f:
-                saved[name] = f.read()
+    """Downloads the latest Bedrock Dedicated Server and unpacks it into d, keeping the folder's
+    own server.properties, permissions.json and allowlist.json (see core/updates.py)."""
+    from core import updates
     try:
-        run_and_log(["unzip", "-o", "-q", f"{d}/bedrock-server.zip", "-d", d])
-    finally:
-        for name, data in saved.items():
-            with open(os.path.join(d, name), "wb") as f:
-                f.write(data)
-        if saved:
-            write_log(f"[SYSTEM] Kept existing {', '.join(saved)}.")
-    if os.path.exists(f"{d}/bedrock-server.zip"):
-        os.remove(f"{d}/bedrock-server.zip")
-    run_and_log(["chmod", "+x", f"{d}/bedrock_server"])
+        updates.fetch_bedrock(d)
+    except updates.UpdateError as e:
+        write_log(f"[WARNING] {e}")
+        raise ServerError(str(e))
 
 def default_heap(meminfo="/proc/meminfo"):
     """A new Java server's heap: 1-2 GB, or 512 MB-1 GB on a machine with 3 GB of memory or less
@@ -1066,9 +1056,10 @@ def remove_server(server_name, keep_world, note=None):
     close_firewall_rules(rules)
     firewall_record(server_name, None)
     # Its backup and restart timers go too; the backups themselves stay in /var/backups/redstonepanel
-    from core import backups, restarts
+    from core import backups, restarts, updates
     backups.on_server_removed(server_name, purged=not keep_world)
     restarts.on_server_removed(server_name, purged=not keep_world)
+    updates.on_server_removed(server_name, purged=not keep_world)
     # Its Phantom LAN proxy goes too (Phantom units made by hand stay)
     from core import phantom
     try:
@@ -1229,7 +1220,7 @@ def restore_server(name, same_version=False):
         write_log(f"[RESTORE] Restoring {name} from {d}.")
         if edition != "java":                     # Java itself is checked below, per Minecraft version
             require_bedrock_machine()
-            require_tools("screen", *([] if match["has_binary"] else ["curl", "wget", "jq", "unzip"]))
+            require_tools("screen")
         downloaded = False
         if not match["has_binary"]:
             write_log(f"[RESTORE] {name} has no server binary; downloading the latest {edition.capitalize()} release.")
@@ -1438,7 +1429,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
         get_checked_template(template_id, edition)   # fail before downloading anything
     if edition == "bedrock":
         require_bedrock_machine()
-        require_tools("curl", "wget", "jq", "unzip", "screen")
+        require_tools("screen")
     proto = "tcp" if edition == "java" else "udp"
 
     svc_name, port = _reserve_name(edition)       # auto-allocated name and port
@@ -1462,7 +1453,11 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
             with open(f"{mc_dir}/server.properties", "w") as f:
                 f.write(f"server-port={port}\nquery.port={port}\nmotd=A Managed Java Minecraft Server\n")
         else:
-            _fetch_bedrock(mc_dir)
+            try:
+                _fetch_bedrock(mc_dir)
+            except ServerError:
+                shutil.rmtree(mc_dir, ignore_errors=True)    # nothing useful in it yet
+                raise
             # The zip ships a full server.properties with every setting; BDS never writes missing
             # keys back, so only the ports change and the rest stays as Mojang shipped it. It also
             # ships server-udp-ports=19132: each server gets its own (UDP on the same number as
