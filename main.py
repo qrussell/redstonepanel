@@ -36,6 +36,7 @@ from starlette.background import BackgroundTask
 import json
 import uuid
 import os
+import platform
 import shutil
 import signal
 import subprocess
@@ -292,6 +293,9 @@ def me_api(request: Request):
     user = dict(request.state.user)
     # The release this panel runs; signed-in users only (the sign-in page doesn't advertise it)
     user["panel_version"] = panel_version()
+    # Bedrock Dedicated Server is x86-64 only: the New Server form hides it on ARM64 (a Raspberry Pi)
+    user["machine"] = platform.machine()
+    user["bedrock_supported"] = manager.bedrock_supported()
     # Admins get told when HTTPS was requested but the panel had to fall back to HTTP
     if user["role"] == "admin":
         user["https_error"] = panel_settings.RUNTIME.get("https_error")
@@ -647,7 +651,8 @@ def java_requirement(version: str):
 async def java_missing(request: Request, e: manager.JavaMissing):
     """A server needs a Java that isn't installed: 409 with what to install, so an admin's
     browser can offer to install it and try again."""
-    return JSONResponse({"detail": str(e), "java": {"required": e.required, "package": e.package}},
+    return JSONResponse({"detail": str(e), "java": {"required": e.required, "major": e.major,
+                                                         "package": e.package}},
                         status_code=409)
 
 class JavaChoice(BaseModel):
@@ -1395,7 +1400,8 @@ async def cluster_proxy_api(node_id: str, path: str, request: Request):
     if await run_in_threadpool(_node_too_old, node):
         raise HTTPException(status_code=409, detail=_too_old_detail(node))
     # Pass on the path as the browser encoded it (server and file names), with its query string
-    raw = request.scope.get("raw_path", b"").decode("latin-1")
+    # (raw_path has no query string under uvicorn; Starlette's test client before 0.33 put it in)
+    raw = request.scope.get("raw_path", b"").decode("latin-1").split("?", 1)[0]
     raw_target = "/" + raw.split("/proxy/", 1)[1] if "/proxy/" in raw else urllib.parse.quote(target)
     if request.url.query:
         raw_target += "?" + request.url.query

@@ -5,7 +5,7 @@
 **A good fit if you:**
 
 - run Minecraft servers for yourself, your family, friends, a club or a small community, on
-  a machine you control (a home server, a spare PC, a VPS);
+  a machine you control (a home server, a spare PC, a Raspberry Pi, a VPS);
 - want **Java and Bedrock** in one place, including Paper plugins and Fabric mods;
 - want backups, updates and restarts to happen by themselves, and a clear signal when
   something goes wrong;
@@ -18,8 +18,8 @@
 
 - want to sell game servers to customers. RedstonePanel has no billing, tenant isolation or
   resale features, and none are planned;
-- need a native Windows or macOS app. It runs on Ubuntu 24.04 and 25.04 (on Windows, in
-  [WSL](#can-i-run-it-on-windows-with-wsl));
+- need a native Windows or macOS app. It runs on Ubuntu 24.04, 26.04 and 26.10, Debian 13 and
+  64-bit Raspberry Pi OS (on Windows, in [WSL](#can-i-run-it-on-windows-with-wsl));
 - need Forge or NeoForge today. They're on the roadmap's "when asked for" list;
 - want every server isolated in its own container. RedstonePanel deliberately uses systemd
   instead of Docker.
@@ -37,9 +37,29 @@ curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install
 
 See [Installation](Installation.md) for the other ways and what to do next.
 
+## Which systems does it run on?
+
+Ubuntu 24.04 LTS, 26.04 LTS and 26.10, Debian 13, and Raspberry Pi OS (64-bit), on x86-64
+(Intel, AMD) and ARM64 machines. Ubuntu 25.04 and 25.10 still install, but Ubuntu no longer
+updates them. Debian 12, 32-bit systems and other distributions aren't supported. See
+[Installation](Installation.md#what-you-need).
+
+## Can I run it on a Raspberry Pi?
+
+Yes, a **Raspberry Pi 4 or 5** with the **64-bit** Raspberry Pi OS (Lite is enough), using the
+same one-line installer. It runs **Java servers only**: Mojang makes Bedrock Dedicated Server
+for x86-64 machines only, so the panel hides Bedrock on a Pi. Bedrock players can still join a
+Java server through Geyser (in the add-on catalog), and in a cluster a Pi can sit next to an
+x86-64 machine that runs the Bedrock servers.
+
+A 4 GB Pi runs one server well (about 5 to 10 players, Paper recommended); an 8 GB Pi two or
+three. Use an SSD rather than a microSD card if you can, and the active cooler on a Pi 5.
+32-bit Raspberry Pi OS and the older Pi OS based on Debian 12 aren't supported. More in
+[Installation](Installation.md#on-a-raspberry-pi).
+
 ## Can I run it on Windows with WSL?
 
-Yes. Install **Ubuntu 24.04** from WSL (`wsl --install -d Ubuntu-24.04`), then run the install
+Yes. Install **Ubuntu 26.04** or **24.04** from WSL (`wsl --install -d Ubuntu-24.04`), then run the install
 command above inside it. Ubuntu under WSL starts systemd by default, which the panel and its
 game servers need; if yours doesn't, add `systemd=true` under `[boot]` in `/etc/wsl.conf` and
 run `wsl --shutdown`.

@@ -1,4 +1,6 @@
-# Builds the .deb, runs the install tests on Ubuntu 24.04 and 25.04, and attaches the
+# Builds the .deb, runs the install tests on Ubuntu 24.04, 26.04 and 26.10 and Debian 13 (x86-64),
+# and on Ubuntu 26.04 and Debian 13 on ARM64 (GitHub's ARM runners: a Raspberry Pi's
+# architecture), and attaches the
 # .deb to a GitHub Release whose description is release-notes/<tag>.md (GitHub's
 # generated notes if that file is missing). Runs on version tags (e.g. v1.0.0) and can
 # be run by hand.
@@ -38,13 +40,21 @@ jobs:
 
   test:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        release: ['24.04', '25.04']
+        distro: [ubuntu]
+        release: ['24.04', '26.04', '26.10']
         flags: ['', '--no-install-recommends']
-    name: test ${{ matrix.release }} ${{ matrix.flags }}
+        runner: [ubuntu-latest]
+        include:
+          - {distro: debian, release: '13', flags: '', runner: ubuntu-latest}
+          - {distro: debian, release: '13', flags: '--no-install-recommends', runner: ubuntu-latest}
+          # ARM64 (Raspberry Pi 4/5, ARM servers): Java servers only, Bedrock refused
+          - {distro: ubuntu, release: '26.04', flags: '', runner: ubuntu-24.04-arm}
+          - {distro: debian, release: '13', flags: '', runner: ubuntu-24.04-arm}
+    name: test ${{ matrix.distro }} ${{ matrix.release }} ${{ matrix.runner == 'ubuntu-24.04-arm' && 'arm64' || 'amd64' }} ${{ matrix.flags }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -53,9 +63,10 @@ jobs:
           path: dist
       - name: Start systemd container
         run: |
-          docker build -q --build-arg REL=${{ matrix.release }} -t rp-systemd:${{ matrix.release }} packaging/test
+          docker build -q --build-arg DISTRO=${{ matrix.distro }} --build-arg REL=${{ matrix.release }} \
+            -t rp-systemd:test packaging/test
           docker run -d --privileged \
-            --name rp-test -v "$PWD/dist:/dist:ro" -v "$PWD/packaging/test:/t:ro" rp-systemd:${{ matrix.release }}
+            --name rp-test -v "$PWD/dist:/dist:ro" -v "$PWD/packaging/test:/t:ro" rp-systemd:test
           for _ in $(seq 1 30); do
             state=$(docker exec rp-test systemctl is-system-running 2>/dev/null || true)
             case "$state" in running|degraded) break ;; esac

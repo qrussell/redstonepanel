@@ -1219,6 +1219,7 @@ const ServerApp = {
                     <option value="java">Java Edition (Auto-Port)</option>
                     <option value="bedrock">Bedrock Edition (Auto-Port)</option>
                 </select>
+                <p id="deploy-bedrock-note" class="text-xs text-gray-500 mb-2 hidden"></p>
 
                 <div id="deploy-java-options">
                     <div class="grid grid-cols-2 gap-2">
@@ -1258,8 +1259,34 @@ const ServerApp = {
             <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white transition">Cancel</button>
         `;
         modal.classList.remove('hidden');
+        this.showBedrockChoice();
         this.loadDeployVersions();
         if (this.deployNode) this.loadRemovedServers();
+    },
+
+    // Mojang only makes Bedrock Dedicated Server for x86-64: an ARM64 machine (a Raspberry Pi)
+    // runs Java servers only. node: a node id, or null for this panel. Unknown (an older node) = allowed.
+    bedrockSupported(node) {
+        if (!node) return !(this.currentUser && this.currentUser.bedrock_supported === false);
+        const n = this.clusterNodes.find(x => x.id === node);
+        return !(n && n.machine && !['x86_64', 'amd64'].includes(String(n.machine).toLowerCase()));
+    },
+
+    showBedrockChoice() {
+        const select = document.getElementById('deploy-edition');
+        const note = document.getElementById('deploy-bedrock-note');
+        if (!select || !note) return;
+        const ok = this.bedrockSupported(this.deployNode);
+        const opt = select.querySelector('option[value="bedrock"]');
+        opt.disabled = !ok;
+        opt.textContent = ok ? 'Bedrock Edition (Auto-Port)' : 'Bedrock Edition (needs an x86-64 machine)';
+        note.classList.toggle('hidden', ok);
+        note.innerText = ok ? '' : 'This machine is ARM64 (for example a Raspberry Pi), and Mojang only makes the Bedrock server '
+            + 'for 64-bit Intel and AMD machines. Java servers work, and Bedrock players can join one through Geyser.';
+        if (!ok && select.value === 'bedrock') {
+            select.value = 'java';
+            this.onDeployEditionChange('java');
+        }
     },
 
     // New Server's "Where": null = this panel, else a node id
@@ -1267,6 +1294,7 @@ const ServerApp = {
 
     onDeployWhereChange(node) {
         this.deployNode = node || null;
+        this.showBedrockChoice();
         const version = document.getElementById('deploy-version');
         if (version) this.showJavaRequirement(version.value || version.dataset.newest, 'deploy-java-note');
         this.loadRemovedServers();
@@ -1321,12 +1349,20 @@ const ServerApp = {
         if (!res.ok) { note.innerText = ''; return; }
         const r = await res.json();
         const base = noteId === 'deploy-java-note' ? 'text-xs mb-2 ' : 'text-xs mt-1 ';
-        if (r.java_used === null) {
+        // This system's package sources may not have that Java (Debian 13 packages only 21 and 25)
+        const substitute = r.package_major && r.package_major !== r.java_required
+            ? ` This system doesn't package Java ${r.java_required}, so it would get Java ${r.package_major}`
+              + (r.java_required <= 11 && r.package_major >= 17 ? ', which some old Minecraft versions and mods don\'t start on.' : ', which usually works.') : '';
+        if (r.java_used === null && r.package_major === null) {
+            note.className = base + 'text-red-400';
+            note.innerText = `Minecraft ${r.minecraft} needs Java ${r.java_required}, and this system's package sources `
+                + `have no Java that new (they have: ${(r.packaged || []).join(', ') || 'none'}). Choose another version.`;
+        } else if (r.java_used === null) {
             const verb = noteId === 'deploy-java-note' ? 'create the server' : 'update';
             note.className = base + (this.isAdmin() ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-400');
             note.innerText = `Minecraft ${r.minecraft} needs Java ${r.java_required}, which isn't installed. `
                 + (this.isAdmin() ? `You'll be asked to install it (${r.package}) when you ${verb}.`
-                                  : `Ask an admin to install it, or: sudo apt install ${r.package}`);
+                                  : `Ask an admin to install it, or: sudo apt install ${r.package}`) + substitute;
         } else {
             note.className = base + 'text-gray-400';
             note.innerText = `Minecraft ${r.minecraft} needs Java ${r.java_required}; it will run on Java ${r.java_used}`
@@ -1407,7 +1443,10 @@ const ServerApp = {
         let data = {};
         try { data = await res.clone().json(); } catch (e) { return res; }
         if (!data.java) return res;
-        if (!await this.installJava(data.java.required, data.detail, node)) return res;
+        // major: the Java this system packages for it (null when its package sources have none new enough)
+        const major = data.java.major === undefined ? data.java.required : data.java.major;
+        if (major === null) return res;
+        if (!await this.installJava(major, data.detail, node)) return res;
         return send();
     },
 

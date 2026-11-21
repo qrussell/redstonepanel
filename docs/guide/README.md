@@ -87,7 +87,12 @@ At the end: the [screenshot gallery](#screenshot-gallery), every screenshot in t
 
 ## 1. Install
 
-RedstonePanel runs on **Ubuntu 24.04 or 25.04**. The quickest way is the installer, which adds
+RedstonePanel runs on **Ubuntu 24.04, 26.04 or 26.10**, **Debian 13** and **64-bit Raspberry Pi
+OS** (on a Raspberry Pi 4 or 5), on x86-64 and ARM64 machines. On ARM64, including every
+Raspberry Pi, it runs **Java servers only**, because Mojang makes Bedrock Dedicated Server for
+x86-64 only (see [On a Raspberry Pi](#on-a-raspberry-pi)). Ubuntu 25.04 and 25.10 still work
+but no longer get updates; Debian 12 and 32-bit systems aren't supported. The quickest way is
+the installer, which adds
 the signed qrussell-repo apt repository (checking its key) and installs the panel:
 
 ```bash
@@ -123,6 +128,43 @@ check. From a terminal, `sudo redstonepanel upgrade` does the same, or use
 
 The panel then runs as the `redstonepanel` service on port **8080**. Open
 `http://<server>:8080/` in a browser.
+
+### On a Raspberry Pi
+
+Use a **Raspberry Pi 4 or 5**, ideally with 4 GB of memory or more.
+
+1. In **Raspberry Pi Imager**, choose **Raspberry Pi OS Lite (64-bit)**, write it to an SSD or
+   a microSD card, and turn on SSH in the settings it offers before writing. An SSD (USB 3, or
+   NVMe on a Pi 5) is faster and lasts longer than a card under world saves and backups.
+2. Start the Pi, sign in over SSH, and run the installer above.
+3. Open `http://<pi>:8080/` and create a **Paper** server: it uses noticeably less CPU than
+   Vanilla, which matters on a Pi.
+
+**Bedrock** isn't offered: the **New Server** dialog shows it greyed out with the reason, and a
+Bedrock backup can't be imported. To let Bedrock players join, add the **Bedrock players**
+bundle (Geyser) to a Java server (see [Finding mods and plugins](#finding-mods-and-plugins)).
+In a cluster, a Pi can be the master or a node next to an x86-64 machine that runs the Bedrock
+servers; a Bedrock server can't be moved to a Pi.
+
+**Memory.** A new Java server may use up to 2 GB (1 GB on a machine with 3 GB or less);
+**Overview → Max RAM** shows it. Leave about 1 GB for the system:
+
+| Pi | What fits |
+| --- | --- |
+| 2 GB | Not recommended: one small server, which gets 1 GB. |
+| 4 GB | One server at 2 GB, for about 5 to 10 players. |
+| 8 GB | Two or three servers at 2 GB, or one at 4 to 5 GB. |
+| 16 GB | Several servers; the CPU is the limit. |
+
+To change a server's limit, run `sudo systemctl edit --full minecraft-java` (with the server's
+name), change `-Xmx2G` to, say, `-Xmx4G`, and restart the server. Updates and moves keep it.
+
+**Java.** Raspberry Pi OS (like Debian 13) packages Java 21 and 25, which run Minecraft 1.17 and
+newer. For older versions, which ask for Java 8, the panel says the Pi doesn't have it and
+offers Java 21, which some old versions and modpacks don't start on.
+
+**Cooling.** A Pi 5 needs its active cooler (or a case with a fan) to run a server all day
+without slowing itself down.
 
 ### On Windows with WSL
 
@@ -302,7 +344,8 @@ Click **➕ New Server**.
 
 **Deploy a fresh server**
 
-1. Choose **Java Edition** or **Bedrock Edition**.
+1. Choose **Java Edition** or **Bedrock Edition**. On an ARM64 machine such as a Raspberry Pi,
+   Bedrock is greyed out: Mojang only makes the Bedrock server for x86-64.
 2. For Java, choose the **Server Type** and **Minecraft Version**:
    - **Vanilla (Mojang)**: the official server.
    - **Paper (plugins)**: a faster server that runs Bukkit/Paper plugins. Put plugin `.jar`
@@ -491,6 +534,14 @@ Each Minecraft version needs a particular Java: 26.1 and newer need Java 25, 1.2
 1.21.11 Java 21, 1.18 to 1.20.4 Java 17, and older versions Java 8. Each server's systemd unit
 names its own Java (`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`), so servers needing
 different versions run side by side, and the system's default `java` doesn't matter.
+
+The panel offers the Java versions your system's package sources have. Ubuntu packages 8, 11,
+17, 21 and 25 (newer releases also newer ones); Debian 13 and Raspberry Pi OS only 21 and 25.
+When a Minecraft version needs a Java the system doesn't package, the line under **Minecraft
+Version** says so and the panel offers the closest newer one instead: Java 17 for 1.17's
+Java 16 on Ubuntu, or Java 21 for an old version's Java 8 on Debian, which some old versions
+and modpacks don't start on. If the system has nothing new enough, it says so and installs
+nothing.
 
 - **Installing.** When you create, update or restore a Java server and the Java it needs isn't
   installed, the panel asks to install it (`openjdk-21-jre-headless`, for example) with apt,

@@ -19,6 +19,7 @@ import io
 import ipaddress
 import json
 import os
+import platform
 import re
 import secrets
 import shutil
@@ -188,9 +189,14 @@ def find_node(node_id):
     return next((n for n in load_nodes() if n["id"] == node_id), None)
 
 
+def clean_machine(value):
+    """A member's processor architecture as it reported it (x86_64, aarch64), or None."""
+    return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_]{1,20}", value) else None
+
+
 def public_node(n):
     """A node record without its token."""
-    out = {k: n.get(k) for k in ("id", "name", "url", "platform", "version", "cluster_api",
+    out = {k: n.get(k) for k in ("id", "name", "url", "platform", "machine", "version", "cluster_api",
                                  "cert_expires", "added", "added_by", "last_ok", "sans", "renew_error")}
     out["verify"] = node_verify(n)
     return out
@@ -513,7 +519,7 @@ def hello():
     s = panel_settings.load()
     cert = s["cert_file"] if s["https_mode"] == "custom" else node_crt()
     return {"name": panel_settings.display_name(s), "version": panel_version(), "cluster_api": CLUSTER_API,
-            "platform": "linux", "cluster_id": st.get("cluster_id"), "cert_expires": cert_expires(cert),
+            "platform": "linux", "machine": platform.machine(), "cluster_id": st.get("cluster_id"), "cert_expires": cert_expires(cert),
             "https_mode": s["https_mode"]}
 
 
@@ -700,6 +706,7 @@ def accept_join(body, client_ip):
         node = {"id": "n-" + secrets.token_hex(3), "name": name, "url": url, "verify": verify,
                 "token": token, "sans": {"names": sorted(names), "ips": sorted(ips)},
                 "cert_expires": expires, "platform": str(body.get("platform") or "linux")[:20],
+                "machine": clean_machine(body.get("machine")),
                 "version": str(body.get("version") or "unknown")[:40], "cluster_api": api,
                 "added": now, "added_by": join.get("created_by"), "last_ok": None}
         nodes.append(node)
@@ -744,7 +751,7 @@ def join(code, actor, client):
             token = new_token("rpn_")
             req = {"secret": c["s"], "name": panel_settings.display_name(s), "token": token,
                    "https_port": s["https_port"], "version": panel_version(), "cluster_api": CLUSTER_API,
-                   "platform": "linux"}
+                   "platform": "linux", "machine": platform.machine()}
             if custom:
                 req.update(verify="system", url=f"https://{public[0]}:{s['https_port']}",
                            cert_expires=cert_expires(s["cert_file"]))
