@@ -219,7 +219,7 @@ if [ "$ONLINE" = 1 ]; then
     echo "$OUT" | json "d['port']" | grep -qx 19140 && ok "it keeps its port, 19140" || { bad "port kept"; echo "$OUT"; }
     sleep 15    # let the real Bedrock server start and write its files
     check "the running server still has port 19140 in server.properties" dx offn "grep -qx 'server-port=19140' /opt/$SRV/server.properties"
-    check "and listens on it" dx offn "ss -lun | grep -q ':19140 '"
+    check "and listens on it" dx offn "ss -lntu | grep -q ':19140 '"
 else
     skip "no internet in the container: the Bedrock server itself can't be downloaded"
     { dx offn "[ -f /etc/systemd/system/$SRV.service ]" \
