@@ -160,8 +160,10 @@ def health():
 
 @app.get("/api/panel-info")
 def panel_info():
-    """Which panel this is, so several servers' panels can be told apart (also before sign-in)."""
-    return {"name": panel_settings.display_name()}
+    """Which panel this is, so several servers' panels can be told apart (also before sign-in).
+    1.16.13: also that it is a RedstonePanel and its cluster role, so a master's Find panels
+    (core/discovery.py) can offer to add standalone panels on the network."""
+    return {"name": panel_settings.display_name(), "app": "RedstonePanel", "cluster": cluster.role()}
 
 @app.get("/api/phone-qr")
 def phone_qr_api(url: str):
@@ -1657,11 +1659,14 @@ def _transfer_call(request, fn, *args, **kwargs):
 class TransferExport(BaseModel):
     server: str
     stop: bool
+    precopy: bool = False                   # 1.16.13: pack it while it runs, listing every file
+    base: Optional[str] = None              # 1.16.13: only what changed since that pre-copy
 
 class TransferImport(BaseModel):
     size: int
     sha256: str
     meta: dict
+    base: Optional[str] = None              # 1.16.13: a staged pre-copy these changes go on
 
 class TransferFinish(BaseModel):
     outcome: str
@@ -1674,7 +1679,7 @@ class TransferInstall(BaseModel):
 
 @app.post("/api/cluster/transfers/export")
 def transfer_export_api(req: TransferExport, request: Request):
-    return _transfer_call(request, transfer.export, req.server, req.stop)
+    return _transfer_call(request, transfer.export, req.server, req.stop, req.precopy, req.base)
 
 @app.get("/api/cluster/transfers/{tid}/archive")
 def transfer_archive_api(tid: str, request: Request):
@@ -1687,7 +1692,7 @@ def transfer_finish_api(tid: str, req: TransferFinish, request: Request):
 
 @app.post("/api/cluster/transfers/import")
 def transfer_import_api(req: TransferImport, request: Request):
-    return _transfer_call(request, transfer.begin_import, req.size, req.sha256, req.meta)
+    return _transfer_call(request, transfer.begin_import, req.size, req.sha256, req.meta, req.base)
 
 @app.put("/api/cluster/transfers/{tid}/archive")
 async def transfer_receive_api(tid: str, request: Request):
@@ -1705,6 +1710,10 @@ async def transfer_receive_api(tid: str, request: Request):
 def transfer_install_api(tid: str, req: TransferInstall, request: Request):
     return _transfer_call(request, transfer.install, tid, req.keep_name, req.start, req.carry,
                           request.state.user["username"])
+
+@app.post("/api/cluster/transfers/{tid}/stage")
+def transfer_stage_api(tid: str, request: Request):
+    return _transfer_call(request, transfer.stage, tid)
 
 @app.post("/api/cluster/transfers/{tid}/confirm")
 def transfer_confirm_api(tid: str, request: Request):
@@ -1857,6 +1866,7 @@ class MoveRequest(BaseModel):
     from_node: str = "local"
     to_node: str = "local"
     start: bool = False
+    precopy: bool = False
 
 def _need_master_admin(request):
     _need_master()
@@ -1868,7 +1878,8 @@ def cluster_move_api(req: MoveRequest, request: Request):
     _need_master_admin(request)
     user = request.state.user
     try:
-        return moves.start(req.kind, req.from_node, req.server, req.to_node, req.start, user["username"], user["role"])
+        return moves.start(req.kind, req.from_node, req.server, req.to_node, req.start, user["username"], user["role"],
+                           req.precopy)
     except moves.MoveError as e:
         raise HTTPException(status_code=e.status, detail=str(e))
 
@@ -1978,6 +1989,21 @@ def cluster_new_join_api(request: Request, body: dict = Body(default={})):
         _cluster_fail(e)
     manager.write_log(f"[CLUSTER] {me} made a join code ({j['id']}), valid for one hour.")
     return j
+
+@app.post("/api/settings/cluster/discover")
+def cluster_discover_api(request: Request):
+    """Find panels on your network (1.16.13): RedstonePanels on this machine's private networks."""
+    from core import discovery
+    me = request.state.user["username"]
+    if cluster.role() != "master":
+        raise HTTPException(status_code=400, detail="Create a cluster first: only its master adds panels.")
+    try:
+        found = discovery.find(cluster.load_nodes())
+    except discovery.DiscoveryError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    manager.write_log(f"[CLUSTER] {me} looked for panels on {', '.join(found['networks'])}: found "
+                      f"{len(found['panels'])} in {found['seconds']} s.")
+    return found
 
 @app.delete("/api/settings/cluster/joins/{join_id}")
 def cluster_cancel_join_api(join_id: str):

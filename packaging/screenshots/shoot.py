@@ -13,8 +13,8 @@ update-alert.png and bedrock-auto-update.png (1.16.12) are the Maintenance tab's
 card: demo.sh deploys Paper 1.21.4 so there is something newer, turns on Update automatically
 for the Bedrock server and runs the update check.
 
-The last step moves the demo's Bedrock server to the node and back (cluster-moved.png), so it
-runs after everything else.
+The last step moves the demo's Bedrock server to the node and back (cluster-moved.png), with a
+pre-copy (1.16.13) so the picture shows how long it was down, so it runs after everything else.
 """
 import os
 import sys
@@ -136,6 +136,8 @@ class Shooter:
             shot("cluster")
             page.locator("button", has_text="Move…").first.click()
             shot("cluster-move")
+            page.check("#move-precopy")                  # 1.16.13
+            shot("cluster-precopy", element="#modal-content")
             page.evaluate("ServerApp.closeModal()")
         step("cluster", cluster)
 
@@ -274,6 +276,16 @@ class Shooter:
             shot("offsite-copies")
         step("offsite copies", offsite)
 
+        def find_panels():                               # 1.16.13: Settings > Cluster > Add a node
+            page.evaluate("ServerApp.openPanelSettings()")
+            page.wait_for_timeout(3500)
+            page.click("#cl-find")
+            page.wait_for_selector("#cl-found :text('Searched')", timeout=60000)
+            page.locator("#cl-find").scroll_into_view_if_needed()
+            shot("cluster-find", element="div.p-3:has(#cl-find)")
+            self.close_modals()
+        step("find panels", find_panels)
+
         def phone_qr():
             page.evaluate("ServerApp.openPhoneQr()")
             page.wait_for_timeout(1500)
@@ -317,6 +329,7 @@ class Shooter:
                 ServerApp.openMoveDialog('move', n.id, server);
             }""", server)
             page.wait_for_timeout(800)
+            page.check("#move-precopy")
             page.click("#move-go")
             page.wait_for_selector("text=Delete the old copy", timeout=180000)
             self.shot("cluster-moved")

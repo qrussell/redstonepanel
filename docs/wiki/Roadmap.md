@@ -10,7 +10,7 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 
 ## Next up
 
-### 1.16.x: less downtime for big worlds
+### 1.16.13: less downtime for big worlds
 
 - An optional **pre-copy** for moves: copy the world while the server keeps running, then only
   what changed after it stops.
