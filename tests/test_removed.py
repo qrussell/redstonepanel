@@ -37,7 +37,7 @@ class RemovedServers(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         self.written_units = {}
-        def write_unit(name, d, edition, xms="1G", xmx="2G", java="/usr/bin/java"):
+        def write_unit(name, d, edition, xms="1G", xmx="2G", java="/usr/bin/java", jvm=None):
             self.written_units[name] = (d, edition, xms, xmx)
             open(M._unit_path(name), "w").close()
         p = mock.patch.object(M, "_write_unit", write_unit)

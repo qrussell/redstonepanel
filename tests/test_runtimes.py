@@ -52,7 +52,7 @@ class Base(unittest.TestCase):
                 self.javas[major] = JVM.format(major)
             return self.apt_code
 
-        def write_unit(name, d, edition, java="/usr/bin/java", **heap):
+        def write_unit(name, d, edition, java="/usr/bin/java", jvm=None, **heap):
             self.units.append((name, java, heap))
             for s in self.servers:
                 if s["name"] == name:

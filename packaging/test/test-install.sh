@@ -189,6 +189,24 @@ c=$(code -b $L -X POST $B/api/servers/import -H "$O" -F "file=@/tmp/java-backup.
 [ "$c" = 200 ] && grep -q '"server":"minecraft-java"' /tmp/body && ok "import wrapped .zip Java backup" || bad "import .zip ($c $(cat /tmp/body))"
 check "  files at the top of /opt/minecraft-java" test -f /opt/minecraft-java/server.jar -a -f /opt/minecraft-java/world/level.dat
 check "  no __MACOSX junk"                 test ! -e /opt/minecraft-java/__MACOSX
+# --- New server's Advanced options (1.17.2): refusals need no download, startup flags on the imported server
+c=$(code -b $L -X POST $B/api/servers/deploy -H "$J" -H "$O" -d '{"edition":"java","advanced":{"flags":{"extra":["-XX:OnError=sh"]}}}')
+[ "$c" = 400 ] && grep -q 'runs a command' /tmp/body && ok "advanced: -XX:OnError refused (400)" || bad "advanced OnError ($c $(cat /tmp/body))"
+c=$(code -b $L -X POST $B/api/servers/deploy -H "$J" -H "$O" -d '{"edition":"java","advanced":{"name":"java"}}')
+[ "$c" = 400 ] && grep -q 'already a server' /tmp/body && ok "advanced: taken name refused (400)" || bad "advanced name clash ($c $(cat /tmp/body))"
+c=$(code -b $L -X POST $B/api/servers/deploy -H "$J" -H "$O" -d '{"edition":"java","advanced":{"port":25565}}')
+[ "$c" = 400 ] && grep -q 'Port 25565' /tmp/body && ok "advanced: used port refused (400)" || bad "advanced port clash ($c $(cat /tmp/body))"
+c=$(code -b $L -X POST $B/api/servers/deploy -H "$J" -H "$O" -d '{"edition":"java","advanced":{"heap":"256G"}}')
+[ "$c" = 400 ] && grep -q 'too little memory' /tmp/body && ok "advanced: heap bigger than the machine refused (400)" || bad "advanced heap ($c $(cat /tmp/body))"
+check "  nothing made by refused deploys"   bash -c '[ "$(ls -d /opt/minecraft-* | wc -l)" = "$(ls /etc/systemd/system/minecraft-*.service | wc -l)" ]'
+c=$(code -b $L -X POST $B/api/servers/minecraft-java/jvm-flags -H "$J" -H "$O" -d '{"preset":"aikar","extra":["-Dfile.encoding=UTF-8"]}')
+[ "$c" = 200 ] && ok "startup flags saved on Maintenance" || bad "startup flags ($c $(cat /tmp/body))"
+check "  unit runs Aikar's flags"           grep -q -- '-XX:+UseG1GC .*-Dfile.encoding=UTF-8 -jar server.jar nogui' /etc/systemd/system/minecraft-java.service
+check "  jvm-flags.json is 0600"            test "$(stat -c %a /var/lib/redstonepanel/jvm-flags.json)" = 600
+check "  listed with the server"            bash -c "curl -s -b $L $B/api/servers | grep -q '\"preset\":\"aikar\"'"
+check "  -XX:OnError refused there too"     test "$(code -b $L -X POST $B/api/servers/minecraft-java/jvm-flags -H "$J" -H "$O" -d '{"extra":["-XX:OnError=sh"]}')" = 400
+code -b $L -X POST $B/api/servers/minecraft-java/jvm-flags -H "$J" -H "$O" -d '{"preset":"none"}' >/dev/null
+check "  removed again"                     bash -c '! grep -q UseG1GC /etc/systemd/system/minecraft-java.service'
 mkdir -p $BK/evil && echo x > $BK/evil/f && tar -C $BK -czf /tmp/evil.tar.gz --transform 's#^evil/f#../../../etc/rp-evil#' evil/f
 c=$(code -b $L -X POST $B/api/servers/import -H "$O" -F "file=@/tmp/evil.tar.gz")
 [ "$c" = 400 ] && [ ! -e /etc/rp-evil ] && ok "archive with ../ paths refused, nothing written" || bad "evil archive ($c $(cat /tmp/body))"

@@ -697,6 +697,7 @@ def list_servers():
             "java_required": ver["java_required"],
             "java_installed": unit_java_major(exec_start) if "java" in exec_start else None,
             "java_path": unit_java(exec_start) if "java" in exec_start else None,
+            "jvm_flags": _flags_of(svc) if "java" in exec_start else None,
             "loader": ver.get("loader"),
             "minecraft": ver.get("minecraft"),
             "status": "online" if st == "active" else "offline",
@@ -883,11 +884,13 @@ def update_server_binary(server_name, version=None):
     run_and_log(["chown", "-R", "minecraft:minecraft", d])
     run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
 
-def _install_java(d, loader="vanilla", version=None, current=None):
+def _install_java(d, loader="vanilla", version=None, current=None, build=None, snapshot=False, java_major=None):
     """Downloads a Java server's jar into d. Returns (info, java path)."""
-    write_log(f"[SYSTEM] Downloading {javaservers.LOADERS.get(loader, loader)} {version or '(newest)'} ...")
+    write_log(f"[SYSTEM] Downloading {javaservers.LOADERS.get(loader, loader)} {version or '(newest)'}"
+              + (f" build {build}" if build else "") + " ...")
     try:
-        info, java = javaservers.install(d, loader, version, current)
+        info, java = javaservers.install(d, loader, version, current, build=build, snapshot=snapshot,
+                                         java_major=java_major)
     except javaservers.MissingJavaError as e:
         write_log(f"[WARNING] {e}")
         raise JavaMissing(e)
@@ -935,9 +938,12 @@ def default_heap(meminfo="/proc/meminfo"):
         kb = 0
     return {"xms": "512M", "xmx": "1G"} if 0 < kb <= 3 * 1024 * 1024 else {"xms": "1G", "xmx": "2G"}
 
-def _write_unit(svc_name, mc_dir, edition, xms=None, xmx=None, java="/usr/bin/java"):
+def _write_unit(svc_name, mc_dir, edition, xms=None, xmx=None, java="/usr/bin/java", jvm=None):
     """Writes the game server's systemd unit and reloads systemd (doesn't enable or start it).
-    A Java server without a heap given gets default_heap()."""
+    A Java server without a heap given gets default_heap().
+    jvm: startup flags ({"preset", "extra"}, see core/deployopts.py) to store and use; None keeps
+    the ones stored for this server, {} removes them."""
+    from core import deployopts
     if not (xms and xmx):
         heap = default_heap()
         xms, xmx = xms or heap["xms"], xmx or heap["xmx"]
@@ -945,7 +951,13 @@ def _write_unit(svc_name, mc_dir, edition, xms=None, xmx=None, java="/usr/bin/ja
         exec_start = f"/usr/bin/screen -c {mc_dir}/screenrc -L -Logfile {mc_dir}/server.log -DmS {svc_name} ./bedrock_server"
         env_vars = "Environment=\"LD_LIBRARY_PATH=.\""
     else:
-        exec_start = f"{java} -Xms{xms} -Xmx{xmx} -jar server.jar nogui"
+        if jvm is not None:
+            deployopts.set_flags(svc_name, jvm)
+        flags = deployopts.get_flags(svc_name)
+        if flags and flags.get("preset") == "aikar":
+            xms = xmx                                  # Aikar's flags: the whole heap up front
+        extra = " ".join(deployopts.unit_flags(flags, xmx))
+        exec_start = f"{java} -Xms{xms} -Xmx{xmx} {extra + ' ' if extra else ''}-jar server.jar nogui"
         env_vars = ""
     svc_content = f"""[Unit]
 Description=Minecraft Server ({svc_name})
@@ -963,7 +975,7 @@ RestartSec=20
 [Install]
 WantedBy=multi-user.target
 """
-    with open(f"/etc/systemd/system/{svc_name}.service", "w") as f:
+    with open(_unit_path(svc_name), "w") as f:
         f.write(svc_content)
     run_and_log(["systemctl", "daemon-reload"])
 
@@ -1056,8 +1068,10 @@ def remove_server(server_name, keep_world, note=None):
     close_firewall_rules(rules)
     firewall_record(server_name, None)
     # Its backup and restart timers go too; the backups themselves stay in /var/backups/redstonepanel
-    from core import backups, restarts, updates
+    from core import backups, restarts, updates, deployopts
     backups.on_server_removed(server_name, purged=not keep_world)
+    if not keep_world:
+        deployopts.set_flags(server_name, None)     # kept with the folder, for a restore
     restarts.on_server_removed(server_name, purged=not keep_world)
     updates.on_server_removed(server_name, purged=not keep_world)
     from core import perf
@@ -1279,6 +1293,8 @@ def delete_removed_server(name):
     if os.path.dirname(d) != os.path.realpath(SERVERS_ROOT):
         raise ServerError(f"{name} isn't a folder in {SERVERS_ROOT}.")
     run_and_log(["rm", "-rf", d])
+    from core import deployopts
+    deployopts.set_flags(name, None)
     write_log(f"[REMOVE] Deleted the files of removed server {name} ({d}).")
 
 def export_server(server_name):
@@ -1351,7 +1367,7 @@ def _import_unpacked(staging, root):
         open_server_firewall(svc_name, edition, mc_dir)
         ensure_minecraft_user(mc_dir)
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
-        _write_unit(svc_name, mc_dir, edition, **({"java": java} if java else {}))
+        _write_unit(svc_name, mc_dir, edition, **({"java": java} if java else {}), jvm={})
         run_and_log(["systemctl", "enable", f"{svc_name}.service"])
         run_and_log(["systemctl", "start", f"{svc_name}.service"])
         return svc_name
@@ -1368,7 +1384,7 @@ def _reserve_exact(name):
         _busy.add(name)
         return True
 
-def import_transferred(root, edition, prefer_name=None, heap=None, java=None, start=True, on_placed=None):
+def import_transferred(root, edition, prefer_name=None, heap=None, java=None, start=True, on_placed=None, jvm=None):
     """A server folder moved or copied from another cluster member (1.16), unpacked at root.
     Keeps prefer_name and the server's ports when they're free here, else picks others.
     on_placed(name) is called once the folder is in place, so a failure after it can be undone.
@@ -1399,7 +1415,7 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
         open_server_firewall(name, edition, mc_dir)
         ensure_minecraft_user(mc_dir)
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
-        _write_unit(name, mc_dir, edition, **heap, **({"java": java} if java else {}))
+        _write_unit(name, mc_dir, edition, **heap, **({"java": java} if java else {}), jvm=jvm or {})
         run_and_log(["systemctl", "enable", f"{name}.service"])
         if start:
             run_and_log(["systemctl", "start", f"{name}.service"])
@@ -1418,9 +1434,116 @@ def discard_server(name):
     if SERVICE_NAME_RE.match(name or "") and os.path.dirname(d) == os.path.realpath(SERVERS_ROOT) and os.path.isdir(d):
         run_and_log(["rm", "-rf", d])
 
-def deploy_server(edition, template_id=None, loader="vanilla", version=None):
+def _reserve_chosen(edition, name=None, port=None):
+    """Advanced options (1.17.2): hold the chosen name and/or game port, picking the other as
+    usual. Raises ServerError when the name or port is taken."""
+    if name and not _reserve_exact(name):
+        raise ServerError(f"There's already a server or folder called {name} on this machine.")
+    if not name:
+        name, auto_port = _reserve_name(edition)
+    else:
+        auto_port = None
+    try:
+        if port is None:
+            if auto_port is None:                     # chosen name, automatic port
+                port = 25565 if edition == "java" else 19132
+                used = _used_ports()
+                while ({port, port + 1} if edition == "bedrock" else {port}) & used:
+                    port += 1 if edition == "java" else 2
+            else:
+                port = auto_port
+        else:
+            needed = {port, port + 1} if edition == "bedrock" else {port}
+            clash = needed & _used_ports()
+            if clash:
+                raise ServerError(f"Port {min(clash)} is already used by another server on this machine.")
+            if edition == "java" and not _port_bindable(port):
+                raise ServerError(f"Something else on this machine is already listening on port {port}.")
+        return name, port
+    except Exception:
+        _release_name(name)
+        raise
+
+def _heap_fits(xmx):
+    """Refuses a heap that leaves too little for the system: 1 GB, or 768 MB on a machine with
+    3 GB or less (as 1.17's Memory does)."""
+    from core import deployopts
+    try:
+        with open("/proc/meminfo") as f:
+            total = int(re.search(r"^MemTotal:\s+([0-9]+) kB", f.read(), re.M).group(1)) * 1024
+    except (OSError, AttributeError, ValueError):
+        return
+    reserve = 768 * 1024 ** 2 if total <= 3 * 1024 ** 3 else 1024 ** 3
+    if deployopts.heap_bytes(xmx) > total - reserve:
+        room = max(0, (total - reserve) // 1024 ** 2)
+        raise ServerError(f"A {xmx} heap leaves too little memory for the system on this machine "
+                          f"(at most {room} MB here).")
+
+def _apply_advanced_settings(svc_name, mc_dir, edition, plan, minecraft=None):
+    """Writes the World and Settings choices before the first start, and fills the whitelist
+    and ops list. Player names that can't be looked up are skipped with a log line."""
+    from core import deployopts
+    props = dict(plan.get("properties") or {})
+    if plan.get("level_type"):
+        props["level-type"] = deployopts.level_type_value(plan["level_type"], edition, minecraft)
+    for k in ("gamemode", "difficulty"):
+        if plan.get(k):
+            props[k] = deployopts.mode_value(k, plan[k], edition, minecraft)
+    if props:
+        write_properties(mc_dir, props)
+    if plan.get("whitelist_players"):
+        from core import whitelist
+        for player in plan["whitelist_players"]:
+            try:
+                whitelist.add(svc_name, player)
+            except whitelist.WhitelistError as e:
+                write_log(f"[WARNING] {svc_name}: {e}")
+    if plan.get("ops") and edition == "java":
+        offline = str(props.get("online-mode", "true")).lower() == "false"
+        from core import whitelist
+        ops = [e for e in _load_json_list(os.path.join(mc_dir, "ops.json")) if isinstance(e, dict)]
+        for player in plan["ops"]:
+            if any(str(e.get("name", "")).lower() == player.lower() for e in ops):
+                continue
+            pid = whitelist.offline_uuid(player) if offline else get_java_uuid(player)
+            if not pid:
+                write_log(f"[WARNING] {svc_name}: couldn't find the UUID for {player}; not made an operator.")
+                continue
+            ops.append({"uuid": pid, "name": player, "level": 4, "bypassesPlayerLimit": False})
+        with open(os.path.join(mc_dir, "ops.json"), "w") as f:
+            json.dump(ops, f, indent=2)
+
+def _flags_of(server):
+    from core import deployopts
+    return deployopts.get_flags(server)
+
+def set_server_flags(server_name, flags, actor="admin"):
+    """Startup flags of an existing Java server (Maintenance): rewrites its unit with the same
+    Java and heap, and restarts it if it's running."""
+    from core import deployopts
+    _check_server(server_name)
+    if not _is_java(server_name):
+        raise ServerError(f"{server_name} isn't a Java server.")
+    try:
+        flags = deployopts.clean_flags(flags)
+    except deployopts.OptionError as e:
+        raise ServerError(str(e))
+    exec_start = _unit_exec_start(server_name)
+    _write_unit(server_name, get_server_dir(server_name), "java", java=unit_java(exec_start) or "/usr/bin/java",
+                **unit_heap(exec_start), jvm=flags)
+    write_log(f"[JAVA] {actor} set {server_name}'s startup flags: {deployopts.describe_flags(flags) or 'none'}.")
+    active = subprocess.run(["systemctl", "is-active", f"{server_name}.service"], capture_output=True,
+                            text=True).stdout.strip() == "active"
+    if active:
+        run_and_log(["systemctl", "restart", f"{server_name}.service"])
+    return {"restarted": active, "flags": deployopts.get_flags(server_name)}
+
+def deploy_server(edition, template_id=None, loader="vanilla", version=None, advanced=None,
+                  is_admin=True, actor=None):
     """A new server. Java: loader is vanilla, paper or fabric and version a Minecraft release
-    (default: the newest the loader offers)."""
+    (default: the newest the loader offers). advanced: New server's Advanced options (1.17.2),
+    checked by core/deployopts.py before anything is downloaded. Returns the server's name."""
+    from core import deployopts
     edition = edition.lower()
     if edition not in ("java", "bedrock"):
         raise TemplateError(f"Unknown edition '{edition}'.")
@@ -1429,14 +1552,26 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
         raise ServerError(f"Unknown server type '{loader}'.")
     if edition == "bedrock" and (loader != "vanilla" or version):
         raise ServerError("Bedrock servers are always the newest official release.")
+    try:
+        plan = deployopts.validate(advanced, edition, loader, is_admin=is_admin)
+    except deployopts.OptionError as e:
+        raise ServerError(str(e))
+    if plan.get("build") and loader == "paper" and not version:
+        raise ServerError("Choose the Minecraft version a Paper build belongs to.")
+    if version and not plan.get("snapshot") and not javaservers.is_release(version):
+        raise ServerError("Choose a Minecraft release such as 1.21.4, or allow snapshots.")
+    if plan.get("heap"):
+        _heap_fits(plan["heap"])
     if template_id:
         get_checked_template(template_id, edition)   # fail before downloading anything
     if edition == "bedrock":
         require_bedrock_machine()
         require_tools("screen")
-    proto = "tcp" if edition == "java" else "udp"
 
-    svc_name, port = _reserve_name(edition)       # auto-allocated name and port
+    if plan.get("name") or plan.get("port"):
+        svc_name, port = _reserve_chosen(edition, plan.get("name"), plan.get("port"))
+    else:
+        svc_name, port = _reserve_name(edition)       # auto-allocated name and port
     try:
         mc_dir = os.path.join(SERVERS_ROOT, svc_name)
 
@@ -1446,9 +1581,11 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
 
         # Download & Extract Binary
         java = None
+        info = None
         if edition == "java":
             try:
-                _, java = _install_java(mc_dir, loader, version)
+                info, java = _install_java(mc_dir, loader, version, build=plan.get("build"),
+                                           snapshot=plan.get("snapshot", False), java_major=plan.get("java"))
             except (DependencyError, ServerError):
                 shutil.rmtree(mc_dir, ignore_errors=True)    # nothing useful in it yet
                 raise
@@ -1471,10 +1608,23 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
             write_screenrc(mc_dir)
 
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
-        _write_unit(svc_name, mc_dir, edition, **({"java": java} if java else {}))
+        heap = {}
+        if plan.get("heap"):
+            # Java starts with half the heap (at least 512 MB) and grows to it; Aikar's flags
+            # want both the same, which _write_unit does for them.
+            half = max(512, deployopts.heap_bytes(plan["heap"]) // 1024 ** 2 // 2)
+            heap = {"xms": f"{half}M" if half % 1024 else f"{half // 1024}G", "xmx": plan["heap"]}
+        _write_unit(svc_name, mc_dir, edition, **heap, **({"java": java} if java else {}),
+                    jvm=plan.get("flags") or {})
         if template_id:
             # After daemon-reload, so systemd already knows the new unit's working directory
             apply_template_to_server(svc_name, template_id, edition=edition)
+        if plan:
+            # After the template: what was chosen here wins over the template's values
+            _apply_advanced_settings(svc_name, mc_dir, edition, plan, (info or {}).get("minecraft"))
+            run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+            write_log(f"[DEPLOY] {actor + ' created ' if actor else 'Created '}{svc_name} with advanced options: "
+                      f"{deployopts.summary(plan) or 'name only'}.")
         # The ports it needs, from what server.properties says now (a template may set the transport)
         open_server_firewall(svc_name, edition, mc_dir)
         run_and_log(["systemctl", "enable", f"{svc_name}.service"])

@@ -1418,7 +1418,7 @@ const ServerApp = {
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="block text-sm text-gray-400 mb-1">Server Type</label>
-                            <select id="deploy-loader" onchange="ServerApp.loadDeployVersions()" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
+                            <select id="deploy-loader" onchange="ServerApp.loadDeployVersions(); ServerApp.refreshAdvanced()" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                                 <option value="vanilla">Vanilla (Mojang)</option>
                                 <option value="paper">Paper (plugins)</option>
                                 <option value="fabric">Fabric (mods)</option>
@@ -1426,7 +1426,7 @@ const ServerApp = {
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-1">Minecraft Version</label>
-                            <select id="deploy-version" onchange="ServerApp.showJavaRequirement(this.value || this.dataset.newest, 'deploy-java-note')" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
+                            <select id="deploy-version" onchange="ServerApp.showJavaRequirement(this.value || this.dataset.newest, 'deploy-java-note'); ServerApp.loadAdvancedBuilds()" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                                 <option value="">Loading…</option>
                             </select>
                         </div>
@@ -1435,10 +1435,12 @@ const ServerApp = {
                 </div>
                 
                 <label class="block text-sm text-gray-400 mb-1">Base Template (Optional)</label>
-                <select id="deploy-template" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
+                <select id="deploy-template" onchange="ServerApp.advancedTemplateHints()" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                     ${templateOptions}
                 </select>
-                
+
+                ${this.advancedOptionsHtml()}
+
                 <button onclick="ServerApp.executeDeploy()" class="mt-2 w-full bg-green-600 hover:bg-green-700 py-2 rounded text-white font-bold transition">Deploy Fresh Server</button>
             </div>
             <hr class="border-gray-200 dark:border-gray-700 my-4" />
@@ -1459,7 +1461,196 @@ const ServerApp = {
         modal.classList.remove('hidden');
         this.showBedrockChoice();
         this.loadDeployVersions();
+        this.refreshAdvanced();
         if (this.deployNode) this.loadRemovedServers();
+    },
+
+    // --- New server's Advanced options (1.17.2): everything optional, checked again by the panel ---
+    advancedOptionsHtml() {
+        const input = 'w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white';
+        const label = 'block text-sm text-gray-400 mb-1';
+        const head = 'text-sm font-bold text-gray-700 dark:text-gray-200 mt-3 mb-1';
+        const heaps = ['1G', '2G', '3G', '4G', '6G', '8G', '10G', '12G', '16G', '24G', '32G'];
+        return `<details id="deploy-advanced" class="mb-2 border border-gray-200 dark:border-gray-700 rounded p-2">
+            <summary class="cursor-pointer text-sm font-bold text-theme py-1">Advanced options</summary>
+            <p id="adv-node-note" class="text-xs text-yellow-600 dark:text-yellow-400 mt-1 hidden"></p>
+            <div id="adv-fields">
+            <p class="text-xs text-gray-500 mt-1">All optional. Left empty, each one is decided as without Advanced options.</p>
+
+            <h4 class="${head}">Server</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div><label class="${label}" for="adv-name">Name</label>
+                    <div class="flex items-center gap-1"><span class="text-sm text-gray-500">minecraft-</span>
+                    <input id="adv-name" type="text" maxlength="30" autocapitalize="none" spellcheck="false" placeholder="automatic" class="${input}"></div></div>
+                <div><label class="${label}" for="adv-port">Game port</label>
+                    <input id="adv-port" type="number" min="1024" max="65535" inputmode="numeric" placeholder="automatic" class="${input}"></div>
+            </div>
+
+            <div id="adv-java-groups">
+            <h4 class="${head}">Software</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div id="adv-build-wrap"><label class="${label}" for="adv-build">Build</label>
+                    <select id="adv-build" class="${input}"><option value="">Latest stable</option></select></div>
+                <div><label class="${label}" for="adv-java">Java</label>
+                    <select id="adv-java" class="${input}"><option value="">Automatic</option></select></div>
+            </div>
+            <label id="adv-snapshot-wrap" class="flex items-center gap-2 text-sm mt-2"><input id="adv-snapshot" type="checkbox" onchange="ServerApp.loadDeployVersions()"> Show snapshots and pre-releases (Vanilla)</label>
+
+            <h4 class="${head}">Memory</h4>
+            <div><label class="${label}" for="adv-heap">Heap (Java's memory)</label>
+                <select id="adv-heap" class="${input}"><option value="">Automatic (2 GB, or 1 GB on small machines)</option>
+                ${heaps.map(h => `<option value="${h}">${h.replace('G', ' GB')}</option>`).join('')}</select>
+                <p class="text-xs text-gray-500 mt-1">Refused if it leaves less than 1 GB for the system. Java also needs some memory outside the heap.</p></div>
+
+            <h4 class="${head}">Startup flags</h4>
+            <div><select id="adv-flags" class="${input}" aria-label="Startup flags preset">
+                    <option value="none">None (Java's defaults)</option>
+                    <option value="aikar">Aikar's flags (recommended for Paper)</option></select>
+                ${this.isAdmin() ? `<label class="${label} mt-2" for="adv-flags-extra">Extra flags (admins)</label>
+                <input id="adv-flags-extra" type="text" autocapitalize="none" spellcheck="false" placeholder="-XX:+UseZGC -Dfile.encoding=UTF-8" class="${input}">
+                <p class="text-xs text-gray-500 mt-1">Only -XX: options, -D properties and -Xss. Set memory with Heap.</p>` : ''}</div>
+            </div>
+
+            <h4 class="${head}">World</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div><label class="${label}" for="adv-seed">Seed</label>
+                    <input id="adv-seed" type="text" maxlength="64" placeholder="random" class="${input}"></div>
+                <div><label class="${label}" for="adv-level-type">World type</label>
+                    <select id="adv-level-type" class="${input}"></select></div>
+                <div class="sm:col-span-2"><label class="${label}" for="adv-level-name">World folder name</label>
+                    <input id="adv-level-name" type="text" maxlength="32" placeholder="world" class="${input}"></div>
+            </div>
+
+            <h4 class="${head}">Settings</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div class="sm:col-span-2"><label class="${label}" for="adv-motd">Server message (MOTD)</label>
+                    <input id="adv-motd" type="text" maxlength="120" class="${input}"></div>
+                <div><label class="${label}" for="adv-gamemode">Game mode</label>
+                    <select id="adv-gamemode" class="${input}"><option value="">Default (survival)</option>
+                    <option value="survival">Survival</option><option value="creative">Creative</option>
+                    <option value="adventure">Adventure</option><option value="spectator" class="adv-java-only">Spectator</option></select></div>
+                <div><label class="${label}" for="adv-difficulty">Difficulty</label>
+                    <select id="adv-difficulty" class="${input}"><option value="">Default</option>
+                    <option value="peaceful">Peaceful</option><option value="easy">Easy</option>
+                    <option value="normal">Normal</option><option value="hard">Hard</option></select></div>
+                <div><label class="${label}" for="adv-max-players">Max players</label>
+                    <input id="adv-max-players" type="number" min="1" max="1000" inputmode="numeric" class="${input}"></div>
+                <div><label class="${label}" for="adv-online">Online mode</label>
+                    <select id="adv-online" class="${input}"><option value="">Default (on)</option>
+                    <option value="true">On: players sign in with their account</option>
+                    <option value="false">Off: anyone can use any name</option></select></div>
+                <div class="sm:col-span-2"><label class="${label}" for="adv-whitelist"><span id="adv-whitelist-label">Whitelist</span>: players allowed to join</label>
+                    <input id="adv-whitelist" type="text" autocapitalize="none" spellcheck="false" placeholder="Names separated by spaces; empty = anyone" class="${input}"></div>
+                <div class="sm:col-span-2 adv-java-only"><label class="${label}" for="adv-ops">Operators</label>
+                    <input id="adv-ops" type="text" autocapitalize="none" spellcheck="false" placeholder="Names separated by spaces" class="${input}"></div>
+            </div>
+            </div>
+        </details>`;
+    },
+
+    // Shows what fits the chosen edition, type and machine; called whenever one of them changes
+    async refreshAdvanced() {
+        if (!document.getElementById('deploy-advanced')) return;
+        const edition = document.getElementById('deploy-edition').value;
+        const java = edition === 'java';
+        const loader = java ? document.getElementById('deploy-loader').value : '';
+        document.getElementById('adv-java-groups').classList.toggle('hidden', !java);
+        document.querySelectorAll('#deploy-advanced .adv-java-only').forEach(e => e.classList.toggle('hidden', !java));
+        document.getElementById('adv-whitelist-label').innerText = java ? 'Whitelist' : 'Allowlist';
+        document.getElementById('adv-snapshot-wrap').classList.toggle('hidden', loader !== 'vanilla');
+        if (loader !== 'vanilla') document.getElementById('adv-snapshot').checked = false;
+        document.getElementById('adv-build-wrap').classList.toggle('hidden', !['paper', 'fabric'].includes(loader));
+        const types = java ? [['default', 'Default'], ['flat', 'Flat'], ['large_biomes', 'Large biomes'], ['amplified', 'Amplified']]
+                           : [['default', 'Default'], ['flat', 'Flat']];
+        const lt = document.getElementById('adv-level-type');
+        const keep = lt.value;
+        lt.innerHTML = types.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+        if (types.some(([v]) => v === keep)) lt.value = keep;
+        // An older node would ignore the options it doesn't know, so they're only offered when it can use them
+        const node = this.deployNode && this.clusterNodes.find(n => n.id === this.deployNode);
+        const old = node && (node.cluster_api || 1) < 6;
+        const note = document.getElementById('adv-node-note');
+        note.classList.toggle('hidden', !old);
+        note.innerText = old ? `Update RedstonePanel on ${node.name} to use Advanced options there.` : '';
+        document.getElementById('adv-fields').classList.toggle('hidden', !!old);
+        this.advancedTemplateHints();
+        if (java) { this.loadAdvancedBuilds(); this.loadAdvancedJavas(); }
+    },
+
+    // A template's own values show as hints, since the template is applied first and these win
+    advancedTemplateHints() {
+        const id = document.getElementById('deploy-template')?.value;
+        const t = id && (this.templates || []).find(x => String(x.id) === String(id));
+        const p = (t && t.properties) || {};
+        const hint = (field, value, fallback) => {
+            const el = document.getElementById(field);
+            if (el) el.placeholder = value !== undefined && value !== '' ? `${value} (from the template)` : fallback;
+        };
+        hint('adv-seed', p['level-seed'], 'random');
+        hint('adv-level-name', p['level-name'], 'world');
+        hint('adv-motd', p['motd'] ?? p['server-name'], '');
+        hint('adv-max-players', p['max-players'], '');
+    },
+
+    async loadAdvancedBuilds() {
+        const loader = document.getElementById('deploy-loader')?.value;
+        const select = document.getElementById('adv-build');
+        if (!select || !['paper', 'fabric'].includes(loader)) return;
+        const version = document.getElementById('deploy-version').value || document.getElementById('deploy-version').dataset.newest;
+        const key = `${loader}|${loader === 'paper' ? version : ''}`;
+        if (select.dataset.key === key) return;
+        select.dataset.key = key;
+        select.innerHTML = '<option value="">Latest stable</option>';
+        if (!version && loader === 'paper') return;
+        try {
+            const res = await fetch(`/api/java/builds?loader=${encodeURIComponent(loader)}&version=${encodeURIComponent(version || '')}`);
+            if (!res.ok || select.dataset.key !== key) return;
+            const esc = t => this.escapeHtml(String(t));
+            select.innerHTML += (await res.json()).builds.slice(0, 60)
+                .map(b => `<option value="${esc(b.build)}">${esc(loader === 'fabric' ? 'Loader ' + b.label : b.label)}</option>`).join('');
+        } catch (e) { /* the latest stable build still works */ }
+    },
+
+    async loadAdvancedJavas() {
+        const select = document.getElementById('adv-java');
+        if (!select) return;
+        const node = this.deployNode;
+        const res = await api('/api/java/runtimes', { node });
+        if (!res.ok || this.deployNode !== node) return;
+        const keep = select.value;
+        const esc = t => this.escapeHtml(String(t));
+        const majors = (await res.json()).installed.map(j => j.major).sort((a, b) => a - b);
+        select.innerHTML = '<option value="">Automatic (the version it needs)</option>'
+            + majors.map(m => `<option value="${m}">Java ${esc(m)}</option>`).join('');
+        if (majors.map(String).includes(keep)) select.value = keep;
+    },
+
+    // The advanced object for /api/servers/deploy: only what was filled in
+    advancedPayload(edition) {
+        if (!document.getElementById('deploy-advanced') || document.getElementById('adv-fields').classList.contains('hidden')) return null;
+        const v = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+        const a = {};
+        if (v('adv-name')) a.name = v('adv-name');
+        if (v('adv-port')) a.port = +v('adv-port');
+        if (edition === 'java') {
+            if (v('adv-build') && !document.getElementById('adv-build-wrap').classList.contains('hidden')) a.build = v('adv-build');
+            if (document.getElementById('adv-snapshot').checked) a.snapshot = true;
+            if (v('adv-java')) a.java = +v('adv-java');
+            if (v('adv-heap')) a.heap = v('adv-heap');
+            const extra = v('adv-flags-extra').split(/\s+/).filter(Boolean);
+            if (v('adv-flags') !== 'none' || extra.length) a.flags = { preset: v('adv-flags'), extra };
+            if (v('adv-ops')) a.ops = v('adv-ops');
+        }
+        if (v('adv-seed')) a.seed = v('adv-seed');
+        if (v('adv-level-type') && v('adv-level-type') !== 'default') a.level_type = v('adv-level-type');
+        if (v('adv-level-name')) a.level_name = v('adv-level-name');
+        if (v('adv-motd')) a.motd = v('adv-motd');
+        if (v('adv-gamemode')) a.gamemode = v('adv-gamemode');
+        if (v('adv-difficulty')) a.difficulty = v('adv-difficulty');
+        if (v('adv-max-players')) a.max_players = +v('adv-max-players');
+        if (v('adv-online')) a.online_mode = v('adv-online') === 'true';
+        if (v('adv-whitelist')) { a.whitelist = true; a.whitelist_players = v('adv-whitelist'); }
+        return Object.keys(a).length ? a : null;
     },
 
     // Mojang only makes Bedrock Dedicated Server for x86-64: an ARM64 machine (a Raspberry Pi)
@@ -1493,6 +1684,7 @@ const ServerApp = {
     onDeployWhereChange(node) {
         this.deployNode = node || null;
         this.showBedrockChoice();
+        this.refreshAdvanced();
         const version = document.getElementById('deploy-version');
         if (version) this.showJavaRequirement(version.value || version.dataset.newest, 'deploy-java-note');
         this.loadRemovedServers();
@@ -1501,6 +1693,7 @@ const ServerApp = {
     onDeployEditionChange(edition) {
         document.getElementById('deploy-template').innerHTML = this.templateOptionsHtml(edition, 'None (Standard Defaults)');
         document.getElementById('deploy-java-options').classList.toggle('hidden', edition !== 'java');
+        this.refreshAdvanced();
     },
 
     // --- Java server software: loader, Minecraft version, and the Java it needs ---
@@ -1525,10 +1718,19 @@ const ServerApp = {
             const versions = await this.fetchJavaVersions(loader);
             if (document.getElementById('deploy-loader').value !== loader) return;   // changed meanwhile
             const esc = t => this.escapeHtml(String(t));
+            // Advanced options: Vanilla snapshots and pre-releases of the current cycle, listed first
+            let snapshots = [];
+            if (loader === 'vanilla' && document.getElementById('adv-snapshot')?.checked) {
+                const r = await fetch('/api/java/snapshots');
+                if (r.ok) snapshots = (await r.json()).versions;
+            }
             select.dataset.newest = versions[0] || '';
-            select.innerHTML = `<option value="">Newest (${esc(versions[0] || '?')})</option>`
-                + versions.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+            select.innerHTML = `<option value="">Newest release (${esc(versions[0] || '?')})</option>`
+                + (snapshots.length ? `<optgroup label="Snapshots and pre-releases">${snapshots.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}</optgroup><optgroup label="Releases">` : '')
+                + versions.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')
+                + (snapshots.length ? '</optgroup>' : '');
             if (versions[0]) this.showJavaRequirement(versions[0], 'deploy-java-note');
+            this.loadAdvancedBuilds();
         } catch (e) {
             select.innerHTML = '<option value="">Newest</option>';
             note.className = 'text-xs text-red-400 mb-2';
@@ -2119,7 +2321,43 @@ const ServerApp = {
                 <p class="text-xs mt-1 text-gray-500 dark:text-gray-400">Only Java ${esc(need || '')} and newer are listed. A running server restarts.</p>`;
             }
         }
+        html += this.flagsHtml(srv);
         body.innerHTML = html;
+    },
+
+    // Maintenance → Java: the startup flags (1.17.2), the same choice as New server's Advanced options
+    flagsHtml(srv) {
+        if (!srv || !('jvm_flags' in srv)) return '';      // a node older than 1.17.2
+        const esc = t => this.escapeHtml(String(t));
+        const f = srv.jvm_flags || { preset: 'none', extra: [] };
+        const input = 'w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-sm text-gray-900 dark:text-white';
+        return `<div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+            <p class="text-sm font-bold text-gray-700 dark:text-gray-200">Startup flags</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                <select id="flags-preset" class="${input}" aria-label="Startup flags preset">
+                    <option value="none" ${f.preset !== 'aikar' ? 'selected' : ''}>None (Java's defaults)</option>
+                    <option value="aikar" ${f.preset === 'aikar' ? 'selected' : ''}>Aikar's flags (recommended for Paper)</option>
+                </select>
+                <input id="flags-extra" type="text" autocapitalize="none" spellcheck="false" value="${esc((f.extra || []).join(' '))}"
+                    placeholder="Extra flags, e.g. -XX:+UseZGC" aria-label="Extra startup flags" class="${input}">
+            </div>
+            <div class="mt-2 flex items-center gap-2"><button onclick="ServerApp.saveFlags()" class="bg-theme hover-bg-theme text-white px-3 py-1 rounded font-bold text-sm">Save flags</button>
+            <span class="text-xs text-gray-500 dark:text-gray-400">Only -XX: options, -D properties and -Xss. A running server restarts.</span></div>
+        </div>`;
+    },
+
+    async saveFlags() {
+        const srv = this.activeServer;
+        if (!srv) return;
+        const preset = document.getElementById('flags-preset').value;
+        const extra = document.getElementById('flags-extra').value.trim().split(/\s+/).filter(Boolean);
+        if (srv.status === 'online' && !confirm(`Save ${srv.name}'s startup flags? It restarts now.`)) return;
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/jvm-flags`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preset, extra })
+        });
+        if (!res.ok) return alert(`Flags not saved: ${await this.apiError(res)}`);
+        await this.loadServers();
+        this.switchTab('maintenance');
     },
 
     async useJava(major) {
@@ -3998,6 +4236,8 @@ const ServerApp = {
             const version = document.getElementById('deploy-version').value;
             if (version) payload.version = version;
         }
+        const advanced = this.advancedPayload(edition);
+        if (advanced) payload.advanced = advanced;
         const node = this.deployNode;
         if (node && tempId && !await this.pushTemplate(node, tempId)) return;
         document.getElementById('modal-overlay').classList.add('hidden');

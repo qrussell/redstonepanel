@@ -724,9 +724,25 @@ def java_versions(loader: str = "vanilla"):
         raise HTTPException(status_code=502 if "reach" in str(e) or "HTTP" in str(e) else 400, detail=str(e))
     return {"loader": loader, "versions": versions[:150], "loaders": javaservers.LOADERS}
 
+@app.get("/api/java/snapshots")
+def java_snapshots():
+    """Vanilla snapshots and pre-releases of the current development cycle (Advanced options)."""
+    try:
+        return {"versions": javaservers.list_snapshots()}
+    except javaservers.JavaServerError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+@app.get("/api/java/builds")
+def java_builds(loader: str, version: str = ""):
+    """Paper builds of a version, or Fabric loader versions, to pin one (Advanced options)."""
+    try:
+        return {"loader": loader, "builds": javaservers.list_builds(loader, version)}
+    except javaservers.JavaServerError as e:
+        raise HTTPException(status_code=502 if "reach" in str(e) or "HTTP" in str(e) else 400, detail=str(e))
+
 @app.get("/api/java/requirement")
 def java_requirement(version: str):
-    if not javaservers.RELEASE_RE.match(version or ""):
+    if not javaservers.SNAPSHOT_RE.match(version or ""):
         raise HTTPException(status_code=400, detail="Choose a Minecraft release such as 1.21.4.")
     try:
         return javaservers.requirement(version)
@@ -774,6 +790,20 @@ def remove_java_runtime(request: Request, req: JavaChoice):
 @app.post("/api/servers/{server_name}/java")
 def choose_server_java(request: Request, server_name: str, req: JavaChoice):
     return _runtime_call(request, runtimes.use, server_name, req.major, actor=request.state.user["username"])
+
+class JvmFlags(BaseModel):
+    preset: str = "none"
+    extra: list[str] = []
+
+@app.post("/api/servers/{server_name}/jvm-flags")
+def set_jvm_flags(request: Request, server_name: str, req: JvmFlags):
+    """Startup flags (Aikar's, or extra -XX/-D/-Xss flags) of a Java server, admins only (1.17.2)."""
+    _require_admin(request, "change startup flags")
+    try:
+        return manager.set_server_flags(server_name, {"preset": req.preset, "extra": req.extra},
+                                        actor=request.state.user["username"])
+    except manager.ServerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # Phantom LAN proxies for Bedrock servers (admins): see core/phantom.py
 class PhantomUnit(BaseModel):
@@ -1327,15 +1357,17 @@ def get_logs():
 
 # Update the deploy endpoint to log its output
 @app.post("/api/servers/deploy")
-def deploy_server(req: ServerDeployRequest):
+def deploy_server(request: Request, req: ServerDeployRequest):
     # This executes the native python deployment and logs output to the web console
+    user = request.state.user
     try:
-        manager.deploy_server(req.edition, req.template_id, req.loader, req.version)
+        name = manager.deploy_server(req.edition, req.template_id, req.loader, req.version, advanced=req.advanced,
+                                     is_admin=user.get("role") == "admin", actor=user.get("username"))
     except manager.JavaMissing:
         raise                                    # 409, see java_missing() below
     except (manager.TemplateError, manager.DependencyError, manager.ServerError) as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"status": "success"}
+    return {"status": "success", "name": name}
 
 def _send_and_clean(zip_path, filename):
     """Sends a temp zip and deletes its temp folder once the download is done."""
