@@ -4,6 +4,12 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.16.4 (2026-11-21)
+
+Release notes: release-notes/v1.16.4.md
+
+- New Bedrock servers keep the full server.properties that comes with the Bedrock download; only the ports are set. Before, every setting except server-port, server-portv6 and query.port was dropped, so Configuration showed almost nothing to edit.
+
 ## 1.16.3 (2026-11-21)
 
 Release notes: release-notes/v1.16.3.md

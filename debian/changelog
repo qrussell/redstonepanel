@@ -1,3 +1,12 @@
+redstonepanel (1.16.4) noble; urgency=medium
+
+  * New Bedrock servers keep the full server.properties that comes with
+    the Bedrock download; only the ports are set. Before, every setting
+    except server-port, server-portv6 and query.port was dropped, so
+    Configuration showed almost nothing to edit.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 03:00:00 +0000
+
 redstonepanel (1.16.3) noble; urgency=medium
 
   * Server list: every heading folds with a click (this machine's Java
