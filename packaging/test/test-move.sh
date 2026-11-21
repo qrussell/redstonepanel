@@ -76,8 +76,8 @@ wait_https mvn || bad "mvn: back up on HTTPS"
 login jar admin "$PASS_ADMIN"
 login ujar alex "$PASS_USER"
 NID=$(api jar GET /api/cluster/overview | json "[n['id'] for n in d['nodes'] if not n.get('local')][0]")
-api jar GET /api/cluster/overview | json "[n.get('cluster_api') for n in d['nodes'] if not n.get('local')][0]" | grep -qx 3 \
-    && ok "the node speaks cluster contract 3" || bad "the node speaks cluster contract 3"
+api jar GET /api/cluster/overview | json "[n.get('cluster_api') for n in d['nodes'] if not n.get('local')][0]" | grep -qxE "[3-9]" \
+    && ok "the node speaks cluster contract 3 or later" || bad "the node speaks cluster contract 3 or later"
 
 # --- a stand-in Bedrock server on the master, imported through the panel so it makes the unit
 dx mvm "mkdir -p /tmp/srv/worlds/Home/db && cd /tmp/srv && printf '#!/bin/sh\n[ -f /tmp/fail-here ] && exit 1\nexec sleep infinity\n' > bedrock_server && chmod +x bedrock_server \

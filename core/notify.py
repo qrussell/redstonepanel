@@ -30,10 +30,11 @@ EVENTS = {
     "restarted": "Scheduled restart",
     "backup_ok": "Backup finished",
     "backup_failed": "Backup failed",
+    "backup_copy_failed": "Backup copy to another member failed",
     "player_joined": "Player joined",
     "player_refused": "Player turned away",
 }
-DEFAULT_EVENTS = ["crashed", "backup_failed", "restarted"]
+DEFAULT_EVENTS = ["crashed", "backup_failed", "backup_copy_failed", "restarted"]
 # A server stuck in a crash loop restarts every 20 s; one message per event per server is enough
 QUIET_SECONDS = {"crashed": 300, "started": 60, "stopped": 60, "player_refused": 60}
 TIMEOUT = 5
