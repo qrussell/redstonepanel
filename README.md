@@ -194,6 +194,7 @@ The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as a
 | [User manual](docs/guide/README.md) | How to use every feature, step by step, with screenshots. |
 | [Installation](docs/wiki/Installation.md) | Requirements, the one-line installer, apt by hand, the `.deb`, upgrading and removing. |
 | [What's new](docs/wiki/Whats-New.md) | Every release's highlights, newest first. Full notes are in [release-notes/](release-notes). |
+| [Discord setup](docs/wiki/Discord.md) | A Discord for your community: a private space per Minecraft server, the panel's alerts, chat bridges and voice. |
 | [FAQ](docs/wiki/FAQ.md) | Is RedstonePanel right for you, and common questions. |
 | [Roadmap](docs/wiki/Roadmap.md) | What's planned next, and ideas under consideration. |
 | `man redstonepanel` | Every command-line option. |

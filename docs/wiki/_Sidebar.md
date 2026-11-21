@@ -3,6 +3,7 @@
 - [⬇️ Installation](Installation.md)
 - [📖 User Manual](../guide/README.md)
 - [✨ What's New](Whats-New.md)
+- [💬 Discord setup](Discord.md)
 - [❓ FAQ](FAQ.md)
 - [🛣️ Roadmap](Roadmap.md)
 

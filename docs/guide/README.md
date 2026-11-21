@@ -860,6 +860,9 @@ Get a message in Discord, or any service that takes a webhook, when something ha
      Turned-away messages are sent at most once a minute per server.
 3. Click **Save notifications**, then **Send a test**.
 
+Setting up a whole Discord for your community, with a private space per Minecraft server, is
+explained step by step on the [Discord setup](../wiki/Discord.md) page.
+
 By default only crashes, failed backups and scheduled restarts are sent. A server that keeps
 crashing sends one message every 5 minutes, not one per crash.
 

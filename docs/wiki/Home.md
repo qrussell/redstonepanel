@@ -2,7 +2,7 @@
 
 **RedstonePanel** is a free, self-hosted web panel for Minecraft **Java** and **Bedrock**
 servers on your own Ubuntu machine. Every game server is a plain systemd service; the panel
-installs and updates with `apt`. Current version: **1.15.0**.
+installs and updates with `apt`. Current version: **1.16.6**.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/hero.png"><img src="../guide/images/hero.png" alt="The RedstonePanel dashboard"></picture>
 
@@ -13,6 +13,7 @@ installs and updates with `apt`. Current version: **1.15.0**.
 | ⬇️ **[Installation](Installation.md)** | One command, or apt by hand, or a `.deb`. First steps after installing. |
 | 📖 **[User Manual](../guide/README.md)** | Every feature, step by step, with screenshots. |
 | ✨ **[What's New](Whats-New.md)** | The highlights of every release, newest first. |
+| 💬 **[Discord](Discord.md)** | Set up a Discord for your community: a private space per Minecraft server, the panel's alerts, chat bridges and voice. |
 | ❓ **[FAQ](FAQ.md)** | Is RedstonePanel right for you? Common questions and answers. |
 | 🛣️ **[Roadmap](Roadmap.md)** | What's coming next, and ideas being considered. |
 
