@@ -1,7 +1,7 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.16.1**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.16.4**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
 "Creative Lab" running a Fabric server with mods.
 
@@ -21,6 +21,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | …? | Where |
 | --- | --- |
 | Install or update the panel | [Install](#1-install) |
+| Run it on a Windows PC | [On Windows with WSL](#on-windows-with-wsl) |
 | Create a Java or Bedrock server | [Create or import a server](#4-create-or-import-a-server) |
 | Bring in a server I already have | [Import](#4-create-or-import-a-server) |
 | Talk to players or run a command | [Live Chat](#6-live-chat) |
@@ -38,9 +39,23 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Manage servers on several machines | [Clusters](#18-clusters) |
 | Fix "players can't connect" or a lock-out | [Troubleshooting](#20-troubleshooting) |
 
+**New in 1.16**
+
+| Version | What's new | Where |
+| --- | --- | --- |
+| 1.16.4 | New Bedrock servers keep every setting from the Bedrock download, so **Configuration** lists them all. | [Configuration](#7-configuration-player-roles-and-the-whitelist) |
+| 1.16.3 | Fold the server list by edition and by cluster node; a folded heading shows how many servers are online. | [The dashboard](#3-the-dashboard) |
+| 1.16.2 | **Kick**, **Ban** and **Unban** players, and a **Banned** list for Java servers. | [Kick, ban and unban](#7-configuration-player-roles-and-the-whitelist) |
+| 1.16.2 | The RedstonePanel logo, a stone-and-redstone theme with **Redstone Red** accents, and an icon for a phone's home screen. | [The dashboard](#3-the-dashboard), [Sign in](#2-sign-in) |
+| 1.16.1 | A setup guide on a new panel's dashboard: first server, backups, HTTPS and alerts. | [The dashboard](#3-the-dashboard) |
+| 1.16.0 | Move or copy a server to another machine of a cluster. | [Clusters](#18-clusters) |
+
+Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
+
 **Contents**
 
 1. [Install](#1-install)
+   - [On Windows with WSL](#on-windows-with-wsl)
 2. [Sign in](#2-sign-in)
 3. [The dashboard](#3-the-dashboard)
 4. [Create or import a server](#4-create-or-import-a-server)
@@ -106,6 +121,62 @@ check. From a terminal, `sudo redstonepanel upgrade` does the same, or use
 The panel then runs as the `redstonepanel` service on port **8080**. Open
 `http://<server>:8080/` in a browser.
 
+### On Windows with WSL
+
+RedstonePanel also runs in Ubuntu under WSL on Windows. Install **Ubuntu 24.04**
+(`wsl --install -d Ubuntu-24.04` in PowerShell), open it, and run the installer above inside
+it. Ubuntu under WSL starts systemd by default, which the panel and its game servers need. If
+`ps -p 1 -o comm=` doesn't print `systemd`, add `systemd=true` under `[boot]` in
+`/etc/wsl.conf` and run `wsl --shutdown` in PowerShell.
+
+The panel then opens in your Windows browser at `http://localhost:8080/`, and creating servers
+works as usual. Players on other PCs, though, can't reach them yet: by default WSL keeps Ubuntu
+behind its own private network. To let them in:
+
+1. **Turn on mirrored networking** (Windows 11 22H2 or newer). Put this in
+   `%UserProfile%\.wslconfig`, then run `wsl --shutdown`:
+
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+
+   Ubuntu then shares your PC's network address. Players connect to your **Windows PC's IP
+   address** (from `ipconfig`) and the port shown on the server's **Overview**.
+
+2. **Allow the game ports through the Hyper-V firewall** that sits in front of WSL. In an
+   admin PowerShell, for example for the first Bedrock server:
+
+   ```powershell
+   New-NetFirewallHyperVRule -Name "MinecraftTCP" -DisplayName "Minecraft TCP" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 19132
+   New-NetFirewallHyperVRule -Name "MinecraftUDP" -DisplayName "Minecraft UDP" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol UDP -LocalPorts 19140,7551
+   ```
+
+3. **Allow the same ports in Windows Defender Firewall**, and make sure Windows treats your
+   network as **Private**:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Minecraft TCP" -Direction Inbound -Protocol TCP -LocalPort 19132 -Action Allow
+   New-NetFirewallRule -DisplayName "Minecraft UDP" -Direction Inbound -Protocol UDP -LocalPort 19140,7551 -Action Allow
+   ```
+
+**Which ports?** A **Java** server needs TCP on its port (25565 for the first one). Current
+**Bedrock** servers use the NetherNet transport: TCP on their `server-port` (19132 for the
+first), UDP on their `server-udp-ports` (both in **Configuration**) and UDP 7551 for LAN
+discovery. Opening only UDP 19132, as older Bedrock guides say, isn't enough. Each new server
+gets its own ports, so add rules for those too. To open the panel from other PCs, allow TCP
+8080 (or 8443 with HTTPS) the same way. If `ufw` is active inside Ubuntu, the panel opens the
+game ports there as usual; the Windows firewalls still need their own rules.
+
+**Keep in mind:**
+
+- **WSL can stop Ubuntu when nothing on Windows is using it**, for example a while after you
+  close the last Ubuntu window, and it only starts after you sign in to Windows. Your game
+  servers stop with it. For servers that are always up, keep an Ubuntu window open, or use a
+  real Ubuntu machine or VM.
+- For players outside your home, forward the same ports on your router to your **Windows
+  PC's** IP address.
+
 ## 2. Sign in
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/sign-in.png"><img src="images/sign-in.png" alt="Sign-in page"></picture>
@@ -120,6 +191,10 @@ There are two kinds of account:
 
 Admins can turn sign-in off for devices on your home network; see
 [Panel Settings](#17-panel-settings-name-https-sign-in).
+
+**On a phone or tablet**, use the browser's **Add to Home Screen** (Safari's Share menu, or
+Chrome's ⋮ menu). The panel gets its own RedstonePanel icon and opens without the browser's
+address bar.
 
 ## 3. The dashboard
 
@@ -176,20 +251,20 @@ The sidebar on the left holds everything that isn't about one server:
 
 | Item | What it does |
 | --- | --- |
-| **RedstonePanel v1.15.0 / Survival Box** | The version, and the panel's name, so you can tell several panels apart. |
+| **RedstonePanel** logo, version and name | The redstone "R" logo, the panel's version (for example `v1.16.4`) and its name, such as **Survival Box**, so you can tell several panels apart. |
 | **➕ New Server** | Create a server, import one, or restore a removed one. |
 | **📊 Dashboard** | This machine's resources, services and what needs attention (above). |
 | **🌐 Cluster** | On a cluster master: every panel's servers (see [Clusters](#18-clusters)). |
 | **🖥️ Console** | The panel's live activity log. |
 | **📋 Templates** | Saved server settings to reuse. |
-| **⚙️** | Appearance: dark or light mode and the accent colour. Saved in your browser. |
+| **⚙️** | Appearance: **Color Mode** (dark or light) and **Accent Palette**: **Redstone Red** (the default), Diamond Blue, Emerald Green or Amethyst Purple. Saved in your browser. |
 | **Sort by** | Name A–Z, Z–A, or online servers first. |
 | Server list | Every server, grouped by edition: green dot = running, grey = stopped, with its version and port. Click one to open it. On a cluster master, each node's servers follow under the node's 🌐 name, grouped by edition the same way. Click a heading to fold it; a folded heading shows how many of its servers are online, and the panel remembers what you folded in this browser. |
 | **♻️ N removed servers: restore** | Shown when servers were uninstalled with **Keep World**. |
 | **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts). |
 
-On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top,
-with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
+On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
+(**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
 **Mods**, **Plugins** or **Add-ons**.
 
 ## 4. Create or import a server
@@ -227,6 +302,9 @@ The panel then:
   server launcher for the chosen version (always saved as `server.jar`), or the latest
   Bedrock Dedicated Server. Vanilla and Paper downloads are checked against their published
   checksums;
+- sets the server's ports in its `server.properties`. A Bedrock server keeps the full file
+  that comes with the Bedrock download, so every setting is there to change in
+  **Configuration**;
 - accepts the Minecraft EULA for you (`eula=true`), so by deploying a server you agree to it;
 - creates a systemd service that runs as the `minecraft` user and restarts the server if it
   crashes;
@@ -294,6 +372,14 @@ Click **Save Changes**, then **Restart** the server so it reads the new settings
 
 **Raw Text** is the same file as plain text, for pasting a whole configuration or editing
 settings the form doesn't know.
+
+**A Bedrock server that shows only its ports?** Bedrock servers created before 1.16.4 got a
+`server.properties` with only `server-port`, `server-portv6` and `query.port`. They run on
+Bedrock's built-in defaults, but the form has nothing else to show. Updating the server's
+Bedrock version doesn't replace that file. Either add the settings you want as lines in **Raw
+Text** (for example `difficulty=normal`), or stop the server, copy `server.properties` from a
+fresh Bedrock download into its folder with **Files**, set `server-port` and `server-portv6`
+back to the values it had, and start it again.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/configuration-raw.png"><img src="images/configuration-raw.png" alt="Raw server.properties"></picture>
 
@@ -934,7 +1020,9 @@ admins in the sidebar.
 - the port is open in the firewall (`sudo ufw status`): TCP for Java, UDP for Bedrock, and for a
   NetherNet Bedrock server TCP on its port plus UDP on `server-udp-ports` and 7551. The
   dashboard's **Needs attention** lists any that are missing, with the command to open them;
-- if players connect from the internet, your router forwards that port.
+- if players connect from the internet, your router forwards that port;
+- on Windows with WSL, mirrored networking is on and the ports are allowed in the Hyper-V and
+  Windows firewalls (see [On Windows with WSL](#on-windows-with-wsl)).
 
 **Live Chat says RCON isn't answering.** The server is probably still starting; wait a moment.
 Otherwise **Restart** it so it picks up its RCON settings.
