@@ -14,6 +14,9 @@
     redstonepanel removed             list game servers uninstalled with "Keep World"
     redstonepanel restore NAME        give a removed server a systemd service again and start it
     redstonepanel backup NAME         back up a game server now (its backup timer runs this too)
+    redstonepanel offsite-copy NAME   copy a game server's backups to its backup storage now
+                                      (SSH or S3, Panel Settings > Backup storage)
+    redstonepanel offsite-key         show this panel's SSH public key for backup storage
     redstonepanel restart-server NAME warn players, then restart a game server (its restart timer
                                       runs this)
     redstonepanel check-updates       look for newer server versions and update the Bedrock servers
@@ -133,6 +136,17 @@ def main():
     # Cluster masters: copy backups to the member chosen on each server's Backups tab (1.16.8)
     from core import backup_copies
     backup_copies.sweeper()
+    # Any panel: copy backups to SSH or S3 storage (1.16.11), retrying what's missing or failed
+    from core import backup_targets
+    backup_targets.sweeper()
+    # Once after upgrading to 1.16.11: open TCP server-port and UDP 7551 for Bedrock servers
+    # without a transport line (NetherNet by default), which only had UDP server-port
+    try:
+        manager.upgrade_bedrock_firewall()
+    except Exception as e:
+        manager.write_log(f"[FIREWALL] Bedrock firewall check failed: {e}")
+    # Follow server.properties edited outside the panel, and servers removed by hand (1.16.11)
+    manager.firewall_watcher()
     # The update check timer (1.16.12): written here so upgrading the package sets it up
     from core import updates
     updates.ensure_timer()
@@ -374,6 +388,38 @@ def backup_cmd(name):
         sys.exit(str(e))
     print(f"Saved {backups.server_backup_dir(name)}/{b['file']} ({b['size'] / 1048576:.1f} MB)"
           + ("" if b["consistent"] else "; copied while the server was writing (see the panel log)") + ".")
+    # 1.16.11: copies to backup storage run in their own unit, after this one has finished
+    from core import backup_targets
+    try:
+        if backup_targets.start_after_backup(name):
+            print("Copying it to backup storage (see the panel log).")
+    except Exception as e:
+        print(f"Couldn't start copying to backup storage: {e}", file=sys.stderr)
+
+
+def offsite_copy_cmd(name):
+    from core import backup_targets, backups
+    if not backups.NAME_RE.fullmatch(name):
+        sys.exit(f"'{name}' isn't a server name.")
+    if not backup_targets.targets_for(name):
+        sys.exit(f"No backup storage keeps copies of {name}. Add one in Panel Settings > Backup storage.")
+    failed = False
+    for tid, r in backup_targets.sync(name, force=True).items():
+        label = backup_targets.load()["targets"].get(tid, {}).get("name", tid)
+        if r.get("error"):
+            failed = True
+            print(f"{label}: {r['error']}")
+        else:
+            print(f"{label}: copied {len(r['copied'])}, deleted {len(r['deleted'])} old.")
+    sys.exit(1 if failed else 0)
+
+
+def offsite_key_cmd():
+    from core import backup_targets
+    try:
+        print(backup_targets.public_key())
+    except backup_targets.TargetError as e:
+        sys.exit(str(e))
 
 
 def restart_server_cmd(name):
@@ -463,6 +509,10 @@ if __name__ == "__main__":
         removed_cmd()
     elif cmd == "backup" and len(rest) == 1:
         backup_cmd(rest[0])
+    elif cmd == "offsite-copy" and len(rest) == 1:
+        offsite_copy_cmd(rest[0])
+    elif cmd == "offsite-key" and not rest:
+        offsite_key_cmd()
     elif cmd == "restart-server" and len(rest) == 1:
         restart_server_cmd(rest[0])
     elif cmd == "check-updates" and not rest:

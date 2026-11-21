@@ -30,7 +30,7 @@ EVENTS = {
     "restarted": "Scheduled restart",
     "backup_ok": "Backup finished",
     "backup_failed": "Backup failed",
-    "backup_copy_failed": "Backup copy to another member failed",
+    "backup_copy_failed": "Backup copy to another member or storage failed",
     "player_joined": "Player joined",
     "player_refused": "Player turned away",
     "update_available": "Update available",
