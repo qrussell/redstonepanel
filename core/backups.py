@@ -3,7 +3,8 @@
 Archives live outside the server folders, so uninstalling or purging a server never deletes
 them:
     /var/backups/redstonepanel/<server>/<server>-YYYYmmdd-HHMMSS-<kind>.tar.gz
-kind is "scheduled", "manual", "pre-restore" or "pre-change" (before a mod update). Only
+kind is "scheduled", "manual", "pre-restore", "pre-change" (before a mod update) or
+"pre-update" (before a Bedrock update; core/updates.py keeps the newest three). Only
 scheduled backups are pruned to the configured count; the others stay until someone deletes
 them.
 
@@ -40,9 +41,9 @@ SERVICE_TEMPLATE = "redstonepanel-backup@.service"
 
 # A server name is also a systemd instance name here, so no '@'
 NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.-]*$")
-KINDS = ("scheduled", "manual", "pre-restore", "pre-change")
+KINDS = ("scheduled", "manual", "pre-restore", "pre-change", "pre-update")
 FILE_RE = re.compile(r"^(?P<server>minecraft[A-Za-z0-9_.-]*)-(?P<stamp>\d{8}-\d{6})-"
-                     r"(?P<kind>scheduled|manual|pre-restore|pre-change)\.tar\.gz$")
+                     r"(?P<kind>scheduled|manual|pre-restore|pre-change|pre-update)\.tar\.gz$")
 
 # id -> (label, OnCalendar with {h} {m} {h6} {h12} filled in from the chosen time)
 FREQUENCIES = {
@@ -281,13 +282,13 @@ def run_backup(server, kind="manual"):
         msg = str(e) if isinstance(e, BackupError) else f"{type(e).__name__}: {e}"
         manager.write_log(f"[BACKUP] {kind.capitalize()} backup of {server} failed: {msg}")
         _write_status(server, {"at": int(started), "ok": False, "kind": kind, "error": msg})
-        if kind not in ("pre-restore", "pre-change"):
+        if kind not in ("pre-restore", "pre-change", "pre-update"):
             notify.send("backup_failed", server, f"{kind.capitalize()} backup of {server} failed: {msg}")
         raise
     _write_status(server, {"at": int(started), "ok": True, "kind": kind, "file": info["file"],
                            "size": info["size"], "consistent": info["consistent"],
                            "seconds": round(time.time() - started, 1)})
-    if kind not in ("pre-restore", "pre-change"):
+    if kind not in ("pre-restore", "pre-change", "pre-update"):
         notify.send("backup_ok", server, f"{kind.capitalize()} backup of {server} saved "
                     f"({info['size'] / 1048576:.1f} MB)" + ("." if info["consistent"] else
                     ", but copied while the server was writing: turn RCON on for consistent backups."))

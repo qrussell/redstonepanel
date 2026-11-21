@@ -16,6 +16,8 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
   made, and a failed update is rolled back.
 - **Update available** on the dashboard when a new Minecraft release, Paper build, Fabric
   loader or Bedrock version is out, with an optional webhook message.
+- Built (not released yet): the panel checks every 6 hours; **Update automatically** is on each
+  Bedrock server's Maintenance tab. Java servers get the alert only.
 
 ### 1.16.x: less downtime for big worlds
 

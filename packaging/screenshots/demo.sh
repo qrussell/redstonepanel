@@ -117,6 +117,10 @@ dx $M "printf '%s\n%s\n' '$PASSPHRASE' '$PASSPHRASE' | redstonepanel cluster nig
     || api PUT /api/settings/cluster/nightly "{\"enabled\":true,\"passphrase\":\"$PASSPHRASE\"}"
 api POST /api/servers/minecraft-java/chat '{"message":"Welcome to Survival Box!"}'
 
+say "update check: alerts for the 1.21.4 servers, Bedrock updating itself (1.16.12)"
+api PUT /api/servers/minecraft-bedrock/updates '{"enabled":true}'
+dx $M "redstonepanel check-updates" || true
+dx $N "redstonepanel check-updates" || true
 say "off-site copies: an SSH storage (on Creative Lab) for the master's servers"
 dx $N "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openssh-server rsync >/dev/null 2>&1 \
     && (id mcbackup >/dev/null 2>&1 || useradd -m -s /bin/bash mcbackup) && install -d -m 700 -o mcbackup -g mcbackup /home/mcbackup/.ssh \
