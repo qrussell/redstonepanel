@@ -83,6 +83,12 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**A server list that folds** *(1.16.3)*. Click any heading in the sidebar (Java Edition,
+Bedrock Edition or a cluster node) to fold it; a folded heading shows how many of its servers
+are online, and the browser remembers what you folded. Each cluster node's servers now get their
+own Java and Bedrock headings, like this machine's. Read the
+[1.16.3 release notes](release-notes/v1.16.3.md).
+
 **Kick, ban and unban, and a new look** *(1.16.2)*. **Configuration → Whitelist & Access**
 can now kick anyone online and, on Java, ban and unban (running or stopped), with a
 **Banned** list. Bedrock gets kick only, since it has no ban list. RedstonePanel also has its own
