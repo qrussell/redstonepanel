@@ -9,6 +9,19 @@ the dashboard.
 
 ---
 
+## 1.16.12: Bedrock that keeps up, and update alerts *(November 2026)*
+
+- **Update available** on the dashboard, sidebar and a server's Overview when a newer
+  Minecraft release, Paper build, Fabric loader or Bedrock version is out, with an optional
+  webhook message.
+- **Bedrock servers update themselves** if you turn on **Update automatically** under
+  **Maintenance → Update Server**: players are warned, a backup is made, and a failed update
+  is rolled back.
+- **Bedrock saves before every stop**, so the last minutes of play are no longer lost on
+  **Stop** or **Restart**.
+
+[Release notes](../../release-notes/v1.16.12.md)
+
 ## 1.16.11: backups off the machine, without a cluster *(November 2026)*
 
 - **Copy backups to an SSH server or S3-compatible storage**, set up under **🛡️ Settings →

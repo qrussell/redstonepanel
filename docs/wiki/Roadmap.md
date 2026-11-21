@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.11**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.12**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,15 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.12: Bedrock that keeps up, and update alerts
-
-- **Bedrock servers update themselves** if you turn it on: players are warned, a backup is
-  made, and a failed update is rolled back.
-- **Update available** on the dashboard when a new Minecraft release, Paper build, Fabric
-  loader or Bedrock version is out, with an optional webhook message.
-- Built (not released yet): the panel checks every 6 hours; **Update automatically** is on each
-  Bedrock server's Maintenance tab. Java servers get the alert only.
 
 ### 1.16.13: less downtime for big worlds
 
@@ -113,4 +104,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.11** copies backups to SSH or S3-compatible storage; **1.16.10** makes the panel work on a phone, and **1.16.9** adds Debian 13, Ubuntu 26.04 and 26.10, ARM64 and the Raspberry Pi.
+See [What's New](Whats-New.md). The latest: **1.16.12** adds update alerts and Bedrock servers that update themselves; **1.16.11** copies backups to SSH or S3-compatible storage, and **1.16.10** makes the panel work on a phone.

@@ -4,6 +4,15 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.16.12 (2026-11-21)
+
+Release notes: release-notes/v1.16.12.md
+
+- Update available: the panel checks every 6 hours for a newer Bedrock release, Minecraft release, Paper build or Fabric loader (never snapshots), shows it in the sidebar, dashboard, cluster page and Overview, and can send one update_available webhook per version.
+- Update automatically for Bedrock servers (off by default): players are warned for 5 minutes, a Before update backup is taken, the files are swapped keeping settings and worlds, and a server that doesn't start goes back to the old version and shows under Needs attention.
+- The update check is one machine timer, redstonepanel-updates.timer, so it runs while the panel is stopped. The Update button uses the same safe path.
+- Bedrock servers save before they stop: every stop, from the buttons, backups, scheduled restarts, updates or shutting down, sends Bedrock its own stop command and waits for it to quit.
+
 ## 1.16.11 (2026-11-21)
 
 Release notes: release-notes/v1.16.11.md
