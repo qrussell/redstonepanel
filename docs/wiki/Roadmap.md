@@ -24,9 +24,10 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 - Restore from the copy even if the original machine is gone.
 - A failed copy shows under **Needs attention** and can send an alert.
 
-### 1.16.7: Debian and ARM64
+### 1.16.7: newer Ubuntu, Debian and ARM64
 
-- **Debian 12 and 13** as well as Ubuntu 24.04 and 25.04.
+- **Ubuntu 25.10 and 26.04 LTS**, as well as 24.04 and 25.04.
+- **Debian 12 and 13**.
 - **ARM64** machines such as a Raspberry Pi, for Java servers. Bedrock is only made for
   x86-64, so it's hidden there.
 
