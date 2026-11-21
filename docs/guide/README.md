@@ -1021,7 +1021,12 @@ to the node.
 
 1. On the master: **Settings → Cluster → Make this panel a master**, give the cluster a name,
    and click **Create cluster**. The panel restarts on HTTPS (port 8443).
-2. On the master: make a **join code**. Codes work once and expire after an hour.
+2. On the master: make a **join code**. Codes work once and expire after an hour. Or click
+   **Find panels on your network** *(1.16.13)*: the master lists the other RedstonePanels on its
+   local networks (it asks each address on ports 8443 and 8080), says which are already in a
+   cluster, and **Add to cluster** makes the code and links to the panel to paste it into.
+
+   <picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster-find.png"><img src="images/cluster-find.png" alt="Find panels on your network"></picture>
 3. On each node: paste the code under **Settings → Cluster → Join a cluster**, and click
    **Join**.
 4. Download the cluster CA from **Settings → Cluster** and install it on your devices once.
@@ -1057,6 +1062,14 @@ you choose whether to start it. Schedules and Phantom stay with the original.
 
 Both machines need RedstonePanel 1.16 or later. Older backups and the player history stay on the
 old machine.
+
+**Pre-copy while it runs** *(1.16.13)*: for a big world, tick this in the **Move** window. The
+folder is copied to the other machine while players stay on, then the server stops and only the
+files that changed since are copied and checked. The server is down for seconds instead of
+minutes, and the window says how long it was down. Both machines need RedstonePanel 1.16.13 or
+later for this.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster-precopy.png"><img src="images/cluster-precopy.png" alt="Moving a server with a pre-copy"></picture>
 
 **Templates between machines:** in the template manager, **Copy to node** sends one of the
 master's templates to a node. Templates a node made on its own panel are listed under its name,

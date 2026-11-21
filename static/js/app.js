@@ -4140,6 +4140,13 @@ const ServerApp = {
 			.filter(n => n.state === 'ok' && (n.local || (n.cluster_api || 1) >= 3) && (kind === 'copy' || n.id !== from));
 	},
 
+	// 1.16.13: a pre-copy needs both ends on cluster contract 5 (the master itself always is)
+	precopyBlocked(from) {
+		const old = n => n && !n.local && (n.cluster_api || 1) < 5;
+		const nodes = this.clusterData ? this.clusterData.nodes : [];
+		return old(nodes.find(n => n.id === from)) || nodes.some(n => old(n));
+	},
+
 	openMoveDialog(kind, from, server) {
 		const esc = t => this.escapeHtml(t);
 		const targets = this.moveTargets(kind, from);
@@ -4157,7 +4164,9 @@ const ServerApp = {
 			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">To</label>
 			<select id="move-to" class="${field} mb-3">${targets.map(n =>
 				`<option value="${esc(n.id)}">${esc(n.name)}${n.local ? ' (this panel)' : ''}${n.id === from ? ' (same panel)' : ''}</option>`).join('')}</select>
-			${move ? '' : `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-start"> Start the copy when it's ready</label>`}
+			${move ? `<label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-precopy" class="mt-1">
+				<span><b>Pre-copy while it runs</b> (for big worlds): copy everything first while players stay on, then stop it and copy only what changed. The server is down for seconds instead of minutes.${this.precopyBlocked(from) ? ` <span class="text-xs text-gray-500 dark:text-gray-400">Needs RedstonePanel 1.16.13 or later on both members.</span>` : ''}</span></label>`
+				: `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-start"> Start the copy when it's ready</label>`}
 			<div class="flex gap-2">
 				<button id="move-go" onclick="ServerApp.startMove(${this.jsArg(kind)}, ${this.jsArg(from)}, ${this.jsArg(server)})" class="flex-1 px-4 py-2 bg-theme hover-bg-theme text-white rounded font-bold">${move ? 'Move' : 'Copy'}</button>
 				<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>
@@ -4168,10 +4177,12 @@ const ServerApp = {
 	async startMove(kind, from, server) {
 		const to = document.getElementById('move-to').value;
 		const startBox = document.getElementById('move-start');
+		const preBox = document.getElementById('move-precopy');
 		document.getElementById('move-go').disabled = true;
 		const res = await fetch('/api/cluster/moves', {
 			method: 'POST', headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ kind, server, from_node: from, to_node: to, start: !!(startBox && startBox.checked) })
+			body: JSON.stringify({ kind, server, from_node: from, to_node: to, start: !!(startBox && startBox.checked),
+				precopy: !!(preBox && preBox.checked) })
 		});
 		if (!res.ok) {
 			document.getElementById('move-go').disabled = false;
@@ -4210,6 +4221,7 @@ const ServerApp = {
 			const changes = [r.renamed ? `its name was taken there, so it's now <b>${esc(r.name)}</b>` : '',
 				r.old_port ? `port ${esc(r.old_port)} was taken there, so it now uses port <b>${esc(r.port)}</b>` : ''].filter(Boolean);
 			body = `<p class="text-sm text-green-600 dark:text-green-400 font-bold mb-2">${move ? 'Moved' : 'Copied'} to ${esc(job.to.name)} as ${esc(r.name)} (port ${esc(r.port)}).</p>
+				${job.downtime !== null && job.downtime !== undefined ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">It was down for ${esc(job.downtime < 60 ? `${job.downtime} s` : `${Math.floor(job.downtime / 60)} min ${job.downtime % 60} s`)}${job.precopy ? ' (with a pre-copy)' : ''}.</p>` : ''}
 				${changes.length ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">Note: ${changes.join('; ')}.</p>` : ''}
 				${job.warning ? `<p class="text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 mb-2">⚠️ ${esc(job.warning)}</p>` : ''}
 				${move && !job.warning ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">The old files on ${esc(job.from.name)} are kept as a removed server, ${esc(job.server)}. Once the server works on ${esc(job.to.name)}, delete them to free the space.</p>
@@ -4219,7 +4231,7 @@ const ServerApp = {
 				<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">${esc(job.step)}</p>`;
 		}
 		box.innerHTML = `
-			<h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">${move ? 'Moving' : 'Copying'} ${esc(job.server)}</h2>
+			<h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">${move ? 'Moving' : 'Copying'} ${esc(job.server)}${job.precopy ? ' <span class="text-xs font-normal text-gray-500 dark:text-gray-400">with a pre-copy</span>' : ''}</h2>
 			<p class="text-xs text-gray-500 dark:text-gray-400 mb-3">${esc(job.from.name)} → ${esc(job.to.name)}</p>
 			${body}
 			<button onclick="ServerApp.closeModal()" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Close</button>`;
@@ -4397,7 +4409,11 @@ const ServerApp = {
 				<p class="font-bold text-sm text-gray-900 dark:text-white mb-2">Add a node</p>
 				<label class="${note}">Address nodes use to reach this master
 					<input id="cl-join-url" value="${esc(d.join_url)}" class="${field} mt-1 mb-2 font-mono"></label>
-				<button onclick="ServerApp.makeJoinCode()" class="${small}">Make a join code</button>
+				<div class="flex flex-wrap gap-2">
+					<button onclick="ServerApp.makeJoinCode()" class="${small}">Make a join code</button>
+					<button id="cl-find" onclick="ServerApp.findPanels()" class="${small}">Find panels on your network</button>
+				</div>
+				<div id="cl-found" class="hidden mt-3"></div>
 				<div id="cl-join-out" class="hidden mt-3"></div>
 				${joins ? `<div class="mt-2">${joins}</div>` : ''}
 			</div>
@@ -4489,13 +4505,43 @@ const ServerApp = {
 		if (data) this.showRestarting(data.url, '');
 	},
 
-	async makeJoinCode() {
+	// 1.16.13: Find panels on your network (RedstonePanels on this master's private networks)
+	async findPanels() {
+		const box = document.getElementById('cl-found'), button = document.getElementById('cl-find');
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		box.innerHTML = `<p class="${note}">Looking on your network for other RedstonePanels (on ports 8443 and 8080). This takes up to half a minute…</p>`;
+		box.classList.remove('hidden');
+		button.disabled = true;
+		const d = await this.clusterPost('/api/settings/cluster/discover');
+		button.disabled = false;
+		if (!d) { box.classList.add('hidden'); return; }
+		const state = p => p.node ? `already a node here (${esc(p.node)})`
+			: p.cluster === 'master' ? 'the master of another cluster'
+			: p.cluster === 'node' ? 'a node of another cluster'
+			: p.cluster === 'standalone' ? 'not in a cluster' : 'an older RedstonePanel (before 1.16.13)';
+		const canAdd = p => !p.node && (p.cluster === 'standalone' || !p.cluster);
+		const rows = d.panels.map(p => `
+			<div class="flex items-center justify-between gap-2 py-2 border-t border-gray-200 dark:border-gray-700">
+				<div class="min-w-0">
+					<p class="text-sm font-bold text-gray-900 dark:text-white truncate">${esc(p.name)} <a href="${esc(p.url)}/" target="_blank" rel="noopener" class="font-normal font-mono text-xs underline text-theme">${esc(p.url)} ↗</a></p>
+					<p class="${note}">${state(p)}</p>
+				</div>
+				${canAdd(p) ? `<button onclick="ServerApp.makeJoinCode(${this.jsArg(p.name)}, ${this.jsArg(p.url)})" class="text-xs bg-theme hover-bg-theme text-white px-3 py-1.5 rounded font-bold whitespace-nowrap">Add to cluster</button>` : ''}
+			</div>`).join('');
+		box.innerHTML = `
+			<p class="${note} mb-1">Searched ${esc(d.networks.join(', '))} in ${esc(d.seconds)} s: ${d.panels.length ? `found ${d.panels.length} other panel${d.panels.length === 1 ? '' : 's'}.` : 'no other RedstonePanels answered. A panel behind a firewall, or on another port, can still join with a join code.'}</p>
+			${rows}`;
+	},
+
+	async makeJoinCode(forName, forUrl) {
 		const url = document.getElementById('cl-join-url').value.trim();
 		const j = await this.clusterPost('/api/settings/cluster/joins', { url });
 		if (!j) return;
 		const esc = t => this.escapeHtml(t);
 		const out = document.getElementById('cl-join-out');
-		out.innerHTML = `
+		const where = forUrl ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">To add <b>${esc(forName)}</b>: <a href="${esc(forUrl)}/" target="_blank" rel="noopener" class="underline text-theme">open it ↗</a>, sign in as an admin, and paste this code into <b>Panel Settings › Cluster › Join a cluster</b>. It shows up under Nodes here once it has joined.</p>` : '';
+		out.innerHTML = where + `
 			<p class="text-xs text-yellow-700 dark:text-yellow-300 mb-1">Shown only once. Works once, until ${esc(this.fmtTime(j.expires))}. Anyone with it can add a server to this cluster, so treat it like a password.</p>
 			<p class="text-xs text-gray-500 dark:text-gray-400">On the new server (with RedstonePanel installed), run:</p>
 			<textarea readonly rows="3" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white mb-1">${esc(j.command)}</textarea>

@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.7 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list and two-factor sign-in (1.16.7) shipped; backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.7 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list and two-factor sign-in (1.16.7) shipped; backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.13), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -440,7 +440,7 @@ refused joins, so those are Java only.
     the same one), the streamed archive with its SHA-256, names and ports kept when free, Java
     installed on the target, schedules and Phantom carried over, rollback on failure, the old
     copy kept as a removed server until an admin deletes it, and templates copied both ways.
-    **Still to do (1.16.x):** the pre-copy for big worlds below, and fleet.md's LAN discovery.
+    **Still to do (1.16.13):** the pre-copy for big worlds below, and fleet.md's LAN discovery.
 
     - **Move:** stop the server and export it the way a backup does (save-off over RCON,
       `save hold` on Bedrock). The archive is streamed from node A through the master into
@@ -771,6 +771,53 @@ refused joins, so those are Java only.
     dashboard never waits on the network.
 
     **Size:** a few days.
+
+### 1.16.13: less downtime for big worlds, and finding panels on the network
+
+20a. **The rest of 1.16's moves: a pre-copy, and Find panels.** Left over from 1.16.0 (item 12)
+    and fleet.md phase 3. Moving a big world stops the server for as long as the whole folder
+    takes to pack, copy and unpack, which is minutes for a world of several gigabytes. And adding
+    a node means knowing its address and visiting it to paste a join code.
+
+    - **Pre-copy while it runs** (an option in the **Move** window): the folder is packed and
+      sent while the server keeps running, and the target unpacks it into a hidden folder next
+      to its servers. Then the server stops and only what changed since (and a list of what was
+      deleted) is packed and applied over that copy. The server is down for that second, small
+      step only. The move window says how long the server was down.
+    - **Find panels on your network** (Panel Settings › Cluster › Add a node): the master asks
+      every address of its own private networks (each up to a /24, at most four) for
+      `/api/panel-info` on ports 8443 and 8080, and lists the RedstonePanels that answer with
+      their name, address and whether they're standalone, already a node here, or in another
+      cluster. **Add to cluster** makes a join code and says where to paste it. Nothing is
+      added without an admin pasting the code into the other panel, as before.
+
+    **How:** `core/transfer.py` gets `precopy`/`base` on export, `stage()` and a `base` on
+    import (cluster contract 5, new node route `POST /api/cluster/transfers/{id}/stage`);
+    `core/moves.py` runs the two rounds. `core/discovery.py` does the search with the standard
+    library (`ip -j addr`, http.client, a thread pool). `/api/panel-info` adds
+    `"app": "RedstonePanel"` and the cluster role.
+
+    **Size:** a few days. The careful parts: never missing a changed file (a file's size,
+    times and inode are noted *before* it is read, and anything changed within two seconds of
+    that counts as changed), and applying the changes without writing through links.
+
+    **As built:** as above. Unit tests in `tests/test_precopy.py`: the second
+    archive holds only changed, new and deleted files; a world edited in place (same size),
+    new and deleted files, a deleted folder, a file that became a folder and a new link all
+    arrive so B's folder equals A's; a file that shrinks while read keeps the archive valid;
+    deletions and changes can't reach outside the staged folder through a link; cancelling
+    removes the staged copy; the master's job runs in order and cleans up both members after a
+    failure in either round; older nodes are refused a pre-copy with a clear message. Discovery:
+    only private networks, capped at /24 and four networks, never this machine, HTTPS preferred,
+    nodes recognised, answers from other software ignored, a real HTTP answer read. The
+    multi-panel test `packaging/test/test-move.sh` (Ubuntu 24.04 containers in a cloud thread,
+    48 checks, all passing) moves a stand-in Bedrock server that writes to its world ten times a
+    second, with a 20 MB world file, using a pre-copy: down for 1 to 2 seconds, every world file
+    identical on the node and the file it kept writing complete up to the stop, nothing staged
+    or archived left behind. Find panels, run on the master, found the node (marked as a node
+    here) and a third, standalone panel on the same /24 in about 12 seconds; a master user
+    (not admin) is refused. Not tested: a multi-gigabyte world, and real Java/Bedrock servers
+    (the pre-copy doesn't depend on the edition: it reads files, never the game).
 
 ### 1.17: server performance and tuning
 
