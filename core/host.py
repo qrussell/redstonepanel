@@ -611,6 +611,11 @@ def _needs_attention(rep, failed, phantoms):
     if rep["host"].get("update"):
         out.append(_attention("info", f"RedstonePanel {rep['host']['update']} is available. "
                                       "Update it with Update now, or: sudo apt upgrade redstonepanel", where="update"))
+    try:
+        from core import backup_copies
+        out.extend(backup_copies.attention())
+    except Exception:
+        pass                                    # never let this break the dashboard
     order = {"error": 0, "warn": 1, "info": 2}
     return sorted(out, key=lambda a: order[a["level"]])
 

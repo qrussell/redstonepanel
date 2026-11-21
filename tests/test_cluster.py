@@ -490,14 +490,21 @@ class RouteCoverage(unittest.TestCase):
                 ("GET", "/api/cluster/transfers/{tid}/archive"), ("PUT", "/api/cluster/transfers/{tid}/archive"),
                 ("POST", "/api/cluster/transfers/{tid}/finish"), ("POST", "/api/cluster/transfers/{tid}/install"),
                 ("POST", "/api/cluster/transfers/{tid}/confirm"), ("DELETE", "/api/cluster/transfers/{tid}"),
-                ("DELETE", "/api/cluster/transfers/moved/{server_name}")}
+                ("DELETE", "/api/cluster/transfers/moved/{server_name}"),
+                # 1.16.8: backup copies kept for other members (cluster plumbing, core/backup_copies.py)
+                ("GET", "/api/cluster/held-backups"),
+                ("GET", "/api/cluster/held-backups/{panel}/{server_name}/{filename}"),
+                ("GET", "/api/cluster/held-backups/{panel}/{server_name}/{filename}/sha256"),
+                ("PUT", "/api/cluster/held-backups/{panel}/{server_name}/{filename}"),
+                ("DELETE", "/api/cluster/held-backups/{panel}/{server_name}/{filename}"),
+                ("PUT", "/api/cluster/held-backups/into/{server_name}/{filename}")}
     NEVER = ("/api/users", "/api/settings", "/api/auth", "/api/panel", "/api/cluster/overview",
-             "/api/cluster/nodes", "/api/cluster/join", "/api/templates/")
+             "/api/cluster/nodes", "/api/cluster/join", "/api/templates/", "/api/cluster/backup-copies")
 
     @staticmethod
     def _sample(path):
         return (path.replace("{server_name}", "minecraft-x").replace("{path:path}", "x").replace("{tid}", "a" * 32)
-                .replace("{", "").replace("}", ""))
+                .replace("{panel}", "n-abc123").replace("{", "").replace("}", ""))
 
     def _reachable(self):
         import main
