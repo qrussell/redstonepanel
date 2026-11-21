@@ -856,6 +856,14 @@ refused joins, so those are Java only.
     listener), run in a cloud thread. Not tested: a real pfSense with NAT-PMP or UPnP turned on,
     and a Bedrock player joining through a real port forward from outside.
 
+    **Fixed in the same release: the phone menu's last servers.** Found in 1.16.10's screenshots:
+    on a short phone the ☰ menu pinned the account footer (name, Sign out, Users, Settings,
+    Password) over the bottom of the menu, leaving the server list a strip about two servers
+    high, so the last servers looked hidden behind the footer. Below 768 px the whole menu now
+    scrolls as one page and the footer comes after the last server. Desktop is unchanged.
+    Tested with `tests/test_phone.py` (the phone CSS and the footer's place in the page) and
+    Playwright at 360 x 640, 375 x 667 and 390 x 844 in both themes (canned data, four servers).
+
 ### 1.17: server performance and tuning
 
 21. **How well each server runs, its history, and what to change.** 1.11 answers "is the
