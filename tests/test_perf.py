@@ -178,6 +178,7 @@ class Resources(unittest.TestCase):
             next(s for s in self.servers if s["name"] == name)["ram"] = xmx
         patches = [
             mock.patch.object(P, "UNIT_DIR", self.units),
+            mock.patch.object(P, "RUNTIME_CONTROL", os.path.join(self.root, "run")),
             mock.patch.object(P, "LIMITS_FILE", os.path.join(self.root, "limits.json")),
             mock.patch.object(P, "METRICS_DIR", os.path.join(self.root, "metrics")),
             mock.patch.object(P.subprocess, "run", run),
@@ -262,7 +263,27 @@ class Resources(unittest.TestCase):
         P.set_resources("minecraft-java", memory="off", cpu=0)
         self.assertIsNone(self.dropin())
         self.assertFalse(os.path.isdir(os.path.dirname(P._dropin_path("minecraft-java"))))
-        self.assertEqual(self.commands[-1][-2:], ["MemoryMax=infinity", "CPUQuota="])
+        sets = [c for c in self.commands if c[:2] == ["systemctl", "set-property"]]
+        self.assertEqual(sets[-1][-2:], ["MemoryMax=infinity", "CPUQuota="])
+        self.assertEqual(self.commands[-1], ["systemctl", "daemon-reload"])
+
+    def test_runtime_overrides_are_cleared(self):
+        """set-property --runtime files outrank the drop-in until reboot: they must not linger."""
+        run = os.path.join(self.root, "run", "minecraft-java.service.d")
+        def fake_run(cmd, **kw):
+            self.commands.append(cmd)
+            if cmd[:2] == ["systemctl", "set-property"]:
+                os.makedirs(run, exist_ok=True)
+                for n in P.RUNTIME_FILES:
+                    open(os.path.join(run, n), "w").close()
+            return mock.Mock(returncode=0, stdout="", stderr="")
+        with mock.patch.object(P.subprocess, "run", fake_run):
+            P.set_resources("minecraft-java", cpu=1)
+            self.assertFalse(os.path.exists(run))
+            os.makedirs(run)
+            open(os.path.join(run, "50-CPUQuota.conf"), "w").close()
+            P.on_server_removed("minecraft-java", purged=False)
+            self.assertFalse(os.path.exists(run))
 
     def test_limit_refusals(self):
         for mem, cpu, why in (("2G", None, "well above"), ("100M", None, "at least 256M"), ("lots", None, "like 3G"),

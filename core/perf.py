@@ -28,6 +28,8 @@ LIMITS_FILE = os.path.join(DATA_DIR, "limits.json")
 UNIT_DIR = "/etc/systemd/system"
 CGROUP_ROOT = "/sys/fs/cgroup/system.slice"
 DROPIN_NAME = "redstonepanel-limits.conf"
+RUNTIME_CONTROL = "/run/systemd/system.control"   # where `systemctl set-property --runtime` writes
+RUNTIME_FILES = ("50-MemoryMax.conf", "50-CPUQuota.conf")
 NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.-]*$")
 
 SAMPLE_EVERY = 60
@@ -447,13 +449,29 @@ def _apply_limits(server, limits, xmx, running):
             os.rmdir(os.path.dirname(path))
         except OSError:
             pass
-    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
     if running:
         subprocess.run(["systemctl", "set-property", "--runtime", f"{server}.service",
                         f"MemoryMax={memory_max or 'infinity'}",
                         f"CPUQuota={int(round(limits['cpu'] * 100)) if limits['cpu'] else ''}{'%' if limits['cpu'] else ''}"],
                        capture_output=True)
+    # set-property's runtime files outrank the drop-in until the next boot; the cgroup already
+    # has the values, so take them away and let the drop-in be the only place limits live
+    _clear_runtime(server)
+    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
     return memory_max
+
+
+def _clear_runtime(server):
+    d = os.path.join(RUNTIME_CONTROL, f"{server}.service.d")
+    for name in RUNTIME_FILES:
+        try:
+            os.remove(os.path.join(d, name))
+        except OSError:
+            pass
+    try:
+        os.rmdir(d)
+    except OSError:
+        pass
 
 
 def _unit_props(server):
@@ -620,6 +638,7 @@ def on_server_removed(server, purged):
         os.rmdir(os.path.dirname(path))
     except OSError:
         pass
+    _clear_runtime(server)
     with _lock:
         _latest.pop(server, None)
         _ticks.pop(server, None)

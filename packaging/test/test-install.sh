@@ -240,6 +240,7 @@ if [ -f $CG/memory.max ]; then
     check "  cgroup memory.max set"        test "$(cat $CG/memory.max)" = "$AUTO"
     check "  cgroup cpu.max set"           grep -q '^50000 100000' $CG/cpu.max
 fi
+check "  no runtime override left behind"  test ! -e /run/systemd/system.control/minecraft-perfjava.service.d
 check "  change logged with who"          grep -q '\[PERF\] rpadmin set minecraft-perfjava' /var/log/redstonepanel/panel.log
 c=$(code -b $L -X PUT $PJ/resources -H "$J" -H "$O" -d '{"memory":"off","cpu":0}')
 [ "$c" = 200 ] && ok "  limits off" || bad "  limits off ($c $(cat /tmp/body))"
