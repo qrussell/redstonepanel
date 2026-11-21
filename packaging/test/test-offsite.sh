@@ -87,7 +87,7 @@ login offp jar admin "$PASS_ADMIN"; login offp ujar alex "$PASS_USER"; login off
 
 # --- a stand-in Bedrock server with a 2 MB world
 dx offp "rm -rf /tmp/srv && mkdir -p /tmp/srv/worlds/Home/db && cd /tmp/srv && printf '#!/bin/sh\nexec sleep infinity\n' > bedrock_server && chmod +x bedrock_server \
-    && printf 'server-port=19140\nserver-portv6=19141\nlevel-name=Home\nserver-name=Island\n' > server.properties \
+    && printf 'server-name=Island\ngamemode=survival\nforce-gamemode=false\ndifficulty=easy\nallow-cheats=false\nmax-players=10\nonline-mode=true\nallow-list=false\nserver-port=19132\nserver-portv6=19133\nenable-lan-visibility=true\nview-distance=32\ntick-distance=4\nplayer-idle-timeout=30\nmax-threads=8\nlevel-name=Home\nlevel-seed=\ndefault-player-permission-level=member\ntexturepack-required=false\ncontent-log-file-enabled=false\ncompression-threshold=1\nserver-authoritative-movement-strict=false\nchat-restriction=None\n' > server.properties \
     && printf '[]' > permissions.json && head -c 2000000 /dev/urandom > worlds/Home/db/000005.ldb \
     && head -c 1000 /dev/urandom > worlds/Home/marker.bin && zip -qr /tmp/srv.zip ."
 SRV=$(dx offp "curl -s -b /tmp/jar -F file=@/tmp/srv.zip http://127.0.0.1:8080/api/servers/import" | json "d['server']")
@@ -95,6 +95,8 @@ SRV=$(dx offp "curl -s -b /tmp/jar -F file=@/tmp/srv.zip http://127.0.0.1:8080/a
 dx offp "systemctl stop $SRV"
 WORLD=$(dx offp "sha256sum < /opt/$SRV/worlds/Home/db/000005.ldb")
 MARKER=$(dx offp "sha256sum < /opt/$SRV/worlds/Home/marker.bin")
+# A port of its own, as a server that has been around a while would have: it must survive the trip
+dx offp "sed -i 's/^server-port=.*/server-port=19140/; s/^server-portv6=.*/server-portv6=19141/' /opt/$SRV/server.properties"
 
 # --- who may do what
 [ "$(code offp ujar GET /api/settings/backup-storage)" = 403 ] && ok "a user can't see backup storage" || bad "user can't see storage"
@@ -214,11 +216,16 @@ OUT=$(api offn jar POST "/api/settings/backup-storage/$TN/import" "{\"panel\":\"
 if [ "$ONLINE" = 1 ]; then
     echo "$OUT" | json "d['name']" | grep -qx "$SRV" && ok "it's a server again, with its old name" || { bad "imported server"; echo "$OUT"; }
     check "its Bedrock server was downloaded again and it runs" dx offn "[ -x /opt/$SRV/bedrock_server ] && systemctl is-enabled --quiet $SRV"
+    echo "$OUT" | json "d['port']" | grep -qx 19140 && ok "it keeps its port, 19140" || { bad "port kept"; echo "$OUT"; }
+    sleep 15    # let the real Bedrock server start and write its files
+    check "the running server still has port 19140 in server.properties" dx offn "grep -qx 'server-port=19140' /opt/$SRV/server.properties"
+    check "and listens on it" dx offn "ss -lun | grep -q ':19140 '"
 else
     skip "no internet in the container: the Bedrock server itself can't be downloaded"
     { dx offn "[ -f /etc/systemd/system/$SRV.service ]" \
         || api offn jar GET /api/servers/removed | json "[s['name'] for s in d]" | grep -q "$SRV"; } \
         && ok "it has a service again, or waits under Removed servers" || { bad "set up on the new machine"; echo "$OUT"; }
+    check "it keeps its port, 19140" dx offn "grep -qx 'server-port=19140' /opt/$SRV/server.properties"
 fi
 
 echo
