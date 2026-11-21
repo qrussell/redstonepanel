@@ -12,10 +12,14 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 
 ### 1.16.9: newer Ubuntu, Debian and ARM64
 
-- **Ubuntu 25.10 and 26.04 LTS**, as well as 24.04 and 25.04.
-- **Debian 12 and 13**.
-- **ARM64** machines such as a Raspberry Pi, for Java servers. Bedrock is only made for
-  x86-64, so it's hidden there.
+- **Ubuntu 26.04 LTS and 26.10**, as well as 24.04 (25.04 and 25.10 still install, but Ubuntu
+  no longer updates them).
+- **Debian 13**. Debian 12 comes later: its Python is older than the panel needs.
+- **ARM64** machines such as a **Raspberry Pi 4 or 5** with the 64-bit Raspberry Pi OS, for
+  Java servers. Bedrock is only made for x86-64, so it's hidden there; Bedrock players can join
+  through Geyser. A guide to memory, storage and cooling on a Pi.
+- The Java versions each system packages (Debian has only 21 and 25), and a clear message when a
+  Minecraft version needs one it doesn't have.
 
 ### 1.16.10: a panel that works on a phone
 

@@ -45,9 +45,10 @@ def package_for(major):
         major = int(major)
     except (TypeError, ValueError):
         raise RuntimeJobError("Choose a Java version.")
-    if major not in javaservers.UBUNTU_JAVA:
-        raise RuntimeJobError(f"Java {major} isn't one the panel installs "
-                              f"({', '.join(map(str, javaservers.UBUNTU_JAVA))}).")
+    offered = javaservers.packaged_javas()
+    if major not in offered and major not in javaservers.UBUNTU_JAVA:
+        raise RuntimeJobError(f"Java {major} isn't one this system's package sources have "
+                              f"({', '.join(map(str, offered))}).")
     return f"openjdk-{major}-jre-headless"
 
 
@@ -118,7 +119,7 @@ def status(servers=None, packages=True):
                                                    "package": javaservers.java_package(u["required"])})
             n["servers"].append(u["name"])
     installable = [{"major": m, "package": f"openjdk-{m}-jre-headless"}
-                   for m in javaservers.UBUNTU_JAVA if m not in javas]
+                   for m in javaservers.packaged_javas() if m not in javas]
     switch = []
     for u in usage:
         best = _best(u["required"], javas)
@@ -231,6 +232,7 @@ def _install(major, package):
         code = _apt(["update"])
         if code != 0:
             raise RuntimeJobError(f"Couldn't update the package lists: {_apt_error(code)}")
+        javaservers.packaged_javas(refresh=True)
         if not candidate(package):
             raise RuntimeJobError(f"This system's package sources don't have {package}. Install Java {major} "
                                   f"another way into /usr/lib/jvm, or choose a Minecraft version that needs a "

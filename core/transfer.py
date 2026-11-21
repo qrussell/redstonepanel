@@ -14,6 +14,7 @@ admin deletes it (delete_moved). Records live in DATA_DIR/transfers, next to the
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -253,6 +254,9 @@ def delete_moved(name):
 def _clean_meta(meta):
     if not isinstance(meta, dict) or meta.get("edition") not in ("java", "bedrock"):
         raise TransferError("Bad server details.")
+    if meta["edition"] == "bedrock" and not manager.bedrock_supported():
+        raise TransferError(f"This member is an {platform.machine()} machine, and Bedrock servers only run on "
+                            f"x86-64 (64-bit Intel or AMD). Move it to another member.")
     out = {"edition": meta["edition"], "phantom": meta.get("phantom") is True}
     name = meta.get("name")
     out["name"] = name if isinstance(name, str) and manager.SERVICE_NAME_RE.match(name) else None

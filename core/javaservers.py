@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import tempfile
 import threading
 import time
@@ -47,24 +48,62 @@ class JavaServerError(ValueError):
 
 
 class MissingJavaError(RuntimeError):
-    """The Java a Minecraft version needs isn't installed (message names the package)."""
+    """The Java a Minecraft version needs isn't installed (message names the package, or says
+    this system's package sources have no Java new enough)."""
 
     def __init__(self, required, minecraft=None):
         self.required = required
+        self.major = java_major_for(required)          # what to install; None when there's nothing
         self.package = java_package(required)
-        super().__init__(f"Minecraft {minecraft + ' ' if minecraft else ''}needs Java {required}, which isn't "
-                         f"installed. Install it with: sudo apt install {self.package}")
+        what = f"Minecraft {minecraft + ' ' if minecraft else ''}needs Java {required}, which isn't installed. "
+        if self.major is None:
+            have = ", ".join(map(str, packaged_javas())) or "none"
+            super().__init__(what + f"This system's package sources have no Java {required} or newer "
+                                    f"(they have: {have}).")
+        else:
+            super().__init__(what + f"Install it with: sudo apt install {self.package}")
 
 
-# The OpenJDK versions Ubuntu 24.04 and 25.04 package (there is no openjdk-16, which 1.17 asks for)
+# The OpenJDK versions Ubuntu 24.04 packages (there is no openjdk-16, which 1.17 asks for). Other
+# releases package other sets (Debian 13: 21 and 25; Ubuntu 26.10: 8 to 28 without 26), so the
+# panel asks apt which ones this machine's package sources have, and falls back to this list
+# when apt can't say.
 UBUNTU_JAVA = (8, 11, 17, 21, 25)
+_JRE_RE = re.compile(r"^openjdk-([0-9]+)-jre-headless$")
+_packaged = {"at": 0.0, "majors": None}
+_packaged_lock = threading.Lock()
+
+
+def packaged_javas(refresh=False):
+    """The Java versions this machine's apt sources have a JRE package for, e.g. (21, 25) on
+    Debian 13. Cached for CACHE_SECONDS; UBUNTU_JAVA when apt-cache isn't there or knows none."""
+    with _packaged_lock:
+        if not refresh and _packaged["majors"] and time.time() - _packaged["at"] < CACHE_SECONDS:
+            return _packaged["majors"]
+        majors = ()
+        try:
+            r = subprocess.run(["apt-cache", "pkgnames", "openjdk-"], capture_output=True, text=True,
+                               timeout=30, env=dict(os.environ, LC_ALL="C"))
+            majors = tuple(sorted({int(m.group(1)) for m in map(_JRE_RE.match, r.stdout.split())
+                                   if m and int(m.group(1)) >= 8}))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+        # A fallback is only kept for a minute, so a slow or busy apt is asked again soon
+        _packaged.update(at=time.time() - (0 if majors else CACHE_SECONDS - 60), majors=majors or UBUNTU_JAVA)
+        return _packaged["majors"]
+
+
+def java_major_for(major):
+    """The Java version to install for a server needing Java `major`: that one if this system
+    packages it, else the closest newer one it packages (None if it has none new enough)."""
+    major = int(major)
+    return next((m for m in packaged_javas() if m >= major), None)
 
 
 def java_package(major):
-    """The package that provides Java `major`, or the closest newer one Ubuntu has."""
-    major = int(major)
-    pick = next((m for m in UBUNTU_JAVA if m >= major), major)
-    return f"openjdk-{pick}-jre-headless"
+    """The package that provides Java `major`, or the closest newer one this system packages."""
+    pick = java_major_for(major)
+    return f"openjdk-{pick if pick is not None else int(major)}-jre-headless"
 
 
 def version_key(v):
@@ -348,5 +387,7 @@ def requirement(minecraft):
     need = mojang_version(minecraft)["java_required"]
     javas = installed_javas()
     newer = sorted(m for m in javas if m >= need)
+    major = java_major_for(need)
     return {"minecraft": minecraft, "java_required": need, "java_used": newer[0] if newer else None,
-            "installed": sorted(javas), "package": java_package(need)}
+            "installed": sorted(javas), "package": java_package(need), "package_major": major,
+            "packaged": list(packaged_javas())}

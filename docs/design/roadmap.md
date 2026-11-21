@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.8 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7) and backups on another node (1.16.8) shipped; newer Ubuntu, Debian and ARM64 (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.8 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7) and backups on another node (1.16.8) shipped; newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -656,25 +656,38 @@ refused joins, so those are Java only.
 
 ### 1.16.9: newer Ubuntu, Debian and ARM64
 
-17. **Ubuntu 25.10 and 26.04 LTS, Debian 12/13, and ARM64 machines such as a Raspberry Pi, for
-    Java servers.** Ubuntu 26.04 is the LTS most new machines will run, and 25.04 reached the
-    end of its support in January 2026, yet `install.sh` refuses everything but 24.04 and 25.04.
-    Many home servers are also Debian or a Pi, which it refuses too. The package is already
-    `Architecture: all` and its dependencies are in Ubuntu's and Debian's archives, so most of
-    the work is testing.
+17. **Ubuntu 26.04 LTS and 26.10, Debian 13, and ARM64 machines such as a Raspberry Pi, for
+    Java servers.** Ubuntu 26.04 is the LTS most new machines will run, and 25.04 and 25.10
+    have reached the end of their support, yet `install.sh` refuses everything but 24.04 and
+    25.04. Many home servers are also Debian or a Pi, which it refuses too. The package is
+    already `Architecture: all` and its dependencies are in Ubuntu's and Debian's archives, so
+    most of the work is testing.
 
-    - `install.sh` accepts Ubuntu 24.04, 25.04, 25.10 and 26.04, and Debian 12 and 13.
+    - `install.sh` accepts Ubuntu 24.04, 26.04 and 26.10 and Debian 13 (which 64-bit Raspberry
+      Pi OS reports itself as), on amd64 and arm64; Ubuntu 25.04 and 25.10 still install, with a
+      note that they no longer get updates. It refuses 32-bit systems (armhf, 32-bit Pi OS) and
+      Debian 12 with a message saying what to install instead.
+    - **Debian 12 is left for later** (decided 21 Nov 2026): it ships Python 3.11, FastAPI 0.92
+      and Starlette 0.26, below the package's minimums, and its Python has no safe tar
+      extraction (`filter="data"`), which backups, imports and moves rely on. Raspberry Pi OS
+      moved to Debian 13 in late 2025.
     - **Newer Ubuntu releases:** check that their Python, FastAPI and Starlette still meet the
       package's minimum versions and that the panel runs on them, and that their OpenJDK
       packages cover the Java versions Minecraft needs.
-    - **Ubuntu 25.04** stays accepted for existing installs but leaves the test matrix, since it
-      no longer gets updates.
-    - **Java:** the panel offers the OpenJDK versions each release packages, and says so when
-      a Minecraft version needs a Java the release doesn't have.
+    - **Ubuntu 25.04 and 25.10** stay accepted for existing installs but leave the test matrix.
+    - **Java:** the panel offers the OpenJDK versions each release packages (asked from apt:
+      Debian 13 has only 21 and 25), and says so when a Minecraft version needs a Java the
+      release doesn't have.
     - **Bedrock is hidden on ARM64**, because Mojang only ships it for x86-64; Phantom too.
-    - The install tests run on Ubuntu 24.04, 25.10 and 26.04 and Debian 12 and 13, and on ARM64
-      for one Ubuntu and one Debian release.
-    - The README, installation page and FAQ list the supported systems.
+      Creating, importing, restoring, updating or moving a Bedrock server onto an ARM64 machine
+      is refused; cluster members report their machine type so the master hides Bedrock for
+      ARM64 nodes.
+    - **Raspberry Pi:** Pi 4 or 5 with 64-bit Pi OS; a smaller default heap (1 GB) on machines
+      with 3 GB or less; the docs cover memory per Pi size, SSD over microSD, and cooling.
+    - The install tests run on Ubuntu 24.04, 26.04 and 26.10 and Debian 13, and on ARM64
+      for Ubuntu 26.04 and Debian 13; the unit tests also run against each system's own
+      Python packages.
+    - The README, installation page, user manual, FAQ and man page list the supported systems.
 
     **Size:** about a week, mostly the test matrix.
 
@@ -1185,7 +1198,7 @@ until it's agreed.
 - ~~**Per-server resource limits.**~~ *Scheduled with 1.17's Memory setting (item 21).*
 - ~~**SFTP access.**~~ *Not in the first review; scheduled with per-server permissions as 1.18
   (item 23).*
-- ~~**Ubuntu 25.10 and 26.04, Debian 12/13 and ARM64** for Java servers.~~ *Scheduled as
+- ~~**Ubuntu 26.04 and 26.10, Debian 13 and ARM64 (Raspberry Pi)** for Java servers.~~ *Scheduled as
   1.16.9 (item 17 above).*
 
 **For players**

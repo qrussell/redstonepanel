@@ -1,6 +1,7 @@
 #!/bin/sh
-# Installs RedstonePanel on Ubuntu 24.04 or 25.04 from the signed qrussell-repo apt repository,
-# so that `apt upgrade` brings every later version.
+# Installs RedstonePanel from the signed qrussell-repo apt repository, so that `apt upgrade`
+# brings every later version. It runs on Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit
+# Raspberry Pi OS (Debian 13 based, Raspberry Pi 4 or 5), on x86-64 (amd64) or ARM64 machines.
 #
 #   curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install.sh | sudo sh
 #
@@ -18,9 +19,34 @@ die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || die "run this as root, for example: curl -fsSL …/install.sh | sudo sh"
 [ -r /etc/os-release ] && . /etc/os-release
-if [ "${ID:-}" != ubuntu ] || { [ "${VERSION_ID:-}" != 24.04 ] && [ "${VERSION_ID:-}" != 25.04 ]; }; then
-    [ "${FORCE:-}" = 1 ] || die "RedstonePanel supports Ubuntu 24.04 and 25.04; this is ${PRETTY_NAME:-unknown}. Set FORCE=1 to try anyway."
-    say "Not a supported release (${PRETTY_NAME:-unknown}); carrying on because FORCE=1."
+
+# Supported: Ubuntu 24.04, 26.04, 26.10; Debian 13 (Raspberry Pi OS 64-bit says ID=debian).
+# Ubuntu 25.04 and 25.10 no longer get updates but still work, so existing machines can reinstall.
+system="${PRETTY_NAME:-unknown}"
+case "${ID:-}:${VERSION_ID:-}" in
+    ubuntu:24.04|ubuntu:26.04|ubuntu:26.10|debian:13) problem= ;;
+    ubuntu:25.04|ubuntu:25.10)
+        problem=
+        say "$system no longer gets security updates; consider upgrading to Ubuntu 26.04 LTS." ;;
+    debian:12|raspbian:12)
+        problem="RedstonePanel needs Debian 13 or newer (Python 3.12 or newer); this is $system. On a Raspberry Pi, install the current 64-bit Raspberry Pi OS." ;;
+    raspbian:*)
+        problem="this is 32-bit Raspberry Pi OS ($system). RedstonePanel needs the 64-bit Raspberry Pi OS on a Raspberry Pi 4 or 5." ;;
+    *)
+        problem="RedstonePanel supports Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit Raspberry Pi OS; this is $system." ;;
+esac
+arch=$(dpkg --print-architecture 2>/dev/null || echo unknown)
+case "$arch" in
+    amd64|arm64) ;;
+    armhf|armel) problem="${problem:-this is a 32-bit ARM system ($arch). RedstonePanel needs a 64-bit (arm64) system: on a Raspberry Pi 4 or 5, install the 64-bit Raspberry Pi OS.}" ;;
+    *) problem="${problem:-RedstonePanel runs on x86-64 (amd64) and ARM64 machines; this one is $arch.}" ;;
+esac
+if [ -n "$problem" ]; then
+    [ "${FORCE:-}" = 1 ] || die "$problem Set FORCE=1 to try anyway."
+    say "Not a supported system: $problem Carrying on because FORCE=1."
+fi
+if [ "$arch" = arm64 ]; then
+    say "ARM64 machine: Java servers only (Mojang makes the Bedrock server for x86-64 only)."
 fi
 
 export DEBIAN_FRONTEND=noninteractive
