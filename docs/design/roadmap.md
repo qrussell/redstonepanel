@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.7 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list and two-factor sign-in (1.16.7) shipped; backups on another node (1.16.8), newer Ubuntu, Debian and ARM64 (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.8 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7) and backups on another node (1.16.8) shipped; newer Ubuntu, Debian and ARM64 (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -23,12 +23,12 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.16.7)
+## What already exists (1.16.8)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
-zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
+zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore (and, in a cluster, a copy on another member), webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, two-factor sign-in with recovery codes, clusters (managing every node's servers from the master, with real
 certificates for a master on the internet, and moving or copying servers between members), a first-run setup guide, kick, ban and unban, the redstone logo and theme, a server list that folds by node and edition, the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
@@ -610,7 +610,7 @@ refused joins, so those are Java only.
     a code, a wrong code, a recovery code, a second admin forced through setup), including
     decoding the QR code from the screenshot.
 
-### 1.16.8: backups on another cluster node
+### 1.16.8: backups on another cluster node *(released 21 Nov 2026)*
 
 16. **A copy of every backup off the machine it protects.** A backup on the same disk doesn't
     survive losing the disk, and the guiding rule is to protect worlds first. Clusters make the
@@ -632,6 +632,27 @@ refused joins, so those are Java only.
     accept copies only from cluster members.
 
     **Size:** about a week.
+
+    **As built:** `core/backup_copies.py`. The plan's copy step at the end of `run_backup`
+    couldn't work for nodes: a node has no credential to call the master or another node
+    (node tokens only go master to node), and `run_backup` runs from a systemd timer. So, as
+    with moves, **the master does the copying**: every 5 minutes, and straight after **Back up
+    now** or turning copies on, it lists each configured source's backups and streams any
+    missing ones source to master to holder, with Content-Length and SHA-256 checks. A
+    scheduled backup's copy can therefore be up to about 5 minutes late, and nothing is copied
+    while the master is down (it catches up after). Holders store copies in
+    `/var/backups/redstonepanel/remote/<member id>/<server>/` (0600) with a `.sha256` sidecar
+    and prune scheduled copies to the source's **Keep**; manual copies stay until deleted.
+    Settings and status live only on the master (`backup-copies.json`,
+    `backup-copies-status.json`), and removing a node drops its settings. Copies can be
+    downloaded, deleted or **Put back** into the server's backups and restored; **Use a copy
+    of another server's backup…** lists every copy in the cluster for a server whose machine
+    is gone. A failure is a **Needs attention** item and a `backup_copy_failed` webhook event
+    (on by default, sent once per failure streak). Cluster contract 4 adds node-token-only
+    routes under `/api/cluster/held-backups` that the proxy never passes on; nodes older than
+    1.16.8 get an "update it" message. Tested: 16 new unit tests and
+    `packaging/test/test-backup-copies.sh`, a master and two nodes in systemd containers
+    (33/33), including restoring a stopped node's world from the other node's copy.
 
 ### 1.16.9: newer Ubuntu, Debian and ARM64
 
