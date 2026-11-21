@@ -10,6 +10,14 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 
 ## Next up
 
+### 1.17.2: Advanced options on New server
+
+- **An Advanced options section** on New server: the server's name and game port, a pinned
+  Paper build or Fabric loader, Vanilla snapshots, which Java, the heap, startup flags
+  (Aikar's or your own `-XX`/`-D` flags), the seed, world type and folder, and the common
+  settings (MOTD, game mode, difficulty, max players, online mode, whitelist, operators).
+- **Startup flags** can be changed later on Maintenance, and survive updates and moves.
+
 ### 1.18: helpers with their own access, and SFTP
 
 - **Per-server permissions** for user accounts: view, console, power, players, files, mods,

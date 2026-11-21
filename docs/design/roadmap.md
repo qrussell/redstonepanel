@@ -1251,6 +1251,65 @@ refused joins, so those are Java only.
     The release also makes the RedstonePanel logo and name link to the project website
     (redstonepanel.cielocloud.org).
 
+### 1.17.2: Advanced options on New server
+
+- **Choose what New server otherwise decides: name, port, build, Java, heap, startup flags,
+    world and the common settings.** Asked for on 21 Nov 2026 after trying
+    [minecraft-server-manager](https://github.com/anefzaoui/minecraft-server-manager), a
+    Docker-based Java panel whose wizard exposes every setting of its server image. The ideas
+    that fit a native systemd panel are rebuilt here (no code taken; it is MIT licensed).
+    Plan: the Claude Doc "Advanced options for new Java servers".
+
+    Why here: it reuses 1.17's memory checks, needs nothing from 1.18 or 1.19, and gives 1.20's
+    new types and modpacks a place for their builds.
+
+    - **A collapsed Advanced options section** under the existing form. Closed, New server works
+      as before. Every field is optional; empty means "as without Advanced options".
+    - **Server:** the name (`minecraft-NAME`, lower-case letters, digits and dashes; a Bedrock
+      name can't contain "java") and the game port, both checked for clashes before anything is
+      downloaded.
+    - **Software (Java):** pin a Paper build or Fabric loader version (listed from Fill and Fabric
+      meta, unstable ones labelled), show Vanilla snapshots and pre-releases of the current
+      cycle, and choose an installed Java (never older than the version needs).
+    - **Memory (Java):** the heap, refused when it leaves under 1 GB for the system (768 MB on
+      machines with 3 GB or less). Java starts with half of it.
+    - **Startup flags (Java):** none, or Aikar's flags (with the heap fully allocated up front,
+      as Aikar recommends), plus extra flags for admins: only `-XX:`, `-D` and `-Xss`, never
+      `-XX:OnError`, `OnOutOfMemoryError`, `Flags` or `VMOptionsFile`, and none of the characters
+      systemd interprets. Kept in `/var/lib/redstonepanel/jvm-flags.json` and written into the
+      unit on every rewrite, so Update, Memory, a Java switch, restore and moves keep them.
+      **Maintenance → Java → Startup flags** changes them later.
+    - **World:** seed, world type (Java: Default, Flat, Large biomes, Amplified; Bedrock:
+      Default, Flat) with the right `level-type` spelling for the version, and the world
+      folder name.
+    - **Settings:** MOTD (Bedrock `server-name`), game mode, difficulty (numbers before Java 1.14),
+      max players, online mode, whitelist/allowlist players and Java operators. A chosen template
+      is applied first and these win; its values show as hints.
+    - **Nodes:** the master sends the same object; nodes need contract 6, otherwise the section
+      says to update RedstonePanel there.
+
+    **Not included, and why:** Spigot/CraftBukkit (BuildTools compiles on the machine; Paper runs
+    their plugins), Folia, Pufferfish and Leaf (Folia breaks most plugins; the forks can join the
+    Paper family if asked), hybrids such as Mohist and Arclight (mods plus plugins break
+    unpredictably), Limbo and Sponge, CurseForge auto-download (see 1.20), Docker settings, JMX,
+    disk quotas, auto-pause (a scheduled-commands idea, not a deploy option). Hard memory limit
+    and CPU share join the Memory group once 1.17 is merged. Add-ons at creation join 1.20.
+
+    **How:** `core/deployopts.py` (checks, Aikar's flags, the flags store),
+    `ServerDeployRequest.advanced`, `GET /api/java/builds`, `GET /api/java/snapshots`,
+    `POST /api/servers/{name}/jvm-flags`; `CLUSTER_API` 6.
+
+    **Size:** about a week.
+
+    **As built (21 Nov 2026, MR on `feature/advanced-deploy-options`):** as planned, except that
+    templates don't store the Software, Memory and Startup flags groups yet. Tested:
+    `tests/test_deployopts.py` (27 tests: every check, flags in the unit across rewrites, pinned
+    Paper and Fabric builds, snapshots and the downgrade check, deploy with every option,
+    template order, Maintenance flags); `test-install.sh` (refusals with nothing left behind,
+    flags on Maintenance, `jvm-flags.json` 0600); Aikar's flags start Java 21;
+    `packaging/test/test-advanced-deploy.sh` deploys Paper with every option, Fabric with a
+    pinned loader and a Vanilla snapshot with real downloads and checks each starts.
+
 ### 1.18: helpers with their own access, and SFTP
 
 23. **Give a helper access to only their servers, and let people use FileZilla or WinSCP.**

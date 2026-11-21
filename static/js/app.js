@@ -2341,7 +2341,7 @@ const ServerApp = {
                 <input id="flags-extra" type="text" autocapitalize="none" spellcheck="false" value="${esc((f.extra || []).join(' '))}"
                     placeholder="Extra flags, e.g. -XX:+UseZGC" aria-label="Extra startup flags" class="${input}">
             </div>
-            <div class="mt-2 flex items-center gap-2"><button onclick="ServerApp.saveFlags()" class="bg-theme hover-bg-theme text-white px-3 py-1 rounded font-bold text-sm">Save flags</button>
+            <div class="mt-2 flex items-center gap-2"><button onclick="ServerApp.saveFlags()" class="shrink-0 whitespace-nowrap bg-theme hover-bg-theme text-white px-3 py-1 rounded font-bold text-sm">Save flags</button>
             <span class="text-xs text-gray-500 dark:text-gray-400">Only -XX: options, -D properties and -Xss. A running server restarts.</span></div>
         </div>`;
     },
