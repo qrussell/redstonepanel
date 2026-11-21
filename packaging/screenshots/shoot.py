@@ -6,6 +6,9 @@ master's address, RP_USER/RP_PASS the demo admin. Every picture is 1440x900 unle
 pictures go to /out (docs/guide/images), light ones to /out/light; the docs show the one that
 matches the reader's theme (see docs/guide/README.md, "About the screenshots").
 
+Phone pictures (1.16.10) are 390x844, like a phone, and named phone-*.png. The QR code dialog
+(phone-qr.png) is the desktop's.
+
 The last step moves the demo's Bedrock server to the node and back (cluster-moved.png), so it
 runs after everything else.
 """
@@ -27,10 +30,11 @@ def folder(theme):
 
 
 class Shooter:
-    def __init__(self, browser, theme):
+    def __init__(self, browser, theme, phone=False):
         self.theme, self.out = theme, folder(theme)
-        self.ctx = browser.new_context(ignore_https_errors=True, viewport={"width": 1440, "height": 900},
-                                       color_scheme=theme)
+        size = {"width": 390, "height": 844} if phone else {"width": 1440, "height": 900}
+        extra = {"is_mobile": True, "has_touch": True, "device_scale_factor": 2} if phone else {}
+        self.ctx = browser.new_context(ignore_https_errors=True, viewport=size, color_scheme=theme, **extra)
         # The panel keeps its theme in localStorage (Settings → Theme); set it before any page runs
         self.ctx.add_init_script(f"try {{ localStorage.setItem('rp_themeMode', '{theme}') }} catch (e) {{}}")
         self.page = self.ctx.new_page()
@@ -76,11 +80,12 @@ class Shooter:
         }""", text)
         self.page.wait_for_timeout(500)
 
-    def sign_in(self):
+    def sign_in(self, picture=True):
         page = self.page
         page.goto(BASE + "/static/login.html")
         page.wait_for_timeout(1500)
-        self.step("sign-in", lambda: self.shot("sign-in", element="form"))
+        if picture:
+            self.step("sign-in", lambda: self.shot("sign-in", element="form"))
         r = self.ctx.request.post(BASE + "/api/auth/login",
                                   data={"username": os.environ["RP_USER"], "password": os.environ["RP_PASS"]})
         if not r.ok:
@@ -245,6 +250,34 @@ class Shooter:
             self.close_modals()
         step("settings", settings)
 
+        def phone_qr():
+            page.evaluate("ServerApp.openPhoneQr()")
+            page.wait_for_timeout(1500)
+            shot("phone-qr", element="#modal-content")
+            self.close_modals()
+        step("phone qr", phone_qr)
+
+    # Phone-sized pictures for the manual (1.16.10), from a 390x844 Shooter
+    def phone(self):
+        page, step, shot = self.page, self.step, self.shot
+        self.sign_in(picture=False)
+        step("phone dashboard", lambda: shot("phone-dashboard"))
+
+        def menu():
+            page.evaluate("ServerApp.openNav()")
+            shot("phone-menu")
+            page.evaluate("ServerApp.closeNav()")
+        step("phone menu", menu)
+
+        def server():
+            self.open_server("minecraft-java")
+            shot("phone-server")
+            for tab in ("backups", "chat"):
+                page.evaluate(f"ServerApp.switchTab('{tab}')")
+                page.wait_for_timeout(2500)
+                shot(f"phone-{tab}")
+        step("phone server", server)
+
     def move(self, server):
         """Moves a server to the other panel from the cluster page, pictures the finished move,
         then deletes the old copy (so the next move can keep the server's name)."""
@@ -276,6 +309,9 @@ with sync_playwright() as p:
         s = Shooter(browser, theme)
         s.everything()
         browser_shooters.append(s)
+        phone = Shooter(browser, theme, phone=True)
+        phone.phone()
+        phone.ctx.close()
     # Last: a real move in each theme, to the node and back, so the demo ends as it began
     for s in browser_shooters:
         s.move("minecraft-bedrock")
