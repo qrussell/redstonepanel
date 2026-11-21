@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.10**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.11**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,13 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.11: backups off the machine, without a cluster
-
-- **Copy each backup to an SSH server or S3-compatible storage** (Backblaze B2, Wasabi,
-  Cloudflare R2, MinIO, AWS S3), checked as it's copied.
-- **Keep backups by age** ("14 days") as well as by count, with separate settings for copies.
-- **Restore from a copy**, or bring a server back on a new machine straight from backup storage.
 
 ### 1.16.12: Bedrock that keeps up, and update alerts
 
@@ -118,6 +111,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.10** makes the panel work on a phone and
-installable as an app; **1.16.9** adds Debian 13, Ubuntu 26.04 and 26.10, ARM64 and the
-Raspberry Pi, and **1.16.8** keeps backup copies on another cluster member.
+See [What's New](Whats-New.md). The latest: **1.16.11** copies backups to SSH or S3-compatible storage; **1.16.10** makes the panel work on a phone, and **1.16.9** adds Debian 13, Ubuntu 26.04 and 26.10, ARM64 and the Raspberry Pi.

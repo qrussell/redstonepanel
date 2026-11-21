@@ -68,7 +68,7 @@ class Shooter:
 
     def close_modals(self):
         self.page.keyboard.press("Escape")
-        self.page.evaluate("""() => document.querySelectorAll('#modal-overlay, .modal-overlay, [id$="-modal"], #template-workspace')
+        self.page.evaluate("""() => document.querySelectorAll('#modal-overlay, #settings-overlay, .modal-overlay, [id$="-modal"], #template-workspace')
                            .forEach(e => e.classList.add('hidden'))""")
         self.page.wait_for_timeout(300)
 

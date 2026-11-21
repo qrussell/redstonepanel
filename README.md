@@ -102,6 +102,8 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**Backups off the machine** *(1.16.11)*. Copy each server's backups to an SSH server or S3-compatible storage (Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3), checked as they're copied, keep them by age as well as by count, and bring a server back on a new machine straight from that storage. Bedrock servers also get the firewall rules they actually listen on. Read the [1.16.11 release notes](release-notes/v1.16.11.md).
+
 **A panel that works on a phone** *(1.16.10)*. Every page fits a phone: the sidebar becomes a
 ☰ menu, Start, Restart and Stop are big buttons and tables turn into cards. Over HTTPS the panel
 installs as an app, and **📱 Open on your phone** shows a QR code to open it on your phone.
