@@ -9,6 +9,16 @@ the dashboard.
 
 ---
 
+## 1.16.3: a server list that folds *(November 2026)*
+
+A long server list, especially on a cluster, is now easy to tidy.
+
+- **Click any heading** in the sidebar (Java Edition, Bedrock Edition or a cluster node) to fold
+  it. A folded heading shows how many of its servers are online, and the browser remembers it.
+- **Each cluster node's servers** get their own Java and Bedrock headings, like this machine's.
+
+[Release notes](../../release-notes/v1.16.3.md)
+
 ## 1.16.2: kick and ban, and a new look *(November 2026)*
 
 Remove or ban a player with a click, and RedstonePanel now looks like itself.

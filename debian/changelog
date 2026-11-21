@@ -1,3 +1,16 @@
+redstonepanel (1.16.3) noble; urgency=medium
+
+  * Server list: every heading folds with a click (this machine's Java
+    and Bedrock Edition, each cluster node), and a folded heading shows
+    how many of its servers are online. What's folded is remembered in
+    the browser.
+  * A cluster node's servers get their own Java Edition and Bedrock
+    Edition headings, like this machine's. A node's warnings stay
+    visible while it is folded.
+  * Server names in the server list are HTML-escaped.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 21 Nov 2026 02:30:00 +0000
+
 redstonepanel (1.16.2) noble; urgency=medium
 
   * Kick, ban and unban from Whitelist & Access: Online now lists the

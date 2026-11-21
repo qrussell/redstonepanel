@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.2 (20 Nov 2026): moving servers between cluster members, a first-run setup guide, and kick and ban with the redstone branding shipped; two-factor sign-in (1.16.3), backups on another node (1.16.4), Debian and ARM64 (1.16.5), a phone-friendly panel (1.16.6), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.3 (21 Nov 2026): moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, and a folding server list shipped; two-factor sign-in (1.16.4), backups on another node (1.16.5), Debian and ARM64 (1.16.6), a phone-friendly panel (1.16.7), pre-copy and LAN discovery (1.16.x) and performance (1.17) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -23,14 +23,14 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.16.2)
+## What already exists (1.16.3)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
 `server.properties` and permissions editors, player roles, live chat over RCON or screen,
 zip export and .zip/.tar.gz/.tar import, a file manager, drag-and-drop mods, plugins and Bedrock add-ons, a Modrinth and Hangar catalog with bundles and updates, Java installed per server on demand, a host dashboard, Phantom LAN proxies for Bedrock servers, restoring removed servers, scheduled backups with restore, webhook notifications, scheduled restarts, dark/light themes, an activity log, HTTPS modes,
 trusted-LAN sign-in, clusters (managing every node's servers from the master, with real
-certificates for a master on the internet, and moving or copying servers between members), a first-run setup guide, kick, ban and unban, the redstone logo and theme, the signed apt repository, and Bedrock connection
+certificates for a master on the internet, and moving or copying servers between members), a first-run setup guide, kick, ban and unban, the redstone logo and theme, a server list that folds by node and edition, the signed apt repository, and Bedrock connection
 diagnostics. The Bedrock download already uses the official download-links API, with the
 minecraft.net page only as a fallback.
 
@@ -161,7 +161,7 @@ without signing in. Both are admin-only now (API and UI), and the log names who 
    database, no new dependency. One `GET /api/host` for signed-in users. Trusted-LAN visitors
    get the same view minus IP addresses and versions. The CPU and network samples are kept
    in memory between requests; that sampler becomes 1.17's history. Lay it out for phones
-   too (see 1.16.6).
+   too (see 1.16.7).
 
    **Size:** about a week. The background folder-size walk and the per-node cards are the
    fiddly parts.
@@ -529,7 +529,16 @@ refused joins, so those are Java only.
     release also brought the RedstonePanel logo and a stone-and-redstone theme, with Redstone
     Red as the default accent.
 
-### 1.16.3: two-factor sign-in
+### 1.16.3: a server list that folds *(Nov 2026)*
+
+    Not planned ahead: added after 1.16.2 because the sidebar grows long on a cluster. Every
+    heading in the server list (this machine's Java and Bedrock Edition, each node) folds with
+    a click and, folded, shows how many of its servers are online. A node's servers get their
+    own Java and Bedrock headings, like this machine's. What's folded is kept in the browser
+    (`rp_collapsedGroups` in localStorage), so nothing is stored on the server. The planned
+    point releases below each moved up one number.
+
+### 1.16.4: two-factor sign-in
 
 15. **A second step at sign-in for admin accounts.** An admin is effectively root, and a
     password alone is a thin wall once the panel is reachable from outside the home network.
@@ -553,7 +562,7 @@ refused joins, so those are Java only.
 
     **Size:** about a week, most of it the sign-in flow and recovery.
 
-### 1.16.4: backups on another cluster node
+### 1.16.5: backups on another cluster node
 
 16. **A copy of every backup off the machine it protects.** A backup on the same disk doesn't
     survive losing the disk, and the guiding rule is to protect worlds first. Clusters make the
@@ -576,7 +585,7 @@ refused joins, so those are Java only.
 
     **Size:** about a week.
 
-### 1.16.5: Debian and ARM64
+### 1.16.6: Debian and ARM64
 
 17. **Debian 12/13, and ARM64 machines such as a Raspberry Pi, for Java servers.** Many home
     servers are Debian or a Pi, and today `install.sh` refuses them. The package is already
@@ -592,7 +601,7 @@ refused joins, so those are Java only.
 
     **Size:** about a week, mostly the test matrix.
 
-### 1.16.6: a panel that works on a phone
+### 1.16.7: a panel that works on a phone
 
 18. **Every page usable on a phone, and the panel installable as an app.** Restarting a
     crashed server or answering "is it up?" from a phone is one of the commonest reasons to
@@ -600,7 +609,7 @@ refused joins, so those are Java only.
     server pages and the setup guide are squeezed into a strip beside it. Other panels work on
     phones; this closes that gap. It takes over the "mobile pass" from Groundwork.
 
-    Why here: after the 1.16.2–1.16.5 point releases it touches every page, so it goes last in
+    Why here: after the 1.16.2–1.16.6 point releases it touches every page, so it goes last in
     1.16.x, and before 1.17 so the performance charts are designed for small screens from the
     start.
 
@@ -732,7 +741,7 @@ refused joins, so those are Java only.
   root against `/opt`; cover them with a temp `SERVERS_ROOT` and a stubbed `systemctl`, and in
   the systemd test container.
 - **Security review** of sign-in, import (archive unpacking) and anything that builds paths.
-- ~~**Mobile pass**~~ on the dashboard, server list and console: *scheduled as 1.16.6
+- ~~**Mobile pass**~~ on the dashboard, server list and console: *scheduled as 1.16.7
   (item 18 above).*
 - ~~**README screenshots**~~ *(done with 1.15.0: a screenshot tour in the README, retaken by
   `packaging/screenshots/demo.sh`)*. A short GIF is still to do.
@@ -750,7 +759,7 @@ until it's agreed.
 **Protect worlds (first, per the guiding rules)**
 
 - **Off-machine backups.** ~~Copy each finished backup to another cluster node~~ *(scheduled
-  as 1.16.4, item 16 above)*. Still proposed: an rsync/SFTP target or S3-compatible storage,
+  as 1.16.5, item 16 above)*. Still proposed: an rsync/SFTP target or S3-compatible storage,
   for standalone panels, with the same retention and a `Needs attention` item when a copy fails.
 - **Automatic Bedrock updates** (opt-in per server). Bedrock clients update themselves and
   can't join an older server, so owners update by hand within hours of every release. A daily
@@ -759,12 +768,12 @@ until it's agreed.
 
 **Security**
 
-- ~~**Two-factor sign-in (TOTP).**~~ *Scheduled as 1.16.3 (item 15 above).*
+- ~~**Two-factor sign-in (TOTP).**~~ *Scheduled as 1.16.4 (item 15 above).*
 - **Reach the master panel through a Cloudflare Tunnel** (opt-in). Today a panel on the
   internet needs a port opened or forwarded to 8443 and a certificate (1.15.0). With
   `cloudflared`, the machine makes an outbound connection to Cloudflare, and the panel is
   served at a hostname like `panel.example.com` with Cloudflare's certificate. No inbound port
-  is opened and the home IP address stays hidden. Suggested after 1.16.3, so admins have a
+  is opened and the home IP address stays hidden. Suggested after 1.16.4, so admins have a
   second sign-in step before the panel is reachable from anywhere.
   - **Panel Settings → Connection → Cloudflare Tunnel:** paste the tunnel token from the
     Cloudflare dashboard. The panel writes a token-based `cloudflared` service pointing at
@@ -806,7 +815,7 @@ until it's agreed.
   asked, as they're the most common reason a Java owner can't use the panel.
 - **Per-server resource limits** with systemd `MemoryMax=`/`CPUQuota=`, beside 1.17's Memory
   setting, so one server can't starve the rest.
-- ~~**Debian 12/13 and ARM64** for Java servers.~~ *Scheduled as 1.16.5 (item 17 above).*
+- ~~**Debian 12/13 and ARM64** for Java servers.~~ *Scheduled as 1.16.6 (item 17 above).*
 
 **For players**
 
