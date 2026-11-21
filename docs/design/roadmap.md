@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.8 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7) and backups on another node (1.16.8) shipped; newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.16.9 (21 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8) and newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9) shipped; a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11), Bedrock auto-updates and update alerts (1.16.12), pre-copy and LAN discovery (1.16.x), performance (1.17), crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -23,7 +23,7 @@ targets, not promises.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
-## What already exists (1.16.8)
+## What already exists (1.16.9)
 
 Java (vanilla, Paper, Fabric, any release, the right Java per server) and Bedrock servers
 as systemd units with `Restart=on-failure`, templates,
@@ -654,7 +654,7 @@ refused joins, so those are Java only.
     `packaging/test/test-backup-copies.sh`, a master and two nodes in systemd containers
     (33/33), including restoring a stopped node's world from the other node's copy.
 
-### 1.16.9: newer Ubuntu, Debian and ARM64
+### 1.16.9: newer Ubuntu, Debian, ARM64 and Raspberry Pi *(released 21 Nov 2026)*
 
 17. **Ubuntu 26.04 LTS and 26.10, Debian 13, and ARM64 machines such as a Raspberry Pi, for
     Java servers.** Ubuntu 26.04 is the LTS most new machines will run, and 25.04 and 25.10
@@ -690,6 +690,24 @@ refused joins, so those are Java only.
     - The README, installation page, user manual, FAQ and man page list the supported systems.
 
     **Size:** about a week, mostly the test matrix.
+
+    **As built:** as planned. `install.sh` accepts Ubuntu 24.04, 26.04 and 26.10 and Debian 13
+    on amd64 and arm64, warns on 25.04 and 25.10, and refuses Debian 12, 32-bit systems and
+    anything else (`FORCE=1` still overrides). Java comes from `apt-cache pkgnames` for
+    `openjdk-N-jre-headless` (cached 10 minutes, falling back to Ubuntu's list): Debian 13
+    offers 21 and 25, Ubuntu 26.04 adds 26 and 26.10 adds 27 and 28. A Minecraft version
+    needing a Java the system lacks gets the closest newer one with a note in the New Server
+    dialog, or a clear message when nothing is new enough; the 409 for a missing Java now
+    carries `major`, which also fixed installing Java 16 for Minecraft 1.17. Bedrock on ARM64
+    is refused for create, import, restore, update and move/copy, with a pointer to Geyser;
+    `/api/auth/me` reports `machine` and `bedrock_supported`, and cluster `hello`/join report
+    each node's `machine` so the master greys Bedrock out for ARM64 nodes. New Java servers
+    get `-Xms512M -Xmx1G` on machines with 3 GB or less. The cluster proxy ignores a query
+    string in `raw_path` (older Starlette test clients put one there). Tested: 12 new unit
+    tests, the unit suite against each system's own Python packages (new `python-system`
+    GitLab job on Ubuntu 24.04, 26.04, 26.10 and Debian 13), and install tests on all four
+    systems on amd64 plus Ubuntu 26.04 and Debian 13 on GitHub's ARM64 runners, including
+    Paper booting on ARM Java and Bedrock refused with nothing left behind.
 
 ### 1.16.10: a panel that works on a phone
 

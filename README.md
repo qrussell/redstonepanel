@@ -102,6 +102,11 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**Debian, newer Ubuntu and the Raspberry Pi** *(1.16.9)*. The panel now installs on Ubuntu
+26.04 LTS and 26.10, Debian 13 and 64-bit Raspberry Pi OS on a Pi 4 or 5, as well as Ubuntu
+24.04, on x86-64 and ARM64 machines (Java servers only on ARM64, since Bedrock is made for
+x86-64 only). Read the [1.16.9 release notes](release-notes/v1.16.9.md).
+
 **Backups on another cluster member** *(1.16.8)*. In a cluster, a server's backups can also be
 kept on another member, checked as they're copied, so a world survives losing the machine it
 ran on. Read the [1.16.8 release notes](release-notes/v1.16.8.md).
