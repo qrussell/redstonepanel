@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.17.1 (22 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17) and crash explanations (1.17.1) shipped; per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.17.2 (22 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1) and Advanced options on New server (1.17.2) shipped; per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1251,7 +1251,7 @@ refused joins, so those are Java only.
     The release also makes the RedstonePanel logo and name link to the project website
     (redstonepanel.cielocloud.org).
 
-### 1.17.2: Advanced options on New server
+### 1.17.2: Advanced options on New server *(released 22 Nov 2026)*
 
 - **Choose what New server otherwise decides: name, port, build, Java, heap, startup flags,
     world and the common settings.** Asked for on 21 Nov 2026 after trying
@@ -1306,15 +1306,17 @@ refused joins, so those are Java only.
 
     **As built (21 Nov 2026, MR on `feature/advanced-deploy-options`):** as planned, except that
     templates don't store the Software, Memory and Startup flags groups yet. Rebased on 1.17.1
-    on 22 Nov 2026 and the hard limits added (2 more tests). Tested:
-    `tests/test_deployopts.py` (27 tests: every check, flags in the unit across rewrites, pinned
+    on 22 Nov 2026 and the hard limits added. Tested:
+    `tests/test_deployopts.py` (29 tests, including the hard limits: every check, flags in the unit across rewrites, pinned
     Paper and Fabric builds, snapshots and the downgrade check, deploy with every option,
     template order, Maintenance flags); `test-install.sh` (refusals with nothing left behind,
     flags on Maintenance, `jvm-flags.json` 0600); `packaging/test/test-advanced-deploy.sh`
     with real downloads on Docker Desktop, 33/33: Paper 26.3 with every option (build 256 pinned,
     Java 25, Aikar's flags plus an extra flag, flat world, Notch whitelisted and op), Fabric with
     loader 0.20.0 pinned, and Vanilla 26.4-snapshot-10, each reaching "Done"; updating the
-    snapshot back to 26.3 refused.
+    snapshot back to 26.3 refused. Rerun after the rebase with the hard limits (build 257 pinned;
+    Automatic memory 1.5G and 1.5 cores in the drop-in and applied by systemd): all passed, as did
+    `test-install.sh` with the limit refusals.
 
 ### 1.18: helpers with their own access, and SFTP
 

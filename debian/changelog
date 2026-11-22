@@ -1,3 +1,20 @@
+redstonepanel (1.17.2) noble; urgency=medium
+
+  * Advanced options on New server: choose the name and game port, a
+    Paper build or Fabric loader, Vanilla snapshots and pre-releases, the
+    Java to run on, the heap, hard memory and CPU limits, startup flags
+    (Aikar's flags, plus extra -XX/-D/-Xss flags for admins), the world
+    (seed, type, folder name) and common settings (MOTD, game mode,
+    difficulty, max players, online mode, whitelist, operators). Every
+    field is optional, and every choice is checked before anything is
+    downloaded.
+  * Maintenance, Java card: Startup flags can be changed later. They are
+    kept through updates, Java changes, restores and moves.
+  * Clusters: nodes need RedstonePanel 1.17.2 for Advanced options
+    (cluster contract 6).
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sun, 22 Nov 2026 19:07:26 +0000
+
 redstonepanel (1.17.1) noble; urgency=medium
 
   * Why did it crash? When a server crashes or won't start, a Last crash
