@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.17.0**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.17.1**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,13 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.17.1: why did it crash?
-
-- **A Last crash card** with the error lines highlighted, and the cause in plain words: a
-  missing dependency, a mod for the wrong version, the wrong Java, a port in use, out of memory.
-- **The likely mod or plugin named**, with **Turn off and restart** or **Undo the last mod
-  update**.
 
 ### 1.18: helpers with their own access, and SFTP
 
@@ -85,4 +78,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.
+See [What's New](Whats-New.md). The latest: **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.
