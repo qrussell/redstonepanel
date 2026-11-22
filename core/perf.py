@@ -831,8 +831,7 @@ def suggestions(srv, rows, view, unit, now=None, measured=None):
             f"({'a Paper plugin' if loader == 'paper' else 'a Fabric mod'}).", "properties", "warn")
         if loader == "vanilla":
             add("vanilla_slow", "Paper and Fabric (with Lithium) run the same world much faster than Vanilla. "
-                "Changing a server's type comes in a later release; until then, make a new Paper or Fabric server "
-                "and copy the world across.", "addons")
+                "Change this server to one of them and keep its world: Maintenance, Server type.", "type")
     if loader == "fabric":
         mods = _addon_names(srv["directory"], "mods")
         if mods is not None and not any("lithium" in n for n in mods):

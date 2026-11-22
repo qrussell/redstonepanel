@@ -229,6 +229,18 @@ class Shooter:
             shot("bedrock-auto-update", element="div:has(> #autoupdate-content)")
         step("updates", updates)
 
+        # 1.19: the Server type card and the preview of changing the Paper server to Fabric
+        # (the preview changes nothing, so the demo's server stays as it is)
+        def server_type():
+            self.open_server("minecraft-java", tab="maintenance")
+            page.wait_for_selector("#convert-body button", timeout=15000)
+            shot("server-type", element="#convert-card")
+            page.evaluate("ServerApp.previewConvert('fabric')")
+            page.wait_for_selector("#convert-go", timeout=60000)
+            shot("change-type-preview", element="#modal-content")
+            page.evaluate("ServerApp.closeModal()")
+        step("server type", server_type)
+
         def file_editor():
             self.open_server("minecraft-java", tab="files")
             page.evaluate("ServerApp.openFileEditor('plugins/Essentials/config.yml')")

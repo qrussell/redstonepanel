@@ -33,6 +33,8 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Find out why a server lags | [Performance](#performance) |
 | Give a server more memory, or limit it | [Memory and limits](#memory-and-limits) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
+| Turn a Vanilla server into Paper or Fabric (or back) | [Changing a server's type](#changing-a-servers-type) |
+| Go back after an update broke something | [Rolling back an update](#rolling-back-an-update) |
 | Keep a Bedrock server on the newest version | [Automatic Bedrock updates](#update-alerts-and-automatic-bedrock-updates) |
 | Add mods, plugins or Bedrock add-ons | [Mods, plugins and add-ons](#12-mods-plugins-and-add-ons) |
 | Let Bedrock players join a Java server | [Finding mods and plugins](#finding-mods-and-plugins) (the **Bedrock players** bundle) |
@@ -711,17 +713,93 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
   versions than the server's own aren't offered, because a world can't go back. The new jar is
   downloaded before the server is stopped, so a failed download changes nothing. Then it stops
   the server, installs the download and starts it again. Your world, settings, ports,
-  operators and allowlist are kept. Take a backup first: a Java world opened by a newer
-  version can't go back to an older one. Bedrock servers always update to the newest release,
+  operators and allowlist are kept. With **Back up first** ticked (it is, unless you untick
+  it), a Java server gets a "Before update" backup while it is stopped, and **Roll back the
+  last update** appears under the button afterwards: see
+  [Rolling back an update](#rolling-back-an-update). Bedrock servers always update to the newest release,
   the same safe way as [automatic updates](#update-alerts-and-automatic-bedrock-updates): a
   "Before update" backup first, and the old version put back if the new one doesn't start.
   On Fabric and Paper servers, moving to a newer Minecraft version first lists the mods or
   plugins that have no build for it yet on Modrinth or Hangar (and any it couldn't check),
   so you can wait rather than update into a server that won't start. If the new version
   needs a Java that isn't installed, you're asked to install it first.
+- **Server type** (Java servers): change Vanilla, Paper or Fabric to another type and keep
+  the world. See [Changing a server's type](#changing-a-servers-type) below.
 - **Java** (admins, Java servers): which Java the server runs on and which it needs. Choose
   another installed Java that's new enough and click **Use**; a running server restarts.
 - **Memory and limits**: see below.
+
+### Changing a server's type
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/server-type.png"><img src="images/server-type.png" alt="Server type on the Maintenance tab"></picture>
+
+A server that started on Vanilla can become Paper (for plugins) or Fabric (for mods), and any
+type can become any other, without making a new server. The world, port, settings, operators,
+whitelist, bans, backups and restart schedules stay as they are. Only admins can do it, and
+only for Java servers: Bedrock has one type.
+
+1. On **Maintenance → Server type**, click **Change to Paper…** (or Fabric, or Vanilla).
+2. Read the preview. Nothing has changed yet.
+3. Click **Change to Paper**. The card shows each step; you can leave the page.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/change-type-preview.png"><img src="images/change-type-preview.png" alt="Preview of a type change"></picture>
+
+**What the preview tells you**
+
+- **Server software**: the build that will be downloaded and the Java it runs on. You can
+  choose a newer Minecraft version at the same time, never an older one. If the new type has
+  no build for your version yet (Paper is often a few days behind a new release), it lists
+  the versions it has.
+- **World**: before Minecraft 26.1, Paper kept the Nether and the End in their own folders
+  (`world_nether`, `world_the_end`) and Vanilla and Fabric keep them inside `world`. Paper
+  moves them out by itself; when a server leaves Paper, the panel moves them back in. From
+  26.1 every type uses the same folders, but Paper keeps the world's game rules, weather and
+  world generation settings with each dimension; when a server leaves Paper, the panel moves
+  those files back to where Vanilla and Fabric look for them. The preview lists every move.
+- **Mods and plugins**: a mod can't run as a plugin, or the other way round. The folder the
+  new type can't load is renamed (`mods` to `mods.off`, `plugins` to `plugins.off`) and comes
+  back if you return to that type. Where the same Modrinth project also has a build for the
+  new type (LuckPerms, Chunky, Geyser and many others), it's ticked for install. Their
+  settings and saved data aren't carried over.
+- **Safety**: how much room the backup needs.
+
+**Mods that add things to the world.** If a Fabric server has mods that add blocks, items,
+mobs, dimensions or world generation, those things disappear from the world when a type
+without them opens it. The preview names each such mod, and you have to type the server's
+name to go ahead. Mods that only run on the server (Lithium, FerriteCore, spark) are safe to
+drop.
+
+**What happens when you confirm**
+
+1. The new server software is downloaded first. If that fails, nothing has changed.
+2. The server stops and a **Before type change** backup is taken, always.
+3. The software is swapped (the old `server.jar` is kept as `server.jar.previous`), the world
+   and add-on folders move, and the chosen mods or plugins are installed.
+4. The server starts, and the panel waits up to 5 minutes for it to say it's ready. A server
+   that was stopped before is stopped again afterwards.
+5. If it doesn't start, the old type, its add-ons and the world from the backup are put back
+   by themselves, the old server is started, and the card shows why (the log lines, and what
+   the panel recognises from [crash explanations](#last-crash)).
+
+**Undo type change** stays on the card until the next change or update. It puts the old
+type and the world *from before the change* back. What was built since then is saved as a
+"Before restore" backup, but isn't in the world any more, because the old type may not be
+able to open it. Undo isn't offered once its backup has been deleted.
+
+Each change is in the activity log with who did it, and the **Server type changed**
+notification can be sent to your webhook.
+
+### Rolling back an update
+
+Updating a Java server with **Back up first** ticked keeps the old `server.jar` and a "Before
+update" backup (the newest three are kept). Until the next update or type change, **Roll back
+the last update** under **Update Server** puts both back: the old version, and the world as
+it was before the update. A world that a newer Minecraft version has opened can't be opened
+by an older one, so what was built since the update is saved as a "Before restore" backup
+and isn't in the world afterwards.
+
+There is still no way to take a world to an older Minecraft version than it has been played
+on; rolling back works only because the backup is from before the update.
 
 ### Memory and limits
 
@@ -869,6 +947,11 @@ The time is the **server's clock**, and the form shows its time zone (UTC on mos
   member.
 - Only **Scheduled** backups are pruned to the number you keep. **Manual** and **Before
   restore** backups stay until you delete them.
+- **Made by** shows the server software and Minecraft version that last wrote the world in
+  each backup (Paper 1.21.4, Bedrock 1.26.66.1). It's recorded inside every backup taken since
+  1.19; older Java backups show it too, and older Bedrock ones say "not recorded". A Java
+  backup made by a newer Minecraft version than the server runs now isn't restored: the older
+  version would open the world and damage it. Update the server first, then restore.
 
 **Other buttons**
 

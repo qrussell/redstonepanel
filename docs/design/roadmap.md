@@ -1528,6 +1528,57 @@ refused joins, so those are Java only.
     **Size:** one to two weeks. The world moves are simple; the rollback on a failed start and
     the content-mod checks are the careful parts.
 
+    **As built (22 Nov 2026, MR on `feature/change-server-type`):** as planned, with these
+    differences.
+
+    - **Minecraft 26.1 changed the world layout** after this was written: every type, Paper
+      included, now keeps all dimensions under `world/dimensions/`. So the folder moves apply
+      only to worlds still in the older layout (up to 1.21.11); the panel tells the layouts apart
+      from the folders on disk, and refuses a 26.1+ world that still has Paper's old folders
+      beside the new ones (an unfinished upgrade). Paper 26.1+ still differs in one way, found by
+      the end-to-end test: it keeps `game_rules.dat`, `scheduled_events.dat`, `weather.dat` and
+      `world_gen_settings.dat` in each dimension's `data/minecraft` instead of
+      `world/data/minecraft`, and Vanilla and Fabric won't start without them ("Overworld
+      settings missing"). Leaving Paper, the panel moves the Overworld's copies back.
+    - **Going to Paper,** the panel moves the dimensions itself when Paper's own folder
+      (`world_nether`) is left from an earlier stay, because Paper only moves a dimension into a
+      folder it can create.
+    - **Content mods** are recognised from the jars themselves (block states, item models,
+      dimensions, world generation; one level into bundled jars) and from Modrinth's categories
+      and client side, not from `level.dat` alone, whose data-pack list turned out to name few
+      mods. Disabled mods don't count.
+    - **Changing type and version together** is one step with one backup, not two.
+    - **Fabric API** is installed along with any Fabric builds chosen in the preview, since
+      nearly all of them need it.
+    - **Same type, newer version** stays with **Update Server**, which now takes a "Before
+      update" backup first (ticked by default, newest three kept) and keeps the old
+      `server.jar`, so **Roll back the last update** is the same undo.
+    - **Undo restores the world before the software,** so its "Before restore" backup is
+      labelled with the newer software that wrote it and can't be restored onto the older one
+      by mistake.
+    - The backup manifest is `.redstonepanel-backup.json`, the first member of every archive;
+      Java backups since 1.16.11 already carried the server info file and show **Made by** too.
+    - The change runs in the background (`GET /api/servers/{name}/convert` is its progress and,
+      with `?to=`, the preview), so it also works through the master's proxy for a node's server.
+
+    Files: `core/convert.py`; routes `GET`/`POST /api/servers/{name}/convert`,
+    `POST …/convert/undo`, `POST …/update/rollback` (admins; reachable by the master like every
+    route of a server, `CLUSTER_API` unchanged); new notification **Server type changed**.
+    Tested: `tests/test_convert.py` (33 tests: layout moves and refusals, symlinks, content
+    detection, the plan, every step of a change, a failed start, undo, update roll back, the
+    manifest and the newer-world refusal); `test-install.sh` (status and refusals on an
+    unrecognised jar); `packaging/test/test-convert.sh` with real downloads in the systemd
+    container (a cloud Docker host, 22 Nov 2026): one world with a block placed in the Overworld,
+    the Nether and the End goes Vanilla → Paper → Vanilla → Fabric → Paper, with LuckPerms'
+    Fabric build swapped for its Paper build on the way; then Undo type change, a Fabric that
+    can't start because a mod's dependency is missing (Vanilla comes back by itself, with the
+    log line that says why), the typed-name check for a mod that adds blocks, and a Vanilla
+    update rolled back. The blocks, seed and player data are checked after every step. 84/84
+    on Minecraft 1.21.11 (Paper build 132, Paper's separate folders) and 81/81 with
+    `MC=26.1.2 OLD=26.1.1` (the shared layout, Java 25). The first 1.21.11 run found two bugs in
+    undo (the add-on tracking file, and the "Before restore" backup's label), fixed before
+    this MR. The default (1.21.11) run is in the GitHub `cluster` job.
+
 ### 1.20: Forge, NeoForge, Quilt, Purpur and modpacks
 
 25. **Run the server types and modpacks people actually ask for.** Forge, NeoForge and

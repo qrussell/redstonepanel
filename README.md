@@ -228,6 +228,9 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
 - update alerts for every server (Bedrock, Minecraft releases, Paper builds, Fabric loader),
   checked every 6 hours, and **Update automatically** for Bedrock servers (**Maintenance**, or
   `sudo redstonepanel check-updates`)
+- change a Java server's type in place (Vanilla, Paper, Fabric) and keep its world: a preview
+  of everything that will happen, always a backup first, the old type put back by itself if
+  the new one doesn't start, **Undo type change**, and **Roll back the last update**
 - Phantom LAN proxies for Bedrock servers (**Add-ons → Server tools**): install, start, stop
   and remove one per server, so a server on another port shows up under LAN Games
 - a panel activity log, and a player access log per server: who joined, left or was turned away

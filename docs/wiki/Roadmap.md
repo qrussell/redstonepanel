@@ -13,8 +13,9 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 ### 1.19: change a server's type or version
 
 - **Switch types in place:** Vanilla → Paper or Fabric, and every other way round. The world,
-  settings, players, port and schedules stay; Paper's separate Nether and End folders are
-  moved back when leaving Paper.
+  settings, players, port and schedules stay; Paper's separate Nether and End folders
+  (worlds from before Minecraft 26.1), or the world settings files it keeps with each
+  dimension (26.1 and later), are moved back when leaving Paper.
 - **Mods and plugins follow where they can:** the same Modrinth project's build for the new type
   is offered, and the old folder is kept, switched off, for going back.
 - **A clear warning** before dropping mods that add blocks or dimensions, which would vanish
