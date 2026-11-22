@@ -102,6 +102,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.17
+
+**Server performance and tuning** *(1.17)*. Each server shows how well it runs (TPS and MSPT, memory against its limits, players), with 24-hour and 7-day history charts for every server and the machine, and suggestions based on what was measured. **Memory and limits** changes a Java server's heap safely and can cap a server's memory and CPU, and webhooks can warn about low TPS or a full disk. Read the [1.17.0 release notes](release-notes/v1.17.0.md).
+
 ## What's new in 1.16
 
 **Port forwarding** *(1.16.14)*. A new **🔀 Port forwarding** page says exactly what to forward on your internet router for players outside your home: every server's ports and protocols, and on a cluster each machine's LAN address, with step-by-step help for pfSense and other routers. Read the [1.16.14 release notes](release-notes/v1.16.14.md).

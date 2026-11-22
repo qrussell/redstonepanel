@@ -9,6 +9,19 @@ the dashboard.
 
 ---
 
+## 1.17.0: server performance and tuning *(November 2026)*
+
+- **Performance** on each server's Overview: TPS and MSPT, memory against its heap and limit,
+  players, and **Held back by its limits** when a limit is biting.
+- **History charts** for 24 hours and 7 days, for every server and for the machine on the
+  dashboard, and a **TPS** column in the server list.
+- **Memory and limits** under **Maintenance**: the Java heap, and optional hard memory and CPU
+  limits per server.
+- **Suggestions** based on what was measured, never applied for you, and optional **low TPS**
+  and **disk nearly full** alerts.
+
+[Release notes](../../release-notes/v1.17.0.md)
+
 ## 1.16.14: port forwarding, for players outside your home *(November 2026)*
 
 - **🔀 Port forwarding** lists what to forward on your internet router for every server, and on
