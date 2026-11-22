@@ -4,6 +4,7 @@ out a plan. No network, systemctl or root: downloads are stubbed and units go to
 Run: python -m unittest discover -s tests"""
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -268,6 +269,12 @@ class Deploy(unittest.TestCase):
     """deploy_server() with a plan, against temp folders."""
 
     def setUp(self):
+        real_run = subprocess.run
+
+        def no_systemctl(cmd, *a, **k):
+            if isinstance(cmd, (list, tuple)) and cmd and cmd[0] == "systemctl":
+                return subprocess.CompletedProcess(cmd, 3, stdout="", stderr="")
+            return real_run(cmd, *a, **k)
         self.root = tempfile.mkdtemp(dir=TMP)
         self.servers = os.path.join(self.root, "opt")
         self.units = os.path.join(self.root, "units")
@@ -295,6 +302,7 @@ class Deploy(unittest.TestCase):
             mock.patch.object(M, "get_server_dir", lambda name: os.path.join(self.servers, name)),
             mock.patch.object(M, "get_java_uuid", lambda name: "11111111-2222-3333-4444-555555555555"),
             mock.patch.object(D, "FLAGS_FILE", os.path.join(self.root, "jvm-flags.json")),
+            mock.patch("subprocess.run", no_systemctl),          # CI has no systemctl
         ]
         for p in patches:
             p.start()
