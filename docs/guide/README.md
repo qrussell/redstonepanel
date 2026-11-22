@@ -462,6 +462,8 @@ Click **➕ New Server**.
 Everything in this section is optional; a field left empty is decided as usual. All choices
 are checked before anything is downloaded, so a taken name or port fails straight away.
 
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/new-server-advanced.png"><img src="images/new-server-advanced.png" alt="New Server's Advanced options filled in for a Paper server"></picture>
+
 | Group | What you can choose |
 | --- | --- |
 | **Server** | The name (it becomes `minecraft-NAME`) and the game port. |
@@ -477,6 +479,8 @@ can't be "updated" back to an older release, because worlds can't go back. On a 
 needs RedstonePanel 1.17.2 or later. Startup flags can be changed later under
 **Maintenance → Java → Startup flags** (a running server restarts); they stay through updates,
 Java changes, restores and moves.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/startup-flags.png"><img src="images/startup-flags.png" alt="Maintenance, Java card with Startup flags"></picture>
 
 The panel then:
 

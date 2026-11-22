@@ -9,6 +9,19 @@ the dashboard.
 
 ---
 
+## 1.17.2: advanced options on New server *(November 2026)*
+
+- **Advanced options** under New server, all optional: the name and port, a **Paper build** or
+  **Fabric loader**, **Vanilla snapshots**, the **Java** to run on, the **heap**, **hard memory
+  and CPU limits**, **startup flags** (Aikar's flags, plus extra flags for admins), the
+  **world** (seed, type, folder) and the common **settings** (MOTD, game mode, difficulty,
+  players, whitelist, operators).
+- Everything is checked **before anything is downloaded**.
+- **Startup flags** can be changed later under **Maintenance → Java**, and stay through
+  updates, Java changes, restores and moves.
+
+[Release notes](../../release-notes/v1.17.2.md)
+
 ## 1.17.1: why did it crash? *(November 2026)*
 
 - **Last crash** on a server's Overview: when it crashes or won't start, the cause in plain
