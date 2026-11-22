@@ -4,6 +4,15 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.18.0 (2026-11-22)
+
+Release notes: release-notes/v1.18.0.md
+
+- Per-server permissions for user accounts: Users, Servers sets what a helper may do on each server (View, Console & chat, Start/stop/restart, Players, Files, Mods & plugins, Settings, Backups), with Moderator and Co-owner presets and an Every server row. Users see only their servers on the dashboard, in the list, under Needs attention and in the activity log. On a cluster the master keeps and enforces what its users may do on node servers.
+- User accounts that already exist keep what users could always do (everything except Files and Mods & plugins) on every server. New user accounts start with no servers.
+- Importing a server, the removed-servers list and restore, editing and deleting templates and the cluster's list of moves are for admins only.
+- SFTP for FileZilla, WinSCP or any SFTP program, off until turned on under Panel Settings, SFTP (port 2022). Sign in as ACCOUNT.SERVER with the panel or Linux password, or an SSH key added under Password, SSH keys; accounts with two-factor sign-in must use a key. Each sign-in reaches one server's folder, with the file manager's safety checks and no shell. Users need Files on the server; admins reach every server. Runs as redstonepanel-sftp.service and needs python3-paramiko (a new Recommends). Each cluster member serves SFTP for its own servers.
+
 ## 1.17.2 (2026-11-22)
 
 Release notes: release-notes/v1.17.2.md

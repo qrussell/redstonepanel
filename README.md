@@ -102,6 +102,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.18
+
+**Helpers with their own access, and SFTP** *(1.18)*. **Users → Servers** sets what each user account may do on each server (view, console and chat, start/stop/restart, players, files, mods and plugins, settings, backups), with Moderator and Co-owner presets, and users see only their servers. SFTP, off until you turn it on, lets FileZilla or WinSCP reach one server's folder per sign-in with your panel password or an SSH key. Read the [1.18.0 release notes](release-notes/v1.18.0.md).
+
 ## What's new in 1.17
 
 **Advanced options on New server** *(1.17.2)*. Choose what the panel otherwise decides for a new server: its name and port, a specific Paper build or Fabric loader, Vanilla snapshots, the Java it runs on, its heap and hard memory and CPU limits, startup flags such as Aikar's, and the world and common settings. Every field is optional and checked before anything is downloaded. Read the [1.17.2 release notes](release-notes/v1.17.2.md).

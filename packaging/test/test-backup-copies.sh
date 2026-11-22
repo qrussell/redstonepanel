@@ -72,6 +72,8 @@ for pair in bcn1:Basement bcn2:Attic; do
 done
 login jar admin "$PASS_ADMIN"
 login ujar alex "$PASS_USER"
+# 1.18: a new user account starts with no servers; give alex what users could always do, everywhere
+api jar PUT /api/users/alex/grants '{"grants":{"*":["view","console","power","players","settings","backups"]}}' >/dev/null
 OV=$(api jar GET /api/cluster/overview)
 N1=$(echo "$OV" | json "[n['id'] for n in d['nodes'] if n['name']=='Basement'][0]")
 N2=$(echo "$OV" | json "[n['id'] for n in d['nodes'] if n['name']=='Attic'][0]")

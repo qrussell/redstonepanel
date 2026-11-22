@@ -9,6 +9,20 @@ the dashboard.
 
 ---
 
+## 1.18: helpers with their own access, and SFTP *(November 2026)*
+
+<picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/user-servers.png"><img src="../guide/images/user-servers.png" alt="What a user account may do on each server"></picture>
+
+- **Per-server permissions:** **Users → Servers** sets what a user account may do on each
+  server (view, console and chat, start/stop/restart, players, files, mods and plugins,
+  settings, backups), with **Moderator** and **Co-owner** presets. Users see only their servers.
+- **SFTP** for FileZilla or WinSCP, off until you turn it on under **Panel Settings → SFTP**:
+  sign in as `account.server` with your password or an **SSH key**, and reach only that
+  server's folder.
+- Existing user accounts keep what they could do; new ones start with no servers.
+
+[Release notes](../../release-notes/v1.18.0.md)
+
 ## 1.17.2: advanced options on New server *(November 2026)*
 
 - **Advanced options** under New server, all optional: the name and port, a **Paper build** or
