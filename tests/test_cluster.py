@@ -5,6 +5,7 @@ different temporary directory for each panel (see Panels.use).
 """
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -284,6 +285,12 @@ class ClusterFlow(unittest.TestCase):
         self.assertEqual(h["cluster_api"], C.CLUSTER_API)
         self.assertEqual(h["cluster_id"], self.node_state["cluster_id"])
         self.assertGreater(h["cert_expires"], 0)
+        self.assertEqual(h["machine"], platform.machine())
+        self.p.use("master")
+        self.assertEqual(C.public_node(C.load_nodes()[0])["machine"], platform.machine(), "the join records it")
+        self.p.use("node")
+        self.assertEqual(C.clean_machine("aarch64"), "aarch64")
+        self.assertIsNone(C.clean_machine("x86_64; rm -rf /"))
 
     def test_renewal(self):
         req = C.cert_csr()
@@ -479,6 +486,7 @@ class RouteCoverage(unittest.TestCase):
     EXPECTED = {("GET", "/api/cluster/hello"), ("DELETE", "/api/cluster/membership"),
                 ("POST", "/api/cluster/cert/csr"), ("PUT", "/api/cluster/cert"),
                 ("GET", "/api/servers"), ("GET", "/api/logs"), ("GET", "/api/templates"), ("GET", "/api/host"),
+                ("GET", "/api/host/history"),
                 ("POST", "/api/servers/deploy"), ("POST", "/api/servers/import"),
                 ("GET", "/api/servers/removed"), ("POST", "/api/servers/removed/{server_name}/restore"),
                 ("POST", "/api/cluster/templates"),
@@ -489,15 +497,26 @@ class RouteCoverage(unittest.TestCase):
                 ("POST", "/api/cluster/transfers/export"), ("POST", "/api/cluster/transfers/import"),
                 ("GET", "/api/cluster/transfers/{tid}/archive"), ("PUT", "/api/cluster/transfers/{tid}/archive"),
                 ("POST", "/api/cluster/transfers/{tid}/finish"), ("POST", "/api/cluster/transfers/{tid}/install"),
-                ("POST", "/api/cluster/transfers/{tid}/confirm"), ("DELETE", "/api/cluster/transfers/{tid}"),
-                ("DELETE", "/api/cluster/transfers/moved/{server_name}")}
+                ("POST", "/api/cluster/transfers/{tid}/confirm"), ("POST", "/api/cluster/transfers/{tid}/stage"),
+                ("DELETE", "/api/cluster/transfers/{tid}"),
+                ("DELETE", "/api/cluster/transfers/moved/{server_name}"),
+                # 1.16.8: backup copies kept for other members (cluster plumbing, core/backup_copies.py)
+                ("GET", "/api/cluster/held-backups"),
+                ("GET", "/api/cluster/held-backups/{panel}/{server_name}/{filename}"),
+                ("GET", "/api/cluster/held-backups/{panel}/{server_name}/{filename}/sha256"),
+                ("PUT", "/api/cluster/held-backups/{panel}/{server_name}/{filename}"),
+                ("DELETE", "/api/cluster/held-backups/{panel}/{server_name}/{filename}"),
+                ("PUT", "/api/cluster/held-backups/into/{server_name}/{filename}"),
+                # 1.16.14: a node's own port forwarding rows (read-only, admins)
+                ("GET", "/api/port-forwarding/local")}
     NEVER = ("/api/users", "/api/settings", "/api/auth", "/api/panel", "/api/cluster/overview",
-             "/api/cluster/nodes", "/api/cluster/join", "/api/templates/")
+             "/api/cluster/nodes", "/api/cluster/join", "/api/templates/", "/api/cluster/backup-copies",
+             "/api/port-forwarding/settings", "/api/port-forwarding/lookup", "/api/port-forwarding/check")
 
     @staticmethod
     def _sample(path):
         return (path.replace("{server_name}", "minecraft-x").replace("{path:path}", "x").replace("{tid}", "a" * 32)
-                .replace("{", "").replace("}", ""))
+                .replace("{panel}", "n-abc123").replace("{", "").replace("}", ""))
 
     def _reachable(self):
         import main

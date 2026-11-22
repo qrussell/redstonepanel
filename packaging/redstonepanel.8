@@ -1,4 +1,4 @@
-.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.16.6" "System Administration"
+.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.17.0" "System Administration"
 .SH NAME
 redstonepanel \- manage the RedstonePanel Minecraft server panel
 .SH SYNOPSIS
@@ -13,6 +13,9 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .br
 .B redstonepanel reset-security
 .br
+.B redstonepanel reset-2fa
+.I NAME
+.br
 .B redstonepanel removed
 .br
 .B redstonepanel restore
@@ -21,8 +24,15 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .B redstonepanel backup
 .I NAME
 .br
+.B redstonepanel offsite-copy
+.I NAME
+.br
+.B redstonepanel offsite-key
+.br
 .B redstonepanel restart-server
 .I NAME
+.br
+.B redstonepanel check-updates
 .br
 .B redstonepanel notify-test
 .br
@@ -53,6 +63,16 @@ and remove one that no server uses. The panel itself runs as the
 systemd service, by default at
 .IR http://<server>:8080/ .
 This command performs administrative tasks and must be run as root.
+.PP
+Supported systems: Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64\-bit Raspberry Pi OS
+(Raspberry Pi 4 or 5), on x86\-64 and ARM64 (aarch64) machines. The panel offers the
+openjdk\-N\-jre\-headless versions the system's apt sources have (Debian 13: 21 and 25).
+Bedrock Dedicated Server only exists for x86\-64, so on ARM64 the panel refuses to create,
+import, restore, update or receive Bedrock servers and runs Java servers only. A new Java
+server gets a 2 GB heap (1 GB on a machine with 3 GB of memory or less); change it on the
+server's Maintenance tab (Memory and limits), which also sets optional hard memory and CPU
+limits as a systemd drop\-in,
+.IR /etc/systemd/system/minecraft-NAME.service.d/redstonepanel-limits.conf .
 .SH COMMANDS
 .TP
 .B status
@@ -73,6 +93,17 @@ On a cluster member this cuts the panel off from the cluster until
 .B cluster-https
 is run.
 .TP
+.BI "reset-2fa " NAME
+Recovery: turn off two\-factor sign\-in for the panel or Linux account
+.IR NAME ,
+for example after a lost phone with no recovery codes left. The account signs in with its
+password and can set two\-factor up again (it is asked to at once when Panel Settings require
+it for admins). If
+.I /var/lib/redstonepanel/totp.json
+can't be read, it is moved aside to
+.I totp.json.damaged
+instead, which turns two\-factor off for every account.
+.TP
 .B removed
 List game servers that were uninstalled with \fBKeep World\fR: folders in
 .I /opt/minecraft-*
@@ -89,7 +120,22 @@ Back up a game server now, into
 A running Java server stops writing to disk during the copy (over RCON), a running Bedrock
 server through \fBsave hold\fR. Backups taken this way are never pruned. Each server's backup
 timer, \fBredstonepanel-backup@\fINAME\fB.timer\fR, runs the same command for scheduled
-backups, which keep only the number set in the panel's Backups tab.
+backups, which keep only the number (and, if set, the number of days) set in the panel's
+Backups tab. If the server's backups are copied to backup storage, the copy starts afterwards in
+its own transient unit,
+.BI redstonepanel\-offsite\- NAME .service ,
+so a slow upload never holds the backup up.
+.TP
+.BI "offsite-copy " NAME
+Copy a game server's backups to every backup storage (SSH or S3-compatible, set under Panel
+Settings > Backup storage) that keeps them, now: every manual backup and the scheduled ones the
+storage's retention keeps, each checked with SHA\-256. Old scheduled copies beyond the storage's
+count or age are deleted there; the newest copy is never deleted by age.
+.TP
+.B offsite-key
+Print this panel's SSH public key (made on first use). Add it to the
+.I ~/.ssh/authorized_keys
+of the user the panel signs in as on SSH backup storage.
 .TP
 .BI "restart-server " NAME
 Warn the server's players in game (Java over RCON, Bedrock through its console), wait the
@@ -97,6 +143,20 @@ warning time set in the panel's Maintenance tab, then restart the server. A stop
 left stopped, and the restart waits for a running backup of the same server. Each server's
 restart timer, \fBredstonepanel-restart@\fINAME\fB.timer\fR, runs this command; it fires the
 warning time before the restart time shown in the panel.
+.TP
+.B check-updates
+Look for a newer release of every game server on this machine (Bedrock Dedicated Server,
+Minecraft, Paper builds and the Fabric loader; never snapshots or pre\-releases), cache what
+it finds in
+.I /var/lib/redstonepanel/updates.json
+for the panel's \fBUpdate available\fR badges, and send one webhook message per new version.
+Then update the Bedrock servers whose Maintenance tab has \fBUpdate automatically\fR on: warn
+players in game, wait five minutes, stop the server, take a "Before update" backup (the newest
+three are kept), install the new files (its server.properties, permissions.json and
+allowlist.json stay), start it and wait for "Server started.". If it doesn't start, the old
+files and the world from the backup are put back and it starts on the old version; the failure
+shows under Needs attention. \fBredstonepanel-updates.timer\fR runs this every 6 hours,
+also while the panel is stopped. Exits 1 if an update failed.
 .TP
 .B notify-test
 Send a test message to the webhook set under Panel Settings > Notifications.
@@ -110,8 +170,12 @@ in \fI/var/lib/redstonepanel/upgrade.log\fR and the outcome in \fIupgrade.json\f
 The package installs a systemd drop-in for every
 .BR minecraft-*.service ,
 .IR /usr/lib/systemd/system/minecraft-.service.d/redstonepanel.conf .
-It treats exit status 143 (Java stopped by SIGTERM) as a clean stop, and its
-\fBExecStartPost\fR and \fBExecStopPost\fR run \fBredstonepanel notify-unit\fR, which sends
+It treats exit status 143 (Java stopped by SIGTERM) as a clean stop. Its \fBExecStop\fR runs
+\fBredstonepanel stop-unit\fR, which types a Bedrock server's own \fBstop\fR command into its
+console and waits up to 75 seconds for it to save the world and quit before systemd ends what is
+left (Java saves on SIGTERM, so nothing is done for it). Every stop goes through it: the Stop and
+Restart buttons, backups, restores, moves, updates, scheduled restarts and shutting the machine
+down. Its \fBExecStartPost\fR and \fBExecStopPost\fR run \fBredstonepanel notify-unit\fR, which sends
 "started", "stopped" and "crashed" notifications to the webhook, if one is set. They run without
 the panel, so a crash is reported while the panel is stopped. Failures of these hooks never
 affect the game server.
@@ -179,7 +243,7 @@ or by an admin in the panel.
 .SH FILES
 .TP
 .I /var/lib/redstonepanel/
-Panel state: users.json (scrypt password hashes), settings.json, secret.key, tls/, cluster/, templates and chat history.
+Panel state: users.json (scrypt password hashes), totp.json (two-factor secrets and hashed recovery codes), settings.json, secret.key, tls/, cluster/, templates and chat history.
 .TP
 .I /var/lib/redstonepanel/cluster/
 Cluster state (mode 0700): role, the cluster CA and this panel's certificate; on a master also the nodes and their tokens.
@@ -200,12 +264,29 @@ needs, written at every download.
 Backups, one folder per server (mode 0700). Kept when a server is uninstalled or the package
 is purged. Schedules are in /var/lib/redstonepanel/backups.json.
 .TP
+.I /var/lib/redstonepanel/backup-targets.json
+Backup storage (SSH and S3-compatible) and which servers' backups go there, including S3 secret
+keys (mode 0600; never sent back to the browser). This panel's SSH key and the storage host keys
+are in
+.IR /var/lib/redstonepanel/ssh/ .
+On the storage, copies are kept under
+.IR FOLDER/PANEL\-ID/SERVER/ ,
+each with a
+.I .sha256
+file next to it.
+.TP
 .I /var/lib/redstonepanel/notifications.json
 The notification webhook URL and the events to send (mode 0600: the URL lets anyone post to
 the channel).
 .TP
 .I /var/lib/redstonepanel/restarts.json
 Scheduled restart times and warnings.
+.TP
+.I /var/lib/redstonepanel/updates.json
+The last update check: newer versions found per server, failed lookups, the result of each
+server's last Bedrock update, and the versions already announced. Which Bedrock servers update
+themselves is in
+.IR auto-updates.json .
 .TP
 .I /usr/local/lib/redstonepanel/phantom/
 The Phantom LAN proxy program (jhead/phantom, SHA\-256 checked) that Bedrock servers' Add\-ons

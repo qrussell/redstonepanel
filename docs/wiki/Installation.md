@@ -1,17 +1,30 @@
 # Installing RedstonePanel
 
-RedstonePanel installs in about a minute on a fresh Ubuntu server, and updates with the rest of
-the system through `apt`.
+RedstonePanel installs in about a minute on a fresh Ubuntu or Debian server or a Raspberry Pi,
+and updates with the rest of the system through `apt`.
 
 ## What you need
 
-- **Ubuntu 24.04 LTS or 25.04**, on a machine you have `sudo` on: a home server, a spare PC, a
-  VPS or a virtual machine. The package is `Architecture: all`; Bedrock Dedicated Server
-  itself only runs on x86-64.
+- **One of these systems**, on a machine you have `sudo` on: a home server, a spare PC, a
+  Raspberry Pi, a VPS or a virtual machine.
+
+  | System | x86-64 (Intel, AMD) | ARM64 |
+  | --- | --- | --- |
+  | Ubuntu 26.04 LTS (best for a new machine), 24.04 LTS or 26.10 | ✅ | ✅ |
+  | Debian 13 (trixie) | ✅ | ✅ |
+  | Raspberry Pi OS 64-bit, on a Raspberry Pi 4 or 5 | | ✅ |
+
+  Ubuntu 25.04 and 25.10 still install but no longer get updates from Ubuntu. Debian 12 (and
+  the Raspberry Pi OS built on it), 32-bit systems and other distributions aren't supported:
+  the installer says so and stops.
+- **Bedrock servers need x86-64.** Mojang only makes Bedrock Dedicated Server for 64-bit Intel
+  and AMD machines, so on ARM64 (a Raspberry Pi, an ARM VPS) the panel runs Java servers only.
+  Bedrock players can join a Java server through Geyser, from the add-on catalog.
 - **Memory:** the panel itself uses well under 100 MB. Plan for your game servers: each Java
-  server is set up with a 2 GB heap, and a Bedrock server usually needs 1–2 GB.
+  server is set up with a 2 GB heap (1 GB on a machine with 3 GB or less), and a Bedrock server
+  usually needs 1–2 GB.
 - **Ports:** 8080 for the panel (8443 once HTTPS is on), 25565+ (TCP) for Java servers and
-  19132+ (UDP) for Bedrock servers.
+  19132+ (TCP and UDP) plus UDP 7551 for Bedrock servers.
 - Nothing else. Java is installed later, only when a Java server needs it, and only the version
   it needs.
 
@@ -21,10 +34,32 @@ the system through `apt`.
 curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install.sh | sudo sh
 ```
 
-[`install.sh`](../../install.sh) checks the Ubuntu release, adds the signed **qrussell-repo**
+[`install.sh`](../../install.sh) checks the system and the processor, adds the signed **qrussell-repo**
 repository (refusing its key unless the fingerprint is
 `9994A9EB39EB3C101C949FB2012BA14E0FE3A355`), and runs `apt install redstonepanel`. Read it
-first if you like: it's about 40 lines.
+first if you like: it's about 70 lines.
+
+## On a Raspberry Pi
+
+A **Raspberry Pi 4 or 5** with 4 GB or more runs a Java server for a family or a few friends.
+
+1. With **Raspberry Pi Imager**, write **Raspberry Pi OS Lite (64-bit)** to an SSD (USB 3, or
+   NVMe on a Pi 5) or a microSD card, and turn on SSH in its settings. An SSD is faster and
+   doesn't wear out from world saves and backups the way a card does.
+2. Sign in over SSH and run the one-line installer above.
+3. Create a **Paper** server: it uses noticeably less CPU than Vanilla.
+
+| Pi | What fits (leave about 1 GB for the system) |
+| --- | --- |
+| 2 GB | Not recommended: one small server, which gets 1 GB. |
+| 4 GB | One server at the default 2 GB, for about 5 to 10 players. |
+| 8 GB | Two or three servers at 2 GB, or one at 4 to 5 GB. |
+| 16 GB | Several servers; the CPU is the limit. |
+
+To give a server more memory, use **Maintenance → Memory and limits** (1.17); a
+**Hard memory limit** of **Automatic** keeps one server from taking the whole Pi. A Pi 5 needs its active cooler to run all day at full speed.
+Raspberry Pi OS packages Java 21 and 25, which run Minecraft 1.17 and newer; for older versions
+the panel offers Java 21 and says that it may not start them.
 
 ## Option 2: the apt repository, by hand
 

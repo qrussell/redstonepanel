@@ -3,7 +3,8 @@
 Archives live outside the server folders, so uninstalling or purging a server never deletes
 them:
     /var/backups/redstonepanel/<server>/<server>-YYYYmmdd-HHMMSS-<kind>.tar.gz
-kind is "scheduled", "manual", "pre-restore" or "pre-change" (before a mod update). Only
+kind is "scheduled", "manual", "pre-restore", "pre-change" (before a mod update) or
+"pre-update" (before a Bedrock update; core/updates.py keeps the newest three). Only
 scheduled backups are pruned to the configured count; the others stay until someone deletes
 them.
 
@@ -40,9 +41,9 @@ SERVICE_TEMPLATE = "redstonepanel-backup@.service"
 
 # A server name is also a systemd instance name here, so no '@'
 NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.-]*$")
-KINDS = ("scheduled", "manual", "pre-restore", "pre-change")
+KINDS = ("scheduled", "manual", "pre-restore", "pre-change", "pre-update")
 FILE_RE = re.compile(r"^(?P<server>minecraft[A-Za-z0-9_.-]*)-(?P<stamp>\d{8}-\d{6})-"
-                     r"(?P<kind>scheduled|manual|pre-restore|pre-change)\.tar\.gz$")
+                     r"(?P<kind>scheduled|manual|pre-restore|pre-change|pre-update)\.tar\.gz$")
 
 # id -> (label, OnCalendar with {h} {m} {h6} {h12} filled in from the chosen time)
 FREQUENCIES = {
@@ -52,15 +53,19 @@ FREQUENCIES = {
     "daily": ("Every day", "*-*-* {h}:{m}:00"),
     "weekly": ("Every Sunday", "Sun *-*-* {h}:{m}:00"),
 }
-DEFAULT_SCHEDULE = {"enabled": False, "frequency": "daily", "time": "04:00", "keep": 7}
+DEFAULT_SCHEDULE = {"enabled": False, "frequency": "daily", "time": "04:00", "keep": 7, "keep_days": 0}
 TIME_RE = re.compile(r"^([01][0-9]|2[0-3]):([0-5][0-9])$")
 MAX_KEEP = 365
+MAX_KEEP_DAYS = 3650
 
 # Not worth backing up: downloaded again by Update, regenerated, or logs.
 SKIP_TOP = {"server.jar", "bedrock_server", "bedrock_server_symbols.debug", "bedrock-server.zip",
             "libraries", "versions", "logs", "crash-reports", "debug", "server.log",
             manager.REMOVED_INFO}
 SKIP_TOP_PREFIXES = (".redstonepanel-",)
+# ...except the Java server's loader and version (1.16.11): a server made from an off-site copy on
+# a fresh machine downloads the same Minecraft version and loader again.
+KEEP_TOP = {".redstonepanel-server.json"}
 # Bedrock's own packs come with the server zip (custom packs sit next to them and are kept)
 SKIP_PACK_PREFIXES = ("behavior_packs/vanilla", "resource_packs/vanilla", "behavior_packs/chemistry",
                       "resource_packs/chemistry", "behavior_packs/experimental", "resource_packs/experimental",
@@ -130,6 +135,8 @@ def _skipped(rel, full=False):
     top = rel.split("/", 1)[0]
     if full:
         return rel == manager.REMOVED_INFO
+    if rel in KEEP_TOP:
+        return False
     if top in SKIP_TOP or top.startswith(SKIP_TOP_PREFIXES):
         return True
     return any(rel == p or rel.startswith(p) for p in SKIP_PACK_PREFIXES)
@@ -275,13 +282,13 @@ def run_backup(server, kind="manual"):
         msg = str(e) if isinstance(e, BackupError) else f"{type(e).__name__}: {e}"
         manager.write_log(f"[BACKUP] {kind.capitalize()} backup of {server} failed: {msg}")
         _write_status(server, {"at": int(started), "ok": False, "kind": kind, "error": msg})
-        if kind not in ("pre-restore", "pre-change"):
+        if kind not in ("pre-restore", "pre-change", "pre-update"):
             notify.send("backup_failed", server, f"{kind.capitalize()} backup of {server} failed: {msg}")
         raise
     _write_status(server, {"at": int(started), "ok": True, "kind": kind, "file": info["file"],
                            "size": info["size"], "consistent": info["consistent"],
                            "seconds": round(time.time() - started, 1)})
-    if kind not in ("pre-restore", "pre-change"):
+    if kind not in ("pre-restore", "pre-change", "pre-update"):
         notify.send("backup_ok", server, f"{kind.capitalize()} backup of {server} saved "
                     f"({info['size'] / 1048576:.1f} MB)" + ("." if info["consistent"] else
                     ", but copied while the server was writing: turn RCON on for consistent backups."))
@@ -319,7 +326,8 @@ def _run_backup_locked(server, kind):
         manager.write_log(f"[BACKUP] Saved {final} ({size / 1048576:.1f} MB)"
                           + ("" if consistent else "; copied while the server was writing, see the warning above") + ".")
         if kind == "scheduled":
-            prune(server, get_schedule(server)["keep"])
+            s = get_schedule(server)
+            prune(server, s["keep"], s["keep_days"])
         entry = next(b for b in list_backups(server) if b["file"] == name)
         return {**entry, "consistent": consistent}
     finally:
@@ -370,12 +378,18 @@ def _backup_running_bedrock(server, d, tar, full=False):
     finally:
         _screen(server, "save resume")
 
-def prune(server, keep):
-    """Deletes the oldest scheduled backups beyond keep. Manual and pre-restore ones stay."""
+def prune(server, keep, keep_days=0, now=None):
+    """Deletes the oldest scheduled backups beyond keep, and (keep_days) those older than that
+    many days, but never the newest one. Manual and pre-restore ones stay."""
+    now = now or time.time()
     scheduled = [b for b in list_backups(server) if b["kind"] == "scheduled"]
-    for b in scheduled[keep:]:
+    for i, b in enumerate(scheduled):
+        too_old = keep_days and i > 0 and now - b["created"] > keep_days * 86400
+        if i < keep and not too_old:
+            continue
         os.remove(os.path.join(server_backup_dir(server), b["file"]))
-        manager.write_log(f"[BACKUP] Removed old backup {b['file']} (keeping {keep}).")
+        manager.write_log(f"[BACKUP] Removed old backup {b['file']} (keeping {keep}"
+                          + (f", at most {keep_days} days old" if keep_days else "") + ").")
 
 def delete_backup(server, filename):
     path = backup_path(server, filename)
@@ -544,7 +558,7 @@ def _remove_timer(server):
         os.remove(timer_path)
         manager.run_and_log(["systemctl", "daemon-reload"])
 
-def set_schedule(server, enabled, frequency, time_str, keep):
+def set_schedule(server, enabled, frequency, time_str, keep, keep_days=0):
     _check_name(server)
     try:
         keep = int(keep)
@@ -552,16 +566,24 @@ def set_schedule(server, enabled, frequency, time_str, keep):
         keep = 0
     if not 1 <= keep <= MAX_KEEP:
         raise BackupError(f"Keep between 1 and {MAX_KEEP} scheduled backups.")
+    try:
+        keep_days = int(keep_days or 0)
+    except (TypeError, ValueError):
+        keep_days = -1
+    if not 0 <= keep_days <= MAX_KEEP_DAYS:
+        raise BackupError(f"Delete scheduled backups after 1 to {MAX_KEEP_DAYS} days, or leave it empty.")
     on_calendar(frequency, time_str)            # validates both
-    schedule = {"enabled": bool(enabled), "frequency": frequency, "time": time_str, "keep": keep}
+    schedule = {"enabled": bool(enabled), "frequency": frequency, "time": time_str, "keep": keep,
+                "keep_days": keep_days}
     data = _load_schedules()
     data[server] = schedule
     _save_schedules(data)
     _apply_schedule(server, schedule)
     manager.write_log(f"[BACKUP] Backups of {server}: " + (
-        f"{FREQUENCIES[frequency][0].lower()} at {time_str}, keeping {keep}." if enabled else "off."))
+        f"{FREQUENCIES[frequency][0].lower()} at {time_str}, keeping {keep}"
+        + (f", at most {keep_days} days old" if keep_days else "") + "." if enabled else "off."))
     if enabled:
-        prune(server, keep)
+        prune(server, keep, keep_days)
     return schedule
 
 def next_run(server):

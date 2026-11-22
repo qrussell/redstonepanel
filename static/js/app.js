@@ -41,6 +41,13 @@ const ServerApp = {
         if (!me.ok) return;
         this.currentUser = await me.json();
         this.renderCurrentUser();
+        // Panel Settings require two-factor for admins and this admin hasn't set it up yet:
+        // nothing else works until they do (the API refuses it too).
+        if (this.currentUser.needs_2fa_setup) {
+            this.applyTheme();
+            this.openAccountModal({ forced: true });
+            return;
+        }
         const ver = document.getElementById('panel-version');
         if (ver && this.currentUser.panel_version) {
             ver.innerText = 'v' + this.currentUser.panel_version;
@@ -49,6 +56,7 @@ const ServerApp = {
 
         this.applyTheme();
         this.setupDropZones();
+        this.setupPhone();
         // Many actions open the console; remember what was clicked so it can be kept in view
         document.addEventListener('click', e => {
             const el = e.target.closest && e.target.closest('button, a, input, select, label');
@@ -79,6 +87,107 @@ const ServerApp = {
     // "minecraft-java-1" here, or "minecraft-java-1 · Basement" for a node's server
     serverLabel(srv) {
         return srv.node ? `${srv.name} · ${srv.nodeName}` : srv.name;
+    },
+
+    // --- Phones (1.16.10) ---
+    // Below the md breakpoint the sidebar is a menu behind the ☰ button in the top bar.
+    // Picking anything in it (a server, Dashboard, New Server…) closes it again; folding a group
+    // or changing the sort order doesn't.
+    setupPhone() {
+        const aside = document.getElementById('sidebar');
+        aside.addEventListener('click', e => {
+            const hit = e.target.closest('button, [onclick]');
+            if (hit && !hit.hasAttribute('aria-expanded') && aside.contains(hit)) this.closeNav();
+        });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && this.navOpen()) this.closeNav(); });
+        window.matchMedia('(min-width: 768px)').addEventListener('change', e => { if (e.matches) this.closeNav(); });
+        this.registerServiceWorker();
+    },
+
+    navOpen() {
+        return document.body.classList.contains('rp-nav-open');
+    },
+
+    openNav() {
+        document.body.classList.add('rp-nav-open');
+        document.getElementById('nav-backdrop').classList.remove('hidden');
+        document.getElementById('btn-nav').setAttribute('aria-expanded', 'true');
+    },
+
+    closeNav() {
+        if (!this.navOpen()) return;
+        document.body.classList.remove('rp-nav-open');
+        document.getElementById('nav-backdrop').classList.add('hidden');
+        document.getElementById('btn-nav').setAttribute('aria-expanded', 'false');
+    },
+
+    // What the phone's top bar says: the open server, the dashboard or the cluster page
+    setMobileTitle(title, subtitle) {
+        document.getElementById('mobile-title').innerText = title;
+        document.getElementById('mobile-subtitle').innerText = subtitle || '';
+    },
+
+    // Live Chat on a phone: once the on-screen keyboard has opened (and the page has shrunk to
+    // the space above it), bring the message box back into view.
+    keepInView(el) {
+        if (window.matchMedia('(min-width: 768px)').matches) return;
+        setTimeout(() => el.scrollIntoView({ block: 'nearest' }), 300);
+    },
+
+    // Installing the panel as an app needs a service worker. It caches nothing (a panel that
+    // can't reach its server has nothing true to show); when the server can't be reached it
+    // says so instead of the browser's error page. Browsers only allow it over HTTPS (or on
+    // localhost), so on plain HTTP this quietly does nothing.
+    registerServiceWorker() {
+        if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+        navigator.serviceWorker.register('/static/sw.js', { scope: '/static/' }).catch(() => { /* an app is optional */ });
+    },
+
+    // --- "Open on your phone" (desktop): a QR code of this panel's address ---
+    // Made by this panel (core/qr.py, GET /api/phone-qr), never an outside service. If the panel
+    // was opened as localhost, a phone can't use that, so the machine's network addresses are
+    // offered instead (from the dashboard's host info).
+    async openPhoneQr() {
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const here = window.location;
+        const port = here.port ? `:${here.port}` : '';
+        const local = /^(localhost|127\.|\[::1\]$|::1$)/.test(here.hostname);
+        let urls = local ? [] : [`${here.protocol}//${here.host}/`];
+        let ips = [];
+        try {
+            if (!this.dashData) {
+                const res = await fetch('/api/host');
+                if (res.ok) this.dashData = await res.json();
+            }
+            ips = (this.dashData && this.dashData.host && this.dashData.host.ips) || [];
+        } catch (e) { /* the current address is enough */ }
+        ips.filter(ip => !/^(127\.|::1$|fe80:)/i.test(ip)).forEach(ip => {
+            const u = `${here.protocol}//${ip.includes(':') ? `[${ip}]` : ip}${port}/`;
+            if (!urls.includes(u)) urls.push(u);
+        });
+        if (!urls.length) urls = [`${here.protocol}//${here.host}/`];
+        const https = here.protocol === 'https:';
+        document.getElementById('modal-content').innerHTML = `
+            <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1">📱 Open on your phone</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Point your phone's camera at the code. Your phone needs to be able to reach this address, usually by being on the same network.</p>
+            <div class="rp-qr mx-auto w-60 max-w-full" id="phone-qr"></div>
+            ${urls.length > 1 ? `<select id="phone-qr-url" onchange="ServerApp.drawPhoneQr(this.value)" class="mt-3 w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-sm text-gray-900 dark:text-white">
+                ${urls.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('')}</select>`
+                : `<p class="mt-3 text-center font-mono text-sm break-all text-gray-900 dark:text-gray-200" id="phone-qr-text">${esc(urls[0])}</p>`}
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">${https
+                ? `To keep it on your home screen, choose <b>Install app</b> (Android) or <b>Share → Add to Home Screen</b> (iPhone). It opens without the browser's bars.${/^self/.test(((this.dashData || {}).services || {}).https ? this.dashData.services.https.mode : '') ? ' With a self-signed certificate your phone will warn you first, as this browser did.' : ''}`
+                : `The panel uses plain HTTP, so phones can only add it to the home screen as a bookmark. To install it as an app, turn on HTTPS in Panel Settings.`}</p>
+            <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="mt-4 w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white font-bold transition">Close</button>`;
+        document.getElementById('modal-overlay').classList.remove('hidden');
+        this.drawPhoneQr(urls[0]);
+    },
+
+    drawPhoneQr(url) {
+        const box = document.getElementById('phone-qr');
+        box.innerHTML = `<img src="/api/phone-qr?url=${encodeURIComponent(url)}" alt="QR code for ${this.escapeHtml(url)}" class="block w-full h-auto">`;
+        box.querySelector('img').onerror = () => {
+            box.innerHTML = `<p class="text-sm text-red-600 p-4">Couldn't make a QR code for this address.</p>`;
+        };
     },
 
     async loadServers() {
@@ -241,7 +350,7 @@ const ServerApp = {
                     <span class="${dot}">●</span>
                     <div class="min-w-0">
                         <div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(srv.name)}${this.hasProxyProblem(srv) || this.hasConnectProblem(srv) ? ' <span class="text-yellow-600" title="Players may not be able to connect: see Overview">⚠</span>' : ''}</div>
-                        <div class="text-xs text-gray-500">${esc(srv.edition)}${srv.version ? ' ' + esc(srv.version) : ''} • Port ${srv.port}</div>
+                        <div class="text-xs text-gray-500">${esc(srv.edition)}${srv.version ? ' ' + esc(srv.version) : ''} • Port ${srv.port}${this.updateBadge(srv)}</div>
                     </div>
                 </div>`;
         };
@@ -299,6 +408,7 @@ const ServerApp = {
         document.getElementById('ws-title').innerText = srv.name;
         document.getElementById('ws-subtitle').innerText = srv.node ? `🌐 ${srv.nodeName}: ${srv.directory}` : srv.directory;
         document.getElementById('ws-status').innerText = srv.status === 'online' ? '🟢' : '🔴';
+        this.setMobileTitle(`${srv.status === 'online' ? '🟢' : '🔴'} ${srv.name}`, srv.node ? `🌐 ${srv.nodeName}` : `${srv.edition}${srv.version ? ' ' + srv.version : ''}`);
         
         // Populate the live chat RCON port badge
         const rconBadge = document.getElementById('chat-rcon-port');
@@ -318,6 +428,9 @@ const ServerApp = {
         } else if (!srv.version && srv.edition === 'Bedrock') {
             versionNote = `<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Shown after the server's next start</p>`;
         }
+        if (srv.update) {
+            versionNote += `<p class="text-xs mt-1"><button onclick="ServerApp.switchTab('maintenance')" class="text-theme underline" title="Open Maintenance to update">⬆ Update available: ${esc(srv.update.label)}</button></p>`;
+        }
         document.getElementById('overview-stats').innerHTML = `
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Status</p><p class="font-bold uppercase ${srv.status === 'online' ? 'text-green-500' : 'text-red-500'}">${srv.status}</p></div>
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Engine</p><p class="font-bold text-blue-600 dark:text-blue-400">${srv.edition}</p></div>
@@ -326,6 +439,8 @@ const ServerApp = {
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Max RAM</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.ram}</p></div>
         `;
         document.getElementById('overview-notes').innerHTML = this.serverNotes(srv);
+        this.perfData = null;
+        document.getElementById('overview-perf').innerHTML = '<p class="text-sm text-gray-500">Loading performance…</p>';
 
         // A search typed for the previous server shouldn't hide this one's properties
         const propSearch = document.getElementById('prop-search');
@@ -409,6 +524,7 @@ const ServerApp = {
         if (activeTab) activeTab.classList.remove('hidden-tab');
         if (activeBtn) activeBtn.classList.add('tab-active');
         
+        if (tabId === 'overview') this.startPerfPolling(); else this.stopPerfPolling();
         // Clear chat polling if we navigate away
         if (this.chatInterval) {
             clearInterval(this.chatInterval);
@@ -416,7 +532,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab('visual');
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadJavaChoice(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadAutoUpdate(); this.loadJavaChoice(); this.loadResources(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
@@ -745,7 +861,7 @@ const ServerApp = {
 			// Without a name we can't write a proper entry, so the role can only be changed in the raw editor
 			const disabled = p.name_known ? '' : 'disabled title="Name unknown: edit this entry in Permissions (Raw)"';
 			return `
-			<div class="flex justify-between items-center gap-4 p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm">
+			<div class="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm">
 				<div class="min-w-0">
 					<div class="flex items-center gap-2 flex-wrap"><span class="font-bold text-gray-900 dark:text-white">${esc(p.name)}</span>${badges}</div>
 					${idLine}
@@ -872,10 +988,10 @@ const ServerApp = {
 			: `<span class="text-red-600 dark:text-red-400">Turned away</span> <span class="text-gray-500 dark:text-gray-400">(${esc(reasons[e.reason] || e.reason || 'refused')})</span>`;
 		rows.innerHTML = d.events.length ? d.events.map(e => `
 			<tr class="border-t border-gray-100 dark:border-gray-700">
-				<td class="p-2 whitespace-nowrap text-gray-600 dark:text-gray-300">${esc(new Date(e.ts * 1000).toLocaleString())}</td>
-				<td class="p-2 font-bold text-gray-900 dark:text-white">${esc(e.name)}</td>
-				<td class="p-2">${label(e)}</td>
-				<td class="p-2 text-right whitespace-nowrap">${this.modActions(e.name, 'text-xs')}</td>
+				<td class="p-2 whitespace-nowrap text-gray-600 dark:text-gray-300" data-label="Time">${esc(new Date(e.ts * 1000).toLocaleString())}</td>
+				<td class="p-2 font-bold text-gray-900 dark:text-white" data-label="Player">${esc(e.name)}</td>
+				<td class="p-2" data-label="Event">${label(e)}</td>
+				<td class="rp-card-actions p-2 text-right whitespace-nowrap">${this.modActions(e.name, 'text-xs')}</td>
 			</tr>`).join('') : `<tr><td colspan="4" class="p-2 text-gray-500 dark:text-gray-400">Nothing in this period.</td></tr>`;
 		document.getElementById('al-count').innerText = d.events.length >= 500
 			? 'Showing the newest 500; narrow the filter to see more.'
@@ -1212,6 +1328,7 @@ const ServerApp = {
                     <option value="java">Java Edition (Auto-Port)</option>
                     <option value="bedrock">Bedrock Edition (Auto-Port)</option>
                 </select>
+                <p id="deploy-bedrock-note" class="text-xs text-gray-500 mb-2 hidden"></p>
 
                 <div id="deploy-java-options">
                     <div class="grid grid-cols-2 gap-2">
@@ -1247,12 +1364,43 @@ const ServerApp = {
                 <p class="text-xs text-gray-500 mb-2">A backup wrapped in a single folder is fine; its contents are used.</p>
                 <button onclick="ServerApp.executeImport()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-white font-bold transition">Upload & Import</button>
             </div>
+            ${!this.deployNode && this.currentUser && this.currentUser.role === 'admin' ? `<div class="mb-6">
+                <label class="block text-sm text-gray-400 mb-1">From backup storage</label>
+                <p class="text-xs text-gray-500 mb-2">Bring a server back from its off-site copies on SSH or S3 storage, for example after its machine died.</p>
+                <div id="storage-import"><button onclick="ServerApp.openStorageImport()" class="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 py-2 rounded text-gray-900 dark:text-white font-bold transition">Choose a backup…</button></div>
+            </div>` : ''}
             <div id="removed-servers" class="mb-6">${this.removedServersHtml()}</div>
             <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white transition">Cancel</button>
         `;
         modal.classList.remove('hidden');
+        this.showBedrockChoice();
         this.loadDeployVersions();
         if (this.deployNode) this.loadRemovedServers();
+    },
+
+    // Mojang only makes Bedrock Dedicated Server for x86-64: an ARM64 machine (a Raspberry Pi)
+    // runs Java servers only. node: a node id, or null for this panel. Unknown (an older node) = allowed.
+    bedrockSupported(node) {
+        if (!node) return !(this.currentUser && this.currentUser.bedrock_supported === false);
+        const n = this.clusterNodes.find(x => x.id === node);
+        return !(n && n.machine && !['x86_64', 'amd64'].includes(String(n.machine).toLowerCase()));
+    },
+
+    showBedrockChoice() {
+        const select = document.getElementById('deploy-edition');
+        const note = document.getElementById('deploy-bedrock-note');
+        if (!select || !note) return;
+        const ok = this.bedrockSupported(this.deployNode);
+        const opt = select.querySelector('option[value="bedrock"]');
+        opt.disabled = !ok;
+        opt.textContent = ok ? 'Bedrock Edition (Auto-Port)' : 'Bedrock Edition (needs an x86-64 machine)';
+        note.classList.toggle('hidden', ok);
+        note.innerText = ok ? '' : 'This machine is ARM64 (for example a Raspberry Pi), and Mojang only makes the Bedrock server '
+            + 'for 64-bit Intel and AMD machines. Java servers work, and Bedrock players can join one through Geyser.';
+        if (!ok && select.value === 'bedrock') {
+            select.value = 'java';
+            this.onDeployEditionChange('java');
+        }
     },
 
     // New Server's "Where": null = this panel, else a node id
@@ -1260,6 +1408,7 @@ const ServerApp = {
 
     onDeployWhereChange(node) {
         this.deployNode = node || null;
+        this.showBedrockChoice();
         const version = document.getElementById('deploy-version');
         if (version) this.showJavaRequirement(version.value || version.dataset.newest, 'deploy-java-note');
         this.loadRemovedServers();
@@ -1314,12 +1463,20 @@ const ServerApp = {
         if (!res.ok) { note.innerText = ''; return; }
         const r = await res.json();
         const base = noteId === 'deploy-java-note' ? 'text-xs mb-2 ' : 'text-xs mt-1 ';
-        if (r.java_used === null) {
+        // This system's package sources may not have that Java (Debian 13 packages only 21 and 25)
+        const substitute = r.package_major && r.package_major !== r.java_required
+            ? ` This system doesn't package Java ${r.java_required}, so it would get Java ${r.package_major}`
+              + (r.java_required <= 11 && r.package_major >= 17 ? ', which some old Minecraft versions and mods don\'t start on.' : ', which usually works.') : '';
+        if (r.java_used === null && r.package_major === null) {
+            note.className = base + 'text-red-400';
+            note.innerText = `Minecraft ${r.minecraft} needs Java ${r.java_required}, and this system's package sources `
+                + `have no Java that new (they have: ${(r.packaged || []).join(', ') || 'none'}). Choose another version.`;
+        } else if (r.java_used === null) {
             const verb = noteId === 'deploy-java-note' ? 'create the server' : 'update';
             note.className = base + (this.isAdmin() ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-400');
             note.innerText = `Minecraft ${r.minecraft} needs Java ${r.java_required}, which isn't installed. `
                 + (this.isAdmin() ? `You'll be asked to install it (${r.package}) when you ${verb}.`
-                                  : `Ask an admin to install it, or: sudo apt install ${r.package}`);
+                                  : `Ask an admin to install it, or: sudo apt install ${r.package}`) + substitute;
         } else {
             note.className = base + 'text-gray-400';
             note.innerText = `Minecraft ${r.minecraft} needs Java ${r.java_required}; it will run on Java ${r.java_used}`
@@ -1400,11 +1557,446 @@ const ServerApp = {
         let data = {};
         try { data = await res.clone().json(); } catch (e) { return res; }
         if (!data.java) return res;
-        if (!await this.installJava(data.java.required, data.detail, node)) return res;
+        // major: the Java this system packages for it (null when its package sources have none new enough)
+        const major = data.java.major === undefined ? data.java.required : data.java.major;
+        if (major === null) return res;
+        if (!await this.installJava(major, data.detail, node)) return res;
         return send();
     },
 
     // Maintenance tab: which Java this server runs on, and switching to another installed one
+    // -----------------------------------------------------------------------------------------
+    // 1.17: performance. The Overview's Performance card (tick health, memory, history charts,
+    // suggestions), Maintenance > Memory and limits, and the dashboard's history charts.
+    // Charts are inline SVG: one measure per chart (small multiples), never two y-scales.
+    // -----------------------------------------------------------------------------------------
+    perfRange: 'day',
+    perfTimer: null,
+    perfData: null,
+    charts: {},
+    hostHistory: null,
+    hostHistoryAt: 0,
+    hostRange: 'day',
+
+    startPerfPolling() {
+        this.stopPerfPolling();
+        this.loadPerf();
+        this.perfTimer = setInterval(() => {
+            const tab = document.getElementById('tab-overview');
+            const ws = document.getElementById('workspace');
+            if (!this.activeServer || !tab || tab.classList.contains('hidden-tab') || ws.classList.contains('hidden')) {
+                this.stopPerfPolling();
+                return;
+            }
+            this.tickPerfUpdated();
+            if (!document.hidden) this.loadPerf();
+        }, 10000);
+    },
+
+    stopPerfPolling() {
+        clearInterval(this.perfTimer);
+        this.perfTimer = null;
+    },
+
+    setPerfRange(r) {
+        this.perfRange = r;
+        this.loadPerf();
+    },
+
+    async loadPerf() {
+        const box = document.getElementById('overview-perf');
+        const srv = this.activeServer;
+        if (!box || !srv) return;
+        let p;
+        try {
+            const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/perf?range=${this.perfRange}`);
+            if (!res.ok) throw new Error(await this.apiError(res));
+            p = await res.json();
+        } catch (e) {
+            if (!this.perfData || this.perfData.server !== srv.name) {
+                box.innerHTML = `<p class="text-sm text-red-500">Couldn't load performance: ${this.escapeHtml(e.message)}</p>`;
+            }
+            this.tickPerfUpdated();
+            return;
+        }
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        this.perfData = p;
+        box.innerHTML = this.perfHtml(p);
+    },
+
+    tickPerfUpdated() {
+        const el = document.getElementById('perf-updated');
+        if (!el) return;
+        const ago = Math.max(0, Math.round(Date.now() / 1000 - (+el.dataset.t)));
+        el.textContent = ago < 5 ? 'updated just now' : `updated ${this.fmtDuration(ago)} ago`;
+        el.classList.toggle('text-yellow-600', ago > 60);
+    },
+
+    // TPS as a state with an icon and a word, never colour alone
+    tpsState(tps) {
+        if (tps === null || tps === undefined) return null;
+        if (tps >= 19) return { icon: '●', word: 'Smooth', cls: 'text-green-600 dark:text-green-400' };
+        if (tps >= 15) return { icon: '▲', word: 'Some lag', cls: 'text-yellow-600 dark:text-yellow-400' };
+        return { icon: '■', word: 'Lagging', cls: 'text-red-600 dark:text-red-400' };
+    },
+
+    perfHtml(p) {
+        const esc = t => this.escapeHtml(t === null || t === undefined ? '' : String(t));
+        const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const tile = (title, big, lines, extra = '') => `
+            <div class="${card} p-4 min-w-0">
+                <p class="${note}">${title}</p>
+                <p class="text-xl font-bold text-gray-900 dark:text-white mt-1">${big}</p>${extra}
+                <p class="${note} mt-1">${lines}</p>
+            </div>`;
+        const t = p.tick || {};
+        let tickTile;
+        if (t.available) {
+            const st = this.tpsState(t.tps);
+            const more = t.source === 'tps'
+                ? `5 min ${esc(t.tps_5m)} · 15 min ${esc(t.tps_15m)}${t.mspt !== null && t.mspt !== undefined ? ` · ${esc(t.mspt)} ms per tick` : ''}`
+                : `${esc(t.mspt)} ms per tick${t.p95 ? ` · 95 % under ${esc(t.p95)} ms` : ''}${t.state && t.state !== 'normal' ? ` · ${esc(t.state)}` : ''}`;
+            tickTile = tile('Tick health (TPS)', `${esc(t.tps)} <span class="text-sm font-bold ${st.cls}">${st.icon} ${st.word}</span>`, more);
+        } else {
+            tickTile = tile('Tick health (TPS)', '<span class="text-base text-gray-500 dark:text-gray-400">Not available</span>', esc(t.why || ''));
+        }
+        const m = p.memory || {};
+        const cap = m.limit || m.heap_bytes;
+        const memLines = [m.heap ? `Max heap ${esc(m.heap)}` : null, m.limit ? `hard limit ${this.fmtBytes(m.limit)}` : null,
+            p.cpu_limit ? `CPU limit ${esc(p.cpu_limit)} cores` : null].filter(Boolean).join(' · ') || 'No limits set';
+        const memTile = tile('Memory (whole process)', m.used !== null && m.used !== undefined ? this.fmtBytes(m.used) : '—', memLines,
+            cap && m.used ? `<div class="mt-2">${this.bar(100 * m.used / cap)}</div>` : '');
+        const playersTile = tile('Players', p.players !== null && p.players !== undefined ? `${p.players} / ${p.max_players}` : '—',
+            p.connections !== null && p.connections !== undefined ? `${p.connections} connection${p.connections === 1 ? '' : 's'} to port ${esc(p.port)}` : (p.edition === 'Bedrock' ? 'Not counted for Bedrock' : 'Shown while it runs, with RCON on'));
+        const worldTile = tile('World', p.world_size !== null && p.world_size !== undefined ? this.fmtBytes(p.world_size) : '<span class="text-base text-gray-500">measuring…</span>',
+            p.addons !== null && p.addons !== undefined ? `${p.addons} ${p.addons_folder === 'plugins' ? 'plugin' : 'mod'}${p.addons === 1 ? '' : 's'} installed` : esc(p.edition));
+        const held = (p.held_back || []).length ? `<div class="p-3 rounded border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/30 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 text-sm">▲ <b>Held back by its limits:</b> ${p.held_back.map(esc).join(' ')}</div>` : '';
+
+        // History: small multiples, one measure each
+        const h = p.history || { points: [], fields: [] };
+        const col = f => h.points.map(r => [r[0], r[1 + h.fields.indexOf(f)]]);
+        const w = this.chartWidth('overview-perf', 2, 2);
+        const charts = [
+            this.chartCard(`perf-cpu`, 'CPU (% of the machine)', col('cpu'), { fmt: v => `${v.toFixed(1)} %`, max: null, range: h.range, step: h.step, w }),
+            this.chartCard(`perf-mem`, 'Memory', col('memory'), { fmt: v => this.fmtBytes(v), max: m.limit || null, range: h.range, step: h.step, w }),
+            this.chartCard(`perf-players`, 'Players online', col('players'), { fmt: v => `${Math.round(v * 10) / 10}`, max: null, minMax: 5, range: h.range, step: h.step, w }),
+        ];
+        if (p.edition === 'Java') {
+            charts.push(this.chartCard(`perf-tps`, 'TPS', col('tps'), { fmt: v => v.toFixed(1), max: 20, range: h.range, step: h.step, w,
+                empty: 'Nothing measured yet. TPS needs Java 1.20.3 or newer (or Paper) and RCON on.' }));
+        }
+        const rangeBtn = (r, label) => `<button onclick="ServerApp.setPerfRange('${r}')" class="px-3 py-1 text-sm rounded ${this.perfRange === r ? 'subtab-active' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}" aria-pressed="${this.perfRange === r}">${label}</button>`;
+
+        // Suggestions
+        const where = { properties: ['properties', 'Open Configuration'], memory: ['maintenance', 'Open Memory and limits'],
+            addons: ['addons', 'Open Mods'], backups: ['backups', 'Open Backups'], files: ['files', 'Open Files'], chat: ['chat', 'Open Live Chat'] };
+        const sug = (p.suggestions || []).map(s => {
+            const w = where[s.where];
+            const tabBtn = w && document.getElementById(`tab-btn-${w[0]}`);
+            const link = tabBtn && !tabBtn.classList.contains('hidden')
+                ? ` <button onclick="ServerApp.switchTab('${w[0]}')" class="underline text-theme whitespace-nowrap">${w[0] === 'maintenance' ? w[1] : 'Open ' + esc(tabBtn.textContent.trim())}</button>` : '';
+            const warn = s.level === 'warn';
+            return `<li class="p-3 rounded border ${warn ? 'border-yellow-300 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/30' : 'border-gray-200 dark:border-gray-700'} text-sm text-gray-800 dark:text-gray-200">${warn ? '▲' : '💡'} ${esc(s.text)}${link}</li>`;
+        }).join('');
+
+        return `
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                <h3 class="text-lg font-bold text-theme">Performance</h3>
+                <p class="${note}">${p.address ? `${esc(p.address)} · ` : ''}<span id="perf-updated" data-t="${p.updated}">updated just now</span></p>
+            </div>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">${tickTile}${memTile}${playersTile}${worldTile}</div>
+            ${held ? `<div class="mt-3">${held}</div>` : ''}
+            <div class="flex flex-wrap items-center justify-between gap-2 mt-4 mb-2">
+                <h4 class="font-bold text-gray-900 dark:text-white">History</h4>
+                <div class="flex gap-1" role="group" aria-label="History range">${rangeBtn('day', 'Last 24 hours')}${rangeBtn('week', 'Last 7 days')}</div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">${charts.join('')}</div>
+            <p class="${note} mt-2">Measured every minute whether anyone is watching; the last 7 days are kept as 15-minute averages.</p>
+            ${sug ? `<h4 class="font-bold text-gray-900 dark:text-white mt-4 mb-2">Suggestions</h4><ul class="space-y-2">${sug}</ul>
+                <p class="${note} mt-1">Nothing here is changed for you: each change trades how the world plays for speed.</p>` : ''}`;
+    },
+
+    // One chart in a card: title, latest value, the SVG (or a note when nothing was measured)
+    chartCard(id, title, pts, opts) {
+        const esc = t => this.escapeHtml(String(t));
+        const vals = pts.filter(p => p[1] !== null && p[1] !== undefined);
+        const last = vals.length ? vals[vals.length - 1][1] : null;
+        const body = vals.length ? this.chartSvg(id, title, pts, opts)
+            : `<p class="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">${esc(opts.empty || 'Nothing measured yet: the first point is written a minute after the panel starts.')}</p>`;
+        return `
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm p-3 min-w-0">
+                <div class="flex justify-between gap-2 text-sm"><span class="font-bold text-gray-900 dark:text-white">${esc(title)}</span>
+                <span class="text-gray-700 dark:text-gray-300">${last !== null ? esc(opts.fmt(last)) : ''}</span></div>
+                ${body}
+            </div>`;
+    },
+
+    // The drawing width of one chart in a grid of cards (1 column on phones, md and xl columns above)
+    chartWidth(containerId, mdCols, xlCols) {
+        const el = document.getElementById(containerId);
+        const full = el && el.clientWidth ? el.clientWidth : 640;
+        const vw = window.innerWidth;
+        const cols = vw >= 1280 ? xlCols : vw >= 768 ? mdCols : 1;
+        return (full - 16 * (cols - 1)) / cols - 26;
+    },
+
+    niceMax(v) {
+        if (!(v > 0)) return 1;
+        const p = Math.pow(10, Math.floor(Math.log10(v)));
+        const n = v / p;
+        return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+    },
+
+    // An SVG line chart. series: [[t, v], ...] (opts.series2: a second line of the same unit,
+    // with a legend). Lines break where nothing was measured. Hover or touch shows the value.
+    chartSvg(id, title, pts, opts) {
+        // Drawn at the size it's shown (opts.w), so text and lines stay 1:1 on phones and wide screens
+        const W = Math.max(240, Math.round(opts.w || 320)), H = 130, L = 52, R = 8, T = 8, B = 20;
+        const span = opts.range === 'week' ? 7 * 86400 : 86400;
+        const now = Math.floor(Date.now() / 1000);
+        const t0 = now - span;
+        const all = pts.concat(opts.series2 || []).filter(p => p[1] !== null && p[1] !== undefined);
+        const top = opts.max || this.niceMax(Math.max(opts.minMax || 0, ...all.map(p => p[1])));
+        const x = t => L + (W - L - R) * Math.max(0, Math.min(1, (t - t0) / span));
+        const y = v => T + (H - T - B) * (1 - Math.max(0, Math.min(1, v / top)));
+        const gap = (opts.step || 60) * 2.5;
+        const path = series => {
+            let d = '', prev = null;
+            series.forEach(([t, v]) => {
+                if (v === null || v === undefined || t < t0) { prev = null; return; }
+                d += `${prev === null || t - prev > gap ? 'M' : 'L'}${x(t).toFixed(1)},${y(v).toFixed(1)}`;
+                prev = t;
+            });
+            return d;
+        };
+        const d1 = path(pts);
+        const fmt = opts.fmt;
+        const grid = [0, 0.5, 1].map(f => {
+            const yy = y(top * f).toFixed(1);
+            return `<line class="grid" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text class="axis" x="${L - 4}" y="${+yy + 3}" text-anchor="end">${this.escapeHtml(fmt(top * f))}</text>`;
+        }).join('');
+        const xl = `<text class="axis" x="${L}" y="${H - 4}">${opts.range === 'week' ? '7 days ago' : '24 h ago'}</text><text class="axis" x="${W - R}" y="${H - 4}" text-anchor="end">now</text>`;
+        const vals = all.map(p => p[1]);
+        const summary = vals.length ? `${title}: lowest ${fmt(Math.min(...vals))}, highest ${fmt(Math.max(...vals))}, latest ${fmt(vals[vals.length - 1])}` : title;
+        this.charts[id] = { pts, s2: opts.series2 || null, x, y, t0, span, L, R, W, fmt, names: opts.names || null };
+        const legend = opts.series2 ? `<p class="text-xs text-gray-600 dark:text-gray-300 mt-1"><span class="rp-swatch" style="background:var(--chart-1)"></span> ${this.escapeHtml(opts.names[0])} &nbsp; <span class="rp-swatch" style="background:var(--chart-2)"></span> ${this.escapeHtml(opts.names[1])}</p>` : '';
+        return `
+            <div class="relative mt-1">
+                <svg class="rp-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${this.escapeHtml(summary)}">
+                    ${grid}${xl}
+                    ${opts.series2 ? '' : `<path class="area" d="${this.areaPath(d1, y(0))}"/>`}
+                    <path class="line s1" d="${d1}"/>
+                    ${opts.series2 ? `<path class="line s2" d="${path(opts.series2)}"/>` : ''}
+                    <g id="${id}-hover" style="display:none"><line class="cross" y1="${T}" y2="${H - B}"/><circle class="dot s1" r="4"/>${opts.series2 ? '<circle class="dot s2" r="4"/>' : ''}</g>
+                    <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"
+                        onpointermove="ServerApp.chartHover(event, '${id}')" onpointerdown="ServerApp.chartHover(event, '${id}')" onpointerleave="ServerApp.chartLeave('${id}')"/>
+                </svg>
+                <div id="${id}-tip" class="hidden absolute z-10 pointer-events-none px-2 py-1 rounded text-xs bg-gray-900 text-white shadow whitespace-nowrap"></div>
+                ${legend}
+            </div>`;
+    },
+
+    // The area under a line: each drawn segment closed down to the baseline
+    areaPath(d, base) {
+        return (d.match(/M[^M]*/g) || []).map(seg => {
+            const pts = seg.slice(1).split('L');
+            const first = pts[0].split(','), last = pts[pts.length - 1].split(',');
+            return `${seg}L${last[0]},${base}L${first[0]},${base}Z`;
+        }).join('');
+    },
+
+    chartHover(ev, id) {
+        const c = this.charts[id];
+        const svg = ev.currentTarget.ownerSVGElement;
+        if (!c || !svg) return;
+        const box = svg.getBoundingClientRect();
+        const sx = (ev.clientX - box.left) * (c.W / box.width);
+        const t = c.t0 + (sx - c.L) / (c.W - c.L - c.R) * c.span;
+        const near = series => series.reduce((best, p) => p[1] !== null && p[1] !== undefined && (!best || Math.abs(p[0] - t) < Math.abs(best[0] - t)) ? p : best, null);
+        const p = near(c.pts);
+        if (!p) return;
+        const g = document.getElementById(`${id}-hover`);
+        const tip = document.getElementById(`${id}-tip`);
+        const px = c.x(p[0]);
+        g.style.display = '';
+        const line = g.querySelector('line');
+        line.setAttribute('x1', px); line.setAttribute('x2', px);
+        const dots = g.querySelectorAll('circle');
+        dots[0].setAttribute('cx', px); dots[0].setAttribute('cy', c.y(p[1]));
+        let text = `${this.fmtChartTime(p[0], c.span)} · ${c.names ? c.names[0] + ' ' : ''}${c.fmt(p[1])}`;
+        if (c.s2) {
+            const q = c.s2.find(r => r[0] === p[0]);
+            if (q && q[1] !== null) {
+                dots[1].setAttribute('cx', px); dots[1].setAttribute('cy', c.y(q[1]));
+                text += ` · ${c.names[1]} ${c.fmt(q[1])}`;
+            }
+        }
+        tip.textContent = text;
+        tip.classList.remove('hidden');
+        const left = px / c.W * box.width;
+        tip.style.top = '0px';
+        tip.style.left = `${Math.min(Math.max(0, left - tip.offsetWidth / 2), box.width - tip.offsetWidth)}px`;
+    },
+
+    chartLeave(id) {
+        const g = document.getElementById(`${id}-hover`), tip = document.getElementById(`${id}-tip`);
+        if (g) g.style.display = 'none';
+        if (tip) tip.classList.add('hidden');
+    },
+
+    fmtChartTime(t, span) {
+        const d = new Date(t * 1000);
+        const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return span > 86400 ? `${d.toLocaleDateString([], { weekday: 'short' })} ${hm}` : hm;
+    },
+
+    // Maintenance > Memory and limits
+    async loadResources() {
+        const card = document.getElementById('resources-card');
+        const body = document.getElementById('resources-body');
+        const srv = this.activeServer;
+        if (!card || !srv) return;
+        card.classList.remove('hidden');
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/resources`);
+        if (!res.ok) { body.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+        const r = await res.json();
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        this.resourcesData = r;
+        body.innerHTML = this.resourcesHtml(r);
+        this.onLimitModeChange();
+        const st = document.getElementById('res-status');
+        if (this.resourcesSaved && st) {
+            st.className = 'text-sm text-green-600 dark:text-green-400';
+            st.textContent = this.resourcesSaved;
+            card.scrollIntoView({ block: 'nearest' });
+        }
+        this.resourcesSaved = null;
+    },
+
+    resourcesHtml(r) {
+        const esc = t => this.escapeHtml(t === null || t === undefined ? '' : String(t));
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const input = 'bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-1 text-sm text-gray-900 dark:text-white';
+        const admin = this.isAdmin();
+        const limitNow = r.memory_limit === 'auto' ? `Automatic (${this.fmtBytes(r.memory_max)})`
+            : r.memory_limit === 'off' ? 'Off' : this.fmtBytes(r.memory_limit);
+        const machine = `This machine has ${this.fmtBytes(r.host_memory)} of memory and ${esc(r.cores)} CPU core${r.cores === 1 ? '' : 's'}.`
+            + (r.java ? ` Other running Java servers use up to ${this.fmtBytes(r.others_running)}; ${this.fmtBytes(r.room)} is left after ${this.fmtBytes(r.reserve)} for the system.` : '');
+        if (!admin) {
+            return `<p class="text-sm text-gray-700 dark:text-gray-300">${r.java ? `Memory: <b>${esc(r.xms)}</b> to start, at most <b>${esc(r.xmx)}</b>. ` : ''}
+                Hard memory limit: <b>${esc(limitNow)}</b>. CPU limit: <b>${r.cpu_limit ? esc(r.cpu_limit) + ' cores' : 'none'}</b>.</p>
+                <p class="${note} mt-2">Only an admin can change these.</p>`;
+        }
+        const custom = typeof r.memory_limit === 'number';
+        return `
+            <p class="${note} mb-3">${machine}</p>
+            ${r.java ? `
+            <p class="text-sm font-bold text-gray-900 dark:text-white">Memory (Java heap)</p>
+            <div class="flex flex-wrap items-end gap-3 mt-1">
+                <label class="text-sm text-gray-700 dark:text-gray-300">To start <input id="res-xms" class="${input} w-24 block mt-1" value="${esc(r.xms)}" placeholder="1G" autocomplete="off"></label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">At most <input id="res-xmx" class="${input} w-24 block mt-1" value="${esc(r.xmx)}" placeholder="2G" autocomplete="off"></label>
+            </div>
+            <p class="${note} mt-1">Write sizes like 2G or 1536M. A new server on this machine gets ${esc(r.default_heap.xms)} to ${esc(r.default_heap.xmx)}. A running server uses a new size after it restarts.</p>` : ''}
+            <p class="text-sm font-bold text-gray-900 dark:text-white mt-4">Hard memory limit</p>
+            <div class="flex flex-wrap items-center gap-2 mt-1">
+                <select id="res-limit-mode" onchange="ServerApp.onLimitModeChange()" class="${input}">
+                    <option value="off" ${r.memory_limit === 'off' ? 'selected' : ''}>Off</option>
+                    ${r.java ? `<option value="auto" ${r.memory_limit === 'auto' ? 'selected' : ''}>Automatic (${this.fmtBytes(r.auto_limit)})</option>` : ''}
+                    <option value="custom" ${custom ? 'selected' : ''}>Custom</option>
+                </select>
+                <input id="res-limit" class="${input} w-24" value="${custom ? esc(this.heapText(r.memory_limit)) : ''}" placeholder="3G" autocomplete="off">
+            </div>
+            <p class="${note} mt-1">systemd stops the server if its whole process goes over this, so one runaway server can't starve the others.${r.java ? ' Automatic is its memory plus half again, for what Java uses outside the heap.' : ''}</p>
+            <p class="text-sm font-bold text-gray-900 dark:text-white mt-4">CPU limit</p>
+            <label class="flex flex-wrap items-center gap-2 mt-1 text-sm text-gray-700 dark:text-gray-300">
+                <input id="res-cpu" type="number" min="0" max="${esc(r.cores)}" step="0.5" class="${input} w-24" value="${r.cpu_limit || 0}"> cores (0 = no limit)
+            </label>
+            <p class="${note} mt-1">Limits apply at once, without a restart. Minecraft's main loop uses one core, so a limit under 1 makes it lag.</p>
+            ${r.java && r.running ? `<label class="flex items-center gap-2 mt-4 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" id="res-restart"> Restart now if the memory changes</label>` : ''}
+            <div class="mt-4 flex items-center gap-3">
+                <button onclick="ServerApp.saveResources()" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold text-sm">Save</button>
+                <span id="res-status" class="text-sm"></span>
+            </div>`;
+    },
+
+    heapText(n) {
+        return n % (1024 ** 3) === 0 ? `${n / 1024 ** 3}G` : `${Math.max(1, Math.floor(n / 1024 ** 2))}M`;
+    },
+
+    onLimitModeChange() {
+        const mode = document.getElementById('res-limit-mode'), box = document.getElementById('res-limit');
+        if (mode && box) box.classList.toggle('hidden', mode.value !== 'custom');
+    },
+
+    async saveResources() {
+        const srv = this.activeServer, r = this.resourcesData;
+        if (!srv || !r) return;
+        const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : null; };
+        const mode = val('res-limit-mode');
+        const body = {
+            memory: mode === 'custom' ? val('res-limit') : mode,
+            cpu: parseFloat(val('res-cpu') || '0') || 0,
+            restart: !!(document.getElementById('res-restart') || {}).checked,
+        };
+        if (r.java) { body.xms = val('res-xms'); body.xmx = val('res-xmx'); }
+        const status = document.getElementById('res-status');
+        status.className = 'text-sm text-gray-500';
+        status.textContent = 'Saving…';
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/resources`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+            status.className = 'text-sm text-red-500';
+            status.textContent = await this.apiError(res);
+            return;
+        }
+        const out = await res.json();
+        // Refresh the server list (Max RAM, status) but stay on Maintenance: loadServers reopens
+        // the server on its Overview
+        await this.loadServers();
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        // switchTab reloads the card; it shows this once it has
+        this.resourcesSaved = out.restarted ? 'Saved and restarted.' : out.restart_needed ? 'Saved. The new memory is used after the next restart.' : 'Saved.';
+        this.switchTab('maintenance');
+    },
+
+    // Dashboard: host history (fetched at most once a minute; the tiles refresh every 10 s)
+    async loadHostHistory(force) {
+        if (!force && this.hostHistory && Date.now() - this.hostHistoryAt < 55000) return;
+        try {
+            const r = await fetch(`/api/host/history?range=${this.hostRange}`);
+            if (r.ok) { this.hostHistory = await r.json(); this.hostHistoryAt = Date.now(); }
+        } catch (e) { /* keep the last answer */ }
+    },
+
+    async setHostRange(r) {
+        this.hostRange = r;
+        await this.loadHostHistory(true);
+        if (this.dashData) this.renderDashboard();
+    },
+
+    hostHistoryHtml() {
+        const h = this.hostHistory;
+        if (!h) return '';
+        const col = f => h.points.map(r => [r[0], r[1 + h.fields.indexOf(f)]]);
+        const btn = (r, label) => `<button onclick="ServerApp.setHostRange('${r}')" class="px-3 py-1 text-sm rounded ${this.hostRange === r ? 'subtab-active' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}" aria-pressed="${this.hostRange === r}">${label}</button>`;
+        const o = { range: h.range, step: h.step, w: this.chartWidth('dash-body', 2, 4) };
+        return `
+            <section>
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <h3 class="font-bold text-gray-900 dark:text-white">History</h3>
+                    <div class="flex gap-1" role="group" aria-label="History range">${btn('day', 'Last 24 hours')}${btn('week', 'Last 7 days')}</div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    ${this.chartCard('host-cpu', 'CPU', col('cpu'), { ...o, fmt: v => `${Math.round(v)} %`, max: 100 })}
+                    ${this.chartCard('host-mem', 'Memory used', col('memory'), { ...o, fmt: v => `${Math.round(v)} %`, max: 100 })}
+                    ${this.chartCard('host-disk', 'Game servers disk', col('disk'), { ...o, fmt: v => `${Math.round(v)} %`, max: 100 })}
+                    ${this.chartCard('host-net', 'Network', col('rx'), { ...o, fmt: v => this.fmtRate(v), series2: col('tx'), names: ['↓ in', '↑ out'] })}
+                </div>
+            </section>`;
+    },
+
     async loadJavaChoice() {
         const card = document.getElementById('java-card');
         const body = document.getElementById('java-card-body');
@@ -1503,6 +2095,84 @@ const ServerApp = {
         }
     },
 
+    // "⬆ 1.26.10.4" next to a server's version when the update check found a newer one (1.16.12)
+    updateBadge(srv) {
+        if (!srv || !srv.update) return '';
+        return ` <span class="text-theme font-bold whitespace-nowrap" title="Update available: ${this.escapeHtml(String(srv.update.label))}">⬆ ${this.escapeHtml(String(srv.update.latest))}</span>`;
+    },
+
+    // Maintenance tab: the update check for this server and Bedrock's Update automatically
+    async loadAutoUpdate() {
+        const box = document.getElementById('autoupdate-content');
+        if (!box || !this.activeServer) return;
+        const name = this.activeServer.name;
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/updates`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        this.renderAutoUpdate(await res.json());
+    },
+
+    renderAutoUpdate(info) {
+        const box = document.getElementById('autoupdate-content');
+        if (!box) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const when = t => t ? esc(new Date(t * 1000).toLocaleString()) : '';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const found = info.update
+            ? `<p class="text-sm font-bold text-theme">⬆ Update available: ${esc(info.update.label)}</p>
+               <p class="${note}">This server runs ${esc(info.current || 'an unknown version')}. ${info.edition === 'java' ? 'Choose the version above and press Check & Update.' : 'Press Check & Update above, or let it update itself.'}</p>`
+            : info.error
+                ? `<p class="text-sm text-yellow-600 dark:text-yellow-500">Couldn't check for updates: ${esc(info.error)}</p>`
+                : `<p class="text-sm text-gray-600 dark:text-gray-300">${info.checked ? '✓ Runs the newest version' : 'Not checked yet'}${info.current ? ` (${esc(info.current)})` : ''}.</p>`;
+        const last = info.last;
+        const lastLine = last ? (last.ok
+            ? `<p class="${note}">Last update: ${when(last.at)}, ${esc(last.from || '?')} → ${esc(last.to)} (${esc(last.by || '')}).</p>`
+            : `<p class="text-xs text-red-500 mt-1">Updating to ${esc(last.to)} failed ${when(last.at)}: ${esc(last.error)}.${last.rolled_back ? ` It was put back on ${esc(last.from || 'the old version')}.` : ''}</p>`) : '';
+        const auto = info.edition === 'bedrock' ? (info.supported ? `
+            <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 mt-3">
+                <input type="checkbox" id="autoupdate-enabled" class="mt-1" ${info.auto ? 'checked' : ''} onchange="ServerApp.saveAutoUpdate(this)">
+                <span><b>Update automatically</b><span class="block ${note}">Bedrock players' apps update themselves and then can't join an older server. When a new release is out, players are warned in game, ${esc(info.warn_minutes)} minutes later the server stops, is backed up ("Before update"), updated and started. If the new version doesn't start, the old one and its world are put back.</span></span>
+            </label>` : `<p class="${note} mt-2">Bedrock servers can't run on this machine's processor, so they can't be updated here.</p>`)
+            : `<p class="${note} mt-2">Java servers are never updated automatically: a new version can break mods and plugins. You get an alert here, on the dashboard and by webhook instead.</p>`;
+        box.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm">
+                ${found}
+                ${lastLine}
+                ${auto}
+                <div class="flex flex-wrap items-center gap-3 mt-3">
+                    <button onclick="ServerApp.checkUpdatesNow(this)" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded font-bold text-sm">Check now</button>
+                    <span class="${note}">${info.checked ? `Checked ${when(info.checked)}` : ''}${info.next_check ? ` · next check ${when(info.next_check)}` : ''}</span>
+                </div>
+            </div>`;
+    },
+
+    async saveAutoUpdate(input) {
+        input.disabled = true;
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/updates`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: input.checked })
+        });
+        input.disabled = false;
+        if (!res.ok) {
+            input.checked = !input.checked;
+            return alert(`Couldn't change automatic updates: ${await this.apiError(res)}`);
+        }
+        this.renderAutoUpdate(await res.json());
+    },
+
+    async checkUpdatesNow(button) {
+        button.disabled = true;
+        button.innerText = 'Checking…';
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/updates/check`, { method: 'POST' });
+        button.disabled = false;
+        button.innerText = 'Check now';
+        if (!res.ok) return alert(`Couldn't check for updates: ${await this.apiError(res)}`);
+        this.renderAutoUpdate(await res.json());
+        this.loadServers();
+    },
+
     // --- Backups tab: schedule, list, back up now, download, restore, delete ---
     backupInfo: null,
 
@@ -1523,7 +2193,150 @@ const ServerApp = {
             return;
         }
         this.backupInfo = await res.json();
+        this.backupCopies = null;
+        this.backupCopiesAll = null;
         this.renderBackups();
+        this.loadBackupCopies();
+        this.loadOffsite();
+    },
+
+    // --- 1.16.8: copies of a server's backups on another cluster member (set on the master) ---
+    backupMember() {
+        return (this.activeServer && this.activeServer.node) || 'local';
+    },
+
+    async loadBackupCopies() {
+        const role = this.currentUser && this.currentUser.cluster ? this.currentUser.cluster.role : 'standalone';
+        const box = document.getElementById('backup-copies-box');
+        if (!box || !this.activeServer) return;
+        const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 shadow-sm';
+        if (role === 'node') {
+            box.className = card;
+            box.innerHTML = `<p class="text-xs text-gray-500 dark:text-gray-400">A copy of these backups on another cluster member is set on the cluster's master, on this server's Backups tab there.</p>`;
+            return;
+        }
+        if (role !== 'master') return;
+        const name = this.activeServer.name;
+        const res = await fetch(`/api/cluster/backup-copies/${encodeURIComponent(this.backupMember())}/${encodeURIComponent(name)}`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        box.className = card;
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">Backup copies: ${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        this.backupCopies = await res.json();
+        this.renderBackupCopies();
+    },
+
+    copyRows(list, actions) {
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes', 'pre-update': 'Before update' };
+        return list.map(c => `
+            <tr class="border-t border-gray-200 dark:border-gray-700">
+                <td class="rp-card-head py-2 pr-3 whitespace-nowrap">${esc(new Date(c.created * 1000).toLocaleString())}</td>
+                <td class="py-2 pr-3" data-label="Type">${esc(kindLabel[c.kind] || c.kind)}</td>
+                <td class="py-2 pr-3" data-label="Server">${esc(c.server)}${c.panel_name ? ` <span class="text-xs text-gray-500 dark:text-gray-400">from ${esc(c.panel_name)}</span>` : ''}</td>
+                <td class="py-2 pr-3" data-label="Kept on">${esc(c.holder_name)}</td>
+                <td class="py-2 pr-3 text-right whitespace-nowrap" data-label="Size">${esc(this.formatSize(c.size))}</td>
+                <td class="rp-card-actions py-2 text-right whitespace-nowrap">${actions(c)}</td>
+            </tr>`).join('');
+    },
+
+    copyPath(c) {
+        return [c.holder, c.panel, c.server, c.file].map(encodeURIComponent).join('/');
+    },
+
+    renderBackupCopies() {
+        const box = document.getElementById('backup-copies-box');
+        const v = this.backupCopies;
+        if (!box || !v || !v.available) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const isAdmin = this.currentUser && this.currentUser.role === 'admin';
+        const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+        const btn = 'px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+        const options = [`<option value="">Nowhere else (only this machine)</option>`]
+            .concat(v.members.map(m => `<option value="${esc(m.id)}" ${m.id === v.to ? 'selected' : ''}>${esc(m.name)}${m.id === 'local' ? ' (the master)' : ''}</option>`)).join('');
+        let status = '';
+        const st = v.status;
+        if (v.to && st) {
+            const when = new Date(st.at * 1000).toLocaleString();
+            status = st.ok
+                ? `<p class="text-xs text-gray-500 dark:text-gray-400">Last checked ${esc(when)}: every backup has its copy on ${esc(v.to_name)}${st.last_copied_at ? `; last copied ${esc(new Date(st.last_copied_at * 1000).toLocaleString())}` : ''}.</p>`
+                : `<p class="text-xs text-red-500">Copying to ${esc(v.to_name)} failed (${esc(when)}): ${esc(st.error)}. The master tries again every few minutes.</p>`;
+        } else if (v.to) {
+            status = `<p class="text-xs text-gray-500 dark:text-gray-400">Copying to ${esc(v.to_name)} starts within a few minutes.</p>`;
+        }
+        const actions = c => `
+            <a href="/api/cluster/backup-copies/file/${this.copyPath(c)}" class="${btn}" title="Download">⬇</a>
+            ${isAdmin ? `<button onclick="ServerApp.putCopyInto(${this.jsArg(c.holder)}, ${this.jsArg(c.panel)}, ${this.jsArg(c.server)}, ${this.jsArg(c.file)})" class="px-2 py-1 rounded bg-yellow-600 hover:bg-yellow-700 text-white" title="Copy it into this server's backups, to restore from there">Put back</button>
+            <button onclick="ServerApp.deleteCopy(${this.jsArg(c.holder)}, ${this.jsArg(c.panel)}, ${this.jsArg(c.server)}, ${this.jsArg(c.file)})" class="${btn} hover:bg-red-700 hover:text-white" title="Delete this copy">🗑</button>` : ''}`;
+        const head = `<thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pb-1">Taken</th><th class="pb-1">Type</th><th class="pb-1">Server</th><th class="pb-1">Kept on</th><th class="pb-1 text-right">Size</th><th></th></tr></thead>`;
+        const table = list => `<div class="overflow-x-auto -mx-3 sm:mx-0"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">${head}<tbody>${this.copyRows(list, actions)}</tbody></table></div>`;
+        const missing = (v.unreachable || []).length
+            ? `<p class="text-xs text-yellow-600 dark:text-yellow-500 mt-2">Not answering, so their copies aren't listed: ${v.unreachable.map(m => esc(m.name)).join(', ')}.</p>` : '';
+        const all = this.backupCopiesAll;
+        const others = all ? all.copies.filter(c => !v.copies.some(x => x.holder === c.holder && x.panel === c.panel && x.file === c.file)) : null;
+        box.innerHTML = `
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-sm font-bold text-gray-900 dark:text-white">Copies on another cluster member</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">${v.copies.length} · ${esc(this.formatSize(v.copies.reduce((a, c) => a + c.size, 0)))}</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+                <label class="text-sm text-gray-700 dark:text-gray-300" for="backup-copy-to">Also keep a copy on</label>
+                <select id="backup-copy-to" class="${field}" ${isAdmin ? '' : 'disabled'}>${options}</select>
+                ${isAdmin ? `<button onclick="ServerApp.saveCopyTarget(this)" class="bg-theme hover-bg-theme text-white px-3 py-2 rounded font-bold text-sm">Save</button>` : ''}
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">A backup on the same disk doesn't survive losing the disk. After each scheduled or manual backup, the master copies it to that member within a few minutes and checks it arrived whole (SHA-256). Scheduled copies are kept to the same number as here; manual ones stay until you delete them. Copies stay there even if this machine is lost.</p>
+            ${status}
+            ${v.copies.length ? `<div class="mt-3">${table(v.copies)}</div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2"><b>Put back</b> copies a backup into this server's list above, where <b>Restore</b> brings its world back.</p>`
+                : `<p class="text-sm text-gray-500 dark:text-gray-400 mt-2">No copies yet.</p>`}
+            ${missing}
+            ${isAdmin ? (others === null
+                ? `<button onclick="ServerApp.loadAllCopies(this)" class="mt-3 text-sm underline text-theme">Use a copy of another server's backup…</button>`
+                : `<div class="mt-4"><p class="text-sm font-bold text-gray-900 dark:text-white mb-1">Copies of other servers' backups</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">For a server whose machine is gone: make a new server of the same edition and version here, then put one of its copies back into it and restore.</p>
+                    ${others.length ? table(others) : `<p class="text-sm text-gray-500 dark:text-gray-400">There are no others.</p>`}</div>`) : ''}`;
+    },
+
+    async saveCopyTarget(button) {
+        const to = document.getElementById('backup-copy-to').value || null;
+        button.disabled = true;
+        const res = await fetch(`/api/cluster/backup-copies/${encodeURIComponent(this.backupMember())}/${encodeURIComponent(this.activeServer.name)}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to })
+        });
+        button.disabled = false;
+        if (!res.ok) return alert(`Couldn't save: ${await this.apiError(res)}`);
+        this.backupCopies = await res.json();
+        this.renderBackupCopies();
+    },
+
+    async loadAllCopies(button) {
+        button.disabled = true;
+        const res = await fetch('/api/cluster/backup-copies');
+        if (!res.ok) { button.disabled = false; return alert(`Couldn't list the copies: ${await this.apiError(res)}`); }
+        this.backupCopiesAll = await res.json();
+        this.renderBackupCopies();
+    },
+
+    async putCopyInto(holder, panel, server, file) {
+        const target = this.activeServer.name;
+        if (!confirm(`Copy ${file} into ${target}'s backups?\n\nNothing is restored yet: afterwards, use Restore on it in the list of backups.`)) return;
+        const res = await fetch(`/api/cluster/backup-copies/file/${this.copyPath({ holder, panel, server, file })}/into`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ member: this.backupMember(), server: target })
+        });
+        if (!res.ok) return alert(`Couldn't put it back: ${await this.apiError(res)}`);
+        const r = await res.json();
+        alert(r.existed ? `${target} already has this backup (${r.file}).` : `It's in ${target}'s backups now as ${r.file}. Use Restore on it to bring that world back.`);
+        this.loadBackups();
+    },
+
+    async deleteCopy(holder, panel, server, file) {
+        if (!confirm(`Delete the copy ${file}? This can't be undone.`)) return;
+        const res = await fetch(`/api/cluster/backup-copies/file/${this.copyPath({ holder, panel, server, file })}`, { method: 'DELETE' });
+        if (!res.ok) return alert(`Delete failed: ${await this.apiError(res)}`);
+        this.loadBackupCopies();
     },
 
     // --- Files tab (admins): browse, edit text, upload, download, rename, delete ---
@@ -1592,11 +2405,11 @@ const ServerApp = {
                 `<button onclick="ServerApp.deleteFile('${attr(full)}', '${e.type}')" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white">Delete</button>`,
             ].join(' ');
             return `<tr class="border-t border-gray-200 dark:border-gray-700">
-                <td class="py-1.5 pl-3 pr-2 w-6">${icon}</td>
-                <td class="py-1.5 pr-3 break-all">${name}</td>
-                <td class="py-1.5 pr-3 text-right whitespace-nowrap text-gray-500 dark:text-gray-400">${e.size === null ? '' : esc(this.formatSize(e.size))}</td>
-                <td class="py-1.5 pr-3 whitespace-nowrap text-gray-500 dark:text-gray-400">${esc(new Date(e.modified * 1000).toLocaleString())}</td>
-                <td class="py-1.5 pr-3 text-right whitespace-nowrap">${actions}</td>
+                <td class="rp-card-icon py-1.5 pl-3 pr-2 w-6">${icon}</td>
+                <td class="rp-card-head py-1.5 pr-3 break-all">${name}</td>
+                <td class="py-1.5 pr-3 text-right whitespace-nowrap text-gray-500 dark:text-gray-400" ${e.size === null ? '' : 'data-label="Size"'}>${e.size === null ? '' : esc(this.formatSize(e.size))}</td>
+                <td class="py-1.5 pr-3 whitespace-nowrap text-gray-500 dark:text-gray-400" data-label="Changed">${esc(new Date(e.modified * 1000).toLocaleString())}</td>
+                <td class="rp-card-actions py-1.5 pr-3 text-right whitespace-nowrap">${actions}</td>
             </tr>`;
         }).join('');
 
@@ -1615,7 +2428,7 @@ const ServerApp = {
             ${(notice || []).length ? `<div class="${card} p-3 mb-2 text-sm space-y-1 text-gray-800 dark:text-gray-200">${notice.map(m => `<p>${esc(m)}</p>`).join('')}<p class="text-xs text-gray-500 dark:text-gray-400">Restart the server to load them.</p></div>` : ''}
             <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Drop files anywhere on this tab to upload them here.${this.addonKind(this.activeServer) ? ` Mods, plugins and add-ons dropped at the top are checked and put in the right folder.` : ''}</p>
             <div class="${card} overflow-x-auto">
-                <table class="w-full text-sm">
+                <table class="rp-cards w-full text-sm">
                     <tbody>${rows || '<tr><td class="p-3 text-gray-500">This folder is empty.</td></tr>'}</tbody>
                 </table>
             </div>
@@ -2463,7 +3276,7 @@ const ServerApp = {
         const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
         const freqOptions = Object.entries(info.frequencies)
             .map(([id, label]) => `<option value="${esc(id)}" ${id === s.frequency ? 'selected' : ''}>${esc(label)}</option>`).join('');
-        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes' };
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes', 'pre-update': 'Before update' };
 
         let last = '';
         if (info.last) {
@@ -2477,10 +3290,10 @@ const ServerApp = {
 
         const rows = info.backups.map(b => `
             <tr class="border-t border-gray-200 dark:border-gray-700">
-                <td class="py-2 pr-3 whitespace-nowrap">${esc(new Date(b.created * 1000).toLocaleString())}</td>
-                <td class="py-2 pr-3">${esc(kindLabel[b.kind] || b.kind)}</td>
-                <td class="py-2 pr-3 text-right whitespace-nowrap">${esc(this.formatSize(b.size))}</td>
-                <td class="py-2 text-right whitespace-nowrap">
+                <td class="rp-card-head py-2 pr-3 whitespace-nowrap">${esc(new Date(b.created * 1000).toLocaleString())}</td>
+                <td class="py-2 pr-3" data-label="Type">${esc(kindLabel[b.kind] || b.kind)}</td>
+                <td class="py-2 pr-3 text-right whitespace-nowrap" data-label="Size">${esc(this.formatSize(b.size))}</td>
+                <td class="rp-card-actions py-2 text-right whitespace-nowrap">
                     <a href="${apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(b.file)}`)}" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white" title="Download">⬇</a>
                     ${isAdmin ? `<button onclick="ServerApp.restoreBackup('${esc(b.file)}')" class="px-2 py-1 rounded bg-yellow-600 hover:bg-yellow-700 text-white" title="Restore this world">Restore</button>
                     <button onclick="ServerApp.deleteBackup('${esc(b.file)}')" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-red-700 hover:text-white text-gray-900 dark:text-white" title="Delete">🗑</button>` : ''}
@@ -2501,28 +3314,32 @@ const ServerApp = {
                     <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">Keep
                         <input type="number" id="backup-keep" min="1" max="365" value="${esc(s.keep)}" class="${field} w-20"></label>
                 </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">The time is the server's clock${info.timezone ? ` (${esc(info.timezone)})` : ''}, not your browser's. Runs as a systemd timer, so backups happen even while the panel is stopped. Only scheduled backups are pruned to the number kept; manual ones stay until you delete them.</p>
+                <label class="flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3">Also delete them after
+                    <input type="number" id="backup-keep-days" min="0" max="3650" value="${s.keep_days ? esc(s.keep_days) : ''}" placeholder="never" class="${field} w-24"> days</label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">The time is the server's clock${info.timezone ? ` (${esc(info.timezone)})` : ''}, not your browser's. Runs as a systemd timer, so backups happen even while the panel is stopped. Only scheduled backups are pruned to the number (and age) kept, and the newest one always stays; manual ones stay until you delete them.</p>
                 ${info.next_run && s.enabled ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Next backup: ${esc(info.next_run)}</p>` : ''}
                 ${last}
-                <div class="flex gap-2 mt-3">
+                <div class="flex flex-wrap gap-2 mt-3">
                     <button onclick="ServerApp.saveBackupSchedule(this)" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold text-sm">Save schedule</button>
                     <button onclick="ServerApp.backupNow(this)" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-4 py-2 rounded font-bold text-sm">Back up now</button>
                 </div>
                 ${javaNoRcon ? `<p class="text-xs text-yellow-600 dark:text-yellow-500 mt-3">RCON isn't set up for this server, so backups taken while it runs copy files it may be writing. Open the Live Chat tab once to set RCON up.</p>` : ''}
             </div>
             <div class="${card}">
-                <div class="flex items-center justify-between mb-2">
+                <div class="flex flex-wrap gap-x-3 items-center justify-between mb-2">
                     <p class="text-sm font-bold text-gray-900 dark:text-white">Backups</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400" title="${esc(info.directory)}">${info.backups.length} · ${esc(this.formatSize(info.total_size))} in ${esc(info.directory)}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 break-all" title="${esc(info.directory)}">${info.backups.length} · ${esc(this.formatSize(info.total_size))} in ${esc(info.directory)}</p>
                 </div>
                 ${info.backups.length ? `
-                <div class="overflow-x-auto"><table class="w-full text-sm text-gray-700 dark:text-gray-300">
+                <div class="overflow-x-auto -mx-3 sm:mx-0"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">
                     <thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pb-1">Taken</th><th class="pb-1">Type</th><th class="pb-1 text-right">Size</th><th></th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table></div>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Restore replaces the current world with the backup's. The server is stopped while that happens, and the world it replaces is saved first as a "Before restore" backup.</p>`
                 : `<p class="text-sm text-gray-500 dark:text-gray-400">No backups yet.</p>`}
-            </div>`;
+            </div>
+            <div id="backup-copies-box"></div>
+            <div id="offsite-box"></div>`;
     },
 
     async saveBackupSchedule(button) {
@@ -2531,6 +3348,7 @@ const ServerApp = {
             frequency: document.getElementById('backup-frequency').value,
             time: document.getElementById('backup-time').value,
             keep: parseInt(document.getElementById('backup-keep').value, 10) || 0,
+            keep_days: parseInt(document.getElementById('backup-keep-days').value, 10) || 0,
         };
         button.disabled = true;
         const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/schedule`, {
@@ -2603,6 +3421,10 @@ const ServerApp = {
         this.toggleConsole(true);
         const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups`, { method: 'POST' });
         if (!res.ok) alert(`Backup failed: ${await this.apiError(res)}`);
+        else if (this.backupCopies && this.backupCopies.to) {
+            // Copy it to the other member now, not at the master's next pass
+            fetch(`/api/cluster/backup-copies/${encodeURIComponent(this.backupMember())}/${encodeURIComponent(this.activeServer.name)}/sync`, { method: 'POST' });
+        }
         this.loadBackups();
     },
 
@@ -2622,6 +3444,362 @@ const ServerApp = {
         const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(file)}`, { method: 'DELETE' });
         if (!res.ok) alert(`Delete failed: ${await this.apiError(res)}`);
         this.loadBackups();
+    },
+
+    // --- 1.16.11: copies on SSH or S3-compatible backup storage (Panel Settings → Backup storage) ---
+    offsite: null,
+
+    async loadOffsite() {
+        const box = document.getElementById('offsite-box');
+        if (!box || !this.activeServer) return;
+        const name = this.activeServer.name;
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/offsite`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        box.className = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 shadow-sm';
+        if (res.status === 404 && (await res.clone().json().catch(() => ({}))).detail === 'Not Found') {
+            box.innerHTML = `<p class="text-xs text-gray-500 dark:text-gray-400">Off-site copies need RedstonePanel 1.16.11 or later on ${this.escapeHtml(this.activeServer.node_name || 'this machine')}.</p>`;
+            return;
+        }
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">Off-site copies: ${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        this.offsite = await res.json();
+        this.renderOffsite();
+    },
+
+    renderOffsite() {
+        const box = document.getElementById('offsite-box');
+        const v = this.offsite;
+        if (!box || !v) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const isAdmin = this.currentUser && this.currentUser.role === 'admin';
+        const onNode = !!(this.activeServer && this.activeServer.node);
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const btn = 'px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual' };
+        const head = `<p class="text-sm font-bold text-gray-900 dark:text-white mb-1">Off-site copies</p>`;
+        if (!v.targets.length) {
+            box.innerHTML = `${head}<p class="${note}">A backup on the same disk doesn't survive losing the disk. Copy these backups to an SSH server (a NAS, another PC, a VPS) or S3-compatible storage (Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3)${onNode
+                ? `: add the storage in Panel Settings → Backup storage on ${esc(this.activeServer.node_name || 'the node')}'s own panel, since each machine copies its own servers' backups.`
+                : isAdmin ? ` under <button onclick="ServerApp.openPanelSettings('storage')" class="underline text-theme">Panel Settings → Backup storage</button>.` : '. An admin adds it under Panel Settings → Backup storage.'}</p>`;
+            return;
+        }
+        const blocks = v.targets.map(t => {
+            const st = t.status;
+            let state = '';
+            if (t.enabled && st) {
+                const when = new Date(st.at * 1000).toLocaleString();
+                state = st.ok
+                    ? `<p class="${note}">Last checked ${esc(when)}: every backup it keeps has its copy${st.last_copied_at ? `; last copied ${esc(new Date(st.last_copied_at * 1000).toLocaleString())}` : ''}.</p>`
+                    : `<p class="text-xs text-red-500">Copying failed (${esc(when)}): ${esc(st.error)}</p>`;
+            } else if (t.enabled) {
+                state = `<p class="${note}">Not copied yet: the first copy starts within a few minutes.</p>`;
+            }
+            const rows = t.copies.map(c => `
+                <tr class="border-t border-gray-200 dark:border-gray-700">
+                    <td class="rp-card-head py-2 pr-3 whitespace-nowrap">${esc(new Date(c.created * 1000).toLocaleString())}</td>
+                    <td class="py-2 pr-3" data-label="Type">${esc(kindLabel[c.kind] || c.kind)}</td>
+                    <td class="py-2 pr-3 text-right whitespace-nowrap" data-label="Size">${esc(this.formatSize(c.size))}</td>
+                    <td class="rp-card-actions py-2 text-right whitespace-nowrap">${isAdmin ? `
+                        <button onclick="ServerApp.restoreOffsite(${this.jsArg(t.id)}, ${this.jsArg(c.file)})" class="px-2 py-1 rounded bg-yellow-600 hover:bg-yellow-700 text-white" title="Download it, check it, and restore its world">Restore</button>
+                        <button onclick="ServerApp.deleteOffsite(${this.jsArg(t.id)}, ${this.jsArg(c.file)})" class="${btn} hover:bg-red-700 hover:text-white" title="Delete this copy">🗑</button>` : ''}</td>
+                </tr>`).join('');
+            const retention = `keeps ${esc(t.keep)} scheduled${t.keep_days ? `, at most ${esc(t.keep_days)} days old` : ''}, and every manual one`;
+            return `<div class="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
+                <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 ${isAdmin ? 'cursor-pointer' : ''}">
+                    <input type="checkbox" class="mt-1" ${t.enabled ? 'checked' : ''} ${isAdmin ? '' : 'disabled'} onchange="ServerApp.toggleOffsite(${this.jsArg(t.id)}, this.checked, this)">
+                    <span>Copy to <b class="text-gray-900 dark:text-white">${esc(t.name)}</b> <span class="${note}">${t.type === 's3' ? 'S3' : 'SSH'} · <span class="break-all">${esc(t.where)}</span> · ${retention}</span></span>
+                </label>
+                ${state}
+                ${t.error ? `<p class="text-xs text-red-500">Couldn't list the copies: ${esc(t.error)}</p>` : ''}
+                ${t.copies.length ? `<div class="overflow-x-auto -mx-3 sm:mx-0 mt-2"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">
+                    <thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pb-1">Taken</th><th class="pb-1">Type</th><th class="pb-1 text-right">Size</th><th></th></tr></thead>
+                    <tbody>${rows}</tbody></table></div>` : t.enabled && !t.error ? `<p class="${note} mt-1">No copies there yet.</p>` : ''}
+            </div>`;
+        }).join('');
+        const anyOn = v.targets.some(t => t.enabled);
+        box.innerHTML = `${head}
+            <p class="${note}">Copied after each scheduled or manual backup, checked with SHA-256 when it arrives and again before a restore. Copies run in the background, so a slow upload never holds the server up. Old scheduled copies are deleted there by the storage's own Keep; the newest copy always stays.</p>
+            ${blocks}
+            ${anyOn ? `<div class="flex flex-wrap gap-2 mt-3"><button onclick="ServerApp.offsiteCopyNow(this)" class="${btn} text-sm font-bold px-3 py-1.5">Copy now</button></div>` : ''}
+            ${isAdmin && anyOn ? `<p class="${note} mt-2"><b>Restore</b> downloads the copy into the backups above, checks it, then restores its world as usual (the current world is saved first).</p>` : ''}`;
+    },
+
+    async toggleOffsite(tid, enabled, input) {
+        input.disabled = true;
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/offsite/${encodeURIComponent(tid)}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled })
+        });
+        if (!res.ok) alert(`Couldn't change it: ${await this.apiError(res)}`);
+        this.loadOffsite();
+    },
+
+    async offsiteCopyNow(button) {
+        button.disabled = true;
+        button.innerText = 'Copying…';
+        this.toggleConsole(true);
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/offsite/sync`, { method: 'POST' });
+        if (!res.ok) { alert(await this.apiError(res)); button.disabled = false; button.innerText = 'Copy now'; return; }
+        setTimeout(() => this.loadOffsite(), 4000);
+    },
+
+    async restoreOffsite(tid, file) {
+        const name = this.activeServer.name;
+        if (!confirm(`Restore ${name}'s world from the off-site copy ${file}?\n\nThe copy is downloaded into this server's backups and checked first. Then the server stops while its world is replaced; the current world is saved first as a "Before restore" backup.`)) return;
+        this.toggleConsole(true);
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/offsite/${encodeURIComponent(tid)}/fetch`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file })
+        });
+        if (!res.ok) { alert(`Couldn't download the copy: ${await this.apiError(res)}`); return; }
+        const got = await res.json();
+        const r = await api(`/api/servers/${encodeURIComponent(name)}/backups/${encodeURIComponent(got.file)}/restore`, { method: 'POST' });
+        if (!r.ok) alert(`The copy is in the backups list as ${got.file}, but restoring failed: ${await this.apiError(r)}`);
+        else alert('World restored from the off-site copy.');
+        this.loadBackups();
+    },
+
+    async deleteOffsite(tid, file) {
+        if (!confirm(`Delete the off-site copy ${file}? This can't be undone.`)) return;
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/offsite/${encodeURIComponent(tid)}/${encodeURIComponent(file)}`, { method: 'DELETE' });
+        if (!res.ok) alert(`Delete failed: ${await this.apiError(res)}`);
+        this.loadOffsite();
+    },
+
+    // Import → From backup storage: a new server from a copy (the machine it came from is gone)
+    async openStorageImport() {
+        const box = document.getElementById('storage-import');
+        if (!box) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const field = 'w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white text-sm mb-2';
+        box.innerHTML = `<p class="text-xs text-gray-500">Loading…</p>`;
+        const res = await fetch('/api/settings/backup-storage');
+        if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${esc(await this.apiError(res))}</p>`; return; }
+        const d = await res.json();
+        if (!d.targets.length) {
+            box.innerHTML = `<p class="text-xs text-gray-500">No backup storage yet. Add the storage the old machine copied to under <button onclick="ServerApp.openPanelSettings('storage')" class="underline text-theme">Panel Settings → Backup storage</button>, then come back here.</p>`;
+            return;
+        }
+        box.innerHTML = `<select id="storage-import-target" onchange="ServerApp.browseStorage(this.value)" class="${field}">
+                ${d.targets.map(t => `<option value="${esc(t.id)}">${esc(t.name)} (${esc(t.where)})</option>`).join('')}
+            </select>
+            <div id="storage-import-list"><p class="text-xs text-gray-500">Loading…</p></div>`;
+        this.browseStorage(d.targets[0].id);
+    },
+
+    async browseStorage(tid) {
+        const list = document.getElementById('storage-import-list');
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        list.innerHTML = `<p class="text-xs text-gray-500">Loading…</p>`;
+        const res = await fetch(`/api/settings/backup-storage/${encodeURIComponent(tid)}/browse`);
+        if (!res.ok) { list.innerHTML = `<p class="text-sm text-red-500">${esc(await this.apiError(res))}</p>`; return; }
+        const d = await res.json();
+        this.storageCopies = d.copies;
+        if (!d.copies.length) { list.innerHTML = `<p class="text-xs text-gray-500">No backups there.</p>`; return; }
+        const field = 'w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white text-sm mb-2';
+        list.innerHTML = `<select id="storage-import-copy" class="${field}">
+                ${d.copies.map((c, i) => `<option value="${i}">${esc(c.server)} · ${esc(new Date(c.created * 1000).toLocaleString())} · ${esc(this.formatSize(c.size))} · from ${esc(c.panel)}${c.panel === d.panel_id ? ' (this machine)' : ''}</option>`).join('')}
+            </select>
+            <p class="text-xs text-gray-500 mb-2">The server gets its old name if it's free here. Its server software is downloaded again (a Java server at the same Minecraft version and type), then it starts.</p>
+            <button onclick="ServerApp.importFromStorage(this)" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-white font-bold transition">Import from backup storage</button>`;
+    },
+
+    async importFromStorage(button) {
+        const tid = document.getElementById('storage-import-target').value;
+        const c = this.storageCopies[parseInt(document.getElementById('storage-import-copy').value, 10)];
+        if (!c) return;
+        button.disabled = true;
+        button.innerText = 'Downloading, checking and setting up…';
+        this.toggleConsole(true);
+        const res = await fetch(`/api/settings/backup-storage/${encodeURIComponent(tid)}/import`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ panel: c.panel, server: c.server, file: c.file })
+        });
+        if (!res.ok) {
+            alert(`Import failed: ${await this.apiError(res)}`);
+            button.disabled = false;
+            button.innerText = 'Import from backup storage';
+            return;
+        }
+        const r = await res.json();
+        document.getElementById('modal-overlay').classList.add('hidden');
+        alert(`Imported as ${r.name} (port ${r.port}).${r.old_port ? ` Its old port ${r.old_port} is in use here.` : ''}`);
+        this.loadServers && this.loadServers();
+    },
+
+    // Panel Settings → Backup storage
+    storage: null,
+    storageEdit: null,
+
+    async loadStorageSettings() {
+        const box = document.getElementById('set-storage');
+        if (!box) return;
+        const res = await fetch('/api/settings/backup-storage');
+        if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+        this.storage = await res.json();
+        this.renderStorageSettings();
+    },
+
+    renderStorageSettings(message, ok) {
+        const box = document.getElementById('set-storage');
+        const d = this.storage;
+        if (!box || !d) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const small = 'text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-3 py-1.5 rounded font-bold transition';
+        const rows = d.targets.map(t => `
+            <div class="border border-gray-200 dark:border-gray-700 rounded p-3 mb-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-sm text-gray-900 dark:text-white"><b>${esc(t.name)}</b> <span class="${note}">${t.type === 's3' ? 'S3' : 'SSH'} · <span class="break-all">${esc(t.where)}</span></span></p>
+                    <div class="flex flex-wrap gap-1">
+                        <button onclick="ServerApp.testStorage(${this.jsArg(t.id)}, this)" class="${small}">Test</button>
+                        <button onclick="ServerApp.editStorage(${this.jsArg(t.id)})" class="${small}">Edit</button>
+                        <button onclick="ServerApp.removeStorage(${this.jsArg(t.id)})" class="${small}">Remove</button>
+                    </div>
+                </div>
+                <p class="${note} mt-1">${t.servers === 'all' ? 'Every server' : t.servers.length ? `${t.servers.length} server${t.servers.length === 1 ? '' : 's'}: ${esc(t.servers.join(', '))}` : 'No servers yet: tick it on a server\'s Backups tab'} ·
+                    keeps ${t.keep_count ? `${esc(t.keep_count)} scheduled copies` : 'as many scheduled copies as each server keeps'}${t.keep_days ? `, at most ${esc(t.keep_days)} days old` : ''}</p>
+                ${t.type === 'ssh' ? `<p class="${note} mt-1">Host key: ${t.host_key ? `<span class="font-mono break-all">${esc(t.host_key)}</span> <button onclick="ServerApp.forgetHostKey(${this.jsArg(t.id)})" class="underline text-theme">Forget host key</button>` : 'not seen yet (recorded on the first connection)'}</p>` : ''}
+            </div>`).join('');
+        box.innerHTML = `
+            <p class="${note} mb-2">Copies of the game servers' backups off this machine, so they survive losing its disk. Each server's <b>Backups</b> tab says which storage gets its copies and lets you restore from them. A server can also be brought back on a new machine from here (Import → From backup storage).</p>
+            ${rows || `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">No backup storage yet.</p>`}
+            ${message ? `<p class="text-sm mb-2 ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}">${esc(message)}</p>` : ''}
+            ${d.public_key ? `<details class="mb-2"><summary class="text-sm cursor-pointer text-gray-700 dark:text-gray-300">This panel's SSH key</summary>
+                <p class="${note} mt-1">For SSH storage, add this line to <span class="font-mono">~/.ssh/authorized_keys</span> of the user the panel signs in as there (one line, on that machine):</p>
+                <textarea readonly rows="2" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white mt-1">${esc(d.public_key)}</textarea>
+            </details>` : `<p class="${note} mb-2">SSH storage needs openssh-client and rsync: <span class="font-mono">sudo apt install openssh-client rsync</span></p>`}
+            ${d.tools && !d.tools.rsync ? `<p class="text-xs text-yellow-600 dark:text-yellow-500 mb-2">rsync isn't installed, so SSH copies can't run. Install it with: <span class="font-mono">sudo apt install rsync</span></p>` : ''}
+            <div id="storage-form">${this.storageEdit ? this.storageFormHtml(this.storageEdit) : `<button onclick="ServerApp.editStorage(null)" class="${small}">Add storage</button>`}</div>`;
+    },
+
+    storageFormHtml(t) {
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white mt-1';
+        const label = 'text-xs text-gray-500 dark:text-gray-400';
+        const small = 'text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-3 py-1.5 rounded font-bold transition';
+        const s3 = t.type === 's3';
+        const radio = (v, text) => `<label class="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300"><input type="radio" name="st-type" value="${v}" ${t.type === v ? 'checked' : ''} onchange="ServerApp.storageType(this.value)"> ${text}</label>`;
+        return `<div class="border border-gray-300 dark:border-gray-600 rounded p-3">
+            <p class="text-sm font-bold text-gray-900 dark:text-white mb-2">${t.id ? `Edit ${esc(t.name)}` : 'Add storage'}</p>
+            ${t.id ? '' : `<div class="flex gap-4 mb-2">${radio('ssh', 'SSH server (rsync)')}${radio('s3', 'S3-compatible')}</div>`}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label class="${label} sm:col-span-2">Name<input id="st-name" value="${esc(t.name)}" placeholder="${s3 ? 'Backblaze B2' : 'NAS'}" class="${field}"></label>
+                ${s3 ? `
+                <label class="${label} sm:col-span-2">Endpoint<input id="st-endpoint" value="${esc(t.endpoint)}" placeholder="https://s3.eu-central-003.backblazeb2.com" class="${field} font-mono"></label>
+                <label class="${label}">Bucket<input id="st-bucket" value="${esc(t.bucket)}" class="${field} font-mono"></label>
+                <label class="${label}">Folder in the bucket (optional)<input id="st-prefix" value="${esc(t.prefix)}" placeholder="minecraft" class="${field} font-mono"></label>
+                <label class="${label}">Region<input id="st-region" value="${esc(t.region || '')}" placeholder="us-east-1 (R2: auto)" class="${field} font-mono"></label>
+                <label class="${label} flex items-end gap-2 pb-2"><input type="checkbox" id="st-path-style" ${t.path_style === false ? '' : 'checked'}> Path-style addresses (MinIO, most providers)</label>
+                <label class="${label}">Access key<input id="st-access" autocomplete="off" placeholder="${t.id ? 'unchanged' : ''}" class="${field} font-mono"></label>
+                <label class="${label}">Secret key<input id="st-secret" type="password" autocomplete="new-password" placeholder="${t.id ? 'unchanged' : ''}" class="${field} font-mono"></label>`
+                : `
+                <label class="${label}">Host<input id="st-host" value="${esc(t.host)}" placeholder="nas.lan or 192.168.1.20" class="${field} font-mono"></label>
+                <label class="${label}">Port<input id="st-port" type="number" min="1" max="65535" value="${esc(t.port || 22)}" class="${field}"></label>
+                <label class="${label}">User<input id="st-user" value="${esc(t.user)}" placeholder="backup" class="${field} font-mono"></label>
+                <label class="${label}">Folder<input id="st-folder" value="${esc(t.folder || 'redstonepanel-backups')}" class="${field} font-mono"></label>`}
+                <label class="${label}">Scheduled copies to keep<input id="st-keep" type="number" min="0" max="365" value="${esc(t.keep_count || '')}" placeholder="same as each server" class="${field}"></label>
+                <label class="${label}">Delete copies after (days)<input id="st-days" type="number" min="0" max="3650" value="${esc(t.keep_days || '')}" placeholder="never" class="${field}"></label>
+                <label class="${label} sm:col-span-2 flex items-center gap-2"><input type="checkbox" id="st-all" ${t.servers === 'all' ? 'checked' : ''}> Copy every server's backups (or choose on each server's Backups tab)</label>
+            </div>
+            <p class="${label} mt-2">${s3 ? 'Give the key read, write, list and delete on the bucket only. The secret is kept on this machine (root only) and never shown again.'
+                : 'The panel signs in with its own SSH key (above) and records the host key on the first connection, as ssh does. The folder is relative to that user\'s home unless it starts with /. That machine needs rsync.'}</p>
+            <p id="st-msg" class="hidden text-sm mt-2"></p>
+            <div class="flex flex-wrap gap-2 mt-3">
+                <button onclick="ServerApp.saveStorage(this)" class="bg-theme hover-bg-theme text-white px-3 py-1.5 rounded font-bold text-xs">Save</button>
+                <button onclick="ServerApp.testStorage(null, this)" class="${small}">Test</button>
+                <button onclick="ServerApp.storageEdit = null; ServerApp.renderStorageSettings()" class="${small}">Cancel</button>
+            </div>
+        </div>`;
+    },
+
+    editStorage(tid) {
+        const t = tid ? this.storage.targets.find(x => x.id === tid) : null;
+        this.storageEdit = t ? { ...t } : { type: 'ssh', servers: 'all', port: 22, folder: 'redstonepanel-backups' };
+        this.renderStorageSettings();
+        const el = document.getElementById('storage-form');
+        if (el) el.scrollIntoView({ block: 'nearest' });
+    },
+
+    storageType(type) {
+        this.storageEdit = { ...this.storageFields(), type, servers: this.storageEdit.servers };
+        document.getElementById('storage-form').innerHTML = this.storageFormHtml(this.storageEdit);
+    },
+
+    storageFields() {
+        const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+        const t = this.storageEdit || {};
+        const f = { type: t.type, name: val('st-name'), keep_count: parseInt(val('st-keep'), 10) || 0,
+                    keep_days: parseInt(val('st-days'), 10) || 0 };
+        const all = document.getElementById('st-all');
+        f.servers = all && all.checked ? 'all' : (t.servers === 'all' ? [] : (t.servers || []));
+        if (t.type === 's3') {
+            Object.assign(f, { endpoint: val('st-endpoint'), bucket: val('st-bucket'), prefix: val('st-prefix'),
+                region: val('st-region'), access_key: val('st-access'), secret_key: val('st-secret'),
+                path_style: !!(document.getElementById('st-path-style') || {}).checked });
+        } else {
+            Object.assign(f, { host: val('st-host'), port: parseInt(val('st-port'), 10) || 22, user: val('st-user'), folder: val('st-folder') });
+        }
+        return f;
+    },
+
+    storageMessage(text, ok) {
+        const el = document.getElementById('st-msg');
+        if (!el) return this.renderStorageSettings(text, ok);
+        el.innerText = text;
+        el.className = `text-sm mt-2 ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`;
+    },
+
+    async saveStorage(button) {
+        const t = this.storageEdit;
+        button.disabled = true;
+        const res = await fetch(t.id ? `/api/settings/backup-storage/${encodeURIComponent(t.id)}` : '/api/settings/backup-storage', {
+            method: t.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.storageFields())
+        });
+        button.disabled = false;
+        if (!res.ok) return this.storageMessage(await this.apiError(res), false);
+        this.storage = await res.json();
+        this.storageEdit = null;
+        this.renderStorageSettings('Saved. Use Test to check it can write there.', true);
+    },
+
+    async testStorage(tid, button) {
+        const old = button.innerText;
+        button.disabled = true;
+        button.innerText = 'Testing…';
+        const body = tid ? { id: tid } : { id: this.storageEdit.id || null, fields: this.storageFields() };
+        const res = await fetch('/api/settings/backup-storage/test', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        button.disabled = false;
+        button.innerText = old;
+        if (!res.ok) return this.storageMessage(await this.apiError(res), false);
+        const r = await res.json();
+        const done = r.steps.length ? ` (${r.steps.join(', ')})` : '';
+        const text = r.ok ? `It works: ${r.steps.join(', ')}.${r.host_key ? ` Host key ${r.host_key}.` : ''}` : `${r.error}${done ? ` Done before that: ${r.steps.join(', ')}.` : ''}`;
+        if (tid) {
+            await this.loadStorageSettings();
+            this.renderStorageSettings(text, r.ok);
+        } else {
+            this.storageMessage(text, r.ok);
+        }
+    },
+
+    async removeStorage(tid) {
+        const t = this.storage.targets.find(x => x.id === tid);
+        if (!confirm(`Remove the backup storage ${t ? t.name : tid}?\n\nNo more copies go there. The copies already there stay there; delete them on the storage itself if you want them gone.`)) return;
+        const res = await fetch(`/api/settings/backup-storage/${encodeURIComponent(tid)}`, { method: 'DELETE' });
+        if (!res.ok) return this.renderStorageSettings(await this.apiError(res), false);
+        this.storage = await res.json();
+        this.renderStorageSettings('Removed.', true);
+    },
+
+    async forgetHostKey(tid) {
+        if (!confirm('Forget the host key recorded for this storage?\n\nOnly do this if that machine was reinstalled or its SSH keys changed on purpose: the next connection accepts whatever key it finds then.')) return;
+        const res = await fetch(`/api/settings/backup-storage/${encodeURIComponent(tid)}/forget-host-key`, { method: 'POST' });
+        if (!res.ok) return this.renderStorageSettings(await this.apiError(res), false);
+        this.storage = await res.json();
+        this.renderStorageSettings('Host key forgotten. Use Test to connect and record the new one.', true);
     },
 
     // --- Removed servers: uninstalled with "Keep World", files still in /opt ---
@@ -2910,7 +4088,10 @@ const ServerApp = {
                 if (c.unknown.length) warn += `\n\nThese ${noun} couldn't be checked (not found on Modrinth or Hangar):\n- ` + c.unknown.map(m => m.title).join('\n- ');
             }
         }
-        if (!confirm(`Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.${warn}`)) return;
+        const sure = this.activeServer.edition === 'Bedrock'
+            ? `Update ${this.activeServer.name} to the newest Bedrock release? It stops, is backed up first ("Before update" on the Backups tab), and goes back to the old version and world if the new one doesn't start.`
+            : `Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.${warn}`;
+        if (!confirm(sure)) return;
         this.toggleConsole(true);
         const name = this.activeServer.name;
         const send = () => api(`/api/servers/${encodeURIComponent(name)}/update`, {
@@ -2921,6 +4102,7 @@ const ServerApp = {
         if (!res.ok) alert(`Update failed: ${await this.apiError(res)}`);
         await this.loadServers();
         this.loadUpdateOptions();
+        this.loadAutoUpdate();
         this.loadJavaChoice();
     },
 
@@ -3005,7 +4187,7 @@ const ServerApp = {
 		signOut.onclick = trusted ? () => window.location.assign('/static/login.html') : () => this.logout();
 		document.getElementById('btn-manage-users').classList.toggle('hidden', u.role !== 'admin');
 		document.getElementById('btn-panel-settings').classList.toggle('hidden', u.role !== 'admin');
-		document.getElementById('btn-change-password').classList.toggle('hidden', u.source !== 'panel');
+		document.getElementById('btn-change-password').classList.toggle('hidden', trusted);
 		// Uninstall and purge are admin-only (the API refuses them too)
 		document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', u.role !== 'admin'));
 		document.getElementById('uninstall-admin-note').classList.toggle('hidden', u.role === 'admin');
@@ -3061,6 +4243,9 @@ const ServerApp = {
 			<h4 id="set-section-notifications" class="font-bold text-gray-900 dark:text-white mb-2">Notifications</h4>
 			<div id="set-notifications" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
+			<h4 id="set-section-storage" class="font-bold text-gray-900 dark:text-white mb-2">Backup storage</h4>
+			<div id="set-storage" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
@@ -3095,6 +4280,10 @@ const ServerApp = {
 				${radio('login_mode', 'required', s.login_mode, 'Always required (recommended)', 'Everyone signs in with a Linux or panel account.')}
 				${radio('login_mode', 'trusted_networks', s.login_mode, 'Not required on the local network', 'Devices on the networks below can manage servers without signing in. Users and these settings still need an admin sign-in.')}
 			</div>
+			<label class="flex items-start gap-2 mb-3 text-sm cursor-pointer">
+				<input type="checkbox" id="set-require-2fa" ${s.require_2fa_admins ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Require two-factor for admins</b><br><span class="text-xs text-gray-500 dark:text-gray-400">Admins without it are sent to set it up (🔑 Password) right after signing in, before they can do anything else. Set it up for your own account first.</span></span>
+			</label>
 			<div id="set-trusted" class="mb-3">
 				<label class="text-xs text-gray-500 dark:text-gray-400">Trusted networks (private ranges only, one per line)
 					<textarea id="set-trusted-networks" rows="4" class="${field} mt-1 font-mono">${esc(s.trusted_networks.join('\n'))}</textarea></label>
@@ -3114,6 +4303,8 @@ const ServerApp = {
 		document.getElementById('set-https-port').disabled = clusterRole !== 'standalone';
 		this.loadClusterSettings();
 		this.loadNotificationSettings();
+		this.storageEdit = null;
+		this.loadStorageSettings();
 		this.loadSetupSettings();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
@@ -3208,6 +4399,7 @@ const ServerApp = {
 			cert_file: val('set-cert-file'),
 			key_file: val('set-key-file'),
 			login_mode: document.querySelector('input[name="login_mode"]:checked').value,
+			require_2fa_admins: document.getElementById('set-require-2fa').checked,
 			trusted_networks: lines('set-trusted-networks'),
 			extra_hosts: lines('set-extra-hosts'),
 			panel_name: val('set-panel-name'),
@@ -3266,12 +4458,14 @@ const ServerApp = {
 		this.closeCluster();
 		document.getElementById('workspace').classList.add('hidden');
 		document.getElementById('dashboard').classList.remove('hidden');
+		this.setMobileTitle('📊 Dashboard', this.panelName);
 		this.loadDashboard();
 		clearInterval(this.dashTimer);
 		this.dashTimer = setInterval(() => { if (!document.hidden) this.loadDashboard(); }, 10000);
 	},
 
 	hideDashboard() {
+		this.closePorts();
 		clearInterval(this.dashTimer);
 		this.dashTimer = null;
 		document.getElementById('dashboard').classList.add('hidden');
@@ -3304,6 +4498,7 @@ const ServerApp = {
 		} else {
 			this.setupData = null;
 		}
+		await this.loadHostHistory();
 		if (!document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard();
 	},
 
@@ -3414,24 +4609,25 @@ const ServerApp = {
 			const backupNote = lb ? (lb.ok ? `last ${this.fmtWhen(lb.at)}` : '<span class="text-red-500">last failed</span>') : 'none yet';
 			return `
 				<tr class="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onclick="ServerApp.openServerByName(${this.jsArg(s.name)})">
-					<td class="${td}"><span class="${dot}">●</span> <b class="text-gray-900 dark:text-white">${esc(s.name)}</b><div class="${note}">${esc(s.edition)} ${esc(s.version || '')} · port ${esc(s.port)}</div></td>
-					<td class="${td}">${esc(stateText)}<div class="${note}">${s.uptime !== null ? 'up ' + this.fmtDuration(s.uptime) : ''}</div></td>
-					<td class="${td}">${this.fmtPct(s.cpu_percent)}</td>
-					<td class="${td}">${this.fmtBytes(s.memory)}<div class="${note}">${s.heap && s.heap !== 'N/A' ? 'max heap ' + esc(s.heap) : ''}</div></td>
-					<td class="${td}">${s.players !== null ? `${s.players} / ${s.max_players}` : '—'}</td>
-					<td class="${td}">${s.folder_size !== null ? this.fmtBytes(s.folder_size) : '<span class="' + note + '">measuring…</span>'}</td>
-					<td class="${td}">${s.backups ? `${s.backups} · ${this.fmtBytes(s.backups_size)}` : '—'}<div class="${note}">${backupNote}</div></td>
-					<td class="${td}">${s.next_backup ? this.fmtWhen(s.next_backup) : '—'}</td>
-					<td class="${td}">${s.next_restart ? this.fmtWhen(s.next_restart) : '—'}</td>
+					<td class="${td}"><span class="${dot}">●</span> <b class="text-gray-900 dark:text-white">${esc(s.name)}</b><div class="${note}">${esc(s.edition)} ${esc(s.version || '')} · port ${esc(s.port)}${this.updateBadge(s)}</div></td>
+					<td class="${td}" data-label="State">${esc(stateText)}<span class="${note} md:block">${s.uptime !== null ? ' up ' + this.fmtDuration(s.uptime) : ''}</span></td>
+					<td class="${td}" data-label="CPU">${this.fmtPct(s.cpu_percent)}</td>
+					<td class="${td}" data-label="Memory">${this.fmtBytes(s.memory)}<span class="${note} md:block">${s.heap && s.heap !== 'N/A' ? ' max heap ' + esc(s.heap) : ''}</span></td>
+					<td class="${td}" data-label="Players">${s.players !== null ? `${s.players} / ${s.max_players}` : '—'}</td>
+					<td class="${td}" data-label="TPS">${s.tps !== null && s.tps !== undefined ? `<span class="${this.tpsState(s.tps).cls}">${this.tpsState(s.tps).icon}</span> ${s.tps}` : '—'}</td>
+					<td class="${td}" data-label="Folder">${s.folder_size !== null ? this.fmtBytes(s.folder_size) : '<span class="' + note + '">measuring…</span>'}</td>
+					<td class="${td}" data-label="Backups">${s.backups ? `${s.backups} · ${this.fmtBytes(s.backups_size)}` : '—'}<span class="${note} md:block"> ${backupNote}</span></td>
+					<td class="${td}" data-label="Next backup">${s.next_backup ? this.fmtWhen(s.next_backup) : '—'}</td>
+					<td class="${td}" data-label="Next restart">${s.next_restart ? this.fmtWhen(s.next_restart) : '—'}</td>
 				</tr>`;
 		}).join('');
 		const serverTable = `
 			<section class="${card}">
 				<h3 class="${h3} p-4 pb-2">Game servers</h3>
-				${servers.length ? `<div class="overflow-x-auto"><table class="w-full text-sm text-gray-700 dark:text-gray-300">
+				${servers.length ? `<div class="overflow-x-auto"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">
 					<thead class="text-xs text-gray-500 dark:text-gray-400"><tr>
 						<th class="${th}">Server</th><th class="${th}">State</th><th class="${th}">CPU</th><th class="${th}">Memory</th>
-						<th class="${th}">Players</th><th class="${th}">Folder</th><th class="${th}">Backups</th>
+						<th class="${th}">Players</th><th class="${th}">TPS</th><th class="${th}">Folder</th><th class="${th}">Backups</th>
 						<th class="${th}">Next backup</th><th class="${th}">Next restart</th>
 					</tr></thead><tbody>${serverRows}</tbody></table></div>
 					<p class="${note} px-4 py-2">CPU is a share of the whole machine. Folder sizes are measured in the background every 10 minutes.</p>`
@@ -3494,7 +4690,7 @@ const ServerApp = {
 				</section>`;
 		}
 
-		document.getElementById('dash-body').innerHTML = this.setupCard() + attentionHtml + tiles + serverTable
+		document.getElementById('dash-body').innerHTML = this.setupCard() + attentionHtml + tiles + this.hostHistoryHtml() + serverTable
 			+ `<section class="grid grid-cols-1 lg:grid-cols-3 gap-4">${host}${disks}${services}</section>` + nodes
 			+ (d.redacted ? `<p class="${note}">You're on the trusted local network without signing in, so addresses, versions and settings are hidden.</p>` : '');
 	},
@@ -3647,8 +4843,8 @@ const ServerApp = {
 			{ s: step.connection, title: 'Choose how the panel is reached',
 			  body: step.connection.cluster_role === 'node' ? 'HTTPS comes from the cluster.'
 				: step.connection.https_mode !== 'off' ? 'The panel uses HTTPS.'
-				: step.connection.http_ok ? 'You chose plain HTTP on a network you trust.'
-				: `The panel uses plain HTTP, so anyone who can watch your network can read passwords as you sign in. That's usually fine on a home network you trust. Elsewhere, turn on HTTPS.`,
+				: step.connection.http_ok ? 'You chose plain HTTP on a network you trust. Phones can only add it to the home screen as a bookmark; installing it as an app needs HTTPS.'
+				: `The panel uses plain HTTP, so anyone who can watch your network can read passwords as you sign in. That's usually fine on a home network you trust. Elsewhere, turn on HTTPS. HTTPS also lets phones install the panel as an app.`,
 			  action: step.connection.done ? ''
 				: `<div class="flex flex-wrap gap-3 items-center"><button onclick="ServerApp.openPanelSettings('connection')" class="${btn}">Turn on HTTPS</button>
 				   <button onclick="ServerApp.setupAnswer({ http_ok: true })" class="${link}">Keep HTTP, this is my home network</button></div>` },
@@ -3743,18 +4939,290 @@ const ServerApp = {
 		error: 'Something went wrong talking to this panel.',
 	},
 
+	// --- Port forwarding (1.16.14, admins): what to forward on the internet router so players
+	// outside the home can join, per server and per cluster member (core/portforward.py)
+	portsData: null,
+	portsCheck: null,
+	portsRouter: (() => { try { return localStorage.getItem('rp_portsRouter') || 'pfsense'; } catch (e) { return 'pfsense'; } })(),
+
+	openPorts() {
+		this.hideDashboard();
+		this.closeCluster();
+		this.activeServer = null;
+		this.renderSidebar();
+		document.getElementById('workspace').classList.add('hidden');
+		document.getElementById('ports-view').classList.remove('hidden');
+		this.setMobileTitle('🔀 Port forwarding', this.panelName);
+		this.loadPorts();
+	},
+
+	closePorts() {
+		const v = document.getElementById('ports-view');
+		if (v) v.classList.add('hidden');
+	},
+
+	async loadPorts() {
+		const body = document.getElementById('ports-body');
+		if (!this.portsData) body.innerHTML = '<p class="text-gray-500">Loading...</p>';
+		try {
+			const res = await fetch('/api/port-forwarding');
+			if (!res.ok) throw new Error(await this.apiError(res));
+			this.portsData = await res.json();
+		} catch (e) {
+			body.innerHTML = `<p class="text-red-500">Couldn't load port forwarding: ${this.escapeHtml(e.message)}</p>`;
+			return;
+		}
+		this.renderPorts();
+	},
+
+	setPortsRouter(kind) {
+		this.portsRouter = kind;
+		try { localStorage.setItem('rp_portsRouter', kind); } catch (e) { /* only a convenience */ }
+		this.renderPorts();
+	},
+
+	async savePublicAddress() {
+		const value = document.getElementById('ports-public').value.trim();
+		const res = await fetch('/api/port-forwarding/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ public_address: value }) });
+		if (!res.ok) { alert(await this.apiError(res)); return; }
+		this.portsCheck = null;
+		this.loadPorts();
+	},
+
+	async lookupPublicAddress(btn) {
+		const note = document.getElementById('ports-lookup-note');
+		btn.disabled = true;
+		note.className = 'text-xs text-gray-500 mt-2';
+		note.innerText = 'Asking the router...';
+		const res = await fetch('/api/port-forwarding/lookup', { method: 'POST' });
+		btn.disabled = false;
+		if (!res.ok) {
+			note.className = 'text-xs text-yellow-700 dark:text-yellow-300 mt-2';
+			note.innerText = await this.apiError(res);
+			return;
+		}
+		const d = await res.json();
+		document.getElementById('ports-public').value = d.address;
+		note.innerText = `The router at ${d.gateway} says its internet address is ${d.address} (asked with ${d.method}). Press Save to keep it.`;
+	},
+
+	async checkPorts(btn) {
+		btn.disabled = true;
+		btn.innerText = 'Checking...';
+		const res = await fetch('/api/port-forwarding/check', { method: 'POST' });
+		btn.disabled = false;
+		btn.innerText = 'Check from here';
+		if (!res.ok) { alert(await this.apiError(res)); return; }
+		this.portsCheck = await res.json();
+		this.renderPorts();
+	},
+
+	// Every row of every server on every member, with where it goes
+	portsRows() {
+		const out = [];
+		for (const m of this.portsData.members) {
+			for (const s of m.servers || []) {
+				for (const r of s.rows || []) out.push({ m, s, r, ip: m.forward_to || '?' });
+			}
+			for (const r of m.machine || []) out.push({ m, s: null, r, ip: m.forward_to || '?' });
+		}
+		return out;
+	},
+
+	portsJoinAddress(s, rows) {
+		const addr = this.portsData.public_address || 'your-public-address';
+		const game = rows.find(x => x.s === s && x.r.kind === 'forward');
+		if (!game) return null;
+		if (s.edition === 'Java') return game.r.port === '25565' ? addr : `${addr}:${game.r.port}`;
+		return `${addr}, port ${game.r.port}`;
+	},
+
+	portsText() {
+		return this.portsRows().filter(x => x.r.kind === 'forward').map(x =>
+			`${x.r.proto.toUpperCase()} ${x.r.port.replace(':', '-')} -> ${x.ip}:${x.r.inside.replace(':', '-')}  ${x.s.name} (${x.r.what})${x.m.local ? '' : ' on ' + x.m.name}`).join('\n');
+	},
+
+	copyPorts() {
+		const text = this.portsText();
+		if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).catch(() => prompt('Copy the list:', text));
+		else prompt('Copy the list:', text);
+	},
+
+	// pfSense takes TCP and UDP for the same port in one rule (Protocol: TCP/UDP)
+	portsRules() {
+		const rules = [];
+		for (const x of this.portsRows().filter(x => x.r.kind === 'forward')) {
+			const same = rules.find(y => y.ip === x.ip && y.port === x.r.port && y.inside === x.r.inside && y.server === x.s.name);
+			if (same) { if (!same.protos.includes(x.r.proto)) same.protos.push(x.r.proto); continue; }
+			rules.push({ ip: x.ip, port: x.r.port, inside: x.r.inside, protos: [x.r.proto], server: x.s.name,
+				member: x.m.local ? '' : x.m.name });
+		}
+		return rules;
+	},
+
+	portsCheckCell(x) {
+		if (!this.portsCheck || !x.s) return '';
+		const hit = this.portsCheck.results.find(c => c.member === x.m.id && c.server === x.s.name && c.port === x.r.port && c.proto === x.r.proto);
+		if (!hit) return '';
+		if (hit.result === 'reached') {
+			return hit.same_server === false
+				? `<span class="text-yellow-700 dark:text-yellow-300" title="${this.escapeHtml(hit.answer?.motd || '')}">⚠️ Another server answered</span>`
+				: '<span class="text-green-700 dark:text-green-400">✅ Reached</span>';
+		}
+		if (hit.result === 'no_answer') return `<span class="text-gray-600 dark:text-gray-300" title="${this.escapeHtml(hit.error || '')}">❔ No answer</span>`;
+		return '<span class="text-gray-400" title="UDP ports without a ping can\'t be tried this way">— Not tried</span>';
+	},
+
+	renderPorts() {
+		const d = this.portsData, esc = t => this.escapeHtml(String(t ?? ''));
+		const rows = this.portsRows();
+		const fwd = rows.filter(x => x.r.kind === 'forward');
+		const optional = rows.filter(x => x.r.kind === 'optional');
+		const closed = rows.filter(x => ['lan', 'never', 'ipv6'].includes(x.r.kind));
+		const card = 'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4';
+		const h = 'text-lg font-bold text-gray-900 dark:text-white mb-2';
+		const btn = 'px-3 py-2 rounded text-sm font-bold transition';
+		const grey = `${btn} bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white`;
+		const warn = t => `<p class="text-sm p-3 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700">${t}</p>`;
+		const memberLabel = m => m.local ? esc(m.name) : `🌐 ${esc(m.name)}`;
+		const multi = d.members.length > 1;
+		const proto = p => p.toUpperCase();
+		const port = p => esc(String(p).replace(':', '–'));
+
+		document.getElementById('ports-subtitle').innerText = fwd.length
+			? `${fwd.length} port${fwd.length === 1 ? '' : 's'} to forward on your internet router so players outside your home can join.`
+			: 'What to set up on your internet router so players outside your home can join.';
+
+		// 1. The public address
+		const kindNote = {
+			cgnat: warn(`<b>${esc(d.public_address)}</b> is a carrier-grade NAT address: your internet provider shares one address between many customers, so forwarding ports on your own router can't work. Ask the provider for a public IPv4 address (often called a static or dedicated IP).`),
+			private: warn(`<b>${esc(d.public_address)}</b> is a private address, so there's another router in front of yours (double NAT), usually the provider's modem. Put the modem in bridge mode, or forward the same ports on the modem to your router's WAN address as well.`),
+		}[d.public_kind] || '';
+		const addressCard = `<div class="${card}">
+			<h3 class="${h}">Your internet address</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">The address players type to reach you from outside: your router's WAN address, or a dynamic DNS name that points to it. The panel only asks your own router for it, never an outside website.</p>
+			<div class="flex flex-wrap gap-2">
+				<input id="ports-public" value="${esc(d.public_address)}" placeholder="e.g. 81.2.69.160 or play.example.com" class="flex-1 min-w-0 sm:min-w-[16rem] p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+				<button onclick="ServerApp.savePublicAddress()" class="${btn} bg-theme hover-bg-theme text-white">Save</button>
+				<button onclick="ServerApp.lookupPublicAddress(this)" class="${grey}">Ask the router</button>
+			</div>
+			<p id="ports-lookup-note" class="text-xs text-gray-500 mt-2">“Ask the router” uses NAT-PMP or UPnP on your router (${esc(d.members[0].gateway || 'no gateway found')}). On pfSense they're under Services &gt; UPnP &amp; NAT-PMP and are off by default; the WAN address is also on the pfSense Dashboard.</p>
+			${kindNote ? `<div class="mt-3">${kindNote}</div>` : ''}
+		</div>`;
+
+		// 2. Ports two servers both need on the one public address
+		const clashes = (d.conflicts || []).map(c => `<li><b>${proto(c.proto)} ${port(c.port)}</b>: ${c.users.map(u => `${esc(u.server)}${multi ? ' on ' + esc(u.member) : ''}`).join(' and ')}</li>`).join('');
+		const clashCard = clashes ? `<div class="p-4 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 text-sm text-red-800 dark:text-red-200">
+			<p class="font-bold mb-1">Two servers want the same outside port</p>
+			<p class="mb-2">You have one internet address, so the router can send each outside port to only one server. Give one of them another port in its Configuration tab (a Java server's players then add <code>:port</code> to the address).</p>
+			<ul class="list-disc ml-5">${clashes}</ul></div>` : '';
+
+		// 3. What to forward
+		const issues = d.members.flatMap(m => (m.servers || []).flatMap(s => (s.issues || []).map(i => `<li><b>${esc(s.name)}</b>${multi ? ' on ' + memberLabel(m) : ''}: ${esc(i)}</li>`))).join('');
+		const memberNotes = d.members.map(m => {
+			if (m.state !== 'ok') return `<li>${memberLabel(m)}: couldn't be reached (${esc(m.error || m.state)}), so its servers aren't listed.</li>`;
+			if (m.old) return `<li>${memberLabel(m)} runs an older RedstonePanel: only its game ports are listed, and its address comes from the cluster (${esc(m.url_host)}). Update it for the full list.</li>`;
+			if (!m.lan_ip) return `<li>${memberLabel(m)}: couldn't tell which address the router reaches it on.</li>`;
+			return '';
+		}).join('');
+		const table = (list, closed = false) => { const checks = this.portsCheck && !closed; return `<div class="overflow-x-auto -mx-3 sm:mx-0"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">
+			<thead><tr class="text-left text-xs uppercase text-gray-500 border-b border-gray-200 dark:border-gray-700">
+				<th class="py-2 pr-3">Server</th><th class="py-2 pr-3">${closed ? 'Port' : 'Outside port'}</th><th class="py-2 pr-3">Protocol</th>
+				<th class="py-2 pr-3">${closed ? 'Machine' : 'Forward to'}</th><th class="py-2 pr-3">What it's for</th>${checks ? '<th class="py-2 pr-3">From here</th>' : ''}</tr></thead>
+			<tbody>${list.map(x => `<tr class="border-b border-gray-100 dark:border-gray-700/60 align-top">
+				<td class="rp-card-head py-2 pr-3">${x.s ? esc(x.s.name) : 'This machine'}${multi ? `<div class="text-xs text-gray-500 font-normal">${memberLabel(x.m)}</div>` : ''}</td>
+				<td data-label="${closed ? 'Port' : 'Outside port'}" class="py-2 pr-3 font-mono">${port(x.r.port)}</td>
+				<td data-label="Protocol" class="py-2 pr-3 font-mono">${proto(x.r.proto)}</td>
+				<td data-label="${closed ? 'Machine' : 'Forward to'}" class="py-2 pr-3 font-mono">${closed ? esc(x.ip) : `${esc(x.ip)}:${port(x.r.inside)}`}</td>
+				<td data-label="For" class="py-2 pr-3">${esc(x.r.what)}${x.r.note ? `<div class="text-xs text-gray-500">${esc(x.r.note)}</div>` : ''}${x.r.ufw === false ? '<div class="text-xs text-yellow-700 dark:text-yellow-300">ufw on this machine doesn\'t allow it yet.</div>' : ''}</td>
+				${checks ? `<td data-label="From here" class="py-2 pr-3">${this.portsCheckCell(x)}</td>` : ''}
+			</tr>`).join('')}</tbody></table></div>`; };
+		const joins = d.members.flatMap(m => (m.servers || []).map(s => ({ s, a: this.portsJoinAddress(s, rows) })))
+			.filter(j => j.a).map(j => `<li><b>${esc(j.s.name)}</b> (${esc(j.s.edition)}): <code>${esc(j.a)}</code></li>`).join('');
+		const forwardCard = `<div class="${card}">
+			<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+				<h3 class="text-lg font-bold text-gray-900 dark:text-white">Forward these</h3>
+				<div class="flex flex-wrap gap-2">
+					${fwd.length ? `<button onclick="ServerApp.copyPorts()" class="${grey}">Copy as text</button>
+					<button onclick="ServerApp.checkPorts(this)" ${d.public_address ? '' : 'disabled title="Save your internet address first"'} class="${grey}">Check from here</button>` : ''}
+				</div>
+			</div>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">One port forward per line, from your internet address to the machine the server runs on. Keep the outside port the same as the inside port unless you have a reason not to (Bedrock needs them the same).</p>
+			${fwd.length ? table(fwd) : '<p class="text-sm text-gray-500">No servers yet, so there\'s nothing to forward.</p>'}
+			${issues ? `<div class="mt-3">${warn('<b>Fix these first</b><ul class="list-disc ml-5 mt-1">' + issues + '</ul>')}</div>` : ''}
+			${memberNotes ? `<ul class="list-disc ml-5 mt-3 text-sm text-gray-600 dark:text-gray-300">${memberNotes}</ul>` : ''}
+			${this.portsCheck ? `<p class="text-xs text-gray-500 mt-3">Checked ${esc(new Date(this.portsCheck.checked * 1000).toLocaleTimeString())} by connecting from ${esc(d.members[0].name)} to ${esc(this.portsCheck.address)}. This only works when the router loops connections back to the inside (pfSense: NAT reflection). “No answer” doesn't prove the forward is wrong: the surest test is a phone on mobile data, with Wi-Fi off.</p>` : ''}
+			${joins ? `<p class="text-sm font-bold text-gray-900 dark:text-white mt-4">Players outside join with</p><ul class="list-disc ml-5 text-sm text-gray-700 dark:text-gray-300">${joins}</ul>` : ''}
+		</div>`;
+
+		// 4. Optional and closed ports
+		const optionalCard = optional.length ? `<div class="${card}"><h3 class="${h}">Only if you need them</h3>${table(optional, false)}</div>` : '';
+		const web = d.members[0].web || {};
+		const closedCard = `<div class="${card}">
+			<h3 class="${h}">Leave these closed</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Don't forward these. They're only for your home network, or they'd let strangers try to take control.</p>
+			${closed.length ? table(closed, true) : ''}
+			<div class="mt-3 text-sm text-gray-700 dark:text-gray-300">
+				<p class="font-bold">The panel itself (${esc((web.scheme || 'http').toUpperCase())} ${esc(web.port || '')}): optional, and not recommended</p>
+				<p class="mt-1">Forward it only if you must manage servers from outside, and then only with HTTPS, two-factor sign-in for every admin, and trusted-LAN sign-in off. A VPN into your home network (pfSense has WireGuard and OpenVPN) is safer: the panel then never faces the internet.${web.scheme !== 'https' ? ' <b class="text-red-600 dark:text-red-400">This panel is on plain HTTP: never forward it as it is.</b>' : ''}</p>
+				${multi ? '<p class="mt-2">Cluster members talk to each other over the home network; there\'s nothing to forward for the cluster.</p>' : ''}
+			</div>
+		</div>`;
+
+		// 5. How to do it on the router
+		const tabBtn = (k, label) => `<button onclick="ServerApp.setPortsRouter('${k}')" class="py-2 px-4 text-sm font-bold ${this.portsRouter === k ? 'tab-active' : 'text-gray-500 dark:text-gray-400'}">${label}</button>`;
+		const ips = [...new Set(d.members.filter(m => m.forward_to).map(m => `${m.local && !multi ? 'this machine' : m.name} (${m.forward_to})`))].join(', ');
+		const rules = this.portsRules();
+		const pfRules = rules.map(r => `<tr class="border-b border-gray-100 dark:border-gray-700/60">
+			<td class="rp-card-head py-1.5 pr-3">${esc(r.server)}${r.member ? ` <span class="text-xs text-gray-500 font-normal">on ${esc(r.member)}</span>` : ''}</td>
+			<td data-label="Protocol" class="py-1.5 pr-3 font-mono">${r.protos.length > 1 ? 'TCP/UDP' : proto(r.protos[0])}</td>
+			<td data-label="Port range" class="py-1.5 pr-3 font-mono">${port(r.port)}</td>
+			<td data-label="Target IP" class="py-1.5 pr-3 font-mono">${esc(r.ip)}</td>
+			<td data-label="Target port" class="py-1.5 pr-3 font-mono">${port(r.inside)}</td>
+			<td data-label="Description" class="py-1.5 pr-3">RedstonePanel ${esc(r.server.replace(/^minecraft-/, ''))}${r.member ? ' ' + esc(r.member) : ''}</td></tr>`).join('');
+		const pfsense = `<ol class="list-decimal ml-5 space-y-2">
+			<li><b>Give each machine a fixed address</b> so a forward keeps pointing at the right one: Services &gt; DHCP Server &gt; LAN &gt; DHCPv4 Static Mappings (pfSense with Kea: the same page) for ${esc(ips || 'each machine')}.</li>
+			<li>Go to <b>Firewall &gt; NAT &gt; Port Forward</b> and press <b>Add</b> (the arrow pointing down adds at the bottom).</li>
+			<li>For each line below set <b>Interface</b> WAN, <b>Address Family</b> IPv4, the <b>Protocol</b>, <b>Destination</b> “WAN address”, the <b>Destination port range</b> (From and To), the <b>Redirect target IP</b> (type “Address or Alias”) and <b>Redirect target port</b>, a <b>Description</b>, and leave <b>Filter rule association</b> on “Add associated filter rule”. Save.
+				${pfRules ? `<div class="overflow-x-auto -mx-3 sm:mx-0 mt-2"><table class="rp-cards w-full text-sm"><thead><tr class="text-left text-xs uppercase text-gray-500 border-b border-gray-200 dark:border-gray-700">
+				<th class="py-1.5 pr-3">Server</th><th class="py-1.5 pr-3">Protocol</th><th class="py-1.5 pr-3">Destination port range</th><th class="py-1.5 pr-3">Redirect target IP</th><th class="py-1.5 pr-3">Redirect target port</th><th class="py-1.5 pr-3">Description</th></tr></thead><tbody>${pfRules}</tbody></table></div>` : ''}</li>
+			<li>Press <b>Apply Changes</b>. pfSense adds a matching pass rule under Firewall &gt; Rules &gt; WAN for each forward.</li>
+			<li><b>Optional, for players at home who use the internet address:</b> System &gt; Advanced &gt; Firewall &amp; NAT, set <b>NAT Reflection mode for port forwards</b> to “Pure NAT”, or set it on each forward. It's also what lets “Check from here” work. Players at home can always use the LAN address instead.</li>
+			<li><b>IPv6:</b> IPv6 isn't forwarded. If your provider gives you IPv6 and you want players to use it, add a pass rule on Firewall &gt; Rules &gt; WAN to each machine's IPv6 address for the same ports.</li>
+			<li><b>If the WAN address changes</b> (most home connections), set up Services &gt; Dynamic DNS and give players the name instead.</li>
+		</ol>`;
+		const generic = `<ol class="list-decimal ml-5 space-y-2">
+			<li>Sign in to your router (usually <code>http://${esc(d.members[0].gateway || '192.168.1.1')}</code>). The setting is called <b>Port Forwarding</b>, <b>Virtual Servers</b>, <b>NAT</b> or <b>Applications &amp; Gaming</b>, depending on the make.</li>
+			<li><b>Give each machine a fixed address</b> first, so the forwards keep working after a restart: look for <b>DHCP reservation</b>, <b>Static lease</b> or <b>Address reservation</b>, for ${esc(ips || 'each machine')}.</li>
+			<li>Add one forward per line in <b>Forward these</b>: the outside (external/public/WAN) port, the protocol, the inside (internal/private/LAN) address and port. If a line needs both TCP and UDP, pick <b>Both</b> or add two forwards.</li>
+			<li>Leave <b>UPnP</b> as it is: the panel doesn't need it, and it doesn't open anything itself.</li>
+			<li>Some routers have a separate firewall page; if so, allow the same ports there too.</li>
+			<li>Test from outside: a phone on mobile data (Wi-Fi off), joining the address under <b>Players outside join with</b>. Many home routers can't loop back, so the internet address may not work from inside your home even when everything is right.</li>
+		</ol>`;
+		const howCard = `<div class="${card}">
+			<h3 class="${h}">How to set it up</h3>
+			<div class="rp-tabs flex border-b border-gray-200 dark:border-gray-700 mb-3">${tabBtn('pfsense', 'pfSense')}${tabBtn('generic', 'Other routers')}</div>
+			<div class="text-sm text-gray-700 dark:text-gray-300">${this.portsRouter === 'generic' ? generic : pfsense}</div>
+		</div>`;
+
+		document.getElementById('ports-body').innerHTML = addressCard + clashCard + forwardCard + howCard + optionalCard + closedCard;
+	},
+
 	openCluster() {
 		this.hideDashboard();
 		this.activeServer = null;
 		this.renderSidebar();
 		document.getElementById('workspace').classList.add('hidden');
 		document.getElementById('cluster-view').classList.remove('hidden');
+		this.setMobileTitle('🌐 Cluster', this.panelName);
 		this.loadCluster();
 		clearInterval(this.clusterTimer);
 		this.clusterTimer = setInterval(() => { if (!document.hidden) this.loadCluster(); }, 15000);
 	},
 
 	closeCluster() {
+		this.closePorts();
 		clearInterval(this.clusterTimer);
 		this.clusterTimer = null;
 		document.getElementById('cluster-view').classList.add('hidden');
@@ -3795,7 +5263,7 @@ const ServerApp = {
 						<span class="${s.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off'}">●</span>
 						<div class="min-w-0">
 							<div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(s.name)}</div>
-							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}</div>
+							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}${this.updateBadge(s)}</div>
 						</div>
 					</div>
 					<div class="flex flex-wrap justify-end gap-2">
@@ -3837,6 +5305,13 @@ const ServerApp = {
 			.filter(n => n.state === 'ok' && (n.local || (n.cluster_api || 1) >= 3) && (kind === 'copy' || n.id !== from));
 	},
 
+	// 1.16.13: a pre-copy needs both ends on cluster contract 5 (the master itself always is)
+	precopyBlocked(from) {
+		const old = n => n && !n.local && (n.cluster_api || 1) < 5;
+		const nodes = this.clusterData ? this.clusterData.nodes : [];
+		return old(nodes.find(n => n.id === from)) || nodes.some(n => old(n));
+	},
+
 	openMoveDialog(kind, from, server) {
 		const esc = t => this.escapeHtml(t);
 		const targets = this.moveTargets(kind, from);
@@ -3854,7 +5329,9 @@ const ServerApp = {
 			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">To</label>
 			<select id="move-to" class="${field} mb-3">${targets.map(n =>
 				`<option value="${esc(n.id)}">${esc(n.name)}${n.local ? ' (this panel)' : ''}${n.id === from ? ' (same panel)' : ''}</option>`).join('')}</select>
-			${move ? '' : `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-start"> Start the copy when it's ready</label>`}
+			${move ? `<label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-precopy" class="mt-1">
+				<span><b>Pre-copy while it runs</b> (for big worlds): copy everything first while players stay on, then stop it and copy only what changed. The server is down for seconds instead of minutes.${this.precopyBlocked(from) ? ` <span class="text-xs text-gray-500 dark:text-gray-400">Needs RedstonePanel 1.16.13 or later on both members.</span>` : ''}</span></label>`
+				: `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3"><input type="checkbox" id="move-start"> Start the copy when it's ready</label>`}
 			<div class="flex gap-2">
 				<button id="move-go" onclick="ServerApp.startMove(${this.jsArg(kind)}, ${this.jsArg(from)}, ${this.jsArg(server)})" class="flex-1 px-4 py-2 bg-theme hover-bg-theme text-white rounded font-bold">${move ? 'Move' : 'Copy'}</button>
 				<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>
@@ -3865,10 +5342,12 @@ const ServerApp = {
 	async startMove(kind, from, server) {
 		const to = document.getElementById('move-to').value;
 		const startBox = document.getElementById('move-start');
+		const preBox = document.getElementById('move-precopy');
 		document.getElementById('move-go').disabled = true;
 		const res = await fetch('/api/cluster/moves', {
 			method: 'POST', headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ kind, server, from_node: from, to_node: to, start: !!(startBox && startBox.checked) })
+			body: JSON.stringify({ kind, server, from_node: from, to_node: to, start: !!(startBox && startBox.checked),
+				precopy: !!(preBox && preBox.checked) })
 		});
 		if (!res.ok) {
 			document.getElementById('move-go').disabled = false;
@@ -3907,6 +5386,7 @@ const ServerApp = {
 			const changes = [r.renamed ? `its name was taken there, so it's now <b>${esc(r.name)}</b>` : '',
 				r.old_port ? `port ${esc(r.old_port)} was taken there, so it now uses port <b>${esc(r.port)}</b>` : ''].filter(Boolean);
 			body = `<p class="text-sm text-green-600 dark:text-green-400 font-bold mb-2">${move ? 'Moved' : 'Copied'} to ${esc(job.to.name)} as ${esc(r.name)} (port ${esc(r.port)}).</p>
+				${job.downtime !== null && job.downtime !== undefined ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">It was down for ${esc(job.downtime < 60 ? `${job.downtime} s` : `${Math.floor(job.downtime / 60)} min ${job.downtime % 60} s`)}${job.precopy ? ' (with a pre-copy)' : ''}.</p>` : ''}
 				${changes.length ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">Note: ${changes.join('; ')}.</p>` : ''}
 				${job.warning ? `<p class="text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 mb-2">⚠️ ${esc(job.warning)}</p>` : ''}
 				${move && !job.warning ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">The old files on ${esc(job.from.name)} are kept as a removed server, ${esc(job.server)}. Once the server works on ${esc(job.to.name)}, delete them to free the space.</p>
@@ -3916,7 +5396,7 @@ const ServerApp = {
 				<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">${esc(job.step)}</p>`;
 		}
 		box.innerHTML = `
-			<h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">${move ? 'Moving' : 'Copying'} ${esc(job.server)}</h2>
+			<h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">${move ? 'Moving' : 'Copying'} ${esc(job.server)}${job.precopy ? ' <span class="text-xs font-normal text-gray-500 dark:text-gray-400">with a pre-copy</span>' : ''}</h2>
 			<p class="text-xs text-gray-500 dark:text-gray-400 mb-3">${esc(job.from.name)} → ${esc(job.to.name)}</p>
 			${body}
 			<button onclick="ServerApp.closeModal()" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Close</button>`;
@@ -4094,7 +5574,11 @@ const ServerApp = {
 				<p class="font-bold text-sm text-gray-900 dark:text-white mb-2">Add a node</p>
 				<label class="${note}">Address nodes use to reach this master
 					<input id="cl-join-url" value="${esc(d.join_url)}" class="${field} mt-1 mb-2 font-mono"></label>
-				<button onclick="ServerApp.makeJoinCode()" class="${small}">Make a join code</button>
+				<div class="flex flex-wrap gap-2">
+					<button onclick="ServerApp.makeJoinCode()" class="${small}">Make a join code</button>
+					<button id="cl-find" onclick="ServerApp.findPanels()" class="${small}">Find panels on your network</button>
+				</div>
+				<div id="cl-found" class="hidden mt-3"></div>
 				<div id="cl-join-out" class="hidden mt-3"></div>
 				${joins ? `<div class="mt-2">${joins}</div>` : ''}
 			</div>
@@ -4186,13 +5670,43 @@ const ServerApp = {
 		if (data) this.showRestarting(data.url, '');
 	},
 
-	async makeJoinCode() {
+	// 1.16.13: Find panels on your network (RedstonePanels on this master's private networks)
+	async findPanels() {
+		const box = document.getElementById('cl-found'), button = document.getElementById('cl-find');
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		box.innerHTML = `<p class="${note}">Looking on your network for other RedstonePanels (on ports 8443 and 8080). This takes up to half a minute…</p>`;
+		box.classList.remove('hidden');
+		button.disabled = true;
+		const d = await this.clusterPost('/api/settings/cluster/discover');
+		button.disabled = false;
+		if (!d) { box.classList.add('hidden'); return; }
+		const state = p => p.node ? `already a node here (${esc(p.node)})`
+			: p.cluster === 'master' ? 'the master of another cluster'
+			: p.cluster === 'node' ? 'a node of another cluster'
+			: p.cluster === 'standalone' ? 'not in a cluster' : 'an older RedstonePanel (before 1.16.13)';
+		const canAdd = p => !p.node && (p.cluster === 'standalone' || !p.cluster);
+		const rows = d.panels.map(p => `
+			<div class="flex items-center justify-between gap-2 py-2 border-t border-gray-200 dark:border-gray-700">
+				<div class="min-w-0">
+					<p class="text-sm font-bold text-gray-900 dark:text-white truncate">${esc(p.name)} <a href="${esc(p.url)}/" target="_blank" rel="noopener" class="font-normal font-mono text-xs underline text-theme">${esc(p.url)} ↗</a></p>
+					<p class="${note}">${state(p)}</p>
+				</div>
+				${canAdd(p) ? `<button onclick="ServerApp.makeJoinCode(${this.jsArg(p.name)}, ${this.jsArg(p.url)})" class="text-xs bg-theme hover-bg-theme text-white px-3 py-1.5 rounded font-bold whitespace-nowrap">Add to cluster</button>` : ''}
+			</div>`).join('');
+		box.innerHTML = `
+			<p class="${note} mb-1">Searched ${esc(d.networks.join(', '))} in ${esc(d.seconds)} s: ${d.panels.length ? `found ${d.panels.length} other panel${d.panels.length === 1 ? '' : 's'}.` : 'no other RedstonePanels answered. A panel behind a firewall, or on another port, can still join with a join code.'}</p>
+			${rows}`;
+	},
+
+	async makeJoinCode(forName, forUrl) {
 		const url = document.getElementById('cl-join-url').value.trim();
 		const j = await this.clusterPost('/api/settings/cluster/joins', { url });
 		if (!j) return;
 		const esc = t => this.escapeHtml(t);
 		const out = document.getElementById('cl-join-out');
-		out.innerHTML = `
+		const where = forUrl ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">To add <b>${esc(forName)}</b>: <a href="${esc(forUrl)}/" target="_blank" rel="noopener" class="underline text-theme">open it ↗</a>, sign in as an admin, and paste this code into <b>Panel Settings › Cluster › Join a cluster</b>. It shows up under Nodes here once it has joined.</p>` : '';
+		out.innerHTML = where + `
 			<p class="text-xs text-yellow-700 dark:text-yellow-300 mb-1">Shown only once. Works once, until ${esc(this.fmtTime(j.expires))}. Anyone with it can add a server to this cluster, so treat it like a password.</p>
 			<p class="text-xs text-gray-500 dark:text-gray-400">On the new server (with RedstonePanel installed), run:</p>
 			<textarea readonly rows="3" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white mb-1">${esc(j.command)}</textarea>
@@ -4261,8 +5775,16 @@ const ServerApp = {
 	},
 
 	openChangePasswordModal() {
+		this.openAccountModal({});
+	},
+
+	// 🔑 Password: the signed-in account's password (panel accounts) and two-factor sign-in (all accounts)
+	async openAccountModal(opts) {
+		this.accountForced = !!(opts && opts.forced);
+		const me = this.currentUser || {};
 		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white mb-3';
-		document.getElementById('modal-content').innerHTML = `
+		const grey = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white';
+		const password = me.source === 'panel' && !this.accountForced ? `<div id="pw-section">
 			<h3 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Change Password</h3>
 			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Current password</label>
 			<input type="password" id="pw-current" autocomplete="current-password" class="${field}">
@@ -4271,11 +5793,174 @@ const ServerApp = {
 			<label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Repeat new password</label>
 			<input type="password" id="pw-new2" autocomplete="new-password" class="${field}">
 			<p id="pw-error" class="hidden text-sm text-red-500 mb-3"></p>
-			<div class="flex gap-2">
-				<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>
-				<button onclick="ServerApp.changeOwnPassword()" class="flex-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Change</button>
-			</div>`;
+			<button onclick="ServerApp.changeOwnPassword()" class="w-full px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold mb-6">Change Password</button></div>`
+			: (me.source === 'linux' && !this.accountForced ? `<div id="pw-section">
+			<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Your Account</h3>
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-6">This is a Linux account: change its password on the server with <span class="font-mono">passwd</span>.</p></div>` : '');
+		const forcedIntro = this.accountForced ? `
+			<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Set Up Two-Factor Sign-In</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-4">This panel requires a second step at sign-in for admins. Set it up now to continue.</p>` : '';
+		const footer = this.accountForced
+			? `<button onclick="ServerApp.logout()" class="mt-4 w-full ${grey}">Sign out</button>`
+			: `<button onclick="ServerApp.closeModal()" class="mt-4 w-full ${grey}">Close</button>`;
+		document.getElementById('modal-content').innerHTML = `
+			${password}${forcedIntro}
+			<div id="tf-box"><p class="text-sm text-gray-500">Loading two-factor sign-in...</p></div>
+			${footer}`;
 		document.getElementById('modal-overlay').classList.remove('hidden');
+		const res = await fetch('/api/auth/2fa');
+		if (!res.ok) { this.tfBox(`<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`); return; }
+		this.tfStatus = await res.json();
+		if (this.accountForced && !this.tfStatus.enabled) return this.startTwoFactorSetup();
+		this.renderTwoFactor();
+	},
+
+	// The password part hides while setting up or showing codes, so the dialog stays short
+	tfBox(html, focused) {
+		const box = document.getElementById('tf-box');
+		if (box) box.innerHTML = html;
+		const pw = document.getElementById('pw-section');
+		if (pw) pw.classList.toggle('hidden', !!focused);
+	},
+
+	renderTwoFactor() {
+		const st = this.tfStatus || {};
+		const grey = 'px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white';
+		const heading = '<h4 class="font-bold text-gray-900 dark:text-white mb-1">Two-factor sign-in</h4>';
+		if (!st.enabled) {
+			this.tfBox(`${heading}
+				<p class="text-sm text-gray-500 dark:text-gray-400 mb-3">Off. Ask for a six-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator, Aegis, 1Password, Bitwarden...) after your password.${st.required ? ' <b>Required for admins on this panel.</b>' : ''}</p>
+				<p id="tf-error" class="hidden text-sm text-red-500 mb-2"></p>
+				<button onclick="ServerApp.startTwoFactorSetup()" class="w-full px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Set Up Two-Factor</button>`);
+			return;
+		}
+		const low = st.recovery_left <= 3;
+		this.tfBox(`${heading}
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-1"><span class="text-green-600 dark:text-green-400 font-bold">On.</span> You'll be asked for a code from your app after your password.</p>
+			<p class="text-sm mb-3 ${low ? 'text-yellow-700 dark:text-yellow-300' : 'text-gray-500 dark:text-gray-400'}">${st.recovery_left} of 10 recovery codes left.${low ? ' Make new ones soon.' : ''}</p>
+			<label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">To change it, enter a current code from your app</label>
+			<input id="tf-code" autocomplete="one-time-code" placeholder="123456" maxlength="20" class="w-full mb-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 font-mono tracking-widest text-gray-900 dark:text-white">
+			<p id="tf-error" class="hidden text-sm text-red-500 mb-2"></p>
+			<div class="flex gap-2">
+				<button onclick="ServerApp.newRecoveryCodes()" class="flex-1 ${grey}">New recovery codes</button>
+				${st.required ? '' : `<button onclick="ServerApp.disableTwoFactor()" class="flex-1 px-3 py-2 text-sm bg-red-600 hover:bg-red-700 rounded text-white">Turn off</button>`}
+			</div>
+			${st.required ? '<p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Required for admins on this panel, so it can\'t be turned off here. New phone? Another admin can reset it (Users), or run <span class="font-mono">sudo redstonepanel reset-2fa NAME</span>.</p>' : ''}`);
+	},
+
+	tfError(msg) {
+		const err = document.getElementById('tf-error');
+		if (!err) return alert(msg);
+		err.innerText = msg;
+		err.classList.toggle('hidden', !msg);
+	},
+
+	async startTwoFactorSetup() {
+		const res = await fetch('/api/auth/2fa/setup', { method: 'POST' });
+		if (!res.ok) return this.tfError(await this.apiError(res));
+		const d = await res.json();
+		const key = d.secret.replace(/(.{4})/g, '$1 ').trim();
+		const grey = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white';
+		this.tfBox(`
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">1. Scan this with your authenticator app</h4>
+			<div class="w-48 h-48 mx-auto my-3 rounded overflow-hidden border border-gray-200 dark:border-gray-700">${d.qr_svg}</div>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Can't scan? Add an account by key (time-based) and type:</p>
+			<p class="font-mono text-sm text-center select-all break-all bg-gray-100 dark:bg-gray-900 rounded p-2 mb-4 text-gray-900 dark:text-white">${this.escapeHtml(key)}</p>
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">2. Enter the code it shows</h4>
+			<input id="tf-code" autocomplete="one-time-code" inputmode="numeric" placeholder="123456" maxlength="7"
+				onkeydown="if (event.key === 'Enter') ServerApp.confirmTwoFactor()"
+				class="w-full mb-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 font-mono tracking-widest text-lg text-gray-900 dark:text-white">
+			<p id="tf-error" class="hidden text-sm text-red-500 mb-2"></p>
+			<div class="flex gap-2">
+				${this.accountForced ? '' : `<button onclick="ServerApp.cancelTwoFactorSetup()" class="flex-1 ${grey}">Cancel</button>`}
+				<button onclick="ServerApp.confirmTwoFactor()" class="flex-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Turn On</button>
+			</div>`, true);
+		const input = document.getElementById('tf-code');
+		if (input) input.focus();
+	},
+
+	async cancelTwoFactorSetup() {
+		await fetch('/api/auth/2fa/disable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: '' }) });
+		this.renderTwoFactor();
+	},
+
+	async confirmTwoFactor() {
+		const code = document.getElementById('tf-code').value;
+		const res = await fetch('/api/auth/2fa/confirm', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
+		});
+		if (!res.ok) return this.tfError(await this.apiError(res));
+		const d = await res.json();
+		this.tfStatus = Object.assign({}, this.tfStatus, { enabled: true, recovery_left: d.recovery_codes.length });
+		if (this.currentUser) { this.currentUser.two_factor = true; this.currentUser.needs_2fa_setup = false; }
+		this.showRecoveryCodes(d.recovery_codes, 'Two-factor sign-in is on.');
+	},
+
+	showRecoveryCodes(codes, title) {
+		this.recoveryCodes = codes;
+		this.tfBox(`
+			<h4 class="font-bold text-green-600 dark:text-green-400 mb-1">${this.escapeHtml(title)}</h4>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3"><b>Save these recovery codes</b> somewhere safe (a password manager, or printed). Each one signs you in once if you lose your phone. They won't be shown again.</p>
+			<ol class="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-sm bg-gray-100 dark:bg-gray-900 rounded p-3 mb-3 text-gray-900 dark:text-white list-decimal list-inside">
+				${codes.map(c => `<li>${this.escapeHtml(c)}</li>`).join('')}
+			</ol>
+			<div class="flex gap-2">
+				<button onclick="ServerApp.copyRecoveryCodes()" class="flex-1 px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Copy</button>
+				<button onclick="ServerApp.downloadRecoveryCodes()" class="flex-1 px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Download</button>
+				<button onclick="ServerApp.recoveryCodesSaved()" class="flex-1 px-3 py-2 text-sm bg-theme hover-bg-theme rounded text-white font-bold">I saved them</button>
+			</div>`, true);
+	},
+
+	recoveryCodesText() {
+		const me = this.currentUser || {};
+		return `RedstonePanel recovery codes for ${me.username || ''} on ${document.title}\n`
+			+ `Each code signs in once, instead of a code from your authenticator app.\n\n`
+			+ (this.recoveryCodes || []).join('\n') + '\n';
+	},
+
+	copyRecoveryCodes() {
+		const text = this.recoveryCodesText();
+		if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).catch(() => prompt('Copy the codes:', text));
+		else prompt('Copy the codes:', (this.recoveryCodes || []).join(' '));
+	},
+
+	downloadRecoveryCodes() {
+		const a = document.createElement('a');
+		a.href = URL.createObjectURL(new Blob([this.recoveryCodesText()], { type: 'text/plain' }));
+		a.download = 'redstonepanel-recovery-codes.txt';
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	},
+
+	recoveryCodesSaved() {
+		this.recoveryCodes = null;
+		if (this.accountForced) { window.location.reload(); return; }
+		this.renderTwoFactor();
+	},
+
+	async newRecoveryCodes() {
+		const code = document.getElementById('tf-code').value;
+		const res = await fetch('/api/auth/2fa/recovery-codes', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
+		});
+		if (!res.ok) return this.tfError(await this.apiError(res));
+		const d = await res.json();
+		this.tfStatus.recovery_left = d.recovery_codes.length;
+		this.showRecoveryCodes(d.recovery_codes, 'New recovery codes. The old ones no longer work.');
+	},
+
+	async disableTwoFactor() {
+		const code = document.getElementById('tf-code').value;
+		if (!code.trim()) return this.tfError('Enter a current code from your app first.');
+		if (!confirm('Turn off two-factor sign-in? Your password alone will sign you in.')) return;
+		const res = await fetch('/api/auth/2fa/disable', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
+		});
+		if (!res.ok) return this.tfError(await this.apiError(res));
+		this.tfStatus = Object.assign({}, this.tfStatus, { enabled: false, recovery_left: 0 });
+		if (this.currentUser) this.currentUser.two_factor = false;
+		this.renderTwoFactor();
 	},
 
 	async changeOwnPassword() {
@@ -4314,6 +5999,7 @@ const ServerApp = {
 					<div class="min-w-0">
 						<span class="font-bold text-gray-900 dark:text-white">${esc(u.username)}</span>
 						${u.disabled ? '<span class="text-xs ml-1 px-2 py-0.5 rounded border border-red-400 text-red-500">disabled</span>' : ''}
+						${u.two_factor ? '<span class="text-xs ml-1 px-2 py-0.5 rounded border border-green-500 text-green-600 dark:text-green-400" title="Two-factor sign-in is on">2FA</span>' : ''}
 						${self ? '<span class="text-xs ml-1 text-gray-500">(you)</span>' : ''}
 						<div class="text-xs text-gray-500 dark:text-gray-400">Last sign-in: ${esc(when(u.last_login))}</div>
 					</div>
@@ -4324,6 +6010,7 @@ const ServerApp = {
 				</div>
 				<div class="flex gap-2 mt-2 text-xs">
 					<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserPassword(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset password</button>
+					${u.two_factor && !self ? `<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserTwoFactor(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset two-factor</button>` : ''}
 					${self ? '' : `<button data-user="${esc(u.username)}" onclick="ServerApp.updateUser(this.dataset.user, {disabled: ${!u.disabled}})" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">${u.disabled ? 'Enable' : 'Disable'}</button>
 					<button data-user="${esc(u.username)}" onclick="ServerApp.deleteUser(this.dataset.user)" class="px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white">Delete</button>`}
 				</div>
@@ -4332,7 +6019,7 @@ const ServerApp = {
 
 		content.innerHTML = `
 			<h3 class="text-xl font-bold mb-1 text-gray-900 dark:text-white">Panel Users</h3>
-			<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here.</p>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here (two-factor for them: <span class="font-mono">sudo redstonepanel reset-2fa NAME</span>).</p>
 			<div class="max-h-72 overflow-y-auto mb-4">${rows}</div>
 			<div class="border-t border-gray-200 dark:border-gray-700 pt-4">
 				<p class="text-sm font-bold mb-2 text-gray-900 dark:text-white">Add user</p>
@@ -4377,6 +6064,13 @@ const ServerApp = {
 		const pw = prompt(`New password for ${username} (8+ characters). They will be signed out everywhere.`);
 		if (pw === null) return;
 		await this.updateUser(username, { password: pw });
+	},
+
+	async resetUserTwoFactor(username) {
+		if (!confirm(`Turn off two-factor sign-in for '${username}'? Use this when they lost their phone: they sign in with their password and set it up again.`)) return;
+		const res = await fetch(`/api/users/${encodeURIComponent(username)}/reset-2fa`, { method: 'POST' });
+		if (!res.ok) alert(`Not reset: ${await this.apiError(res)}`);
+		this.openUsersModal();
 	},
 
 	async deleteUser(username) {

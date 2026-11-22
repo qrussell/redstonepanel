@@ -6,8 +6,15 @@ master's address, RP_USER/RP_PASS the demo admin. Every picture is 1440x900 unle
 pictures go to /out (docs/guide/images), light ones to /out/light; the docs show the one that
 matches the reader's theme (see docs/guide/README.md, "About the screenshots").
 
-The last step moves the demo's Bedrock server to the node and back (cluster-moved.png), so it
-runs after everything else.
+Phone pictures (1.16.10) are 390x844, like a phone, and named phone-*.png. The QR code dialog
+(phone-qr.png) is the desktop's.
+
+update-alert.png and bedrock-auto-update.png (1.16.12) are the Maintenance tab's Update Server
+card: demo.sh deploys Paper 1.21.4 so there is something newer, turns on Update automatically
+for the Bedrock server and runs the update check.
+
+The last step moves the demo's Bedrock server to the node and back (cluster-moved.png), with a
+pre-copy (1.16.13) so the picture shows how long it was down, so it runs after everything else.
 """
 import os
 import sys
@@ -27,10 +34,11 @@ def folder(theme):
 
 
 class Shooter:
-    def __init__(self, browser, theme):
+    def __init__(self, browser, theme, phone=False):
         self.theme, self.out = theme, folder(theme)
-        self.ctx = browser.new_context(ignore_https_errors=True, viewport={"width": 1440, "height": 900},
-                                       color_scheme=theme)
+        size = {"width": 390, "height": 844} if phone else {"width": 1440, "height": 900}
+        extra = {"is_mobile": True, "has_touch": True, "device_scale_factor": 2} if phone else {}
+        self.ctx = browser.new_context(ignore_https_errors=True, viewport=size, color_scheme=theme, **extra)
         # The panel keeps its theme in localStorage (Settings → Theme); set it before any page runs
         self.ctx.add_init_script(f"try {{ localStorage.setItem('rp_themeMode', '{theme}') }} catch (e) {{}}")
         self.page = self.ctx.new_page()
@@ -44,6 +52,21 @@ class Shooter:
         else:
             self.page.screenshot(path=path, full_page=full)
         taken.append(f"{self.theme}/{name}")
+
+    def tall_shot(self, name, element):
+        """An element taller than the screen, in a scrolling pane: makes the screen tall enough to
+        show all of it and hides the console dock waiting below the screen, then puts both back."""
+        page = self.page
+        size = page.viewport_size
+        extra = page.evaluate("""() => [...document.querySelectorAll('body *')]
+            .reduce((n, el) => Math.max(n, el.scrollHeight - el.clientHeight), 0)""")
+        page.evaluate("document.getElementById('console-dock').style.visibility = 'hidden'")
+        page.set_viewport_size({"width": size["width"], "height": size["height"] + extra})
+        try:
+            self.shot(name, element=element)
+        finally:
+            page.set_viewport_size(size)
+            page.evaluate("document.getElementById('console-dock').style.visibility = ''")
 
     def step(self, name, fn):
         try:
@@ -64,7 +87,7 @@ class Shooter:
 
     def close_modals(self):
         self.page.keyboard.press("Escape")
-        self.page.evaluate("""() => document.querySelectorAll('#modal-overlay, .modal-overlay, [id$="-modal"], #template-workspace')
+        self.page.evaluate("""() => document.querySelectorAll('#modal-overlay, #settings-overlay, .modal-overlay, [id$="-modal"], #template-workspace')
                            .forEach(e => e.classList.add('hidden'))""")
         self.page.wait_for_timeout(300)
 
@@ -76,11 +99,12 @@ class Shooter:
         }""", text)
         self.page.wait_for_timeout(500)
 
-    def sign_in(self):
+    def sign_in(self, picture=True):
         page = self.page
         page.goto(BASE + "/static/login.html")
         page.wait_for_timeout(1500)
-        self.step("sign-in", lambda: self.shot("sign-in", element="form"))
+        if picture:
+            self.step("sign-in", lambda: self.shot("sign-in", element="form"))
         r = self.ctx.request.post(BASE + "/api/auth/login",
                                   data={"username": os.environ["RP_USER"], "password": os.environ["RP_PASS"]})
         if not r.ok:
@@ -127,8 +151,23 @@ class Shooter:
             shot("cluster")
             page.locator("button", has_text="Move…").first.click()
             shot("cluster-move")
+            page.check("#move-precopy")                  # 1.16.13
+            shot("cluster-precopy", element="#modal-content")
             page.evaluate("ServerApp.closeModal()")
         step("cluster", cluster)
+
+        # Port forwarding (1.16.14): what to forward on the internet router, master and node
+        def port_forwarding():
+            page.evaluate("ServerApp.openPorts()")
+            page.wait_for_selector("text=Forward these", timeout=30000)
+            page.wait_for_timeout(1500)
+            # The page scrolls inside #ports-body, so grow the window to fit it for one picture
+            size = page.viewport_size
+            tall = page.evaluate("document.getElementById('ports-body').scrollHeight + 200")
+            page.set_viewport_size({"width": size["width"], "height": max(size["height"], tall)})
+            shot("port-forwarding")
+            page.set_viewport_size(size)
+        step("port forwarding", port_forwarding)
 
         def master_java():
             self.open_server("minecraft-java")
@@ -138,6 +177,26 @@ class Shooter:
                 self.open_server("minecraft-java", tab=tab)
                 shot(name)
         step("master java tabs", master_java)
+
+        # 1.17: the Performance card (tick health, history, suggestions) and Memory and limits.
+        # The history is whatever the sampler measured since the demo started (one point a minute).
+        def performance():
+            self.ctx.request.put(BASE + "/api/servers/minecraft-java/resources", data={"memory": "auto", "cpu": 2})
+            self.open_server("minecraft-java")
+            page.wait_for_selector("#overview-perf h3", timeout=15000)
+            for _ in range(12):                          # the first history point comes a minute after start
+                if not page.locator("#overview-perf :text('Nothing measured yet')").count():
+                    break
+                page.wait_for_timeout(15000)
+                self.open_server("minecraft-java")
+                page.wait_for_selector("#overview-perf h3", timeout=15000)
+            page.evaluate("document.getElementById('overview-perf').scrollIntoView({block: 'start'})")
+            shot("performance")
+            shot("performance-card", element="#overview-perf")
+            self.open_server("minecraft-java", tab="maintenance")
+            page.wait_for_selector("#res-limit-mode", timeout=15000)
+            shot("memory-and-limits", element="#resources-card")
+        step("performance", performance)
 
         def configuration():
             self.open_server("minecraft-java", tab="properties")
@@ -159,6 +218,16 @@ class Shooter:
             self.scroll_to_text("Scheduled Restarts")
             shot("scheduled-restarts")
         step("scheduled restarts", restarts)
+
+        # 1.16.12: the Paper server (1.21.4 in the demo) has an update alert; Bedrock updates itself
+        def updates():
+            self.open_server("minecraft-java", tab="maintenance")
+            page.wait_for_selector("#autoupdate-content div", timeout=15000)
+            shot("update-alert", element="div:has(> #autoupdate-content)")
+            self.open_server("minecraft-bedrock", tab="maintenance")
+            page.wait_for_selector("#autoupdate-enabled", timeout=15000)
+            shot("bedrock-auto-update", element="div:has(> #autoupdate-content)")
+        step("updates", updates)
 
         def file_editor():
             self.open_server("minecraft-java", tab="files")
@@ -240,10 +309,74 @@ class Shooter:
             shot("panel-settings")
             self.scroll_to_text("Notifications")
             shot("notifications")
+            self.scroll_to_text("Backup storage")   # 1.16.11: the demo's SSH storage on Creative Lab
+            shot("backup-storage")
             self.scroll_to_text("Connection")    # on a master this also shows Nightly backups
             shot("panel-settings-1")
             self.close_modals()
         step("settings", settings)
+
+        # 1.16.11: off-site copies of the Paper server's backups on the SSH storage
+        def offsite():
+            self.open_server("minecraft-java", tab="backups")
+            page.wait_for_selector("#offsite-box:has-text('Copy to')", timeout=20000)
+            page.evaluate("document.getElementById('offsite-box').scrollIntoView({block: 'start'})")
+            shot("offsite-copies")
+        step("offsite copies", offsite)
+
+        def find_panels():                               # 1.16.13: Settings > Cluster > Add a node
+            page.evaluate("ServerApp.openPanelSettings()")
+            page.wait_for_timeout(3500)
+            page.click("#cl-find")
+            page.wait_for_selector("#cl-found :text('Searched')", timeout=60000)
+            page.locator("#cl-find").scroll_into_view_if_needed()
+            shot("cluster-find", element="div.p-3:has(#cl-find)")
+            self.close_modals()
+        step("find panels", find_panels)
+
+        def phone_qr():
+            page.evaluate("ServerApp.openPhoneQr()")
+            page.wait_for_timeout(1500)
+            shot("phone-qr", element="#modal-content")
+            self.close_modals()
+        step("phone qr", phone_qr)
+
+    # Phone-sized pictures for the manual (1.16.10), from a 390x844 Shooter
+    def phone(self):
+        page, step, shot = self.page, self.step, self.shot
+        self.sign_in(picture=False)
+        step("phone dashboard", lambda: shot("phone-dashboard"))
+
+        def menu():                                      # the whole menu: logo, every server, account buttons
+            page.evaluate("ServerApp.openNav()")
+            size = page.viewport_size
+            extra = page.evaluate("""() => [document.getElementById('sidebar'),
+                    ...document.querySelectorAll('#sidebar *')]
+                .reduce((n, el) => n + Math.max(0, el.scrollHeight - el.clientHeight), 0)""")
+            page.set_viewport_size({"width": size["width"], "height": size["height"] + extra})
+            try:
+                shot("phone-menu")
+            finally:
+                page.set_viewport_size(size)
+            page.evaluate("ServerApp.closeNav()")
+        step("phone menu", menu)
+
+        def server():
+            self.open_server("minecraft-java")
+            shot("phone-server")
+            self.tall_shot("phone-performance", "#overview-perf")
+            for tab in ("backups", "chat"):
+                page.evaluate(f"ServerApp.switchTab('{tab}')")
+                page.wait_for_timeout(2500)
+                shot(f"phone-{tab}")
+        step("phone server", server)
+
+        def ports():
+            page.evaluate("ServerApp.openPorts()")
+            page.wait_for_selector("text=Forward these", timeout=30000)
+            page.wait_for_timeout(1500)                  # the forwards for the master and the node
+            self.tall_shot("phone-port-forwarding", "div:has(> div > h3:text-is('Forward these'))")
+        step("phone port forwarding", ports)
 
     def move(self, server):
         """Moves a server to the other panel from the cluster page, pictures the finished move,
@@ -260,6 +393,7 @@ class Shooter:
                 ServerApp.openMoveDialog('move', n.id, server);
             }""", server)
             page.wait_for_timeout(800)
+            page.check("#move-precopy")
             page.click("#move-go")
             page.wait_for_selector("text=Delete the old copy", timeout=180000)
             self.shot("cluster-moved")
@@ -276,6 +410,9 @@ with sync_playwright() as p:
         s = Shooter(browser, theme)
         s.everything()
         browser_shooters.append(s)
+        phone = Shooter(browser, theme, phone=True)
+        phone.phone()
+        phone.ctx.close()
     # Last: a real move in each theme, to the node and back, so the demo ends as it began
     for s in browser_shooters:
         s.move("minecraft-bedrock")

@@ -1,7 +1,7 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.16.6**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.17.0**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
 "Creative Lab" running a Fabric server with mods.
 
@@ -28,8 +28,12 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Change difficulty, game mode, ports… | [Configuration](#7-configuration-player-roles-and-the-whitelist) |
 | Make someone an operator, or whitelist them | [Player roles and the whitelist](#7-configuration-player-roles-and-the-whitelist) |
 | Back up a world, or put one back | [Backups](#9-backups) |
+| Keep backups off this machine (NAS, Backblaze B2, S3) | [Off-site copies](#off-site-copies-ssh-or-s3-storage) |
 | Restart a server every night | [Scheduled restarts](#scheduled-restarts) |
+| Find out why a server lags | [Performance](#performance) |
+| Give a server more memory, or limit it | [Memory and limits](#memory-and-limits) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
+| Keep a Bedrock server on the newest version | [Automatic Bedrock updates](#update-alerts-and-automatic-bedrock-updates) |
 | Add mods, plugins or Bedrock add-ons | [Mods, plugins and add-ons](#12-mods-plugins-and-add-ons) |
 | Let Bedrock players join a Java server | [Finding mods and plugins](#finding-mods-and-plugins) (the **Bedrock players** bundle) |
 | Edit a plugin's config file | [Files](#11-files) |
@@ -43,6 +47,15 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.17.0 | **Performance**: tick health, memory, history charts and suggestions for every server and the machine; **Memory and limits** for the heap and hard memory and CPU limits; low TPS and full disk alerts. | [Performance](#performance), [Memory and limits](#memory-and-limits) |
+| 1.16.14 | **🔀 Port forwarding**: what to forward on your internet router (pfSense and others) for every server and node; the phone menu shows every server. | [Port forwarding](#port-forwarding), [On a phone](#on-a-phone) |
+| 1.16.13 | **Pre-copy while it runs** for moves of big worlds, and **Find panels on your network** when adding a node. | [Clusters](#18-clusters) |
+| 1.16.12 | **Update available** alerts for every server, **automatic updates for Bedrock** (opt-in) with a backup and rollback, and Bedrock servers that always save before stopping. | [Update alerts and automatic Bedrock updates](#update-alerts-and-automatic-bedrock-updates) |
+| 1.16.11 | **Off-site backup copies** to an SSH server or S3-compatible storage, retention by age, and bringing a server back on a new machine; Bedrock servers get the firewall rules they really need. | [Off-site copies](#off-site-copies-ssh-or-s3-storage), [Backup storage](#backup-storage) |
+| 1.16.10 | **Works on a phone**: a ☰ menu, big Start/Restart/Stop buttons and tables as cards; **installable as an app** over HTTPS; **📱 Open on your phone** shows a QR code on the desktop. | [On a phone](#on-a-phone) |
+| 1.16.9 | Runs on **Ubuntu 26.04 and 26.10, Debian 13 and a Raspberry Pi 4 or 5** (64-bit Pi OS), on x86-64 and ARM64 (Java only on ARM64), with the Java versions each system packages. | [Install](#1-install), [On a Raspberry Pi](#on-a-raspberry-pi), [Java versions](#java-versions) |
+| 1.16.8 | **Backup copies on another cluster member**, made by the master, checked with SHA-256 and restorable after losing the original machine. | [Backups](#9-backups) |
+| 1.16.7 | **Two-factor sign-in** with an authenticator app and recovery codes, and an option to require it for admins. | [Two-factor sign-in](#two-factor-sign-in) |
 | 1.16.6 | The console makes room instead of covering the page, and keeps the sidebar visible. | [Console](#13-console) |
 | 1.16.5 | Each Bedrock server gets its own UDP gameplay port (`server-udp-ports`), so several can run on one machine. | [Create a server](#4-create-or-import-a-server) |
 | 1.16.4 | New Bedrock servers keep every setting from the Bedrock download, so **Configuration** lists them all. | [Configuration](#7-configuration-player-roles-and-the-whitelist) |
@@ -65,7 +78,9 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 6. [Live Chat](#6-live-chat)
 7. [Configuration, player roles and the whitelist](#7-configuration-player-roles-and-the-whitelist)
 8. [Maintenance: templates, export, update, uninstall](#8-maintenance-templates-export-update-uninstall)
+   - [Update alerts and automatic Bedrock updates](#update-alerts-and-automatic-bedrock-updates)
 9. [Backups](#9-backups)
+   - [Off-site copies (SSH or S3 storage)](#off-site-copies-ssh-or-s3-storage)
    - [Scheduled restarts](#scheduled-restarts)
 10. [World & Maps](#10-world--maps)
 11. [Files](#11-files)
@@ -76,6 +91,7 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 16. [Users](#16-users)
 17. [Panel Settings: name, HTTPS, sign-in](#17-panel-settings-name-https-sign-in)
     - [Notifications](#notifications)
+    - [Backup storage](#backup-storage)
 18. [Clusters](#18-clusters)
 19. [Command line](#19-command-line)
 20. [Troubleshooting](#20-troubleshooting)
@@ -86,7 +102,12 @@ At the end: the [screenshot gallery](#screenshot-gallery), every screenshot in t
 
 ## 1. Install
 
-RedstonePanel runs on **Ubuntu 24.04 or 25.04**. The quickest way is the installer, which adds
+RedstonePanel runs on **Ubuntu 24.04, 26.04 or 26.10**, **Debian 13** and **64-bit Raspberry Pi
+OS** (on a Raspberry Pi 4 or 5), on x86-64 and ARM64 machines. On ARM64, including every
+Raspberry Pi, it runs **Java servers only**, because Mojang makes Bedrock Dedicated Server for
+x86-64 only (see [On a Raspberry Pi](#on-a-raspberry-pi)). Ubuntu 25.04 and 25.10 still work
+but no longer get updates; Debian 12 and 32-bit systems aren't supported. The quickest way is
+the installer, which adds
 the signed qrussell-repo apt repository (checking its key) and installs the panel:
 
 ```bash
@@ -108,10 +129,14 @@ offers to install the Java that Minecraft version needs (see [Java versions](#ja
 so a machine that only runs Bedrock never gets Java.
 
 Install `ufw` too if you want the panel to open each game server's ports in the firewall for
-you: TCP for Java, UDP for Bedrock, and for a Bedrock server using the NetherNet transport
-(`transport=nethernet`) TCP on its port, UDP on its `server-udp-ports` and UDP 7551 for LAN
-discovery. It follows port and transport changes you make in Configuration, and closes the
-ports again when the server is removed (7551 stays open while another NetherNet server needs it).
+you: TCP for Java, and for Bedrock (NetherNet, the default since Bedrock 1.26.50, also when
+server.properties has no `transport` line) TCP on its port, UDP on its `server-udp-ports` and
+UDP 7551 for LAN discovery. A Bedrock server set to `transport=raknet` gets UDP on its port and
+its IPv6 port instead. It follows port and transport changes you make in Configuration, and
+closes the ports again when the server is removed (7551 stays open while another NetherNet
+server needs it). If you edit server.properties by hand, the panel moves the rules within two
+minutes or when you open the dashboard. The dashboard also names any game-port rule that no
+server uses, with the command to close it.
 
 **Updating.** When a new version is out, the dashboard's **Needs attention** says so and the
 **Host** card shows **Update now** (admins). Click it: the panel updates its package with apt,
@@ -122,6 +147,44 @@ check. From a terminal, `sudo redstonepanel upgrade` does the same, or use
 
 The panel then runs as the `redstonepanel` service on port **8080**. Open
 `http://<server>:8080/` in a browser.
+
+### On a Raspberry Pi
+
+Use a **Raspberry Pi 4 or 5**, ideally with 4 GB of memory or more.
+
+1. In **Raspberry Pi Imager**, choose **Raspberry Pi OS Lite (64-bit)**, write it to an SSD or
+   a microSD card, and turn on SSH in the settings it offers before writing. An SSD (USB 3, or
+   NVMe on a Pi 5) is faster and lasts longer than a card under world saves and backups.
+2. Start the Pi, sign in over SSH, and run the installer above.
+3. Open `http://<pi>:8080/` and create a **Paper** server: it uses noticeably less CPU than
+   Vanilla, which matters on a Pi.
+
+**Bedrock** isn't offered: the **New Server** dialog shows it greyed out with the reason, and a
+Bedrock backup can't be imported. To let Bedrock players join, add the **Bedrock players**
+bundle (Geyser) to a Java server (see [Finding mods and plugins](#finding-mods-and-plugins)).
+In a cluster, a Pi can be the master or a node next to an x86-64 machine that runs the Bedrock
+servers; a Bedrock server can't be moved to a Pi.
+
+**Memory.** A new Java server may use up to 2 GB (1 GB on a machine with 3 GB or less);
+**Overview → Max RAM** shows it. Leave about 1 GB for the system:
+
+| Pi | What fits |
+| --- | --- |
+| 2 GB | Not recommended: one small server, which gets 1 GB. |
+| 4 GB | One server at 2 GB, for about 5 to 10 players. |
+| 8 GB | Two or three servers at 2 GB, or one at 4 to 5 GB. |
+| 16 GB | Several servers; the CPU is the limit. |
+
+To change a server's memory, use **Maintenance → [Memory and limits](#memory-and-limits)**.
+On a machine with 3 GB or less (a 2 GB Pi reports about 1.8 GB) the panel keeps 768 MB for the
+system instead of 1 GB, so the default 1 GB heap still fits. Updates and moves keep the setting.
+
+**Java.** Raspberry Pi OS (like Debian 13) packages Java 21 and 25, which run Minecraft 1.17 and
+newer. For older versions, which ask for Java 8, the panel says the Pi doesn't have it and
+offers Java 21, which some old versions and modpacks don't start on.
+
+**Cooling.** A Pi 5 needs its active cooler (or a case with a fan) to run a server all day
+without slowing itself down.
 
 ### On Windows with WSL
 
@@ -194,9 +257,57 @@ There are two kinds of account:
 Admins can turn sign-in off for devices on your home network; see
 [Panel Settings](#17-panel-settings-name-https-sign-in).
 
-**On a phone or tablet**, use the browser's **Add to Home Screen** (Safari's Share menu, or
-Chrome's ⋮ menu). The panel gets its own RedstonePanel icon and opens without the browser's
-address bar.
+### Two-factor sign-in
+
+Any account, panel or Linux, can ask for a second step after the password: a six-digit code
+from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, Aegis,
+1Password, Bitwarden and so on).
+
+1. Click **🔑 Password** in the sidebar, then **Set Up Two-Factor**.
+2. Scan the QR code with the app, or type the key under it.
+3. Type the code the app shows and click **Turn On**.
+4. **Save the ten recovery codes** it shows (Copy, Download, or print them). Each one signs you
+   in once if you lose your phone. They aren't shown again.
+
+From then on the sign-in page asks for a code after your password. Turning it on signs out
+your other browsers, which sign in again with a code. Under **🔑 Password** you can also see
+how many recovery codes are left, make new ones, or turn it off (both need a current code).
+
+Lost your phone and your recovery codes? Another admin can click **Reset two-factor** for a
+panel account under **👥 Users**, or root runs `sudo redstonepanel reset-2fa NAME` (this works
+for Linux accounts too). Wrong codes count towards the same limit as wrong passwords: five
+in ten minutes and that account and address wait a few minutes.
+
+Admins can make it compulsory for every admin; see
+[Panel Settings](#17-panel-settings-name-https-sign-in).
+
+### On a phone
+
+The panel works on a phone or a small tablet. Below 768 px wide:
+
+- The sidebar becomes a menu: tap **☰** in the top bar, which also names the open server. The
+  menu closes when you pick something, tap outside it or press Escape.
+- On a server's page, **Start**, **Restart** and **Stop** are large buttons across the top, and
+  the tabs scroll sideways.
+- Tables (the dashboard's servers, backups, files, the access log) become cards, and dialogs
+  fill the screen.
+- Live Chat keeps its box above the on-screen keyboard, and fields don't make the page zoom in.
+
+<p><img src="images/phone-dashboard.png" alt="The dashboard on a phone" width="260"> <img src="images/phone-menu.png" alt="The menu open on a phone" width="260"> <img src="images/phone-server.png" alt="A server's page on a phone" width="260"></p>
+
+**Open on your phone.** On a computer, click **📱 Open on your phone** in the sidebar and scan the
+QR code with the phone's camera. The code is made by the panel itself, so the address never
+goes to an outside service. If you opened the panel as `localhost`, it offers this machine's
+network addresses instead.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/phone-qr.png"><img src="images/phone-qr.png" alt="The Open on your phone dialog with a QR code"></picture>
+
+**Install it as an app.** Over HTTPS, Android's Chrome offers **Install app** (or ⋮ → **Install
+app**), and on an iPhone use Safari's **Share → Add to Home Screen**. The panel then opens in
+its own window with the RedstonePanel icon, without the browser's address bar. Browsers only
+install apps from HTTPS sites, so on plain HTTP the phone can only add a bookmark to its home
+screen; turn on HTTPS in [Panel Settings](#17-panel-settings-name-https-sign-in). If the phone
+can't reach the panel, the app shows **Can't reach the panel** with **Try again**.
 
 ## 3. The dashboard
 
@@ -231,8 +342,12 @@ it back. It refreshes every 10 seconds while the page is open.
   in apt. Items about a server have an **Open** link.
 - **CPU, Memory, Disk, Game servers**: use right now, with the load average, swap, the free
   space where the servers live, players online and network traffic.
+- **History**: charts of the machine's CPU, memory, the disk holding the servers, and network
+  traffic in and out, for the **Last 24 hours** (one point a minute) or the **Last 7 days**
+  (15-minute averages). The panel measures every minute whether anyone is watching. Point at
+  a chart, or touch it on a phone, to read a value.
 - **Game servers**: one row per server with its state and uptime, CPU (a share of the whole
-  machine), memory, players online (Java servers with RCON set up), folder size, backups and
+  machine), memory, players online and **TPS** (Java servers with RCON set up), folder size, backups and
   when the next backup and restart are due. Click a row to open the server. Folder sizes are
   measured in the background every 10 minutes, so a new server shows *measuring…* at first.
 - **Host**: host name, Ubuntu release, kernel, uptime, time zone, addresses, the panel's
@@ -257,13 +372,57 @@ The sidebar on the left holds everything that isn't about one server:
 | **➕ New Server** | Create a server, import one, or restore a removed one. |
 | **📊 Dashboard** | This machine's resources, services and what needs attention (above). |
 | **🌐 Cluster** | On a cluster master: every panel's servers (see [Clusters](#18-clusters)). |
+| **🔀 Port forwarding** | Admins: what to set up on your internet router so players outside your home can join (see [Port forwarding](#port-forwarding)). |
 | **🖥️ Console** | The panel's live activity log. |
 | **📋 Templates** | Saved server settings to reuse. |
 | **⚙️** | Appearance: **Color Mode** (dark or light) and **Accent Palette**: **Redstone Red** (the default), Diamond Blue, Emerald Green or Amethyst Purple. Saved in your browser. |
 | **Sort by** | Name A–Z, Z–A, or online servers first. |
 | Server list | Every server, grouped by edition: green dot = running, grey = stopped, with its version and port. Click one to open it. On a cluster master, each node's servers follow under the node's 🌐 name, grouped by edition the same way. Click a heading to fold it; a folded heading shows how many of its servers are online, and the panel remembers what you folded in this browser. |
 | **♻️ N removed servers: restore** | Shown when servers were uninstalled with **Keep World**. |
-| **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts). |
+| **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts) and two-factor sign-in (all accounts). |
+
+### Port forwarding
+
+Players on your home network join with the machine's LAN address. Players anywhere else reach
+your internet address, so your internet router (pfSense, or the box from your provider) has to
+pass each game port on to the right machine. **🔀 Port forwarding** (admins) lists exactly what
+to forward, for every server on this panel and, on a cluster master, on every node, with each
+machine's LAN address. This is about the router in front of your machines; the panel already
+looks after the firewall (`ufw`) on each machine.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/port-forwarding.png"><img src="images/port-forwarding.png" alt="The Port forwarding page on a cluster master"></picture>
+
+- **Your internet address**: type your router's WAN address, or a dynamic DNS name for it.
+  **Ask the router** asks your own router with NAT-PMP or UPnP (on pfSense: Services > UPnP &
+  NAT-PMP, off by default). The panel never asks an outside "what's my IP" website. If the
+  address starts with 100.64 to 100.127, your provider shares it between customers (carrier-grade
+  NAT) and port forwarding can't work; a private address (192.168.x.x, 10.x.x.x) means a second
+  router in front of yours.
+- **Forward these**: one line per forward: outside port, protocol, the machine's LAN address and
+  inside port, and what it's for. **Copy as text** copies the list.
+  - Java: TCP on the server port. If they're set up, also Geyser (UDP, Bedrock players on a
+    Java server) and Simple Voice Chat (UDP).
+  - Bedrock 1.26.50 and later (NetherNet, the default): TCP on the server port and UDP on its
+    `server-udp-ports` (the panel sets both to the same port). Keep the outside and inside port
+    the same. Bedrock with `transport=raknet`: UDP on the server port.
+- **Two servers want the same outside port**: with one internet address, each outside port can
+  go to only one server. Two servers on different machines that both use 25565 can't both be
+  forwarded; give one another port in its **Configuration** tab.
+- **Check from here** connects to your internet address from this machine and, for Java and
+  RakNet servers, asks the server for its name so it can tell when the wrong server answered.
+  It only works when the router loops connections back inside (pfSense: **NAT Reflection**);
+  "No answer" doesn't prove a forward is wrong. The real test is a phone on mobile data.
+- **How to set it up**: step-by-step for **pfSense** (Firewall > NAT > Port Forward, with the
+  exact values for each rule, and TCP/UDP in one rule where a port needs both) and for **other
+  routers**. Give each machine a fixed address first (a DHCP static mapping or reservation), or a
+  forward stops working when its address changes.
+- **Only if you need them**: Query (UDP), for server-list websites.
+- **Leave these closed**: RCON, NetherNet LAN discovery (UDP 7551) and Phantom are for the home
+  network only. The panel's own port is listed as optional and not recommended: a VPN into
+  your home (pfSense has WireGuard and OpenVPN) is safer than putting the panel on the internet.
+  If you do forward it, use HTTPS and two-factor sign-in for every admin.
+
+Nodes older than 1.16.14 show only their game ports, with the address the master knows them by.
 
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
 (**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
@@ -277,7 +436,8 @@ Click **➕ New Server**.
 
 **Deploy a fresh server**
 
-1. Choose **Java Edition** or **Bedrock Edition**.
+1. Choose **Java Edition** or **Bedrock Edition**. On an ARM64 machine such as a Raspberry Pi,
+   Bedrock is greyed out: Mojang only makes the Bedrock server for x86-64.
 2. For Java, choose the **Server Type** and **Minecraft Version**:
    - **Vanilla (Mojang)**: the official server.
    - **Paper (plugins)**: a faster server that runs Bukkit/Paper plugins. Put plugin `.jar`
@@ -323,6 +483,15 @@ Under **Import Existing**, choose a `.zip`, `.tar.gz`/`.tgz` or `.tar` of a serv
 click **Upload & Import**. A backup wrapped in a single folder is fine; its contents are used.
 The panel gives it a name, a free port and a service, like a fresh deploy.
 
+**Bring a server back from backup storage** (admins)
+
+If a server's backups were copied to an SSH server or S3 storage (see
+[Off-site copies](#off-site-copies-ssh-or-s3-storage)), **From backup storage → Choose a
+backup…** lists every backup there, from every panel that copies to it. Pick one and click
+**Import from backup storage**: the copy is downloaded and checked, the server gets its old name
+if it's free here, its server software is downloaded again, and it starts. Add the storage under
+[Backup storage](#backup-storage) first.
+
 **Removed servers** are listed at the bottom of the same dialog. See
 [Restore a removed server](#15-restore-a-removed-server).
 
@@ -337,6 +506,41 @@ The **Overview** tab (shown in [The dashboard](#3-the-dashboard)) shows quick st
 - the Java heap limit.
 
 For Java servers it also shows which Java version the server needs and which one is installed.
+
+### Performance
+
+Under the quick stats, **Performance** answers "is the game lagging, since when, and why?". It
+refreshes every 10 seconds while the tab is open, and says when it was last updated, so a stale
+view is obvious.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/performance.png"><img src="images/performance.png" alt="The Performance card of a Java server"></picture>
+
+- **Tick health (TPS)**: Minecraft aims for 20 ticks a second. 19 or more is **Smooth**, 15 to
+  19 is **Some lag**, under 15 is **Lagging**. Paper servers report the 1, 5 and 15 minute
+  averages and milliseconds per tick (`tps`, `mspt`); Vanilla and Fabric 1.20.3 and newer report
+  milliseconds per tick (`tick query`). The panel only asks; it never changes the tick rate.
+  It needs RCON (turn it on in **Live Chat**). Older Java versions and Bedrock have no such
+  command, so the card says *Not available* rather than guessing.
+- **Memory**: what the whole server process uses, next to its heap (**Max heap**) and hard
+  limit, if it has one. Java uses some memory outside the heap, so the process is normally a
+  little bigger than the heap.
+- **Players** and the number of connections to the game port; **World** size and how many
+  plugins or mods are installed.
+- **Held back by its limits**: shown when the server's [CPU limit](#memory-and-limits) slowed it
+  down in the last minute, when it's at its hard memory limit, or when systemd stopped it for
+  going over.
+- **History**: CPU, memory, players and TPS for the last 24 hours or 7 days, written every
+  minute whether anyone is watching. A gap means the server (or the panel) wasn't running.
+- **Suggestions**, each shown only when what it's about was measured, with a link to where it's
+  changed. Nothing is applied for you, because each change trades how the world plays for speed:
+  - TPS under 18 for 10 minutes: lower `simulation-distance`, then `view-distance`; profile
+    with **spark**. On Vanilla, Paper or Fabric run the same world much faster.
+  - A Fabric server without **Lithium** (and **FerriteCore** when memory is tight); a Paper
+    server with WorldEdit but not **FastAsyncWorldEdit**.
+  - A server that uses all of its memory and keeps restarting, or that hit its hard limit;
+    all Java servers together promised more memory than the machine has; swap in use.
+  - A world over 4 GB with no world border: set one and pre-generate it with **Chunky**.
+  - No backup schedule, a `logs` folder over 1 GB, or worlds on a spinning hard disk.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/overview-bedrock.png"><img src="images/overview-bedrock.png" alt="Bedrock server overview"></picture>
 
@@ -452,13 +656,84 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
   downloaded before the server is stopped, so a failed download changes nothing. Then it stops
   the server, installs the download and starts it again. Your world, settings, ports,
   operators and allowlist are kept. Take a backup first: a Java world opened by a newer
-  version can't go back to an older one. Bedrock servers always update to the newest release.
+  version can't go back to an older one. Bedrock servers always update to the newest release,
+  the same safe way as [automatic updates](#update-alerts-and-automatic-bedrock-updates): a
+  "Before update" backup first, and the old version put back if the new one doesn't start.
   On Fabric and Paper servers, moving to a newer Minecraft version first lists the mods or
   plugins that have no build for it yet on Modrinth or Hangar (and any it couldn't check),
   so you can wait rather than update into a server that won't start. If the new version
   needs a Java that isn't installed, you're asked to install it first.
 - **Java** (admins, Java servers): which Java the server runs on and which it needs. Choose
   another installed Java that's new enough and click **Use**; a running server restarts.
+- **Memory and limits**: see below.
+
+### Memory and limits
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/memory-and-limits.png"><img src="images/memory-and-limits.png" alt="Memory and limits on the Maintenance tab"></picture>
+
+Everyone can see these; only admins can change them.
+
+- **Memory (Java heap)**: how much memory the server starts with (**To start**, `-Xms`) and may
+  use at most (**At most**, `-Xmx`). Write sizes like `2G` or `1536M`. A new server gets 1 to 2 GB
+  (512 MB to 1 GB on a machine with 3 GB or less). The panel refuses a size that, with the other
+  *running* Java servers, would leave under 1 GB for the system (768 MB on a machine with 3 GB or
+  less). A running server uses the new size after a restart: tick **Restart now if the memory
+  changes**, or restart it later. The server keeps its Java, and updates, moves and restores keep
+  the setting.
+- **Hard memory limit** (systemd `MemoryMax=`): if the whole server process goes over it, systemd
+  stops the server (and, as after any crash, starts it again 20 seconds later). It stops one
+  runaway server from starving the others. **Automatic** is the heap plus half again (at least
+  512 MB more), for what Java uses outside the heap; a custom size must be at least 256 MB more
+  than the heap. Bedrock servers take a custom size.
+- **CPU limit** (systemd `CPUQuota=`): the most CPU the server may use, in cores; `0` is no
+  limit. Minecraft's main loop runs on one core, so a limit under 1 makes it lag.
+
+Limits apply at once, without a restart, and are kept in a drop-in file
+(`/etc/systemd/system/minecraft-NAME.service.d/redstonepanel-limits.conf`), so rewriting the
+server's unit keeps them. Uninstalling a server removes the drop-in; restoring it puts it back.
+Limits belong to the machine, so a server moved to another cluster member doesn't take them along.
+
+### Update alerts and automatic Bedrock updates
+
+Every 6 hours the panel looks for a newer Bedrock Dedicated Server, Minecraft release, Paper
+build or Fabric loader for each server (never snapshots or pre-releases). When there is one,
+the server shows **⬆** and the new version in the sidebar, on the dashboard, on its
+**Overview** and under **Maintenance → Update Server**. **Check now** looks right away. With
+[notifications](#notifications) on, you get one **Update available** message per new version.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/update-alert.png"><img src="images/update-alert.png" alt="Update available on a Paper server"></picture>
+
+Bedrock players' apps update themselves, and then can't join a server on the older version.
+So a Bedrock server can update itself: tick **Update automatically** under **Maintenance →
+Update Server** (it's off until you do).
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/bedrock-auto-update.png"><img src="images/bedrock-auto-update.png" alt="Update automatically on a Bedrock server"></picture>
+
+When a new release is out:
+
+1. The new version is downloaded from minecraft.net and checked. If that fails, nothing else
+   happens and the server keeps running.
+2. Players see "Server updates to the new Minecraft version in 5 minutes" in chat, then again
+   1 minute and 10 seconds before.
+3. The server stops and is backed up (**Before update** on the **Backups** tab; the newest
+   three are kept).
+4. The new files go in. The server's `server.properties`, `permissions.json` and
+   `allowlist.json` stay as they are, and so do its worlds and add-ons.
+5. The server starts. When it says "Server started.", the update is done (**Bedrock server
+   updated** notification).
+
+If the new version doesn't finish starting within 3 minutes, the old files and the world from
+the "Before update" backup go back, the server starts on the old version, and the failure
+shows under **Needs attention** and as a **Server update failed** notification. A stopped
+server is updated but stays stopped.
+
+Java servers are never updated automatically, because a new version can break mods and
+plugins: you get the alert and update with **Check & Update** when you're ready. Bedrock
+can't run on ARM64 machines such as a Raspberry Pi, so there is nothing to update there.
+
+On a cluster, each member checks its own servers (also while its panel is stopped), and the
+master shows the nodes' alerts. From the command line, `sudo redstonepanel check-updates` does
+the same check and updates.
 
 ### Java versions
 
@@ -466,6 +741,14 @@ Each Minecraft version needs a particular Java: 26.1 and newer need Java 25, 1.2
 1.21.11 Java 21, 1.18 to 1.20.4 Java 17, and older versions Java 8. Each server's systemd unit
 names its own Java (`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`), so servers needing
 different versions run side by side, and the system's default `java` doesn't matter.
+
+The panel offers the Java versions your system's package sources have. Ubuntu packages 8, 11,
+17, 21 and 25 (newer releases also newer ones); Debian 13 and Raspberry Pi OS only 21 and 25.
+When a Minecraft version needs a Java the system doesn't package, the line under **Minecraft
+Version** says so and the panel offers the closest newer one instead: Java 17 for 1.17's
+Java 16 on Ubuntu, or Java 21 for an old version's Java 8 on Debian, which some old versions
+and modpacks don't start on. If the system has nothing new enough, it says so and installs
+nothing.
 
 - **Installing.** When you create, update or restore a Java server and the Java it needs isn't
   installed, the panel asks to install it (`openjdk-21-jre-headless`, for example) with apt,
@@ -503,7 +786,9 @@ with older versions are cleared the next time the dashboard loads.
 
 1. Tick **Automatic backups**.
 2. Choose how often: every hour, every 6 or 12 hours, every day, or every Sunday.
-3. Choose the time and how many scheduled backups to **Keep**.
+3. Choose the time and how many scheduled backups to **Keep**. Optionally, **Also delete them
+   after** a number of days ("keep 7, and none older than 14 days"); the newest backup always
+   stays, so a server that has been stopped for a month still has one.
 4. Click **Save schedule**. **Next backup** shows when the next one will run.
 
 The time is the **server's clock**, and the form shows its time zone (UTC on most servers). A
@@ -522,8 +807,10 @@ The time is the **server's clock**, and the form shows its time zone (UTC on mos
 - A backup is a `.tar.gz` of the server folder: the world, `server.properties`, operators,
   allowlist and so on. It leaves out what can be downloaded again (`server.jar`,
   `bedrock_server`, Bedrock's built-in packs) and logs.
-- Backups are stored in `/var/backups/redstonepanel/<server>/`, readable only by root. Copy
-  that folder to another disk or machine if you want backups that survive losing this one.
+- Backups are stored in `/var/backups/redstonepanel/<server>/`, readable only by root. To have
+  backups that survive losing this machine, copy them to an SSH server or S3-compatible storage
+  ([off-site copies](#off-site-copies-ssh-or-s3-storage), below) or, in a cluster, to another
+  member.
 - Only **Scheduled** backups are pruned to the number you keep. **Manual** and **Before
   restore** backups stay until you delete them.
 
@@ -537,11 +824,83 @@ The time is the **server's clock**, and the form shows its time zone (UTC on mos
   **Update all** on the Mods / Plugins tab.
 - **🗑**: deletes a backup (admins).
 
+**Copies on another cluster member** (cluster masters)
+
+A backup on the same disk doesn't survive losing the disk. In a cluster, open a server's
+**Backups** tab on the master and choose **Also keep a copy on**: the master, or another node.
+
+- After each scheduled or manual backup, the master copies it to that member within a few
+  minutes (straight away after **Back up now**) and checks it arrived whole with SHA-256. A
+  node's backup going to another node passes through the master; nodes never talk to each
+  other.
+- Copies are kept in `/var/backups/redstonepanel/remote/<member>/<server>/` on the member that
+  holds them. **Scheduled** copies are kept to the same number as the server's own; **Manual**
+  ones stay until you delete them.
+- If a copy fails (the member is off, or its disk is full), it shows under **Needs attention**
+  on the master's dashboard, and as **Backup copy to another member or storage failed** in
+  webhook notifications. The master tries again every few minutes and catches up on what it missed.
+- **⬇️** downloads a copy. **Put back** (admins) copies it into the server's own backups, where
+  **Restore** brings its world back.
+- If a machine is lost, its servers' copies are still on the other member: make a new server
+  of the same edition and version, open its **Backups** tab, click **Use a copy of another
+  server's backup…**, **Put back** the copy you want, and **Restore** it.
+- Every member needs RedstonePanel 1.16.8 or later. Standalone panels don't have this; they
+  can use off-site copies instead.
+
+### Off-site copies (SSH or S3 storage)
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/offsite-copies.png"><img src="images/offsite-copies.png" alt="Off-site copies on the Backups tab"></picture>
+
+Any panel, with or without a cluster, can copy its servers' backups off the machine:
+
+- **An SSH server**: a NAS, another PC or a VPS with `rsync` installed. Copies resume where they
+  stopped if the connection drops.
+- **S3-compatible storage**: Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3 and others.
+  Archives over 100 MB go up in parts.
+
+An admin adds the storage once under [Panel Settings → Backup storage](#backup-storage). After
+that, each server's **Backups** tab has an **Off-site copies** section:
+
+- Tick **Copy to** a storage to copy this server's backups there (a storage can be set to copy
+  every server's backups, which is the default).
+- After each scheduled or manual backup, the copy starts straight away in the background, so a
+  slow upload never holds the server up, and it happens even while the panel itself is stopped.
+  The panel also checks every few minutes for anything missing and copies it.
+- Every copy is checked with SHA-256 when it arrives, and again before it's restored. A
+  `.sha256` file is kept next to each copy.
+- What's copied: every **Manual** backup, and the newest **Scheduled** ones, up to the storage's
+  own **Keep** (or the server's, if the storage doesn't set one) and, if set, no older than its
+  **Delete copies after** days. Older scheduled copies are deleted from the storage; the newest
+  copy always stays. **Before restore** and **Before mod changes** backups stay on this machine.
+  So you can keep, for example, 7 here and 30 days off the machine.
+- **Restore** (admins) downloads the copy into the server's backups, checks it, and restores
+  its world as usual (the current world is saved first as a **Before restore** backup).
+- **🗑** deletes a copy from the storage (admins). **Copy now** copies anything missing straight
+  away.
+- If copying fails (the storage is off, the key was removed, the bucket is full), it shows under
+  **Needs attention** on the dashboard and as **Backup copy to another member or storage
+  failed** in webhook notifications, once until it works again. The panel keeps trying every
+  few minutes.
+
+On the storage, copies are kept as `<folder>/<panel id>/<server>/<backup>.tar.gz`. The panel id
+is this machine's host name and four random characters (shown in Panel Settings), so several
+panels can share one bucket or folder.
+
+**If the machine dies:** install RedstonePanel on the new machine, add the same storage under
+**Panel Settings → Backup storage** (for SSH, add the new panel's key on the storage too), then
+**➕ New Server → From backup storage**: pick the backup, and the server is set up again with its
+old name if it's free, its server software downloaded again (a Java server at the same
+Minecraft version and type), and started.
+
+From the command line, `sudo redstonepanel offsite-copy minecraft-java` copies a server's
+backups now, and `sudo redstonepanel offsite-key` prints the panel's SSH key.
+
 Bedrock servers work the same way:
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/backups-bedrock.png"><img src="images/backups-bedrock.png" alt="Backups tab, Bedrock server"></picture>
 
-From the command line, `sudo redstonepanel backup minecraft-java` takes a backup.
+From the command line, `sudo redstonepanel backup minecraft-java` takes a backup (and starts
+its off-site copy).
 
 ### Scheduled restarts
 
@@ -810,6 +1169,8 @@ sudo redstonepanel restore minecraft-java-2
     restore backups, and delete backups and removed servers.
 - For each account you can change the role, **Reset password**, **Disable** (it can't sign
   in until enabled again) or **Delete**.
+- Accounts with two-factor sign-in on show **2FA**. **Reset two-factor** turns it off for
+  someone who lost their phone; they sign in with their password and set it up again.
 - Linux accounts aren't listed here; they're managed with the usual Linux tools.
 
 An admin account controls a service that runs as root, so treat it like `sudo` access.
@@ -855,9 +1216,19 @@ Get a message in Discord, or any service that takes a webhook, when something ha
    - **Server started** / **Server stopped**: every start and stop, including your own.
    - **Scheduled restart**: a [scheduled restart](#scheduled-restarts) happened, or failed.
    - **Backup finished** / **Backup failed**.
+   - **Update available**: a newer version is out for a server, once per version (see
+     [Update alerts](#update-alerts-and-automatic-bedrock-updates)).
+   - **Bedrock server updated** / **Server update failed**: a Bedrock update finished, or
+     didn't and the old version was put back.
+   - **Backup copy to another member or storage failed**: an
+     [off-site copy](#off-site-copies-ssh-or-s3-storage) or a copy on another cluster member
+     failed (once, until it works again).
    - **Player joined** / **Player turned away**: from the access log (see
      [Whitelist & Access](#7-configuration-player-roles-and-the-whitelist)), within about 30 seconds.
      Turned-away messages are sent at most once a minute per server.
+   - **TPS under 15 for 5 minutes** (Java servers whose tick health the panel can read) and
+     **Disk over 95 % full** (any disk holding servers, backups or panel data): at most once an
+     hour per server or disk. Both are off until you tick them.
 3. Click **Save notifications**, then **Send a test**.
 
 Setting up a whole Discord for your community, with a private space per Minecraft server, is
@@ -873,6 +1244,41 @@ only by root and never shows it again. Paste a new one to replace it, or **Remov
 Other services receive a JSON POST with the fields `text`, `event`, `server`, `panel`,
 `message` and `time`.
 
+### Backup storage
+
+Where the [off-site copies](#off-site-copies-ssh-or-s3-storage) of this machine's backups go.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/backup-storage.png"><img src="images/backup-storage.png" alt="Backup storage settings"></picture>
+
+Click **Add storage** and choose:
+
+- **SSH server (rsync)**: the **Host**, **Port**, **User** and **Folder** (relative to that
+  user's home unless it starts with `/`). Open **This panel's SSH key** and add the line shown to
+  `~/.ssh/authorized_keys` of that user on the SSH server. That machine needs `rsync` (`sudo apt
+  install rsync`). The panel records the server's host key on the first connection, as `ssh`
+  does, and refuses to send anything if it changes later; if that machine was reinstalled, click
+  **Forget host key** and **Test** again.
+- **S3-compatible**: the **Endpoint** (for example `https://s3.eu-central-003.backblazeb2.com`,
+  `https://<account>.r2.cloudflarestorage.com` or `http://192.168.1.30:9000` for MinIO), the
+  **Bucket**, an optional **Folder in the bucket**, the **Region** (`auto` for Cloudflare R2) and
+  an **Access key** and **Secret key** that can read, write, list and delete in that bucket. Leave
+  **Path-style addresses** ticked unless your provider needs bucket names in the host name.
+  The secret is stored on this machine readable only by root and never shown again; leave it
+  empty when editing to keep it.
+
+For both:
+
+- **Scheduled copies to keep**: empty keeps as many as each server keeps here. **Delete copies
+  after (days)**: empty never deletes by age. Manual copies stay until you delete them.
+- **Copy every server's backups** (the default), or leave it off and tick the storage on each
+  server's **Backups** tab.
+- **Test** writes a small file, lists it and deletes it, and says which step failed.
+- **Remove** stops copying there. The copies already there stay; delete them on the storage if
+  you want them gone.
+
+Each machine in a cluster copies its own servers' backups: add the storage on each node's own
+panel (the master can't change a node's settings).
+
 **Sign-in**:
 
 - **Always required (recommended)**.
@@ -882,6 +1288,15 @@ Other services receive a JSON POST with the fields `text`, `event`, `server`, `p
     admin sign-in;
   - it never applies to requests coming through a reverse proxy;
   - everyone on those networks gets in, including guests on your Wi-Fi.
+
+**Require two-factor for admins** (off by default): an admin without
+[two-factor sign-in](#two-factor-sign-in) is sent to set it up right after signing in, and
+can't do anything else until they have. Set it up for your own account first; the panel won't
+turn this on before you do. While it's on, admins can't turn their own two-factor off (another
+admin or `reset-2fa` can reset it). Users (not admins) can still choose.
+
+Trusted-network access is unchanged by two-factor: it never gives admin rights. Cluster nodes
+don't use it either: the master reaches them with its node token, not a person's sign-in.
 
 If a change locks you out, run `sudo redstonepanel reset-security` on the machine (see
 [Troubleshooting](#20-troubleshooting)).
@@ -911,7 +1326,12 @@ to the node.
 
 1. On the master: **Settings → Cluster → Make this panel a master**, give the cluster a name,
    and click **Create cluster**. The panel restarts on HTTPS (port 8443).
-2. On the master: make a **join code**. Codes work once and expire after an hour.
+2. On the master: make a **join code**. Codes work once and expire after an hour. Or click
+   **Find panels on your network** *(1.16.13)*: the master lists the other RedstonePanels on its
+   local networks (it asks each address on ports 8443 and 8080), says which are already in a
+   cluster, and **Add to cluster** makes the code and links to the panel to paste it into.
+
+   <picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster-find.png"><img src="images/cluster-find.png" alt="Find panels on your network"></picture>
 3. On each node: paste the code under **Settings → Cluster → Join a cluster**, and click
    **Join**.
 4. Download the cluster CA from **Settings → Cluster** and install it on your devices once.
@@ -947,6 +1367,14 @@ you choose whether to start it. Schedules and Phantom stay with the original.
 
 Both machines need RedstonePanel 1.16 or later. Older backups and the player history stay on the
 old machine.
+
+**Pre-copy while it runs** *(1.16.13)*: for a big world, tick this in the **Move** window. The
+folder is copied to the other machine while players stay on, then the server stops and only the
+files that changed since are copied and checked. The server is down for seconds instead of
+minutes, and the window says how long it was down. Both machines need RedstonePanel 1.16.13 or
+later for this.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster-precopy.png"><img src="images/cluster-precopy.png" alt="Moving a server with a pre-copy"></picture>
 
 **Templates between machines:** in the template manager, **Copy to node** sends one of the
 master's templates to a node. Templates a node made on its own panel are listed under its name,
@@ -993,10 +1421,12 @@ Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 | `redstonepanel add-user NAME [--role admin\|user]` | Create a panel account (asks for the password). |
 | `redstonepanel set-name "NAME"` | Set the panel name (`""` = host name). |
 | `redstonepanel reset-security` | Back to plain HTTP on 8080 with sign-in required. |
+| `redstonepanel reset-2fa NAME` | Turn off two-factor sign-in for an account that lost its phone and recovery codes. |
 | `redstonepanel removed` | List servers uninstalled with Keep World. |
 | `redstonepanel restore NAME` | Restore a removed server. |
 | `redstonepanel backup NAME` | Back up a server now. |
 | `redstonepanel restart-server NAME` | Warn players, then restart a server (what its restart timer runs). |
+| `redstonepanel check-updates` | Look for newer server versions and update the Bedrock servers set to update automatically (what the update timer runs every 6 hours). |
 | `redstonepanel notify-test` | Send a test notification. |
 | `redstonepanel cluster create "NAME"` | Make this panel a cluster master. |
 | `redstonepanel cluster join-code` | Make a join code (master). |
@@ -1024,6 +1454,14 @@ sudo redstonepanel reset-security
 It switches the panel back to plain HTTP on port 8080 with sign-in required. If HTTPS is
 turned on but its certificate can't be used, the panel starts on HTTP by itself and warns
 admins in the sidebar.
+
+**I lost the phone with my authenticator app.** Sign in with one of your recovery codes
+instead of the app's code, then set two-factor up again under **🔑 Password**. No codes left?
+Another admin can **Reset two-factor** under **👥 Users**, or run this on the machine:
+
+```bash
+sudo redstonepanel reset-2fa NAME
+```
 
 **Players can't connect.** Check:
 
@@ -1072,7 +1510,7 @@ Every screenshot in this manual, in the theme you pick:
 <tr><td><img src="images/console.png" width="280" alt="Console (dark theme)"><br>Console</td><td><img src="images/templates.png" width="280" alt="Template manager (dark theme)"><br>Template manager</td><td><img src="images/users.png" width="280" alt="Panel users (dark theme)"><br>Panel users</td></tr>
 <tr><td><img src="images/panel-settings.png" width="280" alt="Panel Settings: name, notifications and cluster (dark theme)"><br>Panel Settings: name, notifications and cluster</td><td><img src="images/panel-settings-1.png" width="280" alt="Panel Settings on a cluster master: connection and sign-in (dark theme)"><br>Panel Settings on a cluster master: connection and sign-in</td><td><img src="images/notifications.png" width="280" alt="Notification settings (dark theme)"><br>Notification settings</td></tr>
 <tr><td><img src="images/cluster.png" width="280" alt="The Cluster page (dark theme)"><br>The Cluster page</td><td><img src="images/node-server.png" width="280" alt="A node's Fabric server opened from the master (dark theme)"><br>A node's Fabric server opened from the master</td><td><img src="images/cluster-move.png" width="280" alt="Moving a server to another cluster member (dark theme)"><br>Moving a server to another cluster member</td></tr>
-<tr><td><img src="images/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (dark theme)"><br>A finished move, with the old copy still kept</td></tr>
+<tr><td><img src="images/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (dark theme)"><br>A finished move, with the old copy still kept</td><td><img src="images/port-forwarding.png" width="280" alt="The Port forwarding page (dark theme)"><br>The Port forwarding page</td></tr>
 </table>
 
 </details>
@@ -1091,7 +1529,7 @@ Every screenshot in this manual, in the theme you pick:
 <tr><td><img src="images/light/console.png" width="280" alt="Console (light theme)"><br>Console</td><td><img src="images/light/templates.png" width="280" alt="Template manager (light theme)"><br>Template manager</td><td><img src="images/light/users.png" width="280" alt="Panel users (light theme)"><br>Panel users</td></tr>
 <tr><td><img src="images/light/panel-settings.png" width="280" alt="Panel Settings: name, notifications and cluster (light theme)"><br>Panel Settings: name, notifications and cluster</td><td><img src="images/light/panel-settings-1.png" width="280" alt="Panel Settings on a cluster master: connection and sign-in (light theme)"><br>Panel Settings on a cluster master: connection and sign-in</td><td><img src="images/light/notifications.png" width="280" alt="Notification settings (light theme)"><br>Notification settings</td></tr>
 <tr><td><img src="images/light/cluster.png" width="280" alt="The Cluster page (light theme)"><br>The Cluster page</td><td><img src="images/light/node-server.png" width="280" alt="A node's Fabric server opened from the master (light theme)"><br>A node's Fabric server opened from the master</td><td><img src="images/light/cluster-move.png" width="280" alt="Moving a server to another cluster member (light theme)"><br>Moving a server to another cluster member</td></tr>
-<tr><td><img src="images/light/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (light theme)"><br>A finished move, with the old copy still kept</td></tr>
+<tr><td><img src="images/light/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (light theme)"><br>A finished move, with the old copy still kept</td><td><img src="images/light/port-forwarding.png" width="280" alt="The Port forwarding page (light theme)"><br>The Port forwarding page</td></tr>
 </table>
 
 </details>

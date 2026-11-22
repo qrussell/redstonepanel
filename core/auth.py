@@ -8,6 +8,12 @@ Two kinds of accounts can sign in:
     Passwords are never stored: only a salted scrypt hash (one-way, can't be decrypted).
 
 Sessions are a signed cookie (HMAC-SHA256 with a random key in data/secret.key).
+
+Two-factor sign-in (core/twofactor.py): when an account has it on, the right password only earns
+a short-lived "code needed" ticket (its own cookie, signed for that purpose only); the session
+cookie comes after a code from the authenticator app or a recovery code. Wrong codes count
+towards the same rate limit as wrong passwords. A session records that it passed the second
+step, so turning two-factor on signs out sessions that never did.
 """
 import base64
 import ctypes
@@ -23,6 +29,8 @@ import secrets
 import threading
 import time
 
+from core import settings as panel_settings
+from core import twofactor
 from core.settings import DATA_DIR   # <app>/data (RP_DATA_DIR overrides it for test instances)
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 SECRET_FILE = os.path.join(DATA_DIR, "secret.key")
@@ -32,6 +40,8 @@ PAM_SERVICE = "login"
 PANEL_ROLES = ("admin", "user")          # admin = everything incl. user management
 SESSION_COOKIE = "rp_session"
 SESSION_SECONDS = 12 * 3600
+PENDING_COOKIE = "rp_2fa"                # password checked, waiting for the second step
+PENDING_SECONDS = 5 * 60
 MIN_PASSWORD_LEN = 8
 USERNAME_RE = re.compile(r"^[a-z_][a-z0-9_.-]{1,31}$")
 
@@ -99,7 +109,8 @@ def _find(users, username):
 
 def _public(u):
     return {"username": u["username"], "role": u["role"], "disabled": bool(u.get("disabled")),
-            "created": u.get("created"), "last_login": u.get("last_login")}
+            "created": u.get("created"), "last_login": u.get("last_login"),
+            "two_factor": twofactor.is_enabled(twofactor.account_key("panel", u["username"]))}
 
 def linux_account_exists(username):
     try:
@@ -155,6 +166,7 @@ def delete_panel_user(username):
         if not _find(users, username):
             raise AuthError(f"Panel user '{username}' not found.")
         _save_users([u for u in users if u["username"] != username])
+    twofactor.remove(twofactor.account_key("panel", username))
 
 def change_own_password(username, current, new):
     with _lock:
@@ -309,8 +321,28 @@ def login(username, password, client_ip):
     if not identity:
         _record_fail(keys)
         raise AuthError("Invalid username or password.")
+    if twofactor.is_enabled(twofactor.account_key(identity["src"], identity["u"])):
+        # Not signed in yet, so the failure count stays: guessing codes and re-entering the
+        # password must not reset the limit.
+        return dict(identity, pending=True)
     _clear_fails(keys)
     return identity
+
+
+def complete_two_factor(ticket, code, client_ip):
+    """Second step of signing in. Returns the session identity, or raises AuthError."""
+    identity = read_pending_token(ticket)
+    if not identity:
+        raise AuthError("The sign-in took too long. Enter your password again.")
+    keys = (f"user:{identity['u'].lower()}", f"ip:{client_ip}")
+    if _throttled(keys):
+        raise AuthError("Too many failed sign-in attempts. Try again in a few minutes.")
+    used = twofactor.verify(twofactor.account_key(identity["src"], identity["u"]), code)
+    if not used:
+        _record_fail(keys)
+        raise AuthError("That code is wrong or was already used.")
+    _clear_fails(keys)
+    return dict(identity, m=1, used=used)
 
 
 # ---------------------------------------------------------------------------
@@ -333,36 +365,77 @@ def _get_secret():
             _secret = key
     return _secret
 
-def make_session_token(identity):
-    payload = dict(identity, exp=int(time.time()) + SESSION_SECONDS)
+# Session cookies and "code needed" tickets are signed with different keys derived from the
+# same secret, so one can never be used as the other.
+def _signing_key(purpose):
+    if purpose == "session":
+        return _get_secret()
+    return hmac.new(_get_secret(), f"redstonepanel {purpose}".encode(), hashlib.sha256).digest()
+
+def _sign(payload, purpose):
     body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
-    sig = hmac.new(_get_secret(), body.encode(), hashlib.sha256).hexdigest()
+    sig = hmac.new(_signing_key(purpose), body.encode(), hashlib.sha256).hexdigest()
     return f"{body}.{sig}"
 
-def read_session_token(token):
-    """Returns the current user {username, source, role} or None. Re-checks the account every time,
-    so deleting/disabling a user or removing them from the allowed groups takes effect at once."""
+def _unsign(token, purpose):
     if not token or "." not in token:
         return None
     body, sig = token.rsplit(".", 1)
-    expected = hmac.new(_get_secret(), body.encode(), hashlib.sha256).hexdigest()
+    expected = hmac.new(_signing_key(purpose), body.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, expected):
         return None
     try:
         payload = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
     except Exception:
         return None
-    if payload.get("exp", 0) < time.time():
+    if not isinstance(payload, dict) or payload.get("exp", 0) < time.time():
+        return None
+    return payload
+
+def _identity_fields(identity):
+    return {k: identity[k] for k in ("u", "src", "v", "m") if k in identity}
+
+def make_session_token(identity):
+    return _sign(dict(_identity_fields(identity), exp=int(time.time()) + SESSION_SECONDS), "session")
+
+def make_pending_token(identity):
+    fields = {k: identity[k] for k in ("u", "src", "v")}
+    return _sign(dict(fields, exp=int(time.time()) + PENDING_SECONDS), "two-factor pending")
+
+def read_pending_token(token):
+    payload = _unsign(token, "two-factor pending")
+    if not payload or payload.get("src") not in ("panel", "linux"):
+        return None
+    return {k: payload.get(k) for k in ("u", "src", "v")}
+
+def two_factor_required_for(role):
+    return role == "admin" and bool(panel_settings.load().get("require_2fa_admins"))
+
+def read_session_token(token):
+    """Returns the current user {username, source, role, two_factor, needs_2fa_setup} or None.
+    Re-checks the account every time, so deleting/disabling a user or removing them from the
+    allowed groups takes effect at once."""
+    payload = _unsign(token, "session")
+    if not payload:
         return None
 
     username, src = payload.get("u"), payload.get("src")
     if src == "linux":
         if not linux_user_allowed(username):
             return None
-        return {"username": username, "source": "linux", "role": "admin"}
-    if src == "panel":
+        user = {"username": username, "source": "linux", "role": "admin"}
+    elif src == "panel":
         u = _find(_load_users(), username)
         if not u or u.get("disabled") or u.get("session_version", 1) != payload.get("v"):
             return None
-        return {"username": username, "source": "panel", "role": u["role"]}
-    return None
+        user = {"username": username, "source": "panel", "role": u["role"]}
+    else:
+        return None
+    # Two-factor is on for this account but this session never passed it (signed in before it was
+    # turned on, elsewhere): not valid any more.
+    tf = twofactor.is_enabled(twofactor.account_key(src, username))
+    if tf and not payload.get("m"):
+        return None
+    user["two_factor"] = tf
+    user["needs_2fa_setup"] = not tf and two_factor_required_for(user["role"])
+    return user

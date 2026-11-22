@@ -6,8 +6,10 @@
 # - GitLab (here): build-deb builds the .deb in ubuntu:24.04, and release uploads it to
 #   the package registry and creates the GitLab release (packaging/gitlab-release.py).
 # - GitHub: GitLab mirrors the tag, and .github/workflows/release.yml builds the .deb,
-#   install-tests it on Ubuntu 24.04 and 25.04 and creates the GitHub release, which
-#   qrussell-repo (apt) picks up.
+#   install-tests it on Ubuntu 24.04, 26.04, 26.10 and Debian 13 (and ARM64), runs the cluster
+#   tests and creates the GitHub release, which qrussell-repo (apt) picks up. The same workflow
+#   runs (without releasing) on every push of main to the mirror, so install and cluster tests
+#   run after each merge.
 # release-from-github recreates a GitLab release from the GitHub one: run a pipeline on
 # main with the variable RELEASE_TAG=vX.Y.Z (Build > Pipelines > Run pipeline).
 
@@ -36,9 +38,27 @@ python:
   stage: check
   script:
     - python -m py_compile main.py run.py https_redirect.py core/*.py tests/*.py packaging/*.py packaging/screenshots/*.py
+    # rsync lets tests/test_backup_targets.py really copy to its stand-in SSH storage
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends rsync >/dev/null
     # fastapi lets tests/test_cluster.py check every API route against the node-token allowlist
     - pip install --quiet --disable-pip-version-check fastapi python-multipart httpx
     - python -m unittest discover -s tests -v
+
+# The unit tests again with each supported system's own Python, FastAPI and Starlette packages
+# (what the .deb runs on), not pip's newest.
+python-system:
+  stage: check
+  image: $SYSTEM
+  parallel:
+    matrix:
+      - SYSTEM: ["ubuntu:24.04", "ubuntu:26.04", "ubuntu:26.10", "debian:13"]
+  script:
+    - export DEBIAN_FRONTEND=noninteractive
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends python3 python3-fastapi python3-starlette python3-uvicorn python3-httpx rsync >/dev/null
+    - apt-get install -y -qq --no-install-recommends python3-python-multipart >/dev/null || apt-get install -y -qq --no-install-recommends python3-multipart >/dev/null
+    - python3 --version
+    - python3 -m unittest discover -s tests
 
 version:
   stage: check

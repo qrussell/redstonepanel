@@ -22,17 +22,25 @@ import core.backups as backups
 import core.notify as notify
 import core.setup as setup_guide
 import core.restarts as restarts
+import core.updates as updates
 import core.auth as auth
 import core.settings as panel_settings
+import core.twofactor as twofactor
+import core.qr as qr
+import core.portforward as portforward
 from core.version import panel_version
 import core.cluster as cluster
 import core.cluster_client as cluster_client
 import core.transfer as transfer
 import core.moves as moves
+import core.backup_copies as backup_copies
+import core.backup_targets as backup_targets
+import core.perf as perf
 from starlette.background import BackgroundTask
 import json
 import uuid
 import os
+import platform
 import shutil
 import signal
 import subprocess
@@ -93,14 +101,16 @@ async def no_stale_static(request: Request, call_next):
 # ---------------------------------------------------------------------------
 # /api/panel-info only says which panel this is (shown on the sign-in page), nothing more.
 # /api/cluster/ca(.crt) is the cluster's public CA certificate; /api/cluster/join checks a join code.
-PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/health", "/api/panel-info",
+PUBLIC_API = {"/api/auth/login", "/api/auth/login/code", "/api/auth/logout", "/api/health", "/api/panel-info",
               "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join"}
 ADMIN_API = ("/api/users", "/api/settings")
 NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates",
-                 "/api/cluster/transfers")
+                 "/api/cluster/transfers", "/api/cluster/held-backups")
 CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster/nodes/", "/api/cluster/moves",
-                    "/api/cluster/moved/")
+                    "/api/cluster/moved/", "/api/cluster/backup-copies")
 STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
+# An admin who must set up two-factor (Panel Settings > Sign-in) can reach only these until they do
+TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
 
 @app.middleware("http")
 async def access_control(request: Request, call_next):
@@ -132,6 +142,9 @@ async def access_control(request: Request, call_next):
                     user = panel_settings.trusted_network_user(ip, request.headers, request.method)
                 if not user:
                     return JSONResponse({"detail": "Not signed in."}, status_code=401)
+                if user.get("needs_2fa_setup") and not path.startswith(TWO_FACTOR_SETUP_API):
+                    return JSONResponse({"detail": "Set up two-factor sign-in first (this panel requires it "
+                                                   "for admins)."}, status_code=403)
                 if path.startswith(NODE_ONLY_API):
                     return JSONResponse({"detail": "Only the cluster's master can use this."}, status_code=403)
                 if path.startswith(CLUSTER_USER_API) and user["source"] == "trusted":
@@ -149,12 +162,31 @@ def health():
 
 @app.get("/api/panel-info")
 def panel_info():
-    """Which panel this is, so several servers' panels can be told apart (also before sign-in)."""
-    return {"name": panel_settings.display_name()}
+    """Which panel this is, so several servers' panels can be told apart (also before sign-in).
+    1.16.13: also that it is a RedstonePanel and its cluster role, so a master's Find panels
+    (core/discovery.py) can offer to add standalone panels on the network."""
+    return {"name": panel_settings.display_name(), "app": "RedstonePanel", "cluster": cluster.role()}
+
+@app.get("/api/phone-qr")
+def phone_qr_api(url: str):
+    """Desktop → "Open on your phone" (1.16.10): the panel's address as a QR code (SVG), made here
+    with core/qr.py so the address never goes to an outside service. Only web addresses."""
+    if not url.startswith(("http://", "https://")) or any(c in url for c in "\r\n"):
+        raise HTTPException(status_code=400, detail="Only an http:// or https:// address.")
+    try:
+        return Response(qr.svg(url), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
+    except qr.QRError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+def _set_session_cookie(request: Request, response: Response, identity):
+    token = auth.make_session_token(identity)
+    response.set_cookie(auth.SESSION_COOKIE, token, max_age=auth.SESSION_SECONDS,
+                        httponly=True, samesite="strict", secure=request.url.scheme == "https", path="/")
+    return token
 
 @app.post("/api/auth/login")
 def login_api(req: LoginRequest, request: Request, response: Response):
@@ -164,14 +196,113 @@ def login_api(req: LoginRequest, request: Request, response: Response):
     except auth.AuthError as e:
         manager.write_log(f"[AUTH] Failed sign-in for '{req.username[:64]}' from {ip}")
         raise HTTPException(status_code=401, detail=str(e))
+    if identity.get("pending"):
+        # Right password; the session comes after the code (POST /api/auth/login/code)
+        response.set_cookie(auth.PENDING_COOKIE, auth.make_pending_token(identity), max_age=auth.PENDING_SECONDS,
+                            httponly=True, samesite="strict", secure=request.url.scheme == "https",
+                            path="/api/auth/login")
+        return {"code_needed": True}
     manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip}")
-    response.set_cookie(auth.SESSION_COOKIE, auth.make_session_token(identity), max_age=auth.SESSION_SECONDS,
-                        httponly=True, samesite="strict", secure=request.url.scheme == "https", path="/")
-    return auth.read_session_token(auth.make_session_token(identity))
+    return auth.read_session_token(_set_session_cookie(request, response, identity))
+
+class CodeRequest(BaseModel):
+    code: str
+
+@app.post("/api/auth/login/code")
+def login_code_api(req: CodeRequest, request: Request, response: Response):
+    ip = request.client.host if request.client else "unknown"
+    ticket = request.cookies.get(auth.PENDING_COOKIE)
+    who = (auth.read_pending_token(ticket) or {}).get("u", "?")
+    try:
+        identity = auth.complete_two_factor(ticket, req.code, ip)
+    except auth.AuthError as e:
+        manager.write_log(f"[AUTH] Failed two-factor code for '{str(who)[:64]}' from {ip}")
+        raise HTTPException(status_code=401, detail=str(e))
+    response.delete_cookie(auth.PENDING_COOKIE, path="/api/auth/login")
+    how = "a recovery code" if identity["used"] == "recovery" else "an app code"
+    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip} with {how}")
+    user = auth.read_session_token(_set_session_cookie(request, response, identity))
+    if user and identity["used"] == "recovery":
+        user["recovery_left"] = twofactor.status(twofactor.account_key(identity["src"], identity["u"]))["recovery_left"]
+    return user
 
 @app.post("/api/auth/logout")
 def logout_api(response: Response):
     response.delete_cookie(auth.SESSION_COOKIE, path="/")
+    response.delete_cookie(auth.PENDING_COOKIE, path="/api/auth/login")
+    return {"status": "success"}
+
+# --- Two-factor sign-in for the signed-in account (panel and Linux accounts alike) ---
+def _tf_account(request: Request):
+    user = request.state.user
+    if user["source"] not in ("panel", "linux"):
+        raise HTTPException(status_code=400, detail="Sign in with your account to set up two-factor sign-in.")
+    return user, twofactor.account_key(user["source"], user["username"])
+
+def _tf_check_code(user, key, code, request: Request):
+    """A current code (or recovery code) before changing two-factor; wrong ones count as failed sign-ins."""
+    ip = request.client.host if request.client else "unknown"
+    keys = (f"user:{user['username'].lower()}", f"ip:{ip}")
+    if auth._throttled(keys):
+        raise HTTPException(status_code=429, detail="Too many wrong codes. Try again in a few minutes.")
+    if not twofactor.verify(key, code):
+        auth._record_fail(keys)
+        raise HTTPException(status_code=400, detail="That code is wrong or was already used.")
+
+@app.get("/api/auth/2fa")
+def two_factor_status_api(request: Request):
+    user, key = _tf_account(request)
+    st = twofactor.status(key)
+    st["required"] = auth.two_factor_required_for(user["role"])
+    return st
+
+@app.post("/api/auth/2fa/setup")
+def two_factor_setup_api(request: Request):
+    user, key = _tf_account(request)
+    try:
+        secret = twofactor.begin_setup(key)
+    except twofactor.TwoFactorError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    uri = twofactor.provisioning_uri(secret, user["username"], panel_settings.display_name())
+    return {"secret": secret, "uri": uri, "qr_svg": qr.svg(uri)}
+
+@app.post("/api/auth/2fa/confirm")
+def two_factor_confirm_api(req: CodeRequest, request: Request, response: Response):
+    user, key = _tf_account(request)
+    try:
+        codes = twofactor.confirm_setup(key, req.code)
+    except twofactor.TwoFactorError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) turned on two-factor sign-in")
+    # Sessions that never passed the second step stop working; this browser just did, so keep it
+    v = next((u.get("session_version", 1) for u in auth._load_users() if u["username"] == user["username"]), 1) \
+        if user["source"] == "panel" else 0
+    _set_session_cookie(request, response, {"u": user["username"], "src": user["source"], "v": v, "m": 1})
+    return {"recovery_codes": codes}
+
+@app.post("/api/auth/2fa/recovery-codes")
+def two_factor_new_codes_api(req: CodeRequest, request: Request):
+    user, key = _tf_account(request)
+    if not twofactor.is_enabled(key):
+        raise HTTPException(status_code=400, detail="Two-factor sign-in is not on for this account.")
+    _tf_check_code(user, key, req.code, request)
+    codes = twofactor.new_recovery_codes(key)
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) made new two-factor recovery codes")
+    return {"recovery_codes": codes}
+
+@app.post("/api/auth/2fa/disable")
+def two_factor_disable_api(req: CodeRequest, request: Request):
+    user, key = _tf_account(request)
+    if not twofactor.is_enabled(key):
+        twofactor.remove(key)   # forget an unfinished setup
+        return {"status": "success"}
+    if auth.two_factor_required_for(user["role"]):
+        raise HTTPException(status_code=400, detail="This panel requires two-factor sign-in for admins. To move it to "
+                                                    "a new phone, ask another admin to reset it, or run "
+                                                    f"'sudo redstonepanel reset-2fa {user['username']}' on the server.")
+    _tf_check_code(user, key, req.code, request)
+    twofactor.remove(key)
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) turned off two-factor sign-in")
     return {"status": "success"}
 
 @app.get("/api/auth/me")
@@ -179,6 +310,9 @@ def me_api(request: Request):
     user = dict(request.state.user)
     # The release this panel runs; signed-in users only (the sign-in page doesn't advertise it)
     user["panel_version"] = panel_version()
+    # Bedrock Dedicated Server is x86-64 only: the New Server form hides it on ARM64 (a Raspberry Pi)
+    user["machine"] = platform.machine()
+    user["bedrock_supported"] = manager.bedrock_supported()
     # Admins get told when HTTPS was requested but the panel had to fall back to HTTP
     if user["role"] == "admin":
         user["https_error"] = panel_settings.RUNTIME.get("https_error")
@@ -251,10 +385,14 @@ def update_settings_api(request: Request, new: dict = Body(...)):
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Could not create the certificate: {e}")
 
+    if s["require_2fa_admins"] and not old["require_2fa_admins"] and not request.state.user.get("two_factor"):
+        raise HTTPException(status_code=400, detail="Set up two-factor sign-in for your own account first "
+                                                    "(Password button), so this doesn't lock you out.")
     panel_settings.save(s)
     me = request.state.user["username"]
     manager.write_log(f"[SETTINGS] {me} changed panel settings: HTTPS={s['https_mode']}, "
                       f"ports {s['http_port']}/{s['https_port']}, sign-in={s['login_mode']}, "
+                      f"2FA for admins={'required' if s['require_2fa_admins'] else 'optional'}, "
                       f"name={panel_settings.display_name(s)!r}")
     url = panel_settings.panel_url(s, request.headers.get("host"))
     if restart:
@@ -284,10 +422,8 @@ def change_password_api(req: PasswordChange, request: Request, response: Respons
         raise HTTPException(status_code=400, detail=str(e))
     # The change signs out all sessions, so issue a fresh cookie for this browser
     u = next(x for x in auth._load_users() if x["username"] == user["username"])
-    response.set_cookie(auth.SESSION_COOKIE,
-                        auth.make_session_token({"u": u["username"], "src": "panel", "v": u["session_version"]}),
-                        max_age=auth.SESSION_SECONDS, httponly=True, samesite="strict",
-                        secure=request.url.scheme == "https", path="/")
+    _set_session_cookie(request, response, {"u": u["username"], "src": "panel", "v": u["session_version"],
+                                            "m": 1 if user.get("two_factor") else 0})
     return {"status": "success"}
 
 # --- Panel user management (admins only; enforced in the middleware) ---
@@ -327,6 +463,19 @@ def update_user_api(username: str, req: PanelUserUpdate, request: Request):
     manager.write_log(f"[AUTH] {me['username']} updated panel user '{username}': {', '.join(changed)}")
     return {"status": "success"}
 
+@app.post("/api/users/{username}/reset-2fa")
+def reset_user_2fa_api(username: str, request: Request):
+    """An admin turns off another panel account's two-factor (lost phone). Linux accounts: reset-2fa."""
+    me = request.state.user
+    if me["source"] == "panel" and me["username"] == username:
+        raise HTTPException(status_code=400, detail="Use the Password button to change your own two-factor sign-in.")
+    if not any(u["username"] == username for u in auth._load_users()):
+        raise HTTPException(status_code=404, detail=f"Panel user '{username}' not found.")
+    if not twofactor.remove(twofactor.account_key("panel", username)):
+        raise HTTPException(status_code=400, detail=f"'{username}' doesn't have two-factor sign-in set up.")
+    manager.write_log(f"[AUTH] {me['username']} reset two-factor sign-in for panel user '{username}'")
+    return {"status": "success"}
+
 @app.delete("/api/users/{username}")
 def delete_user_api(username: str, request: Request):
     me = request.state.user
@@ -352,6 +501,43 @@ def get_servers():
 @app.get("/api/host")
 def host_api(request: Request):
     return host.report(redacted=request.state.user.get("source") == "trusted")
+
+# --- 1.17: performance, history, memory and hard limits (core/perf.py)
+class ResourcesUpdate(BaseModel):
+    xms: Optional[str] = None
+    xmx: Optional[str] = None
+    memory: Optional[str] = None          # hard memory limit: "off", "auto" or a size like "3G"
+    cpu: Optional[float] = None           # CPU limit in cores; 0 = none
+    restart: bool = False
+
+def _perf_call(fn, *args, **kw):
+    try:
+        return fn(*args, **kw)
+    except perf.PerfError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/api/host/history")
+def host_history(range: str = "day"):
+    return _perf_call(perf.host_history, range)
+
+@app.get("/api/servers/{server_name}/perf")
+def server_perf(request: Request, server_name: str, range: str = "day"):
+    out = _perf_call(perf.server_perf, server_name, range)
+    if request.state.user.get("source") == "trusted":
+        out.pop("address", None)
+    return out
+
+@app.get("/api/servers/{server_name}/resources")
+def get_resources(server_name: str):
+    return _perf_call(perf.resources, server_name)
+
+@app.put("/api/servers/{server_name}/resources")
+def set_resources(request: Request, server_name: str, req: ResourcesUpdate):
+    _require_admin(request, "change a server's memory or limits")
+    return _perf_call(perf.set_resources, server_name, xms=req.xms, xmx=req.xmx, memory=req.memory, cpu=req.cpu,
+                      restart=req.restart, actor=request.state.user["username"])
 
 @app.get("/api/servers/{server_name}/properties")
 def get_properties(server_name: str):
@@ -519,7 +705,8 @@ def java_requirement(version: str):
 async def java_missing(request: Request, e: manager.JavaMissing):
     """A server needs a Java that isn't installed: 409 with what to install, so an admin's
     browser can offer to install it and try again."""
-    return JSONResponse({"detail": str(e), "java": {"required": e.required, "package": e.package}},
+    return JSONResponse({"detail": str(e), "java": {"required": e.required, "major": e.major,
+                                                         "package": e.package}},
                         status_code=409)
 
 class JavaChoice(BaseModel):
@@ -644,6 +831,7 @@ class BackupSchedule(BaseModel):
     frequency: str
     time: str
     keep: int
+    keep_days: int = 0
 
 def _backup_call(fn, *args):
     try:
@@ -665,17 +853,28 @@ def get_backups(server_name: str):
 @app.put("/api/servers/{server_name}/backups/schedule")
 def set_backup_schedule(server_name: str, req: BackupSchedule):
     _backup_call(manager._check_server, server_name)
-    return _backup_call(backups.set_schedule, server_name, req.enabled, req.frequency, req.time, req.keep)
+    return _backup_call(backups.set_schedule, server_name, req.enabled, req.frequency, req.time, req.keep,
+                        req.keep_days)
 
 @app.post("/api/servers/{server_name}/backups")
 def backup_now(server_name: str):
     _backup_call(manager._check_server, server_name)
-    return _backup_call(backups.run_backup, server_name, "manual")
+    info = _backup_call(backups.run_backup, server_name, "manual")
+    info["offsite"] = backup_targets.sync_soon(server_name)     # 1.16.11: copy it to backup storage now
+    return info
 
 @app.get("/api/servers/{server_name}/backups/{filename}")
 def download_backup(server_name: str, filename: str):
     path = _backup_call(backups.backup_path, server_name, filename)
     return FileResponse(path, filename=filename, media_type="application/gzip")
+
+@app.get("/api/servers/{server_name}/backups/{filename}/sha256")
+def backup_sha256_api(server_name: str, filename: str):
+    """1.16.8: the master checks each copy it sends to another cluster member against this."""
+    try:
+        return {"sha256": backup_copies.backup_sha256(server_name, filename)}
+    except backup_copies.CopyError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
 
 @app.post("/api/servers/{server_name}/backups/{filename}/restore")
 def restore_backup(request: Request, server_name: str, filename: str):
@@ -688,6 +887,108 @@ def delete_backup(request: Request, server_name: str, filename: str):
     _require_admin(request, "delete a backup")
     _backup_call(backups.delete_backup, server_name, filename)
     return {"status": "success"}
+
+# --- 1.16.11: copies on SSH or S3-compatible backup storage (core/backup_targets.py)
+# A server's Backups tab (on a node too, through the master's proxy: each panel uses its own storage)
+def _offsite_call(fn, *args, **kwargs):
+    from core import archive
+    try:
+        return fn(*args, **kwargs)
+    except backup_targets.TargetError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (backups.BackupError, archive.ArchiveError, manager.DependencyError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class OffsiteToggle(BaseModel):
+    enabled: bool
+
+class OffsiteFetch(BaseModel):
+    file: str
+    panel: Optional[str] = None
+    server: Optional[str] = None
+
+@app.get("/api/servers/{server_name}/offsite")
+def offsite_view_api(server_name: str):
+    return _offsite_call(backup_targets.view, server_name)
+
+@app.post("/api/servers/{server_name}/offsite/sync")
+def offsite_sync_api(server_name: str):
+    _offsite_call(manager._check_server, server_name)
+    if not backup_targets.sync_soon(server_name):
+        raise HTTPException(status_code=400, detail="No backup storage keeps copies of this server's backups.")
+    return {"status": "started"}
+
+@app.put("/api/servers/{server_name}/offsite/{target_id}")
+def offsite_toggle_api(server_name: str, target_id: str, req: OffsiteToggle, request: Request):
+    _require_admin(request, "choose where backups are copied")
+    _offsite_call(manager._check_server, server_name)
+    _offsite_call(backup_targets.set_server, target_id, server_name, req.enabled, request.state.user["username"])
+    return _offsite_call(backup_targets.view, server_name, list_copies=False)
+
+@app.post("/api/servers/{server_name}/offsite/{target_id}/fetch")
+def offsite_fetch_api(server_name: str, target_id: str, req: OffsiteFetch, request: Request):
+    _require_admin(request, "restore from backup storage")
+    return _offsite_call(backup_targets.fetch, target_id, server_name, req.file, request.state.user["username"],
+                         req.panel, req.server)
+
+@app.delete("/api/servers/{server_name}/offsite/{target_id}/{filename}")
+def offsite_delete_api(server_name: str, target_id: str, filename: str, request: Request):
+    _require_admin(request, "delete a copy on backup storage")
+    return _offsite_call(backup_targets.delete_copy, target_id, server_name, filename, request.state.user["username"])
+
+# Panel Settings > Backup storage (admins only: everything under /api/settings is)
+def _storage_view():
+    try:
+        key = backup_targets.public_key()
+    except backup_targets.TargetError:
+        key = None
+    data = backup_targets.load()
+    return {"targets": [backup_targets.public({**t, "id": tid}) for tid, t in sorted(data["targets"].items())],
+            "panel_id": backup_targets.panel_id(), "public_key": key,
+            "tools": {"ssh": bool(shutil.which("ssh")), "rsync": bool(shutil.which("rsync"))},
+            "servers": [s["name"] for s in manager.list_servers()]}
+
+@app.get("/api/settings/backup-storage")
+def storage_view_api():
+    return _storage_view()
+
+@app.post("/api/settings/backup-storage")
+def storage_add_api(request: Request, req: dict = Body(...)):
+    _offsite_call(backup_targets.save_target, None, req, request.state.user["username"])
+    return _storage_view()
+
+@app.post("/api/settings/backup-storage/test")
+def storage_test_api(req: dict = Body(...)):
+    tid = req.get("id") if isinstance(req.get("id"), str) else None
+    fields = req.get("fields") if isinstance(req.get("fields"), dict) else None
+    return _offsite_call(backup_targets.test_target, tid, fields)
+
+@app.put("/api/settings/backup-storage/{target_id}")
+def storage_change_api(target_id: str, request: Request, req: dict = Body(...)):
+    _offsite_call(backup_targets.save_target, target_id, req, request.state.user["username"])
+    return _storage_view()
+
+@app.delete("/api/settings/backup-storage/{target_id}")
+def storage_remove_api(target_id: str, request: Request):
+    _offsite_call(backup_targets.remove_target, target_id, request.state.user["username"])
+    return _storage_view()
+
+@app.post("/api/settings/backup-storage/{target_id}/forget-host-key")
+def storage_forget_key_api(target_id: str, request: Request):
+    _offsite_call(backup_targets.forget_host_key, target_id, request.state.user["username"])
+    return _storage_view()
+
+@app.get("/api/settings/backup-storage/{target_id}/browse")
+def storage_browse_api(target_id: str):
+    return _offsite_call(backup_targets.browse, target_id)
+
+@app.post("/api/settings/backup-storage/{target_id}/import")
+def storage_import_api(target_id: str, request: Request, req: dict = Body(...)):
+    """Import > From backup storage: a new server here from a copy (the old machine is gone)."""
+    return _offsite_call(backup_targets.import_copy, target_id, str(req.get("panel") or ""),
+                         str(req.get("server") or ""), str(req.get("file") or ""), request.state.user["username"])
 
 # Scheduled restarts: a systemd timer per server, warning players first
 class RestartSchedule(BaseModel):
@@ -714,6 +1015,36 @@ def set_restarts(server_name: str, req: RestartSchedule):
     _restart_call(manager._check_server, server_name)
     _restart_call(restarts.set_schedule, server_name, req.enabled, req.frequency, req.time, req.warn)
     return restarts.overview(server_name)
+
+# Update alerts and automatic Bedrock updates (1.16.12, core/updates.py)
+class AutoUpdateSetting(BaseModel):
+    enabled: bool
+
+def _alerts_call(fn, *args, **kw):
+    try:
+        return fn(*args, **kw)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except updates.UpdateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+def _actor(request):
+    return ((getattr(request.state, "user", None) or {}).get("username")) or "?"
+
+@app.get("/api/servers/{server_name}/updates")
+def get_updates(server_name: str):
+    _alerts_call(manager._check_server, server_name)
+    return _alerts_call(updates.overview, server_name)
+
+@app.put("/api/servers/{server_name}/updates")
+def set_auto_update(request: Request, server_name: str, req: AutoUpdateSetting):
+    _alerts_call(manager._check_server, server_name)
+    return _alerts_call(updates.set_auto, server_name, req.enabled, actor=_actor(request))
+
+@app.post("/api/servers/{server_name}/updates/check")
+def check_updates_now(server_name: str):
+    _alerts_call(manager._check_server, server_name)
+    return _alerts_call(updates.check_one, server_name)
 
 # Webhook notifications (admins: under /api/settings). The URL is never sent back in full.
 class NotificationSettings(BaseModel):
@@ -1185,6 +1516,40 @@ def cluster_receive_template_api(request: Request, body: dict = Body(...)):
     manager.save_templates(templates)
     return {"status": "success", "id": t["id"]}
 
+# --- 1.16.14: what to forward on the internet router, per server and per cluster member (admins)
+def _ports_call(fn, *a, **kw):
+    try:
+        return fn(*a, **kw)
+    except portforward.ForwardError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/port-forwarding")
+def port_forwarding_api(request: Request):
+    _require_admin(request, "see port forwarding")
+    return portforward.overview(actor=request.state.user["username"])
+
+@app.get("/api/port-forwarding/local")
+def port_forwarding_local_api(request: Request):
+    """This panel's own rows; the cluster master reads it from each node."""
+    _require_admin(request, "see port forwarding")
+    return portforward.local_report()
+
+@app.put("/api/port-forwarding/settings")
+def port_forwarding_settings_api(request: Request, body: dict = Body(...)):
+    _require_admin(request, "change port forwarding")
+    return _ports_call(portforward.save, str(body.get("public_address") or ""), request.state.user["username"])
+
+@app.post("/api/port-forwarding/lookup")
+def port_forwarding_lookup_api(request: Request):
+    """Asks the router (NAT-PMP, then UPnP) for its internet address. Nothing else is asked."""
+    _require_admin(request, "change port forwarding")
+    return _ports_call(portforward.lookup_public_address)
+
+@app.post("/api/port-forwarding/check")
+def port_forwarding_check_api(request: Request):
+    _require_admin(request, "check port forwarding")
+    return _ports_call(portforward.check, portforward.overview(actor=request.state.user["username"]))
+
 # --- Master: the cluster dashboard (signed-in users; trusted-LAN visitors are refused)
 def _need_master():
     if cluster.role() != "master":
@@ -1259,7 +1624,8 @@ async def cluster_proxy_api(node_id: str, path: str, request: Request):
     if await run_in_threadpool(_node_too_old, node):
         raise HTTPException(status_code=409, detail=_too_old_detail(node))
     # Pass on the path as the browser encoded it (server and file names), with its query string
-    raw = request.scope.get("raw_path", b"").decode("latin-1")
+    # (raw_path has no query string under uvicorn; Starlette's test client before 0.33 put it in)
+    raw = request.scope.get("raw_path", b"").decode("latin-1").split("?", 1)[0]
     raw_target = "/" + raw.split("/proxy/", 1)[1] if "/proxy/" in raw else urllib.parse.quote(target)
     if request.url.query:
         raw_target += "?" + request.url.query
@@ -1366,11 +1732,14 @@ def _transfer_call(request, fn, *args, **kwargs):
 class TransferExport(BaseModel):
     server: str
     stop: bool
+    precopy: bool = False                   # 1.16.13: pack it while it runs, listing every file
+    base: Optional[str] = None              # 1.16.13: only what changed since that pre-copy
 
 class TransferImport(BaseModel):
     size: int
     sha256: str
     meta: dict
+    base: Optional[str] = None              # 1.16.13: a staged pre-copy these changes go on
 
 class TransferFinish(BaseModel):
     outcome: str
@@ -1383,7 +1752,7 @@ class TransferInstall(BaseModel):
 
 @app.post("/api/cluster/transfers/export")
 def transfer_export_api(req: TransferExport, request: Request):
-    return _transfer_call(request, transfer.export, req.server, req.stop)
+    return _transfer_call(request, transfer.export, req.server, req.stop, req.precopy, req.base)
 
 @app.get("/api/cluster/transfers/{tid}/archive")
 def transfer_archive_api(tid: str, request: Request):
@@ -1396,7 +1765,7 @@ def transfer_finish_api(tid: str, req: TransferFinish, request: Request):
 
 @app.post("/api/cluster/transfers/import")
 def transfer_import_api(req: TransferImport, request: Request):
-    return _transfer_call(request, transfer.begin_import, req.size, req.sha256, req.meta)
+    return _transfer_call(request, transfer.begin_import, req.size, req.sha256, req.meta, req.base)
 
 @app.put("/api/cluster/transfers/{tid}/archive")
 async def transfer_receive_api(tid: str, request: Request):
@@ -1415,6 +1784,10 @@ def transfer_install_api(tid: str, req: TransferInstall, request: Request):
     return _transfer_call(request, transfer.install, tid, req.keep_name, req.start, req.carry,
                           request.state.user["username"])
 
+@app.post("/api/cluster/transfers/{tid}/stage")
+def transfer_stage_api(tid: str, request: Request):
+    return _transfer_call(request, transfer.stage, tid)
+
 @app.post("/api/cluster/transfers/{tid}/confirm")
 def transfer_confirm_api(tid: str, request: Request):
     return _transfer_call(request, transfer.confirm, tid)
@@ -1427,6 +1800,138 @@ def transfer_abort_api(tid: str, request: Request):
 def transfer_delete_moved_api(server_name: str, request: Request):
     return _transfer_call(request, transfer.delete_moved, server_name)
 
+# --- 1.16.8: backup copies on another cluster member (core/backup_copies.py)
+# Holder side: only the master calls these, with its token (NODE_ONLY_API keeps browsers out).
+def _held_call(request, fn, *args):
+    if request.state.user.get("source") != "cluster":
+        raise HTTPException(status_code=403, detail="Only the cluster's master can use this.")
+    try:
+        return fn(*args)
+    except backup_copies.CopyError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except backups.BackupError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+def _query_int(request, name):
+    try:
+        return int(request.query_params.get(name, ""))
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Bad {name}.")
+
+async def _held_receive(request, receiver):
+    try:
+        async for chunk in request.stream():
+            if chunk:
+                await run_in_threadpool(_held_call, request, receiver.write, chunk)
+    except BaseException:
+        receiver.abort()
+        raise
+    return await run_in_threadpool(_held_call, request, receiver.close)
+
+@app.get("/api/cluster/held-backups")
+def held_backups_api(request: Request, panel: Optional[str] = None, server: Optional[str] = None):
+    return _held_call(request, backup_copies.list_held, panel or None, server or None)
+
+@app.get("/api/cluster/held-backups/{panel}/{server_name}/{filename}")
+def held_backup_download_api(request: Request, panel: str, server_name: str, filename: str):
+    path = _held_call(request, backup_copies.held_path, panel, server_name, filename)
+    return FileResponse(path, filename=filename, media_type="application/gzip")
+
+@app.get("/api/cluster/held-backups/{panel}/{server_name}/{filename}/sha256")
+def held_backup_sha_api(request: Request, panel: str, server_name: str, filename: str):
+    return {"sha256": _held_call(request, backup_copies.held_sha256, panel, server_name, filename)}
+
+@app.put("/api/cluster/held-backups/into/{server_name}/{filename}")
+async def held_backup_into_api(request: Request, server_name: str, filename: str):
+    receiver = await run_in_threadpool(_held_call, request, backup_copies.IntoReceiver, server_name, filename,
+                                       _query_int(request, "size"), request.query_params.get("sha256", ""))
+    return await _held_receive(request, receiver)
+
+@app.put("/api/cluster/held-backups/{panel}/{server_name}/{filename}")
+async def held_backup_receive_api(request: Request, panel: str, server_name: str, filename: str):
+    q = request.query_params
+    receiver = await run_in_threadpool(_held_call, request, backup_copies.HoldReceiver, panel,
+                                       q.get("panel_name") or panel, server_name, filename,
+                                       _query_int(request, "size"), q.get("sha256", ""), q.get("keep"))
+    return await _held_receive(request, receiver)
+
+@app.delete("/api/cluster/held-backups/{panel}/{server_name}/{filename}")
+def held_backup_delete_api(request: Request, panel: str, server_name: str, filename: str):
+    if request.state.user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only a cluster master's admin can delete backup copies.")
+    return _held_call(request, backup_copies.delete_held, panel, server_name, filename)
+
+# Master side: the Backups tab's "Also keep a copy on", the copies, and what can be done with them
+def _copy_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except backup_copies.CopyError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except cluster_client.NodeError as e:
+        raise HTTPException(status_code=e.status if e.status in (400, 404, 409, 507) else 502, detail=str(e))
+    except (manager.ServerError, backups.BackupError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class CopyTarget(BaseModel):
+    to: Optional[str] = None
+
+class CopyInto(BaseModel):
+    member: str = "local"
+    server: str
+
+@app.get("/api/cluster/backup-copies")
+def backup_copies_all_api(request: Request):
+    """Every copy kept in the cluster, for putting one into a server (also after its machine is gone)."""
+    _need_master_admin_for(request, "see every backup copy in the cluster")
+    found, missing = _copy_call(backup_copies.copies)
+    return {"copies": found, "unreachable": missing, "members": backup_copies.members()}
+
+@app.get("/api/cluster/backup-copies/{member_id}/{server_name}")
+def backup_copies_view_api(member_id: str, server_name: str):
+    return _copy_call(backup_copies.view, member_id, server_name)
+
+@app.put("/api/cluster/backup-copies/{member_id}/{server_name}")
+def backup_copies_set_api(member_id: str, server_name: str, req: CopyTarget, request: Request):
+    _need_master_admin_for(request, "choose where backup copies are kept")
+    return _copy_call(backup_copies.set_target, member_id, server_name, req.to or None,
+                      request.state.user["username"])
+
+@app.post("/api/cluster/backup-copies/{member_id}/{server_name}/sync")
+def backup_copies_sync_api(member_id: str, server_name: str, request: Request):
+    """Copies what's missing now (after Back up now), without waiting for the next pass."""
+    _need_master()
+    if not _copy_call(backup_copies.target, member_id, server_name):
+        raise HTTPException(status_code=400, detail="Copies of this server's backups aren't kept on another member.")
+    backup_copies.sync_soon(member_id, server_name, request.state.user["username"])
+    return {"status": "started"}
+
+@app.get("/api/cluster/backup-copies/file/{holder}/{panel}/{server_name}/{filename}")
+def backup_copy_download_api(holder: str, panel: str, server_name: str, filename: str, request: Request):
+    user = request.state.user
+    chunks, size = _copy_call(backup_copies.download, holder, panel, server_name, filename, user["username"],
+                              user["role"])
+    return StreamingResponse(chunks, media_type="application/gzip",
+                             headers={"Content-Length": str(size),
+                                      "Content-Disposition": f'attachment; filename="{filename}"'})
+
+@app.post("/api/cluster/backup-copies/file/{holder}/{panel}/{server_name}/{filename}/into")
+def backup_copy_into_api(holder: str, panel: str, server_name: str, filename: str, req: CopyInto, request: Request):
+    _need_master_admin_for(request, "put a backup copy into a server")
+    return _copy_call(backup_copies.put_into, holder, panel, server_name, filename, req.member, req.server,
+                      request.state.user["username"])
+
+@app.delete("/api/cluster/backup-copies/file/{holder}/{panel}/{server_name}/{filename}")
+def backup_copy_delete_api(holder: str, panel: str, server_name: str, filename: str, request: Request):
+    _need_master_admin_for(request, "delete a backup copy")
+    return _copy_call(backup_copies.remove, holder, panel, server_name, filename, request.state.user["username"])
+
+def _need_master_admin_for(request, what):
+    _need_master()
+    if request.state.user["role"] != "admin":
+        raise HTTPException(status_code=403, detail=f"Only admins can {what}.")
+
 # Master side: master admins start a move or copy and follow it
 class MoveRequest(BaseModel):
     kind: str
@@ -1434,6 +1939,7 @@ class MoveRequest(BaseModel):
     from_node: str = "local"
     to_node: str = "local"
     start: bool = False
+    precopy: bool = False
 
 def _need_master_admin(request):
     _need_master()
@@ -1445,7 +1951,8 @@ def cluster_move_api(req: MoveRequest, request: Request):
     _need_master_admin(request)
     user = request.state.user
     try:
-        return moves.start(req.kind, req.from_node, req.server, req.to_node, req.start, user["username"], user["role"])
+        return moves.start(req.kind, req.from_node, req.server, req.to_node, req.start, user["username"], user["role"],
+                           req.precopy)
     except moves.MoveError as e:
         raise HTTPException(status_code=e.status, detail=str(e))
 
@@ -1556,6 +2063,21 @@ def cluster_new_join_api(request: Request, body: dict = Body(default={})):
     manager.write_log(f"[CLUSTER] {me} made a join code ({j['id']}), valid for one hour.")
     return j
 
+@app.post("/api/settings/cluster/discover")
+def cluster_discover_api(request: Request):
+    """Find panels on your network (1.16.13): RedstonePanels on this machine's private networks."""
+    from core import discovery
+    me = request.state.user["username"]
+    if cluster.role() != "master":
+        raise HTTPException(status_code=400, detail="Create a cluster first: only its master adds panels.")
+    try:
+        found = discovery.find(cluster.load_nodes())
+    except discovery.DiscoveryError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    manager.write_log(f"[CLUSTER] {me} looked for panels on {', '.join(found['networks'])}: found "
+                      f"{len(found['panels'])} in {found['seconds']} s.")
+    return found
+
 @app.delete("/api/settings/cluster/joins/{join_id}")
 def cluster_cancel_join_api(join_id: str):
     cluster.cancel_join(join_id)
@@ -1605,6 +2127,7 @@ def cluster_remove_node_api(node_id: str, request: Request):
     except cluster_client.NodeError as e:
         confirmed, problem = False, str(e)
     cluster.forget_node(node_id)
+    backup_copies.forget_member(node_id)
     cluster_client.forget_cached(node_id)
     manager.write_log(f"[CLUSTER] {me} removed node '{node['name']}'"
                       + ("" if confirmed else f" (it couldn't be told: {problem}; run 'sudo redstonepanel leave' on it)"))

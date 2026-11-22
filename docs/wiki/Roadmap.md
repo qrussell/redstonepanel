@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.6**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.17.0**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,68 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.7: two-factor sign-in
-
-- **Codes from an authenticator app** at sign-in, for panel and Linux accounts, with recovery
-  codes shown once.
-- An optional setting to **require it for every admin**.
-- Locked out? `sudo redstonepanel reset-2fa NAME` on the server.
-
-### 1.16.8: backups on another cluster node
-
-- **Keep a copy of each backup on another cluster member**, checked as it's copied, with the
-  same retention.
-- Restore from the copy even if the original machine is gone.
-- A failed copy shows under **Needs attention** and can send an alert.
-
-### 1.16.9: newer Ubuntu, Debian and ARM64
-
-- **Ubuntu 25.10 and 26.04 LTS**, as well as 24.04 and 25.04.
-- **Debian 12 and 13**.
-- **ARM64** machines such as a Raspberry Pi, for Java servers. Bedrock is only made for
-  x86-64, so it's hidden there.
-
-### 1.16.10: a panel that works on a phone
-
-- **Every page fits a phone:** the sidebar becomes a ☰ menu, tables become cards, and Start,
-  Restart and Stop are big buttons at the top.
-- **Live Chat and the console** work with the on-screen keyboard.
-- **Install it as an app** from your phone's browser (over HTTPS), so it opens like any other
-  app.
-
-### 1.16.11: backups off the machine, without a cluster
-
-- **Copy each backup to an SSH server or S3-compatible storage** (Backblaze B2, Wasabi,
-  Cloudflare R2, MinIO, AWS S3), checked as it's copied.
-- **Keep backups by age** ("14 days") as well as by count, with separate settings for copies.
-- **Restore from a copy**, or bring a server back on a new machine straight from backup storage.
-
-### 1.16.12: Bedrock that keeps up, and update alerts
-
-- **Bedrock servers update themselves** if you turn it on: players are warned, a backup is
-  made, and a failed update is rolled back.
-- **Update available** on the dashboard when a new Minecraft release, Paper build, Fabric
-  loader or Bedrock version is out, with an optional webhook message.
-
-### 1.16.x: less downtime for big worlds
-
-- An optional **pre-copy** for moves: copy the world while the server keeps running, then only
-  what changed after it stops.
-- **Find panels on your network** and offer to add them to the cluster.
-
-### 1.17: server performance and tuning
-
-- **Tick health** (TPS and MSPT) for Paper, Vanilla and Fabric 1.20.3+.
-- **Memory:** the heap limit next to what the server really uses, and a **Memory** setting to
-  change it safely.
-- **History charts:** 24 hours at 1-minute detail and 7 days at 15-minute detail, for each
-  server and the host.
-- **Suggestions based on what was measured, never applied automatically:** lower simulation
-  distance when TPS drops, Lithium for Fabric, FastAsyncWorldEdit, pre-generating with Chunky,
-  or moving a busy server to a quieter node.
-- **Hard memory and CPU limits** per server, so one runaway server can't starve the rest.
-- **Alerts** for low TPS or a nearly full disk (off by default).
 
 ### 1.17.1: why did it crash?
 
@@ -147,6 +85,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.6** stops the console covering the page;
-**1.16.5** gives each Bedrock server its own gameplay port, and **1.16.4** fixes the settings of
-new Bedrock servers.
+See [What's New](Whats-New.md). The latest: **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.

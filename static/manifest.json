@@ -1,13 +1,17 @@
 {
+  "id": "/static/index.html",
   "name": "RedstonePanel",
   "short_name": "RedstonePanel",
+  "description": "Run your Minecraft Java and Bedrock servers.",
   "start_url": "/static/index.html",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#1b1a19",
   "theme_color": "#1b1a19",
   "icons": [
-    { "src": "/static/img/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/static/img/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/static/img/redstonepanel-icon.svg", "sizes": "any", "type": "image/svg+xml" }
+    { "src": "/static/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/img/redstonepanel-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }

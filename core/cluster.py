@@ -19,6 +19,7 @@ import io
 import ipaddress
 import json
 import os
+import platform
 import re
 import secrets
 import shutil
@@ -37,7 +38,8 @@ from core.version import panel_version
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
-CLUSTER_API = 3                 # the master<->node contract version (see hello()); 3: moving servers (1.16)
+CLUSTER_API = 5                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
+                                # 4: backup copies on another member (1.16.8), 5: pre-copy moves (1.16.13)
 MIN_JOIN_API = 1                # oldest node contract a master still lets join (phase 1 nodes)
 PROXY_API = 2                   # a node needs this for the master's proxy (phase 2, 1.15)
 JOIN_TTL = 3600                 # join codes are single-use and valid for an hour
@@ -70,6 +72,7 @@ NODE_ROUTES = (
     ("GET", r"/api/logs"),
     ("GET", r"/api/templates"),
     ("GET", r"/api/host"),
+    ("GET", r"/api/host/history"),          # 1.17: the dashboard's history charts for a node
     # phase 2 (1.15): every tab of a server, creating, removing and restoring servers, templates
     # pushed by the master, Java runtimes. Phantom lives under the server's own routes.
     ("GET|POST|PUT|DELETE", SERVER + r"(/[^/]+)*"),
@@ -84,8 +87,17 @@ NODE_ROUTES = (
     ("POST", r"/api/cluster/transfers/(export|import)"),
     ("GET|PUT", r"/api/cluster/transfers/[0-9a-f]{32}/archive"),
     ("POST", r"/api/cluster/transfers/[0-9a-f]{32}/(finish|install|confirm)"),
+    ("POST", r"/api/cluster/transfers/[0-9a-f]{32}/stage"),            # 1.16.13: a pre-copy
     ("DELETE", r"/api/cluster/transfers/[0-9a-f]{32}"),
     ("DELETE", r"/api/cluster/transfers/moved/minecraft[A-Za-z0-9_.@-]*"),
+    # 1.16.8: copies of other members' backups kept here, and a copy put into a server's backups
+    # (cluster plumbing). A backup's own checksum is under the server's routes above.
+    ("GET", r"/api/cluster/held-backups"),
+    ("GET|PUT|DELETE", r"/api/cluster/held-backups/(master|n-[0-9a-f]{4,32})/minecraft[A-Za-z0-9_.-]*/[^/]+"),
+    ("GET", r"/api/cluster/held-backups/(master|n-[0-9a-f]{4,32})/minecraft[A-Za-z0-9_.-]*/[^/]+/sha256"),
+    ("PUT", r"/api/cluster/held-backups/into/minecraft[A-Za-z0-9_.-]*/[^/]+"),
+    # 1.16.14: the node's own port forwarding rows, for the master's Port forwarding page
+    ("GET", r"/api/port-forwarding/local"),
 )
 # What the master's proxy (/api/cluster/nodes/{id}/proxy/...) passes on for its users: the node
 # routes except the cluster's own plumbing, which only the master itself calls.
@@ -181,9 +193,14 @@ def find_node(node_id):
     return next((n for n in load_nodes() if n["id"] == node_id), None)
 
 
+def clean_machine(value):
+    """A member's processor architecture as it reported it (x86_64, aarch64), or None."""
+    return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_]{1,20}", value) else None
+
+
 def public_node(n):
     """A node record without its token."""
-    out = {k: n.get(k) for k in ("id", "name", "url", "platform", "version", "cluster_api",
+    out = {k: n.get(k) for k in ("id", "name", "url", "platform", "machine", "version", "cluster_api",
                                  "cert_expires", "added", "added_by", "last_ok", "sans", "renew_error")}
     out["verify"] = node_verify(n)
     return out
@@ -506,7 +523,7 @@ def hello():
     s = panel_settings.load()
     cert = s["cert_file"] if s["https_mode"] == "custom" else node_crt()
     return {"name": panel_settings.display_name(s), "version": panel_version(), "cluster_api": CLUSTER_API,
-            "platform": "linux", "cluster_id": st.get("cluster_id"), "cert_expires": cert_expires(cert),
+            "platform": "linux", "machine": platform.machine(), "cluster_id": st.get("cluster_id"), "cert_expires": cert_expires(cert),
             "https_mode": s["https_mode"]}
 
 
@@ -693,6 +710,7 @@ def accept_join(body, client_ip):
         node = {"id": "n-" + secrets.token_hex(3), "name": name, "url": url, "verify": verify,
                 "token": token, "sans": {"names": sorted(names), "ips": sorted(ips)},
                 "cert_expires": expires, "platform": str(body.get("platform") or "linux")[:20],
+                "machine": clean_machine(body.get("machine")),
                 "version": str(body.get("version") or "unknown")[:40], "cluster_api": api,
                 "added": now, "added_by": join.get("created_by"), "last_ok": None}
         nodes.append(node)
@@ -737,7 +755,7 @@ def join(code, actor, client):
             token = new_token("rpn_")
             req = {"secret": c["s"], "name": panel_settings.display_name(s), "token": token,
                    "https_port": s["https_port"], "version": panel_version(), "cluster_api": CLUSTER_API,
-                   "platform": "linux"}
+                   "platform": "linux", "machine": platform.machine()}
             if custom:
                 req.update(verify="system", url=f"https://{public[0]}:{s['https_port']}",
                            cert_expires=cert_expires(s["cert_file"]))

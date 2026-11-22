@@ -172,11 +172,13 @@ class Report(unittest.TestCase):
             mock.patch.object(H, "rates", lambda units: (12.5, {"eth0": {"rx": 10, "tx": 20, "rx_total": 1, "tx_total": 2}},
                                                          {"minecraft-java.service": 3.2})),
             mock.patch.object(H, "firewall", lambda: self.fw),
+            mock.patch.object(H.manager, "sync_firewall", lambda: []),
             mock.patch.object(H, "failed_units", lambda: self.failed),
             mock.patch.object(H.proxies, "find_phantoms", lambda: []),
             mock.patch.object(H.javaservers, "installed_javas", lambda: {21: "/usr/lib/jvm/java-21/bin/java"}),
             mock.patch.object(H.runtimes, "owner", lambda path: "openjdk-21-jre-headless"),
             mock.patch.object(H.runtimes, "_default_major", lambda: 21),
+            mock.patch.object(H.javaservers, "packaged_javas", lambda refresh=False: H.javaservers.UBUNTU_JAVA),
             mock.patch.object(H, "panel_update", lambda: None),
             mock.patch.object(H, "java_players", lambda server, d: (2, 20)),
             mock.patch.object(H, "cached_size", lambda path: (12345, 1)),
@@ -213,7 +215,9 @@ class Report(unittest.TestCase):
                                                   "why_not": "used by minecraft-java"}])
         self.assertEqual(r["services"]["java_needed"], [])
         self.assertEqual([i["major"] for i in r["services"]["java_installable"]], [8, 11, 17, 25])
-        self.assertEqual(r["attention"], [])
+        # 19132:19133/udp is open but there's no Bedrock server: only that gets mentioned
+        self.assertEqual(r["services"]["firewall"]["leftover"], ["19132:19133/udp"])
+        self.assertEqual([a["level"] for a in r["attention"]], ["info"])
 
     def test_unused_java(self):
         self.servers = [_server("minecraft-bedrock", edition="Bedrock", port="19140", java_required=None,
@@ -236,10 +240,17 @@ class Report(unittest.TestCase):
         self.assertTrue(any("needs Java 25" in t and "openjdk-25-jre-headless" in t for t in texts))
         self.assertEqual(r["services"]["java_needed"], [{"major": 25, "servers": ["minecraft-java"],
                                                          "package": "openjdk-25-jre-headless"}])
-        self.assertTrue(any("doesn't allow 19140/udp for minecraft-bedrock" in t and "sudo ufw allow 19140/udp" in t
-                            for t in texts))
+        # No transport line: NetherNet, the default since BDS 1.26.50 (TCP signaling + UDP 7551)
+        self.assertTrue(any("doesn't allow 19140/tcp, 7551/udp for minecraft-bedrock" in t
+                            and "sudo ufw allow 19140/tcp && sudo ufw allow 7551/udp" in t for t in texts))
         failed = next(a for a in r["attention"] if "has failed" in a["text"])
         self.assertEqual(failed["server"], "minecraft-other")
+
+    def test_raknet_server(self):
+        self.servers = [_server("minecraft-bedrock", edition="Bedrock", port="19140", java_required=None,
+                                transport="raknet")]
+        texts = [a["text"] for a in self.report()["attention"]]
+        self.assertTrue(any("doesn't allow 19140/udp for minecraft-bedrock" in t for t in texts))
 
     def test_nethernet_lan_port(self):
         self.servers = [_server("minecraft-bedrock", edition="Bedrock", port="19132", java_required=None,
@@ -253,6 +264,36 @@ class Report(unittest.TestCase):
         text = next(a["text"] for a in r["attention"] if "ufw" in a["text"])
         self.assertIn("consoles on your network won't find it under LAN Games", text)
         self.assertIn("sudo ufw allow 7551/udp", text)
+
+    def test_leftover_rules(self):
+        # 19140/udp was a removed server's; 25565 (both protocols) is nobody's; 22 and 8080 aren't game ports
+        self.servers = [_server("minecraft-bedrock", edition="Bedrock", port="19132", java_required=None,
+                                udp_ports="19132")]
+        self.fw = {"installed": True, "active": True, "rules": (
+            "Status: active\n\nTo                         Action      From\n--                         ------      ----\n"
+            "22/tcp                     ALLOW       Anywhere\n8080                       ALLOW       Anywhere\n"
+            "19132/tcp                  ALLOW       Anywhere\n19132/udp                  ALLOW       Anywhere\n"
+            "7551/udp                   ALLOW       Anywhere\n19140/udp                  ALLOW       Anywhere\n"
+            "25565                      ALLOW       Anywhere\n19140/udp (v6)             ALLOW       Anywhere (v6)\n")}
+        r = self.report()
+        self.assertEqual(r["services"]["firewall"]["leftover"], ["19140/udp", "25565"])
+        text = next(a["text"] for a in r["attention"] if "no server on this panel uses" in a["text"])
+        self.assertIn("sudo ufw delete allow 19140/udp && sudo ufw delete allow 25565", text)
+        self.assertTrue(r["servers"][0]["firewall_open"])
+
+    def test_phantom_ports_arent_leftovers(self):
+        self.servers = []
+        self.fw = {"installed": True, "active": True,
+                   "rules": "Status: active\n19132/udp ALLOW Anywhere\n19300/udp ALLOW Anywhere\n"}
+        with mock.patch.object(H.proxies, "find_phantoms", lambda: [{"unit": "phantom-x.service", "bind_port": 19300}]):
+            self.assertEqual(self.report()["services"]["firewall"]["leftover"], [])
+
+    def test_leftover_parsing(self):
+        self.assertEqual(H.leftover_rules("19400:19500/udp ALLOW Anywhere\n", {("19400:19500", "udp")}), [])
+        self.assertEqual(H.leftover_rules("19400:19500/udp ALLOW Anywhere\n", {("19400", "udp")}), [])
+        self.assertEqual(H.leftover_rules("25570/tcp ALLOW Anywhere\n", {("25570", "udp")}), ["25570/tcp"])
+        self.assertEqual(H.leftover_rules("25570/tcp DENY Anywhere\n", set()), [])
+        self.assertEqual(H.leftover_rules("Anywhere on eth0 ALLOW Anywhere\n", set()), [])
 
     def test_crash_loop_and_failed_backup(self):
         show = SHOW.replace("ActiveState=active\nSubState=running\nNRestarts=0",

@@ -8,14 +8,25 @@ directly when it is one of them and through /api/cluster/transfers/... otherwise
     B: install(id, ...)            -> the server, under its own name and ports when they're free
     A: finish(id, "moved"|"copied"|"failed"), B: confirm(id) or abort(id)
 
+A move with a pre-copy (1.16.13) first sends the folder while the server keeps running, so the
+server is only down while the files that changed since are copied:
+
+    A: export(server, False, precopy=True) -> the folder as it is, plus a list of every file
+    B: begin_import + receive, then stage(id): unpacked next to the servers, not yet a server
+    A: export(server, True, base=pre id)   -> stops it; only what changed, and what was deleted
+    B: begin_import(..., base=staged id) + receive, then install(id): applied over the staged copy
+
 Nothing is deleted on A: a moved server stays as a removed server (marked moved_to) until an
 admin deletes it (delete_moved). Records live in DATA_DIR/transfers, next to their archives.
 """
 import hashlib
+import io
 import json
 import os
+import platform
 import re
 import shutil
+import stat
 import subprocess
 import tarfile
 import threading
@@ -32,6 +43,8 @@ STALE = 86400
 CHUNK = 1 << 16
 START_CHECK = 20            # seconds a started server must stay running
 JAVA_WAIT = 1800
+RECENT = 2                  # seconds: a file changed this close to the pre-copy is sent again anyway
+DELTA_LIST = ".redstonepanel-precopy.json"   # inside a pre-copy's second archive: what was deleted
 
 _lock = threading.Lock()
 _exporting = set()          # servers being archived right now
@@ -81,8 +94,24 @@ def _load(tid, kind=None):
     return rec
 
 
+def list_path(tid):
+    return os.path.join(_dir(), f"{tid}.list.json")
+
+
+def _staging_ok(path):
+    """A staged pre-copy folder this module made (never anything else gets removed)."""
+    return (isinstance(path, str) and os.path.dirname(path) == manager.SERVERS_ROOT.rstrip("/")
+            and os.path.basename(path).startswith(".redstonepanel-import-"))
+
+
 def _drop(tid):
-    for p in (_rec_path(tid), archive_path(tid), archive_path(tid) + ".partial"):
+    try:
+        staging = _load(tid).get("staging")
+    except TransferError:
+        staging = None
+    if _staging_ok(staging):
+        shutil.rmtree(staging, ignore_errors=True)
+    for p in (_rec_path(tid), archive_path(tid), archive_path(tid) + ".partial", list_path(tid)):
         try:
             os.remove(p)
         except OSError:
@@ -149,17 +178,138 @@ def _sha256(path):
     return h.hexdigest()
 
 
-def export(server, stop):
+def _listed(d, full):
+    """(rel, lstat) for everything _add_tree would pack, parents before children."""
+    for root, dirs, files in os.walk(d):
+        rel_root = os.path.relpath(root, d).replace(os.sep, "/")
+        rel_root = "" if rel_root == "." else rel_root
+        keep = []
+        for name in sorted(dirs):
+            rel = f"{rel_root}/{name}" if rel_root else name
+            if backups._skipped(rel, full):
+                continue
+            try:
+                st = os.lstat(os.path.join(root, name))
+            except FileNotFoundError:
+                continue
+            yield rel, st
+            if stat.S_ISDIR(st.st_mode):
+                keep.append(name)
+        dirs[:] = keep
+        for name in sorted(files):
+            rel = f"{rel_root}/{name}" if rel_root else name
+            if backups._skipped(rel, full):
+                continue
+            try:
+                yield rel, os.lstat(os.path.join(root, name))
+            except FileNotFoundError:
+                pass          # deleted by the running server while we walked
+
+
+def _stamp(st):
+    """What says a file hasn't changed: size, times (ctime can't be set back) and inode."""
+    return [st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino]
+
+
+class _Exact:
+    """Reads exactly n bytes of a file the server may be writing: if it shrank while being read,
+    the rest is zeros (the archive stays valid) and .short says the copy is no good."""
+    def __init__(self, f, n):
+        self.f, self.left, self.short = f, n, False
+
+    def read(self, size=-1):
+        size = self.left if size is None or size < 0 else min(size, self.left)
+        data = self.f.read(size)
+        if len(data) < size:
+            self.short = True
+            data += b"\0" * (size - len(data))
+        self.left -= len(data)
+        return data
+
+
+def _pack_listed(tar, d):
+    """The pre-copy: everything, live, with each file's stamp taken before it is read, so a file
+    written while (or after) it is read is sent again by _pack_changed. Returns the list."""
+    listing = {}
+    for rel, st in _listed(d, True):
+        path = os.path.join(d, rel)
+        if not stat.S_ISREG(st.st_mode):
+            try:
+                tar.add(path, arcname=rel, recursive=False)
+            except FileNotFoundError:
+                continue
+            listing[rel] = ["d" if stat.S_ISDIR(st.st_mode) else "l", time.time()]
+            continue
+        listed_at = time.time()
+        try:
+            f = open(path, "rb", opener=lambda p, fl: os.open(p, fl | os.O_NOFOLLOW))
+        except OSError:
+            continue                            # gone or replaced: the second archive sends it
+        with f:
+            info = tar.gettarinfo(arcname=rel, fileobj=f)
+            src = _Exact(f, info.size)
+            tar.addfile(info, src)
+        # the stamp from before reading: any write since shows as a newer ctime
+        listing[rel] = ["f", listed_at] + ([] if src.short else _stamp(st))
+    return listing
+
+
+def unchanged(old, st):
+    """True if a pre-copied file (its listing entry) is certainly the same now. Timestamps are
+    only as fine as the kernel's clock tick, so a file changed within RECENT seconds of being
+    listed counts as changed."""
+    if not old or old[0] != "f" or not stat.S_ISREG(st.st_mode):
+        return False
+    listed_at, stamp = old[1], old[2:]
+    return stamp == _stamp(st) and st.st_ctime_ns / 1e9 < listed_at - RECENT
+
+
+def _pack_changed(tar, d, listing):
+    """The second archive of a pre-copy (server stopped): folders, links and the files that are
+    new or changed, then DELTA_LIST naming what was deleted. Returns (files sent, deleted)."""
+    seen, sent = {}, 0
+    for rel, st in _listed(d, True):
+        seen[rel] = "d" if stat.S_ISDIR(st.st_mode) else "f" if stat.S_ISREG(st.st_mode) else "l"
+        if unchanged(listing.get(rel), st):
+            continue
+        tar.add(os.path.join(d, rel), arcname=rel, recursive=False)
+        sent += seen[rel] != "d"
+    # deleted since, or now another kind of thing (a folder became a file): deleted, then sent again
+    gone = sorted(rel for rel, old in listing.items() if seen.get(rel) is None
+                  or (seen[rel] == "d") != (old[0] == "d") or seen[rel] == "l" or old[0] == "l")
+    data = json.dumps({"deleted": gone}).encode()
+    info = tarfile.TarInfo(DELTA_LIST)
+    info.size, info.mtime, info.mode = len(data), int(time.time()), 0o600
+    tar.addfile(info, io.BytesIO(data))
+    return sent, len(gone)
+
+
+def export(server, stop, precopy=False, base=None):
     """Archives the server folder. stop=True (a move) stops the server first and keeps it from
-    being started here until finish(); otherwise a live snapshot is taken, as backups do."""
+    being started here until finish(); otherwise a live snapshot is taken, as backups do.
+    precopy=True (with stop=False) packs it as it is while it runs and lists every file; a later
+    export(stop=True, base=that id) packs only what changed since (see the module docstring)."""
     manager._check_server(server)
     cleanup_stale()
+    listing = None
+    if precopy and (stop or base):
+        raise TransferError("A pre-copy doesn't stop the server.")
+    if base:
+        pre = _load(base, "export")
+        if not stop or not pre.get("precopy") or pre.get("server") != server or pre.get("state") != "ready":
+            raise TransferError("That pre-copy can't be used.", 409)
+        try:
+            with open(list_path(base)) as f:
+                listing = json.load(f)
+        except (OSError, ValueError):
+            raise TransferError("The pre-copy's file list is missing.", 409)
     with _lock:
         if server in _exporting or is_moving(server):
             raise TransferError(f"{server} is already being moved or copied.", 409)
         _exporting.add(server)
     tid = uuid.uuid4().hex
-    rec = {"id": tid, "kind": "export", "server": server, "stop": bool(stop), "created": int(time.time())}
+    rec = {"id": tid, "kind": "export", "server": server, "stop": bool(stop), "created": int(time.time()),
+           "precopy": bool(precopy), "base": base}
     fd = None
     try:
         d = manager.get_server_dir(server)
@@ -177,9 +327,15 @@ def export(server, stop):
             manager.write_log(f"[MOVE] Stopping {server} to move it.")
             manager.run_and_log(["systemctl", "stop", f"{server}.service"])
         partial = archive_path(tid) + ".partial"
-        consistent = True
+        consistent, what = True, "a move" if stop else "a copy"
         with tarfile.open(partial, "w:gz", compresslevel=1) as tar:
-            if stop or not rec["was_running"]:
+            if listing is not None:
+                sent, gone = _pack_changed(tar, d, listing)
+                what = f"the end of a move ({sent} changed file{'s' if sent != 1 else ''}, {gone} deleted)"
+            elif precopy:
+                listing = _pack_listed(tar, d)
+                consistent, what = False, "a pre-copy while it runs"
+            elif stop or not rec["was_running"]:
                 backups._add_tree(tar, d, full=True)
             elif edition == "java":
                 consistent = backups._backup_running_java(server, d, tar, full=True)
@@ -187,11 +343,16 @@ def export(server, stop):
                 consistent = backups._backup_running_bedrock(server, d, tar, full=True)
         os.chmod(partial, 0o600)
         os.replace(partial, archive_path(tid))
+        if precopy:
+            fd2 = os.open(list_path(tid), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd2, "w") as f:
+                json.dump(listing, f)
         rec.update(size=os.path.getsize(archive_path(tid)), sha256=_sha256(archive_path(tid)),
                    consistent=consistent, state="ready")
         _save(rec)
-        manager.write_log(f"[MOVE] Packed {server} for {'a move' if stop else 'a copy'} "
-                          f"({rec['size'] / 1048576:.1f} MB).")
+        manager.write_log(f"[MOVE] Packed {server} for {what} ({rec['size'] / 1048576:.1f} MB).")
+        if base:
+            _drop(base)                         # its archive is on the target already
         return {k: rec[k] for k in ("id", "size", "sha256", "was_running", "consistent", "meta")}
     except Exception:
         _finish_failed(rec)
@@ -253,6 +414,9 @@ def delete_moved(name):
 def _clean_meta(meta):
     if not isinstance(meta, dict) or meta.get("edition") not in ("java", "bedrock"):
         raise TransferError("Bad server details.")
+    if meta["edition"] == "bedrock" and not manager.bedrock_supported():
+        raise TransferError(f"This member is an {platform.machine()} machine, and Bedrock servers only run on "
+                            f"x86-64 (64-bit Intel or AMD). Move it to another member.")
     out = {"edition": meta["edition"], "phantom": meta.get("phantom") is True}
     name = meta.get("name")
     out["name"] = name if isinstance(name, str) and manager.SERVICE_NAME_RE.match(name) else None
@@ -266,8 +430,13 @@ def _clean_meta(meta):
     return out
 
 
-def begin_import(size, sha256, meta):
+def begin_import(size, sha256, meta, base=None):
+    """base: the id of a staged pre-copy here that this archive's changes go on top of."""
     cleanup_stale()
+    if base is not None:
+        pre = _load(base, "import")
+        if pre.get("state") != "staged":
+            raise TransferError("That pre-copy isn't ready here.", 409)
     if not isinstance(size, int) or size <= 0:
         raise TransferError("Bad archive size.")
     if not isinstance(sha256, str) or not SHA_RE.match(sha256):
@@ -285,7 +454,7 @@ def begin_import(size, sha256, meta):
                             f"while it's copied, {min(free_here, free_opt) / 1e9:.1f} GB free.", 507)
     tid = uuid.uuid4().hex
     _save({"id": tid, "kind": "import", "size": size, "sha256": sha256, "meta": meta,
-           "created": int(time.time()), "state": "receiving"})
+           "created": int(time.time()), "state": "receiving", "base": base})
     return {"id": tid}
 
 
@@ -388,7 +557,8 @@ def _carry(name, meta, actor):
     b = meta.get("backup") or {}
     if b.get("enabled"):
         try:
-            backups.set_schedule(name, True, b.get("frequency"), b.get("time"), b.get("keep"))
+            backups.set_schedule(name, True, b.get("frequency"), b.get("time"), b.get("keep"),
+                                  b.get("keep_days") or 0)
         except Exception as e:
             manager.write_log(f"[MOVE] Couldn't set {name}'s backup schedule: {e}")
     r = meta.get("restart") or {}
@@ -405,20 +575,110 @@ def _carry(name, meta, actor):
             manager.write_log(f"[MOVE] Couldn't set up Phantom for {name}: {e}")
 
 
+def stage(tid):
+    """A pre-copy has arrived: unpack it next to the servers (a hidden folder, not a server yet)
+    for the second archive to be applied over by install()."""
+    rec = _load(tid, "import")
+    if rec.get("state") != "received":
+        raise TransferError("The archive hasn't arrived yet.", 409)
+    try:
+        staging, root = archive.unpack(archive_path(tid), manager.SERVERS_ROOT)
+    except archive.ArchiveError as e:
+        raise TransferError(str(e))
+    rec.update(state="staged", staging=staging, root=root)
+    _save(rec)
+    try:
+        os.remove(archive_path(tid))
+    except OSError:
+        pass
+    return {"status": "success"}
+
+
+def _inside(root, rel):
+    """root/rel, or None if rel is unsafe or a folder on the way isn't a real folder (a link
+    there could lead outside root, so nothing under it is touched)."""
+    parts = [p for p in str(rel).replace("\\", "/").split("/") if p not in ("", ".")]
+    if not parts or ".." in parts or str(rel).startswith("/"):
+        return None
+    cur = root
+    for p in parts[:-1]:
+        cur = os.path.join(cur, p)
+        try:
+            if not stat.S_ISDIR(os.lstat(cur).st_mode):
+                return None
+        except FileNotFoundError:
+            return None
+    return os.path.join(cur, parts[-1])
+
+
+def _remove(path):
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        return
+    if stat.S_ISDIR(st.st_mode):
+        shutil.rmtree(path)                     # never follows links inside
+    else:
+        os.remove(path)
+
+
+def apply_changes(archive_file, root):
+    """Applies a pre-copy's second archive over the staged folder at root: deletes what was
+    deleted, then unpacks what changed (with the same 'data' filter as every import)."""
+    with tarfile.open(archive_file) as tar:
+        members = tar.getmembers()
+        listed = next((m for m in members if m.name == DELTA_LIST and m.isfile()), None)
+        if listed is None:
+            raise TransferError("The second part of the pre-copy has no list of deleted files.")
+        try:
+            deleted = json.loads(tar.extractfile(listed).read(1 << 26)).get("deleted", [])
+        except (ValueError, AttributeError):
+            raise TransferError("The pre-copy's list of deleted files is damaged.")
+        members = [m for m in members if m is not listed]
+        for m in members:
+            archive._clean_name(m.name)
+        needed = sum(m.size for m in members if m.isfile())
+        if needed > shutil.disk_usage(root).free * 0.9:
+            raise TransferError(f"Not enough disk space here for the files that changed ({needed / 1e9:.1f} GB).", 507)
+        for rel in deleted if isinstance(deleted, list) else []:
+            target = _inside(root, rel)
+            if target:
+                _remove(target)
+        for m in members:
+            target = _inside(root, m.name)
+            if target and os.path.lexists(target) and (os.path.islink(target) or not (m.isdir() and os.path.isdir(target))):
+                _remove(target)                 # replaced: never write through what's there
+        try:
+            tar.extractall(root, members=members, filter="data")
+        except tarfile.FilterError as e:
+            raise TransferError(f"Unsafe archive entry refused: {e}")
+    return len(deleted), sum(1 for m in members if not m.isdir())
+
+
 def install(tid, keep_name=True, start=True, carry=True, actor="master"):
     """Turns a received archive into a server here. On any failure, what was made is removed."""
     rec = _load(tid, "import")
     if rec.get("state") != "received":
         raise TransferError("The archive hasn't arrived yet.", 409)
     meta = rec["meta"]
+    pre = None
+    if rec.get("base"):
+        pre = _load(rec["base"], "import")
+        if pre.get("state") != "staged" or not _staging_ok(pre.get("staging")):
+            raise TransferError("The pre-copy isn't here any more.", 409)
     rec["state"] = "installing"
     _save(rec)
     staging = None
     try:
-        try:
-            staging, root = archive.unpack(archive_path(tid), manager.SERVERS_ROOT)
-        except archive.ArchiveError as e:
-            raise TransferError(str(e))
+        if pre:
+            staging, root = pre["staging"], pre["root"]
+            deleted, changed = apply_changes(archive_path(tid), root)
+            manager.write_log(f"[MOVE] Applied the changes since the pre-copy: {changed} changed, {deleted} deleted.")
+        else:
+            try:
+                staging, root = archive.unpack(archive_path(tid), manager.SERVERS_ROOT)
+            except archive.ArchiveError as e:
+                raise TransferError(str(e))
         java = _java_for(root, actor) if meta["edition"] == "java" else None
 
         def placed(name):
@@ -428,7 +688,9 @@ def install(tid, keep_name=True, start=True, carry=True, actor="master"):
                                             heap={k: meta[k] for k in ("xms", "xmx") if k in meta}, java=java,
                                             start=start, on_placed=placed)
         if start:
+            checked = time.time()
             _stays_running(result["name"])
+            result["checked_for"] = round(time.time() - checked)    # running all along: not downtime
         if carry:
             _carry(result["name"], meta, actor)
         rec["state"] = "installed"
@@ -450,6 +712,8 @@ def install(tid, keep_name=True, start=True, carry=True, actor="master"):
     finally:
         if staging:
             shutil.rmtree(staging, ignore_errors=True)
+        if pre:
+            _drop(pre["id"])
 
 
 def confirm(tid):
