@@ -1623,6 +1623,38 @@ refused joins, so those are Java only.
     **Size:** two to three weeks; Forge's installer and the modpack update path are the slow
     parts.
 
+    **As built (22 Nov 2026, MR on `feature/loaders-modpacks`):** as planned, with these
+    differences. Quilt is not a `server.jar`: like Forge and NeoForge it has an installer, which
+    the panel runs as `minecraft` in the new server's folder (or, for an update, in a staging
+    folder that is swapped in only when it worked). What the unit starts is recorded as `launch`
+    in `.redstonepanel-server.json` and checked against a strict pattern before it goes into
+    `ExecStart`, because that file is writable by `minecraft` and the unit belongs to root. Forge
+    covers 1.12.2 and newer, Quilt 1.14.4 and newer, NeoForge 1.20.2 and newer. Forge before 1.17
+    doesn't start on a newer Java than it was made for, so those servers get Java 8 (below 1.13)
+    or at most Java 11. Ubuntu's Java 8 package has no `release` file and was never found by the
+    panel before; it is now. Backups leave the loader's libraries out, and a restore runs the
+    installer again at the recorded build. NeoForge servers take Forge mods only up to Minecraft
+    1.20.4. A modpack server is given 4 GB of heap when the machine has room, gets no server
+    software update alert (the pack decides), and a pack update removes only the mods the old
+    pack version installed. An uploaded server pack's scripts, installers, server jars and
+    libraries are never copied or run. Modpack installs and searches work on nodes
+    (`CLUSTER_API` 7; older nodes show the new types greyed out). New routes:
+    `GET /api/modpacks/search`, `GET /api/modpacks/versions`, `POST /api/servers/modpack`,
+    `GET /api/servers/{name}/modpack`, `POST …/modpack/check`, `POST …/modpack/update`.
+    Tested: `tests/test_loaders.py` and `tests/test_modpacks.py` (45 tests: version lists and
+    build choice for each type, the installer run and what it records, the unit, old Forge's
+    Java, mods accepted and refused per type, update alerts, reading and refusing packs, hashes
+    and hosts, path safety, create and update). `packaging/test/test-loaders-modpacks.sh` with
+    real downloads in a systemd container, 92/92: Purpur 1.21.4, Quilt 1.21.4, NeoForge 1.21.1
+    (a pinned build, then updated to the newest), Forge 1.20.1 on Java 17 and Forge 1.12.2 on
+    Java 8 each reaching "Done"; a NeoForge mod accepted and a Fabric one refused; the Modrinth
+    pack Adrenaserver installed at an older version, then updated across Minecraft versions with
+    a backup first, the world, settings and the owner's own mod kept; an uploaded `.mrpack` and
+    an uploaded Forge server pack started; a wrong hash, a download from another host, a
+    CurseForge client zip and a non-admin all refused with nothing left behind. The new dialogs
+    were checked at 390 x 844. Not tested yet: switching Fabric ↔ Quilt and Paper ↔ Purpur, which
+    waits for 1.19's switching to be merged, and ARM64 (the installers are plain Java).
+
 ### 2.0: an API for scripts and bots
 
 26. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already

@@ -189,6 +189,23 @@ esac
 """
 
 
+class PackagedJava8(Base):
+    def test_java_8_without_a_release_file_is_found(self):
+        """Ubuntu's openjdk-8 has no release file and keeps java in jre/bin."""
+        home = os.path.join(self.jvm, "java-8-openjdk-amd64")
+        os.makedirs(os.path.join(home, "jre", "bin"))
+        os.makedirs(os.path.join(home, "bin"))
+        real = os.path.join(home, "jre", "bin", "java")
+        with open(real, "w") as f:
+            f.write("#!/bin/sh\n")
+        os.chmod(real, 0o755)
+        os.symlink("../jre/bin/java", os.path.join(home, "bin", "java"))
+        os.symlink("java-8-openjdk-amd64", os.path.join(self.jvm, "java-1.8.0-openjdk-amd64"))
+        self.assertEqual(J.installed_javas(), {8: os.path.join(home, "bin", "java")})
+        self.assertEqual(J.java_major_of(os.path.join(home, "bin", "java")), 8)
+        self.assertEqual(J.choose_java(8, "1.12.2", 8), os.path.join(home, "bin", "java"))
+
+
 class Install(Base):
     def setUp(self):
         super().setUp()

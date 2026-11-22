@@ -27,7 +27,7 @@ Then open `http://<your-server>:8080/` and sign in with a Linux account in the `
 
 ## What it does
 
-- **Servers:** Java (Vanilla, Paper, Fabric, any version) and Bedrock side by side, each with
+- **Servers:** Java (Vanilla, Paper, Purpur, Fabric, Quilt, NeoForge, Forge, any version, or from a modpack) and Bedrock side by side, each with
   the Java it needs. Create, import, export, update, uninstall and restore.
 - **Mods and plugins:** a Modrinth and Hangar catalog with bundles, dependencies and updates
   with undo; drag-and-drop `.jar`, `.mcpack` and `.mcaddon` files.

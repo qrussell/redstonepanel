@@ -719,7 +719,13 @@ def check_update(server):
         raise PackError("This pack was uploaded, so the panel can't look for newer versions. "
                         "Upload the newer version of it instead.")
     info = modrinth.modpack_versions(str(rec["project"]))
-    versions = [v for v in info["versions"] if rec["loader"] in (v.get("loaders") or [rec["loader"]])]
+    # For this server's loader, and not for an older Minecraft than its world is from (packs
+    # often publish one version per Minecraft version)
+    here = rec.get("minecraft") if javaservers.is_release(rec.get("minecraft")) else None
+    versions = [v for v in info["versions"] if rec["loader"] in (v.get("loaders") or [rec["loader"]])
+                and (not here or not v.get("minecraft") or any(
+                    javaservers.is_release(m) and javaservers.version_key(m) >= javaservers.version_key(here)
+                    for m in v["minecraft"]))]
     ids = [v["id"] for v in versions]
     at = ids.index(rec.get("version_id")) if rec.get("version_id") in ids else None
     newer = versions[:at] if at is not None else versions

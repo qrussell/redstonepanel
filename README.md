@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install
 and password (any member of the `sudo` group).
 
 **3. Create a server.** Click **➕ New Server**, choose **Java** or **Bedrock** (and for Java,
-Vanilla, Paper or Fabric and a version), then click **Deploy Fresh Server**. (On a Raspberry
+Vanilla, Paper, Purpur, Fabric, Quilt, NeoForge or Forge, and a version), then click **Deploy Fresh Server**. (On a Raspberry
 Pi or another ARM64 machine, Java only: Mojang makes the Bedrock server for x86-64 only.) The panel
 downloads it, installs the Java it needs, picks a free port and starts it. A Java server is
 ready in about a minute; watch it in **🖥️ Console**.
@@ -55,7 +55,7 @@ every feature step by step.
 
 | You want… | RedstonePanel gives you… |
 | --- | --- |
-| **Java and Bedrock** | Both, side by side. Java as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft version you pick, each with the Java it needs installed for you. An **Update available** alert for every server, and Bedrock servers that can update themselves, with a backup first and the old version put back if the new one won't start. |
+| **Java and Bedrock** | Both, side by side. Java as **Vanilla**, **Paper** or **Purpur** (plugins), or **Fabric**, **Quilt**, **NeoForge** or **Forge** (mods), on the Minecraft version you pick, or straight from a **modpack**, each with the Java it needs installed for you. An **Update available** alert for every server, and Bedrock servers that can update themselves, with a backup first and the old version put back if the new one won't start. |
 | **Mods and plugins without the hassle** | A catalog from **Modrinth** and **Hangar** with one-click bundles (performance, essentials, Geyser for Bedrock players), dependencies installed for you, update checks and one-click undo. Or drop `.jar`, `.mcpack` and `.mcaddon` files on the server. |
 | **Worlds that are safe** | Scheduled and on-demand backups that copy running servers consistently, copies off the machine on a NAS or S3 storage, one-click restore (with an undo), a backup before mod updates, and uninstalled servers you can bring back. |
 | **To know what's going on** | A dashboard of the machine and every server, a **Needs attention** list, Discord or webhook alerts for crashes and backups, and a log of who joined and who was turned away. |
@@ -192,8 +192,12 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
 - create, start, stop and update servers
 - a server list grouped by machine and edition, with headings that fold and show how many
   servers are online
-- Java servers as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft
-  version you choose, each run with the Java it needs
+- Java servers as **Vanilla**, **Paper** or **Purpur** (plugins), or **Fabric**, **Quilt**,
+  **NeoForge** or **Forge** (mods), on the Minecraft version you choose, each run with the
+  Java it needs
+- servers from a modpack: search Modrinth's modpacks, or upload a `.mrpack` or a CurseForge
+  server pack; the panel installs the server type the pack needs and only the server-side
+  mods, and updates the pack later with a backup first, keeping the world
 - live chat and console commands (over RCON)
 - a `server.properties` editor
 - per-server permissions for helpers (1.18): give a user account View, Console & chat,
@@ -203,7 +207,7 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   `account.server` with the panel password or an SSH key, and reach only that server's folder
 - a file manager for each server's folder (admins, and users given **Files**): browse, edit text files such as plugin
   configs, drag and drop uploads, download, rename and delete
-- mods (Fabric), plugins (Paper) and add-ons (Bedrock): drop `.jar`, `.mcpack` or `.mcaddon`
+- mods (Fabric, Quilt, NeoForge, Forge), plugins (Paper, Purpur) and add-ons (Bedrock): drop `.jar`, `.mcpack` or `.mcaddon`
   files on the server and they're checked and put in the right place; the list shows what's
   installed, warns about the wrong Minecraft version or missing dependencies, and can
   disable or remove each one
@@ -229,7 +233,7 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   world), the likely mod or plugin with **Turn off and restart**, **Undo the last mod update**,
   and the log with its error lines highlighted
 - scheduled restarts that warn players in game first
-- update alerts for every server (Bedrock, Minecraft releases, Paper builds, Fabric loader),
+- update alerts for every server (Bedrock, Minecraft releases, Paper and Purpur builds, Fabric and Quilt loaders, Forge and NeoForge builds),
   checked every 6 hours, and **Update automatically** for Bedrock servers (**Maintenance**, or
   `sudo redstonepanel check-updates`)
 - change a Java server's type in place (Vanilla, Paper, Fabric) and keep its world: a preview

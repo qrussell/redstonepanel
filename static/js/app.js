@@ -1412,6 +1412,7 @@ const ServerApp = {
     },
 
     async openDeployModal() {
+        this.modalWide(false);
         await this.fetchTemplates(); // Ensure templates are loaded for the dropdown
         this.loadRemovedServers();   // fills the "Removed servers" section when it arrives
         const modal = document.getElementById('modal-overlay');
@@ -1487,7 +1488,7 @@ const ServerApp = {
             ${this.isAdmin() ? `<hr class="border-gray-200 dark:border-gray-700 my-4" />
             <div class="mb-2">
                 <label class="block text-sm text-gray-400 mb-1">From a modpack</label>
-                <p class="text-xs text-gray-500 mb-2">A server with a whole modpack already in it: pick one from Modrinth, or upload a .mrpack or a CurseForge server pack. The panel installs the loader and Minecraft version the pack needs.</p>
+                <p class="text-xs text-gray-500 mb-2">Pick a modpack from Modrinth, or upload a .mrpack or a CurseForge server pack.</p>
                 <button id="deploy-modpack-btn" onclick="ServerApp.openModpackDialog()" class="w-full bg-theme hover-bg-theme py-2 rounded text-white font-bold transition">Choose a modpack…</button>
                 <p id="deploy-modpack-note" class="text-xs text-gray-500 mt-1 hidden"></p>
             </div>` : ''}
@@ -4696,6 +4697,7 @@ const ServerApp = {
 
     renderModpackDialog() {
         const m = this.modpack, esc = t => this.escapeHtml(String(t ?? ''));
+        this.modalWide(true);
         const input = 'w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white';
         const label = 'block text-sm text-gray-400 mb-1';
         const tab = (v, text) => `<button onclick="ServerApp.modpackView('${v}')" class="flex-1 px-3 py-2 rounded text-sm font-bold ${m.view === v
@@ -4726,7 +4728,7 @@ const ServerApp = {
         } else if (m.pick) {
             const p = m.pick, vs = m.versions;
             body = `
-                <button onclick="ServerApp.modpackBack()" class="text-sm text-theme underline mb-3">← Back to the list</button>
+                <button onclick="ServerApp.modpackBack()" class="text-sm text-theme underline mb-3 min-h-[44px] sm:min-h-0">← Back to the list</button>
                 <div class="flex gap-3 items-start mb-3">
                     ${p.icon ? `<img src="${esc(p.icon)}" alt="" class="w-14 h-14 rounded shrink-0" loading="lazy" referrerpolicy="no-referrer">` : ''}
                     <div class="min-w-0">
@@ -4751,7 +4753,7 @@ const ServerApp = {
                         ${h.icon ? `<img src="${esc(h.icon)}" alt="" class="w-10 h-10 rounded shrink-0" loading="lazy" referrerpolicy="no-referrer">` : '<span class="w-10 h-10 rounded shrink-0 bg-gray-200 dark:bg-gray-700"></span>'}
                         <span class="min-w-0 flex-1">
                             <span class="block font-bold text-gray-900 dark:text-white truncate">${esc(h.title)}</span>
-                            <span class="block text-xs text-gray-600 dark:text-gray-400 line-clamp-2">${esc(h.description || '')}</span>
+                            <span class="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">${esc(h.description || '')}</span>
                             <span class="block text-xs text-gray-500">${esc((h.loaders || []).map(l => this.loaderName(l)).join(', '))}${h.latest_minecraft ? ` · up to ${esc(h.latest_minecraft)}` : ''} · ${esc(this.compactCount(h.downloads))} downloads</span>
                         </span>
                     </button>`).join('');
@@ -6785,6 +6787,14 @@ const ServerApp = {
 
 	closeModal() {
 		document.getElementById('modal-overlay').classList.add('hidden');
+		this.modalWide(false);
+	},
+
+	// The modpack dialog is a list to read, so it gets a wider box than the other dialogs
+	modalWide(on) {
+		const c = document.getElementById('modal-content');
+		c.classList.toggle('max-w-2xl', on);
+		c.classList.toggle('max-w-md', !on);
 	},
 
 	openChangePasswordModal() {

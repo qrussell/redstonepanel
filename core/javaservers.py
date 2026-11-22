@@ -831,12 +831,17 @@ def describe(info):
 # Java
 # ---------------------------------------------------------------------------
 def _release_major(java_home):
-    """Major version from <java_home>/release (JAVA_VERSION="21.0.5" or "1.8.0_432")."""
+    """Major version from <java_home>/release (JAVA_VERSION="21.0.5" or "1.8.0_432"). Ubuntu's
+    and Debian's Java 8 has no release file (and its java is jre/bin/java), so the folder's
+    packaged name (java-8-openjdk-amd64) is the fallback."""
+    if os.path.basename(java_home) == "jre":
+        java_home = os.path.dirname(java_home)
     try:
         with open(os.path.join(java_home, "release")) as f:
             m = re.search(r'^JAVA_VERSION="([0-9]+)(?:\.([0-9]+))?', f.read(), re.M)
     except OSError:
-        return None
+        m = re.match(r"java-([0-9]+)-openjdk-", os.path.basename(java_home))
+        return int(m.group(1)) if m else None
     if not m:
         return None
     return int(m.group(2)) if m.group(1) == "1" and m.group(2) else int(m.group(1))

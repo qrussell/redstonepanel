@@ -447,8 +447,15 @@ Click **➕ New Server**.
    - **Vanilla (Mojang)**: the official server.
    - **Paper (plugins)**: a faster server that runs Bukkit/Paper plugins. Put plugin `.jar`
      files in the server's `plugins` folder.
+   - **Purpur (plugins)**: Paper with more settings to tune. It runs the same plugins as
+     Paper, in the same `plugins` folder.
    - **Fabric (mods)**: runs Fabric mods. Put mod `.jar` files in the server's `mods`
      folder; players need the same mods.
+   - **Quilt (mods)**: runs Quilt mods and most Fabric mods. Minecraft 1.14.4 and newer.
+   - **NeoForge (mods)**: runs NeoForge mods. Most new modpacks use it. Minecraft 1.20.2 and
+     newer.
+   - **Forge (mods)**: runs Forge mods, including the many older ones. Minecraft 1.12.2 and
+     newer.
    - **Newest** is the default. Pick an older version to match your players' clients or your
      plugins and mods.
    - The line under the lists says which Java that version needs and which installed Java
@@ -472,7 +479,7 @@ are checked before anything is downloaded, so a taken name or port fails straigh
 | Group | What you can choose |
 | --- | --- |
 | **Server** | The name (it becomes `minecraft-NAME`) and the game port. |
-| **Software** (Java) | **Build**: a specific Paper build or Fabric loader instead of the newest stable one, for when a plugin or mod needs a known one. **Show snapshots and pre-releases** (Vanilla) lists the current test versions in **Minecraft Version**. **Java**: an installed Java to run on, never older than the version needs. |
+| **Software** (Java) | **Build**: a specific Paper or Purpur build, or Fabric, Quilt, Forge or NeoForge version, instead of the newest stable one, for when a plugin or mod needs a known one. **Show snapshots and pre-releases** (Vanilla) lists the current test versions in **Minecraft Version**. **Java**: an installed Java to run on, never older than the version needs. |
 | **Memory** (Java) | **Heap**: Java's memory. Refused if it would leave less than 1 GB for the system. |
 | **Hard limits** | A hard memory limit (Automatic for Java: the heap plus room for Java) and a CPU limit in cores, the same as **Maintenance → Memory and limits**. |
 | **Startup flags** (Java) | **Aikar's flags**, the usual tuning for Paper, and for admins extra flags: `-XX:` options, `-D` properties and `-Xss` only. |
@@ -491,10 +498,13 @@ The panel then:
 
 - names the server (`minecraft-java`, then `minecraft-java-2`, and so on) and picks a free
   port (Java from 25565, Bedrock from 19132), unless you chose them in Advanced options;
-- downloads the server: Mojang's `server.jar`, the newest stable Paper build, or Fabric's
-  server launcher for the chosen version (always saved as `server.jar`), or the latest
-  Bedrock Dedicated Server. Vanilla and Paper downloads are checked against their published
-  checksums;
+- downloads the server: Mojang's `server.jar`, the newest stable Paper or Purpur build, or
+  Fabric's server launcher for the chosen version (always saved as `server.jar`), or the latest
+  Bedrock Dedicated Server. Vanilla, Paper and Purpur downloads are checked against their
+  published checksums. For Quilt, Forge and NeoForge it downloads that project's installer
+  (checked the same way) and runs it in the new server's folder as the `minecraft` user; the
+  installer fetches Minecraft and the loader's libraries, which takes a few minutes. Forge
+  picks its recommended build for the Minecraft version, NeoForge its newest stable one;
 - sets the server's ports in its `server.properties`. A Bedrock server keeps the full file
   that comes with the Bedrock download, so every setting is there to change in
   **Configuration**, and gets UDP `server-udp-ports` (its gameplay port) on the same number as
@@ -507,6 +517,43 @@ The panel then:
 
 Watch the progress in **🖥️ Console**. A Java server is ready in about a minute; most of that
 time is the first world being generated.
+
+**From a modpack** (admins)
+
+A modpack is a set of mods and settings that were made to work together. Click **Choose a
+modpack…** under **From a modpack**.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/modpack-search.png"><img src="images/modpack-search.png" alt="Choosing a modpack from Modrinth"></picture>
+
+- **Modrinth**: type a name, pick a pack and then a version of it. Only packs for
+  Fabric, Quilt, Forge and NeoForge are listed, and each version says which of those and which
+  Minecraft version it uses.
+- **Upload a pack**: a Modrinth `.mrpack` file, or a **server pack** `.zip`, which is how
+  CurseForge packs are installed. On the pack's CurseForge page, open **Files**, pick the
+  version and download its **Server Pack** (under *Additional files*), then upload that zip
+  here. The panel has no CurseForge browser: you download the pack, so the authors' download
+  rules are kept and no API key is needed.
+
+Then click **Create server** (or **Upload & create server**). The panel:
+
+1. reads the pack and works out the server type and Minecraft version it needs. For an
+   `.mrpack` they are written in the pack. For a server pack the panel reads them from the
+   pack's files; when it can't tell, choose them under **If the pack doesn't say what it needs**;
+2. installs that server type itself, at the version the pack names, with the Java it needs;
+3. downloads the pack's server-side mods (an `.mrpack` lists them with checksums, and each
+   download is checked) and copies the pack's own `mods`, `config` and other folders in.
+   Mods marked as not for servers are left out;
+4. gives the server 4 GB of memory when the machine has room (change it under
+   **Maintenance → Memory and limits**), and starts it.
+
+The panel never runs anything from a pack. Start scripts, installers and server jars inside an
+uploaded pack are not copied: the panel downloads the server software from its own project
+instead. Players need the same pack in their launcher to join. A big pack can take ten
+minutes or more to install; watch **🖥️ Console**.
+
+On a Raspberry Pi or another small machine, pick light packs: many modpacks want 6 GB of
+memory or more. On a cluster, a modpack server can be created on a node that runs
+RedstonePanel 1.20 or later.
 
 **Import a server you already have**
 
@@ -720,7 +767,10 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
   [Rolling back an update](#rolling-back-an-update). Bedrock servers always update to the newest release,
   the same safe way as [automatic updates](#update-alerts-and-automatic-bedrock-updates): a
   "Before update" backup first, and the old version put back if the new one doesn't start.
-  On Fabric and Paper servers, moving to a newer Minecraft version first lists the mods or
+  A Forge or NeoForge server runs its installer again for the new version, in a separate
+  folder, and only swaps the result in when it worked. A server made from a modpack is updated
+  with its pack instead: see [Modpack](#modpack) below.
+  On Fabric, Quilt, Paper and Purpur servers, moving to a newer Minecraft version first lists the mods or
   plugins that have no build for it yet on Modrinth or Hangar (and any it couldn't check),
   so you can wait rather than update into a server that won't start. If the new version
   needs a Java that isn't installed, you're asked to install it first.
@@ -729,6 +779,30 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
 - **Java** (admins, Java servers): which Java the server runs on and which it needs. Choose
   another installed Java that's new enough and click **Use**; a running server restarts.
 - **Memory and limits**: see below.
+- **Modpack** (servers made from a modpack): see below.
+
+### Modpack
+
+A server made from a modpack has a **Modpack** card on **Maintenance** with the pack's name,
+version, server type and Minecraft version.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/modpack-card.png"><img src="images/modpack-card.png" alt="Modpack card on the Maintenance tab"></picture>
+
+- **Check for a newer version** (Modrinth packs) asks Modrinth for a newer version of the pack
+  for this server's type and Minecraft version or newer. Pick one and click **Update the
+  pack**.
+- **Upload a newer version** takes a newer `.mrpack` or server pack `.zip`.
+
+An update downloads and checks everything first, so a failed download changes nothing. Then
+the server is backed up (**Before mod changes** on the **Backups** tab; untick **Back up the server first** to
+skip it), stopped, moved to the pack's new server type version if that changed, and started
+again. The mods the old pack version installed and the new one doesn't have are removed. The
+world, `server.properties`, the whitelist, operators and bans, and any mods you added yourself
+are kept. Config files the pack ships are replaced with the pack's new ones.
+
+The panel doesn't show **Update available** for the server software of a modpack server,
+because the pack decides which version it runs on. Which pack a server came from is kept in
+`.redstonepanel-modpack.json` in its folder.
 
 ### Changing a server's type
 
@@ -831,7 +905,7 @@ Limits belong to the machine, so a server moved to another cluster member doesn'
 ### Update alerts and automatic Bedrock updates
 
 Every 6 hours the panel looks for a newer Bedrock Dedicated Server, Minecraft release, Paper
-build or Fabric loader for each server (never snapshots or pre-releases). When there is one,
+or Purpur build, Fabric or Quilt loader, or Forge or NeoForge build for each server (never snapshots or pre-releases). When there is one,
 the server shows **⬆** and the new version in the sidebar, on the dashboard, on its
 **Overview** and under **Maintenance → Update Server**. **Check now** looks right away. With
 [notifications](#notifications) on, you get one **Update available** message per new version.
@@ -1152,20 +1226,22 @@ Good to know:
 
 ## 12. Mods, plugins and add-ons
 
-Admins see a **Mods** tab on Fabric servers, **Plugins** on Paper servers and **Add-ons** on
-Bedrock servers. Vanilla servers can't load mods or plugins, so they don't have one.
+Admins see a **Mods** tab on Fabric, Quilt, Forge and NeoForge servers, **Plugins** on Paper
+and Purpur servers and **Add-ons** on Bedrock servers. Vanilla servers can't load mods or plugins, so they don't have one.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/mods.png"><img src="images/mods.png" alt="Mods tab on a Fabric server"></picture>
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/plugins.png"><img src="images/plugins.png" alt="Plugins tab on a Paper server"></picture>
 
-**Adding:** drag `.jar` files (Fabric, Paper) or `.mcpack` / `.mcaddon` files (Bedrock) onto
+**Adding:** drag `.jar` files (Java servers) or `.mcpack` / `.mcaddon` files (Bedrock) onto
 the tab, or click the box to choose them. Each one is checked before it's installed:
 
-- A Fabric mod goes into `mods/`, a Paper or Bukkit/Spigot plugin into `plugins/`.
-- A file that can't work on this server is refused with the reason: a Forge or NeoForge mod,
-  a plugin on a Fabric server, a mod on a Paper server, a proxy (Velocity, BungeeCord)
-  plugin, or a jar that isn't a mod or plugin at all.
+- A mod goes into `mods/`, a Paper or Bukkit/Spigot plugin into `plugins/`.
+- A file that can't work on this server is refused with the reason: a mod for another loader
+  (a Forge mod on a Fabric server, a Fabric mod on a NeoForge server), a plugin on a mod
+  server, a mod on a Paper or Purpur server, a proxy (Velocity, BungeeCord) plugin, or a jar
+  that isn't a mod or plugin at all. Quilt servers take Fabric mods too, and NeoForge servers
+  take Forge mods up to Minecraft 1.20.4, where the two were still the same.
 - A newer version of something already installed (same mod id, different file name) asks
   first and then replaces the old file, so the server never has two copies.
 - The panel only reads each jar's description file; nothing in it is run.
@@ -1173,7 +1249,7 @@ the tab, or click the box to choose them. Each one is checked before it's instal
 **The list** shows each mod or plugin's name, version, authors and file, and warns when:
 
 - it was made for a different Minecraft version than the server runs (from the mod's
-  `fabric.mod.json`, or the plugin's `api-version`);
+  `fabric.mod.json`, `quilt.mod.json` or `mods.toml`, or the plugin's `api-version`);
 - it needs another mod or plugin that isn't installed, for example *Needs fabric-api* (most
   Fabric mods need [Fabric API](https://modrinth.com/mod/fabric-api)).
 
@@ -1223,9 +1299,10 @@ Removing a server removes its Phantom as well.
 
 ### Finding mods and plugins
 
-On Fabric and Paper servers, **Find mods** (or **Find plugins**) is a catalog of
-[Modrinth](https://modrinth.com) and, for Paper, [Hangar](https://hangar.papermc.io), PaperMC's
-plugin site. It opens on:
+On Java servers other than Vanilla, **Find mods** (or **Find plugins**) is a catalog of
+[Modrinth](https://modrinth.com) and, for Paper and Purpur, [Hangar](https://hangar.papermc.io),
+PaperMC's plugin site. It lists what Modrinth has for the server's own type: Forge mods on a
+Forge server, NeoForge mods on a NeoForge server, Quilt and Fabric mods on a Quilt server. It opens on:
 
 - **Bundles**: a few mods or plugins that belong together, installed with one click.
   - Fabric: **Performance pack** (Lithium, FerriteCore, Krypton, C2ME, ScalableLux), **Server
@@ -1233,6 +1310,11 @@ plugin site. It opens on:
     Floodgate).
   - Paper: **Server essentials** (Chunky, LuckPerms, EssentialsX, CoreProtect), **Build
     protection** (WorldEdit, WorldGuard, CoreProtect) and **Bedrock players** (Geyser).
+  - Quilt has Fabric's bundles and Purpur has Paper's.
+  - NeoForge: **Performance pack** (Lithium, FerriteCore, ModernFix, ScalableLux), **Server
+    essentials** (spark, Chunky, LuckPerms) and **Bedrock players** (Geyser, Floodgate).
+  - Forge: **Performance pack** (FerriteCore, ModernFix, ServerCore) and **Server essentials**
+    (spark, Chunky, LuckPerms).
 
   A bundle installs only what's missing, with what each one needs, after a world backup
   (**Back up the world before installing a bundle**, on by default; skipped when there's

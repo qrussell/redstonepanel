@@ -20,7 +20,6 @@
   resale features, and none are planned;
 - need a native Windows or macOS app. It runs on Ubuntu 24.04, 26.04 and 26.10, Debian 13 and
   64-bit Raspberry Pi OS (on Windows, in [WSL](#can-i-run-it-on-windows-with-wsl));
-- need Forge or NeoForge today. They're on the roadmap's "when asked for" list;
 - want every server isolated in its own container. RedstonePanel deliberately uses systemd
   instead of Docker.
 
@@ -113,7 +112,9 @@ Two more things to know:
 
 ## Which Minecraft versions and server types does it support?
 
-- **Java Edition:** Vanilla (Mojang), Paper and Fabric, on any release version you choose. The
+- **Java Edition:** Vanilla (Mojang), Paper, Purpur, Fabric, Quilt, NeoForge and Forge, on any
+  release version that type supports (Forge from 1.12.2, Quilt from 1.14.4, NeoForge from
+  1.20.2), and modpacks from Modrinth or a CurseForge server pack you upload. The
   panel installs the Java each version needs (Java 8, 17, 21 or 25) and runs each server on
   its own Java, so old and new versions can run side by side.
 - A Java server can **change type** later (Vanilla to Paper or Fabric, and every other way
