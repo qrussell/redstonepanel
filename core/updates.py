@@ -189,25 +189,36 @@ def java_update(info):
     loader, mc = cur["loader"], cur["minecraft"]
     if loader not in javaservers.LOADERS or not mc or not javaservers.RELEASE_RE.match(str(mc)):
         return None
+    name = javaservers.LOADERS[loader]
+    if loader in ("forge", "neoforge"):
+        # Only a newer build for the same Minecraft version: Forge and NeoForge mods are built
+        # for one, so "a newer Minecraft is out" isn't something to act on
+        try:
+            target = javaservers.resolve(loader, mc)
+        except javaservers.JavaServerError:
+            return None
+        new, old = str(target.get("build") or ""), str(cur["build"] or "")
+        if new and old and "-beta" not in new and version_key(new) > version_key(old.replace("-beta", "")):
+            return {"kind": "build", "latest": mc, "label": f"{name} {new}"}
+        return None
     try:
         target = javaservers.resolve(loader)
     except javaservers.JavaServerError as e:
         raise UpdateError(str(e))
-    name = javaservers.LOADERS[loader]
     if version_key(target["minecraft"]) > version_key(mc):
         label = f"Minecraft {target['minecraft']}" if loader == "vanilla" else f"{name} {target['minecraft']}"
         return {"kind": "minecraft", "latest": target["minecraft"], "label": label}
     if version_key(target["minecraft"]) < version_key(mc):
         return None
-    if loader == "paper":
+    if loader in ("paper", "purpur"):
         b = target.get("build")
         if b and cur["build"] and str(b).isdigit() and str(cur["build"]).isdigit() and int(b) > int(cur["build"]):
-            return {"kind": "build", "latest": f"{mc} build {b}", "label": f"Paper {mc} build {b}"}
-    if loader == "fabric":
+            return {"kind": "build", "latest": f"{mc} build {b}", "label": f"{name} {mc} build {b}"}
+    if loader in ("fabric", "quilt"):
         new = str(target.get("build") or "").replace("loader ", "")
         old = str(cur["build"] or "").replace("loader ", "")
         if new and old and version_key(new) > version_key(old):
-            return {"kind": "build", "latest": f"loader {new}", "label": f"Fabric loader {new}"}
+            return {"kind": "build", "latest": f"loader {new}", "label": f"{name} loader {new}"}
     return None
 
 def _current_of(d, is_java):
@@ -267,7 +278,10 @@ def check(only=None, announce=True):
         try:
             current = _current_of(d, is_java)
             if is_java:
-                found = java_update(javaservers.read_info(d))
+                # A modpack decides its loader and Minecraft version: its own updates are on
+                # Maintenance (core/modpacks.py), and no loader alert is raised for it
+                found = None if os.path.exists(os.path.join(d, ".redstonepanel-modpack.json")) \
+                    else java_update(javaservers.read_info(d))
             elif not manager.bedrock_supported():
                 found = None
             else:

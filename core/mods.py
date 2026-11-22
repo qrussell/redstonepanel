@@ -1,9 +1,10 @@
 """Mods, plugins and Bedrock add-ons: what's installed, and installing a dropped file.
 
-  * Fabric servers load mods from mods/, Paper servers plugins from plugins/. A jar is read as
-    a zip (its metadata only; nothing in it is run) to tell what it is, so a Forge mod, a
-    plugin on Fabric or anything on vanilla is refused with the reason instead of making the
-    server fail to start.
+  * Fabric, Quilt, Forge and NeoForge servers load mods from mods/, Paper and Purpur servers
+    plugins from plugins/. A jar is read as a zip (its metadata only; nothing in it is run)
+    to tell what it is, so a Forge mod on Fabric, a plugin on a mod loader or anything on
+    vanilla is refused with the reason instead of making the server fail to start. Quilt also
+    loads Fabric mods; NeoForge up to Minecraft 1.20.4 also loads Forge mods.
   * Disabling renames x.jar to x.jar.disabled, which both loaders skip.
   * Bedrock .mcpack / .mcaddon files are unpacked into behavior_packs/ or resource_packs/
     (by the manifest's module types) and added to the active world's
@@ -23,8 +24,10 @@ import zipfile
 
 from core import files, javaservers, manager
 
-FOLDERS = {"fabric": "mods", "paper": "plugins"}
-NOUNS = {"fabric": "mod", "paper": "plugin", "bedrock": "add-on"}
+FOLDERS = {"fabric": "mods", "quilt": "mods", "forge": "mods", "neoforge": "mods",
+           "paper": "plugins", "purpur": "plugins"}
+NOUNS = {**{k: "plugin" if v == "plugins" else "mod" for k, v in FOLDERS.items()}, "bedrock": "add-on"}
+LABELS = javaservers.LOADERS
 DISABLED = ".disabled"
 MAX_META = 256 * 1024                 # a metadata file inside a jar
 MAX_NESTED = 16 * 1024 * 1024         # a jar inside a jar (Fabric jar-in-jar)
@@ -47,7 +50,7 @@ class ModError(files.FileError):
 # Which kind of server
 # ---------------------------------------------------------------------------
 def server_kind(server):
-    """("fabric" | "paper" | "vanilla" | "bedrock", Minecraft version or None)."""
+    """(a key of javaservers.LOADERS | "bedrock", Minecraft version or None)."""
     d = files.server_root(server)
     if not manager._is_java(server):
         return "bedrock", None
@@ -138,6 +141,90 @@ def _nested_ids(z, meta, depth=0):
     return ids
 
 
+def _quilt_meta(meta):
+    """id, name, version and dependencies from a quilt.mod.json."""
+    q = meta.get("quilt_loader") if isinstance(meta.get("quilt_loader"), dict) else {}
+    md = q.get("metadata") if isinstance(q.get("metadata"), dict) else {}
+    depends, minecraft = [], None
+    for dep in q.get("depends") or []:
+        did = dep.get("id") if isinstance(dep, dict) else dep
+        if isinstance(dep, dict) and dep.get("optional"):
+            continue
+        if not isinstance(did, str):
+            continue
+        did = did.split(":")[-1]
+        if did == "minecraft":
+            v = dep.get("versions") if isinstance(dep, dict) else None
+            minecraft = v if isinstance(v, str) else None
+        elif did not in FABRIC_PROVIDED | {"quilt_loader", "quilt_base"}:
+            depends.append(did)
+    contributors = md.get("contributors") if isinstance(md.get("contributors"), dict) else {}
+    return {"id": q.get("id"), "name": md.get("name") or q.get("id"),
+            "version": str(q.get("version") or "") or None, "authors": [str(a) for a in contributors][:10],
+            "description": md.get("description") if isinstance(md.get("description"), str) else None,
+            "minecraft": minecraft, "depends": sorted(set(depends)),
+            "provides": sorted(str(p.get("id") if isinstance(p, dict) else p) for p in q.get("provides") or [])}
+
+
+FORGE_PROVIDED = {"minecraft", "forge", "neoforge", "javafml", "lowcodefml", "fml", "java"}
+
+
+def _toml_meta(z, name, names):
+    """id, name, version and required dependencies from a Forge or NeoForge mods.toml."""
+    try:
+        import tomllib
+        data = tomllib.loads((_read_member(z, name) or b"").decode("utf-8", "replace"))
+    except Exception:
+        return {}
+    mods_list = [m for m in data.get("mods") or [] if isinstance(m, dict)]
+    if not mods_list:
+        return {}
+    first = mods_list[0]
+    version = str(first.get("version") or "")
+    if "${" in version:                              # "${file.jarVersion}": the jar's manifest has it
+        version = ""
+        if "META-INF/MANIFEST.MF" in names:
+            m = re.search(r"^Implementation-Version:\s*(\S+)", (_read_member(z, "META-INF/MANIFEST.MF") or b"")
+                          .decode("utf-8", "replace"), re.M)
+            version = m.group(1) if m else ""
+    depends, minecraft = set(), None
+    deps = data.get("dependencies") if isinstance(data.get("dependencies"), dict) else {}
+    for dep in deps.get(str(first.get("modId")), []) or []:
+        if not isinstance(dep, dict) or not isinstance(dep.get("modId"), str):
+            continue
+        required = dep.get("mandatory") if "mandatory" in dep else str(dep.get("type", "required")).lower() == "required"
+        if str(dep.get("side", "BOTH")).upper() == "CLIENT":
+            continue
+        if dep["modId"] == "minecraft":
+            minecraft = dep.get("versionRange") if isinstance(dep.get("versionRange"), str) else None
+        elif required and dep["modId"] not in FORGE_PROVIDED:
+            depends.add(dep["modId"])
+    authors = first.get("authors")
+    desc = first.get("description")
+    return {"id": first.get("modId"), "name": first.get("displayName") or first.get("modId"),
+            "version": version or None, "authors": [authors] if isinstance(authors, str) and authors else [],
+            "description": desc.strip() if isinstance(desc, str) else None, "minecraft": minecraft,
+            "depends": sorted(depends),
+            "provides": sorted(str(m.get("modId")) for m in mods_list[1:] if m.get("modId"))}
+
+
+def _mcmod_meta(data):
+    """An old Forge mod's mcmod.info (Minecraft 1.12.2 and older)."""
+    try:
+        v = json.loads((data or b"").decode("utf-8", "replace"), strict=False)
+    except ValueError:
+        return {}
+    if isinstance(v, dict):
+        v = v.get("modList")
+    first = v[0] if isinstance(v, list) and v and isinstance(v[0], dict) else {}
+    mc = first.get("mcversion")
+    return {"id": first.get("modid"), "name": first.get("name") or first.get("modid"),
+            "version": str(first.get("version") or "") or None,
+            "authors": [str(a) for a in first.get("authorList") or first.get("authors") or []][:10],
+            "description": first.get("description") if isinstance(first.get("description"), str) else None,
+            "minecraft": mc if isinstance(mc, str) and re.fullmatch(r"[0-9]+(\.[0-9]+)+", mc) else None}
+
+
 def inspect_jar(fileobj):
     """What a jar is. type: fabric | paper | bukkit | quilt | forge | neoforge | velocity |
     bungee | unknown. Raises ModError for a file that isn't a jar."""
@@ -170,10 +257,16 @@ def inspect_jar(fileobj):
                         depends=_as_list(y.get("depend")) if not paper else [])
         elif "quilt.mod.json" in names:
             info["type"] = "quilt"
+            info.update(_quilt_meta(_json(_read_member(z, "quilt.mod.json")) or {}))
         elif "META-INF/neoforge.mods.toml" in names:
             info["type"] = "neoforge"
-        elif "META-INF/mods.toml" in names or "mcmod.info" in names:
+            info.update(_toml_meta(z, "META-INF/neoforge.mods.toml", names))
+        elif "META-INF/mods.toml" in names:
             info["type"] = "forge"
+            info.update(_toml_meta(z, "META-INF/mods.toml", names))
+        elif "mcmod.info" in names:
+            info["type"] = "forge"
+            info.update(_mcmod_meta(_read_member(z, "mcmod.info")))
         elif "velocity-plugin.json" in names:
             info["type"] = "velocity"
         elif "bungee.yml" in names:
@@ -189,11 +282,27 @@ WHAT = {"fabric": "a Fabric mod", "paper": "a Paper plugin", "bukkit": "a Bukkit
         "velocity": "a Velocity proxy plugin", "bungee": "a BungeeCord proxy plugin"}
 
 
-def refusal(kind, jar_type):
+# NeoForge kept loading Forge's META-INF/mods.toml up to Minecraft 1.20.4; from 1.20.5 it only
+# reads its own neoforge.mods.toml
+NEOFORGE_OWN_FILE = (1, 20, 5)
+
+
+def accepted(kind, minecraft=None):
+    """The jar types (see inspect_jar) this kind of server loads."""
+    if kind in ("paper", "purpur"):
+        return {"paper", "bukkit"}
+    if kind == "quilt":
+        return {"quilt", "fabric"}
+    if kind == "neoforge":
+        old = bool(minecraft) and javaservers.is_release(minecraft) \
+            and javaservers.version_key(minecraft) < NEOFORGE_OWN_FILE
+        return {"neoforge", "forge"} if old else {"neoforge"}
+    return {kind} if kind in FOLDERS else set()
+
+
+def refusal(kind, jar_type, minecraft=None):
     """Why this jar can't be used on this kind of server, or None if it can."""
-    if kind == "fabric" and jar_type == "fabric":
-        return None
-    if kind == "paper" and jar_type in ("paper", "bukkit"):
+    if jar_type in accepted(kind, minecraft):
         return None
     what = WHAT.get(jar_type)
     if kind == "vanilla":
@@ -201,13 +310,40 @@ def refusal(kind, jar_type):
                 "Fabric server for mods (➕ New Server), then move the world over with a backup.")
     if kind == "bedrock":
         return "Bedrock servers don't use .jar files. Add-ons for Bedrock are .mcpack or .mcaddon files."
+    label = LABELS.get(kind, kind.capitalize())
     if what is None:
-        return (f"This jar has no Fabric mod or plugin information, so it isn't a "
-                f"{NOUNS.get(kind, 'mod')} for this {kind.capitalize()} server.")
-    hint = {"fabric": " Download the Fabric version of it.", "paper": " Download the Paper (or Bukkit) version of it."}
-    if jar_type in ("forge", "neoforge"):
-        hint = {k: v + f" {kind.capitalize()} can't load {WHAT[jar_type][2:]}s." for k, v in hint.items()}
-    return f"This is {what}, and this is a {kind.capitalize()} server.{hint.get(kind, '')}"
+        return (f"This jar has no {'plugin' if NOUNS.get(kind) == 'plugin' else label + ' mod or plugin'} "
+                f"information, so it isn't a {NOUNS.get(kind, 'mod')} for this {label} server.")
+    hint = f" Download the {label}{' (or Bukkit)' if NOUNS.get(kind) == 'plugin' else ''} version of it."
+    if kind == "neoforge" and jar_type == "forge":
+        hint = (f" NeoForge loads Forge mods only up to Minecraft 1.20.4. Download the NeoForge version of it.")
+    elif jar_type in ("forge", "neoforge", "fabric", "quilt") and NOUNS.get(kind) == "mod":
+        hint += f" {label} can't load {WHAT[jar_type][2:]}s."
+    return f"This is {what}, and this is a {label} server.{hint}"
+
+
+def _maven_range(declared, version):
+    """A Forge/NeoForge versionRange such as "[1.20.1,1.21)", "[1.21.1]" or "1.20.1"
+    (several ranges separated by commas are alternatives). True / False / None (can't tell)."""
+    text = declared.strip()
+    if not text:
+        return None
+    if text[0] not in "[(":
+        return _cmp(version, text) >= 0 if re.fullmatch(r"[0-9]+(\.[0-9]+)*", text) else None
+    found = re.findall(r"([\[(])\s*([0-9.]*)\s*(?:(,)\s*([0-9.]*))?\s*([\])])", text)
+    if not found:
+        return None
+    for lo_b, lo, comma, hi, hi_b in found:
+        if not comma:
+            if lo and _cmp(version, lo) == 0:
+                return True
+            continue
+        if lo and (_cmp(version, lo) < 0 or (lo_b == "(" and _cmp(version, lo) == 0)):
+            continue
+        if hi and (_cmp(version, hi) > 0 or (hi_b == ")" and _cmp(version, hi) == 0)):
+            continue
+        return True
+    return False
 
 
 def _cmp(a, b):
@@ -251,6 +387,8 @@ def fits_minecraft(jar_type, declared, minecraft):
     """True / False, or None when it can't be told."""
     if not declared or not minecraft:
         return None
+    if not javaservers.is_release(minecraft):
+        return None
     if jar_type == "fabric":
         results = [_fabric_clause(c.strip(), minecraft) for c in declared.split("||") if c.strip()]
         if any(r is True for r in results):
@@ -258,6 +396,15 @@ def fits_minecraft(jar_type, declared, minecraft):
         return None if any(r is None for r in results) else False
     if jar_type in ("paper", "bukkit"):                   # api-version: the oldest API it needs
         return _cmp(minecraft, declared) >= 0
+    if jar_type in ("forge", "neoforge"):
+        if re.fullmatch(r"[0-9]+(\.[0-9]+)+", declared.strip()):     # mcmod.info: one exact version
+            return _cmp(minecraft, declared.strip()) == 0
+        return _maven_range(declared, minecraft)
+    if jar_type == "quilt":
+        results = [_fabric_clause(c.strip(), minecraft) for c in declared.split("||") if c.strip()]
+        if any(r is True for r in results):
+            return True
+        return None if any(r is None for r in results) else False
     return None
 
 
@@ -312,7 +459,7 @@ def list_installed(server):
         meta = _jar_meta(server, folder, e)
         enabled = e["name"].endswith(".jar")
         items.append({"file": e["name"], "size": e["size"], "modified": e["modified"], "enabled": enabled, **meta,
-                      "problem": refusal(kind, meta.get("type")) if meta.get("type") else None,
+                      "problem": refusal(kind, meta.get("type"), minecraft) if meta.get("type") else None,
                       "fits": fits_minecraft(meta.get("type"), meta.get("minecraft"), minecraft)})
     present = set()
     for i in items:
@@ -320,7 +467,7 @@ def list_installed(server):
             present.update(filter(None, [i.get("id")] + list(i.get("provides") or [])))
     for i in items:
         missing = [d for d in i.get("depends") or [] if d not in present]
-        if kind == "fabric" and "fabric-api" in present:
+        if kind in ("fabric", "quilt") and present & {"fabric-api", "quilted_fabric_api", "qsl"}:
             missing = [d for d in missing if not d.startswith("fabric-") and d != "fabric"]
         i["missing"] = missing
     items.sort(key=lambda i: (i.get("name") or i["file"]).lower())
@@ -364,7 +511,7 @@ def install(server, name, fileobj, overwrite=False, actor="?"):
     if not lower.endswith(".jar"):
         raise ModError("Drop .jar files here. To upload other files, use the Files tab.")
     meta = inspect_jar(fileobj)
-    why = refusal(kind, meta["type"])
+    why = refusal(kind, meta["type"], minecraft)
     if why:
         raise ModError(why)
     folder = FOLDERS[kind]

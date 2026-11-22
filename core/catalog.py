@@ -28,7 +28,8 @@ TRACK_FILE = ".redstonepanel-mods.json"
 PREVIOUS = ".previous"
 MAX_PLAN = 12                  # jars installed by one click, dependencies included
 MAX_DEPTH = 4
-SOURCES = {"fabric": ["modrinth"], "paper": ["modrinth", "hangar"]}
+SOURCES = {"fabric": ["modrinth"], "quilt": ["modrinth"], "forge": ["modrinth"], "neoforge": ["modrinth"],
+           "paper": ["modrinth", "hangar"], "purpur": ["modrinth", "hangar"]}
 SOURCE_NAMES = {"modrinth": "Modrinth", "hangar": "Hangar"}
 JAR_NAME_RE = re.compile(r"^[^/\\\x00]+\.jar$", re.I)
 
@@ -86,7 +87,7 @@ def _java_kind(server):
 def _check_source(kind, source):
     if source not in SOURCES[kind]:
         raise mods.ModError(f"{SOURCE_NAMES.get(source, source)} isn't a source for "
-                            f"{'Fabric' if kind == 'fabric' else 'Paper'} servers.")
+                            f"{modrinth.NAMES[kind]} servers.")
 
 
 def _sha512(server, folder, item):
@@ -228,7 +229,7 @@ def install_bundle(server, bundle, backup=False, actor="?"):
     kind, minecraft = _java_kind(server)
     found = next((b for b in featured.BUNDLES.get(kind, []) if b[0] == bundle), None)
     if not found:
-        raise mods.ModError(f"No bundle '{bundle}' for {'Fabric' if kind == 'fabric' else 'Paper'} servers.")
+        raise mods.ModError(f"No bundle '{bundle}' for {modrinth.NAMES[kind]} servers.")
     _, title, _, slugs = found
     with _lock:
         _, _, projects, ids = _installed(server)
@@ -283,7 +284,7 @@ def _plan(kind, minecraft, first, projects, ids):
                 continue
             if depth >= MAX_DEPTH or len(order) >= MAX_PLAN:
                 raise mods.ModError(f"{pick.get('title') or pick['project']} needs too many other "
-                                    f"{'mods' if kind == 'fabric' else 'plugins'} to install in one go.")
+                                    f"{mods.NOUNS[kind]}s to install in one go.")
             try:
                 dep = _resolve(ref["source"], ref["project"], kind, minecraft)
             except SourceError as e:
