@@ -326,9 +326,17 @@ class Shooter:
         self.sign_in(picture=False)
         step("phone dashboard", lambda: shot("phone-dashboard"))
 
-        def menu():
+        def menu():                                      # the whole menu: logo, every server, account buttons
             page.evaluate("ServerApp.openNav()")
-            shot("phone-menu")
+            size = page.viewport_size
+            extra = page.evaluate("""() => [document.getElementById('sidebar'),
+                    ...document.querySelectorAll('#sidebar *')]
+                .reduce((n, el) => n + Math.max(0, el.scrollHeight - el.clientHeight), 0)""")
+            page.set_viewport_size({"width": size["width"], "height": size["height"] + extra})
+            try:
+                shot("phone-menu")
+            finally:
+                page.set_viewport_size(size)
             page.evaluate("ServerApp.closeNav()")
         step("phone menu", menu)
 
@@ -346,8 +354,19 @@ class Shooter:
         def ports():
             page.evaluate("ServerApp.openPorts()")
             page.wait_for_selector("text=Forward these", timeout=30000)
-            page.wait_for_timeout(1500)
-            shot("phone-port-forwarding")
+            page.wait_for_timeout(1500)                  # the forwards for the master and the node
+            # the card is taller than the phone and sits in a scrolling pane: make the screen tall
+            # enough to show all of it, and hide the console dock waiting below the screen
+            size = page.viewport_size
+            extra = page.evaluate("""() => [...document.querySelectorAll('body *')]
+                .reduce((n, el) => Math.max(n, el.scrollHeight - el.clientHeight), 0)""")
+            page.evaluate("document.getElementById('console-dock').style.visibility = 'hidden'")
+            page.set_viewport_size({"width": size["width"], "height": size["height"] + extra})
+            try:
+                shot("phone-port-forwarding", element="div:has(> div > h3:text-is('Forward these'))")
+            finally:
+                page.set_viewport_size(size)
+                page.evaluate("document.getElementById('console-dock').style.visibility = ''")
         step("phone port forwarding", ports)
 
     def move(self, server):
