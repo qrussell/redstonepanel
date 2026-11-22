@@ -1,119 +1,1437 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RedstonePanel - Lightweight Server Management</title>
+    <title>RedstonePanel — Lightweight Minecraft Server Management</title>
+    <meta name="description" content="APT-native Minecraft Java & Bedrock server management panel for Ubuntu 24.04 & 25.04 with multi-node support and OS-level resource limits.">
+
+    <!-- Google Fonts: Silkscreen (Blocky MC Headings), JetBrains Mono (Terminal/RCON), Inter (Body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        pixel: ['"Silkscreen"', 'monospace'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                        sans: ['"Inter"', 'sans-serif'],
+                    },
+                    colors: {
+                        obsidian: '#111216',
+                        deepslate: '#1a1c23',
+                        stoneblock: '#252833',
+                        redstone: {
+                            DEFAULT: '#e52521',
+                            bright: '#ff3b30',
+                            dark: '#7f110f',
+                        },
+                        emeraldblock: '#22c55e',
+                    }
+                }
+            }
+        }
+    </script>
+
     <style>
+        /* Base Theme Variables */
         :root {
-            --primary: #ff4500;
-            --primary-dark: #cc3700;
-            --bg-dark: #121212;
-            --card-bg: #1e1e1e;
-            --text-light: #e0e0e0;
-            --text-main: #ffffff;
+            --bg-obsidian: #111216;
+            --bg-deepslate: #1a1c23;
+            --bg-stone: #232631;
+            --border-light: #3c4152;
+            --border-dark: #0a0b0f;
+            --redstone-core: #e52521;
+            --redstone-glow: #ff3b30;
+            --redstone-dim: #4a1c1b;
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: var(--bg-dark);
-            color: var(--text-light);
-            line-height: 1.6;
+            background-color: var(--bg-obsidian);
+            color: #e4e6ef;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
         }
 
-        header {
-            background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
-            padding: 4rem 2rem;
-            text-align: center;
-            border-bottom: 3px solid var(--primary);
+        /* Subtle Minecraft Pixel-Block Grid Background */
+        .bg-pixel-grid {
+            background-color: var(--bg-obsidian);
+            background-image:
+                linear-gradient(to right, rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+            background-size: 32px 32px;
         }
 
-        h1 {
-            color: var(--text-main);
-            font-size: 3rem;
-            margin-bottom: 0.5rem;
-            text-transform: uppercase;
-            letter-spacing: 2px;
+        /* Authentic Minecraft 3D Beveled Deepslate Panel */
+        .mc-panel {
+            background-color: var(--bg-deepslate);
+            border: 2px solid #090a0d;
+            box-shadow:
+                inset 2px 2px 0px var(--border-light),
+                inset -2px -2px 0px var(--border-dark),
+                0 8px 24px rgba(0, 0, 0, 0.45);
+            transition: box-shadow 0.35s ease, border-color 0.35s ease, transform 0.2s ease;
         }
 
-        .subtitle {
-            font-size: 1.25rem;
-            color: #aaa;
-            max-width: 600px;
-            margin: 0 auto 2rem;
+        /* Recessed Inventory Slot Container */
+        .mc-slot {
+            background-color: #101218;
+            border: 2px solid #090a0d;
+            box-shadow:
+                inset 2px 2px 0px #08090c,
+                inset -2px -2px 0px #2e3342;
         }
 
-        .cta-button {
-            display: inline-block;
-            background-color: var(--primary);
-            color: white;
-            padding: 0.8rem 2rem;
-            text-decoration: none;
-            font-weight: bold;
-            border-radius: 5px;
-            transition: background-color 0.3s ease;
+        /* Minecraft 3D Beveled Buttons */
+        .mc-btn {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            border: 2px solid #090a0d;
+            box-shadow:
+                inset 2px 2px 0px rgba(255, 255, 255, 0.25),
+                inset -2px -2px 0px rgba(0, 0, 0, 0.45);
+            transition: transform 0.1s ease, filter 0.15s ease, box-shadow 0.25s ease;
+            cursor: pointer;
+            user-select: none;
         }
 
-        .cta-button:hover {
-            background-color: var(--primary-dark);
+        .mc-btn:hover {
+            filter: brightness(1.1);
         }
 
-        .container {
-            max-width: 1000px;
-            margin: 3rem auto;
-            padding: 0 1rem;
+        .mc-btn:active {
+            transform: translateY(2px);
+            box-shadow:
+                inset 2px 2px 0px rgba(0, 0, 0, 0.45),
+                inset -2px -2px 0px rgba(255, 255, 255, 0.15);
         }
 
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
+        .mc-btn-redstone {
+            background-color: #c9201c;
+            color: #ffffff;
         }
 
-        .feature-card {
-            background-color: var(--card-bg);
-            padding: 2rem;
-            border-radius: 8px;
-            border-left: 4px solid var(--primary);
-            transition: transform 0.3s ease;
+        .mc-btn-stone {
+            background-color: #2f3444;
+            color: #f3f4f6;
         }
 
+        .mc-btn-emerald {
+            background-color: #168a41;
+            color: #ffffff;
+        }
+
+        .mc-btn-amber {
+            background-color: #b45309;
+            color: #ffffff;
+        }
+
+        /* Redstone Power ON/OFF Dynamic Styling */
+        body[data-redstone="on"] .redstone-wire-border {
+            border-color: rgba(229, 37, 33, 0.75);
+            box-shadow:
+                inset 2px 2px 0px rgba(255, 92, 87, 0.35),
+                inset -2px -2px 0px var(--border-dark),
+                0 0 18px rgba(229, 37, 33, 0.28);
+        }
+
+        body[data-redstone="off"] .redstone-wire-border {
+            border-color: #090a0d;
+            box-shadow:
+                inset 2px 2px 0px var(--border-light),
+                inset -2px -2px 0px var(--border-dark),
+                0 8px 24px rgba(0, 0, 0, 0.45);
+        }
+
+        body[data-redstone="on"] .redstone-glow-text {
+            color: #ff453a;
+            text-shadow: 0 0 14px rgba(255, 59, 48, 0.65);
+        }
+
+        body[data-redstone="off"] .redstone-glow-text {
+            color: #8f3a38;
+            text-shadow: none;
+        }
+
+        body[data-redstone="on"] .redstone-lamp {
+            background-color: #ff3b30;
+            box-shadow: 0 0 12px #ff3b30, 0 0 24px rgba(229, 37, 33, 0.6);
+            animation: redstonePulse 2.4s infinite ease-in-out;
+        }
+
+        body[data-redstone="off"] .redstone-lamp {
+            background-color: #3f2222;
+            box-shadow: inset 1px 1px 2px #1a0d0d;
+            animation: none;
+        }
+
+        body[data-redstone="on"] .redstone-rail {
+            background: linear-gradient(180deg, #ff3b30 0%, #e52521 60%, #5c1615 100%);
+            box-shadow: 0 0 12px rgba(255, 59, 48, 0.7);
+        }
+
+        body[data-redstone="off"] .redstone-rail {
+            background: #2f2224;
+            box-shadow: none;
+        }
+
+        body[data-redstone="on"] .redstone-svg-glow {
+            filter: drop-shadow(0 0 8px rgba(255, 59, 48, 0.85));
+        }
+
+        body[data-redstone="off"] .redstone-svg-glow {
+            filter: grayscale(0.75) brightness(0.65);
+        }
+
+        body[data-redstone="on"] .mc-btn-redstone {
+            box-shadow:
+                inset 2px 2px 0px rgba(255, 160, 150, 0.4),
+                inset -2px -2px 0px rgba(90, 10, 10, 0.7),
+                0 0 16px rgba(229, 37, 33, 0.45);
+        }
+
+        /* Redstone Pulse Flash on Toggle */
+        @keyframes circuitSurge {
+            0% { box-shadow: inset 0 0 0 0 rgba(255, 59, 48, 0.45); }
+            50% { box-shadow: inset 0 0 60px 4px rgba(255, 59, 48, 0.25); }
+            100% { box-shadow: inset 0 0 0 0 rgba(255, 59, 48, 0); }
+        }
+
+        .surge-active {
+            animation: circuitSurge 0.6s ease-out;
+        }
+
+        @keyframes redstonePulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.72; transform: scale(0.95); }
+        }
+
+        /* Custom Range Slider (Minecraft Redstone Slider) */
+        input[type="range"].mc-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 12px;
+            background: #101218;
+            border: 2px solid #090a0d;
+            box-shadow: inset 2px 2px 0px #060709, inset -1px -1px 0px #2d3242;
+            outline: none;
+            border-radius: 2px;
+        }
+
+        input[type="range"].mc-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 22px;
+            background: #e52521;
+            border: 2px solid #090a0d;
+            box-shadow: inset 2px 2px 0px rgba(255, 255, 255, 0.35), inset -2px -2px 0px rgba(0, 0, 0, 0.45);
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        input[type="range"].mc-slider::-moz-range-thumb {
+            width: 18px;
+            height: 22px;
+            background: #e52521;
+            border: 2px solid #090a0d;
+            box-shadow: inset 2px 2px 0px rgba(255, 255, 255, 0.35), inset -2px -2px 0px rgba(0, 0, 0, 0.45);
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        /* Custom Scrollbar for Console */
+        .console-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .console-scroll::-webkit-scrollbar-track {
+            background: #0b0d12;
+        }
+        .console-scroll::-webkit-scrollbar-thumb {
+            background: #2f3444;
+            border-radius: 2px;
+        }
+        .console-scroll::-webkit-scrollbar-thumb:hover {
+            background: #e52521;
+        }
+
+        /* Feature Card Hover Lift */
         .feature-card:hover {
-            transform: translateY(-5px);
-        }
-
-        .feature-card h3 {
-            color: var(--text-main);
-            margin-top: 0;
+            transform: translateY(-4px);
         }
     </style>
 </head>
-<body>
+<body class="bg-pixel-grid min-h-screen flex flex-col selection:bg-redstone selection:text-white" data-redstone="on">
 
-<header>
-    <h1>RedstonePanel</h1>
-    <p class="subtitle">The lightweight, APT-native game server manager designed specifically for Ubuntu and Debian environments.</p>
-    <a href="https://github.com/qrussell/redstonepanel" class="cta-button" target="_blank">View on GitHub</a>
-</header>
+    <!-- ========================================================= -->
+    <!-- STICKY NAVBAR                                             -->
+    <!-- ========================================================= -->
+    <nav class="sticky top-0 z-50 bg-obsidian/95 backdrop-blur-md border-b-2 border-[#2a2e3b]">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16 sm:h-20">
+                <!-- Brand Logo + v1.17 Badge -->
+                <a href="#" class="flex items-center gap-3 group">
+                    <!-- Custom Pixel-Art SVG Redstone Lamp Icon -->
+                    <div class="w-10 h-10 mc-slot rounded-md flex items-center justify-center p-1.5 shrink-0">
+                        <svg viewBox="0 0 16 16" class="w-full h-full redstone-svg-glow transition-all duration-300" shape-rendering="crispEdges" aria-hidden="true">
+                            <!-- Outer wooden/iron frame -->
+                            <rect x="0" y="0" width="16" height="16" fill="#2a1d17"/>
+                            <rect x="1" y="1" width="14" height="14" fill="#4e3529"/>
+                            <!-- Glowing Redstone Core -->
+                            <rect x="2" y="2" width="12" height="12" fill="#8f1411"/>
+                            <rect x="3" y="3" width="10" height="10" fill="#e52521"/>
+                            <rect x="4" y="4" width="8" height="8" fill="#ff4d42"/>
+                            <rect x="6" y="6" width="4" height="4" fill="#ffb8b3"/>
+                            <!-- Corner rivets -->
+                            <rect x="2" y="2" width="2" height="2" fill="#3a261d"/>
+                            <rect x="12" y="2" width="2" height="2" fill="#3a261d"/>
+                            <rect x="2" y="12" width="2" height="2" fill="#3a261d"/>
+                            <rect x="12" y="12" width="2" height="2" fill="#3a261d"/>
+                        </svg>
+                    </div>
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:gap-2.5">
+                        <span class="font-pixel text-lg sm:text-xl tracking-wider text-white group-hover:text-redstone-bright transition-colors">
+                            REDSTONE<span class="redstone-glow-text">PANEL</span>
+                        </span>
+                        <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-pixel bg-redstone/20 text-redstone-bright border border-redstone/50 rounded w-fit">
+                            v1.17
+                        </span>
+                    </div>
+                </a>
 
-<div class="container">
-    <div class="features-grid">
-        <div class="feature-card">
-            <h3>APT-Native Installation</h3>
-            <p>Install and update seamlessly using standard system package managers. No complex container setups required for core operations.</p>
-        </div>
-        <div class="feature-card">
-            <h3>Multi-Node Architecture</h3>
-            <p>Scale your infrastructure effortlessly. Manage multiple server instances across different nodes from a unified interface.</p>
-        </div>
-        <div class="feature-card">
-            <h3>Advanced Java Control</h3>
-            <p>Fine-tune your Minecraft Java deployments with granular resource limits and customized startup flags for optimal performance.</p>
-        </div>
-    </div>
-</div>
+                <!-- Desktop Navigation Links -->
+                <div class="hidden lg:flex items-center gap-6 text-sm font-medium text-gray-300">
+                    <a href="#features" class="hover:text-white transition-colors">Features</a>
+                    <a href="#simulator" class="hover:text-white transition-colors">Live Preview</a>
+                    <a href="#install" class="hover:text-white transition-colors">Install</a>
+                    <a href="#roadmap" class="hover:text-white transition-colors">Roadmap</a>
+                    <a href="https://github.com/qrussell/redstonepanel/blob/main/docs/guide/README.md" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">Docs</a>
+                </div>
 
+                <!-- Right Actions: Redstone Power Lever + GitHub + Mobile Menu -->
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <!-- Interactive Redstone Power Lever Toggle -->
+                    <button id="redstoneToggle" type="button" aria-pressed="true" title="Toggle Redstone Power"
+                        class="mc-slot rounded-md px-2.5 py-1.5 flex items-center gap-2 hover:border-redstone/60 transition-colors cursor-pointer">
+                        <!-- Mini Pixel Lever SVG -->
+                        <svg id="leverSvg" viewBox="0 0 20 20" class="w-5 h-5 shrink-0" shape-rendering="crispEdges">
+                            <!-- Cobblestone Base -->
+                            <rect x="4" y="14" width="12" height="5" fill="#525866"/>
+                            <rect x="5" y="15" width="10" height="3" fill="#6b7280"/>
+                            <!-- Lever Stick (rotates via JS) -->
+                            <g id="leverArm" style="transform-origin: 10px 15px; transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); transform: rotate(28deg);">
+                                <rect x="9" y="4" width="2" height="11" fill="#8b5a2b"/>
+                                <rect x="8" y="2" width="4" height="4" id="leverTip" fill="#ff3b30"/>
+                            </g>
+                        </svg>
+                        <div class="hidden sm:flex flex-col text-left leading-none">
+                            <span class="text-[9px] font-mono uppercase tracking-wider text-gray-400">Redstone</span>
+                            <span id="powerStateText" class="text-[11px] font-pixel text-redstone-bright">POWER: ON</span>
+                        </div>
+                        <span class="w-2.5 h-2.5 rounded-sm redstone-lamp shrink-0"></span>
+                    </button>
+
+                    <!-- GitHub CTA Button -->
+                    <a href="https://github.com/qrussell/redstonepanel" target="_blank" rel="noopener noreferrer"
+                        class="hidden sm:inline-flex mc-btn mc-btn-stone rounded-md px-3.5 py-2 text-xs font-pixel tracking-wide">
+                        <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+                        </svg>
+                        GitHub
+                    </a>
+
+                    <!-- Mobile Menu Toggle -->
+                    <button id="mobileMenuBtn" type="button" aria-label="Toggle Menu"
+                        class="lg:hidden mc-btn mc-btn-stone rounded-md p-2 text-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Dropdown Nav -->
+        <div id="mobileMenu" class="hidden lg:hidden bg-deepslate border-t-2 border-[#090a0d] px-4 pt-3 pb-4 space-y-2">
+            <a href="#features" class="mobile-nav-link block px-3 py-2 rounded text-sm font-medium text-gray-200 hover:bg-stoneblock">Features</a>
+            <a href="#simulator" class="mobile-nav-link block px-3 py-2 rounded text-sm font-medium text-gray-200 hover:bg-stoneblock">Live Preview</a>
+            <a href="#install" class="mobile-nav-link block px-3 py-2 rounded text-sm font-medium text-gray-200 hover:bg-stoneblock">Install</a>
+            <a href="#roadmap" class="mobile-nav-link block px-3 py-2 rounded text-sm font-medium text-gray-200 hover:bg-stoneblock">Roadmap</a>
+            <a href="https://github.com/qrussell/redstonepanel/blob/main/docs/guide/README.md" target="_blank" rel="noopener noreferrer" class="block px-3 py-2 rounded text-sm font-medium text-gray-200 hover:bg-stoneblock">Docs</a>
+            <a href="https://github.com/qrussell/redstonepanel" target="_blank" rel="noopener noreferrer" class="block px-3 py-2 rounded text-sm font-pixel text-redstone-bright hover:bg-stoneblock">View on GitHub &rarr;</a>
+        </div>
+    </nav>
+
+    <!-- ========================================================= -->
+    <!-- HERO SECTION WITH REDSTONE DUST CANVAS                    -->
+    <!-- ========================================================= -->
+    <header class="relative overflow-hidden border-b-2 border-[#232734]">
+        <!-- Animated Redstone Dust Particle Canvas -->
+        <canvas id="redstoneCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
+
+        <!-- Subtle Radial Glow Behind Hero -->
+        <div class="absolute inset-0 pointer-events-none z-0" style="background: radial-gradient(circle at 50% 25%, rgba(229, 37, 33, 0.14) 0%, transparent 62%);"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-20 sm:pt-24 sm:pb-28 text-center">
+            <!-- Status Pill -->
+            <div class="inline-flex items-center gap-2.5 mc-slot rounded-full px-4 py-1.5 mb-7">
+                <span class="w-2.5 h-2.5 rounded-sm redstone-lamp"></span>
+                <span class="text-xs font-mono text-gray-300">Ubuntu 24.04 &amp; 25.04 APT-Native &bull; Release v1.17</span>
+            </div>
+
+            <!-- Main Headline -->
+            <h1 class="font-pixel text-3xl sm:text-5xl lg:text-6xl text-white tracking-tight leading-tight max-w-4xl mx-auto">
+                LIGHTWEIGHT <span class="redstone-glow-text">MINECRAFT</span> SERVER MANAGEMENT
+            </h1>
+
+            <!-- Subheadline -->
+            <p class="mt-6 text-base sm:text-lg text-gray-300 max-w-2xl mx-auto leading-relaxed">
+                APT-native control for Java &amp; Bedrock servers on Ubuntu 24.04 &amp; 25.04. Multi-node architecture, granular resource limits, and zero Docker bloat.
+            </p>
+
+            <!-- Primary CTA Buttons -->
+            <div class="mt-9 flex flex-col sm:flex-row items-center justify-center gap-4">
+                <a href="#install" class="w-full sm:w-auto mc-btn mc-btn-redstone rounded-md px-7 py-3.5 font-pixel text-sm tracking-wide">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Quick Install
+                </a>
+                <a href="https://github.com/qrussell/redstonepanel" target="_blank" rel="noopener noreferrer"
+                    class="w-full sm:w-auto mc-btn mc-btn-stone rounded-md px-7 py-3.5 font-pixel text-sm tracking-wide">
+                    View on GitHub
+                </a>
+            </div>
+
+            <!-- Quick-Copy Terminal Bar -->
+            <div class="mt-12 max-w-3xl mx-auto">
+                <div class="mc-panel redstone-wire-border rounded-lg overflow-hidden text-left">
+                    <!-- Terminal Title Bar -->
+                    <div class="bg-[#15171e] border-b-2 border-[#090a0d] px-4 py-2 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-sm bg-redstone"></span>
+                            <span class="w-2.5 h-2.5 rounded-sm bg-amber-500"></span>
+                            <span class="w-2.5 h-2.5 rounded-sm bg-emeraldblock"></span>
+                            <span class="ml-2 text-xs font-mono text-gray-400">bash — one-line apt installer</span>
+                        </div>
+                        <span class="text-[10px] font-pixel text-gray-500 uppercase">Signed Repo</span>
+                    </div>
+                    <!-- Command Row -->
+                    <div class="p-3 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#0d0f14]">
+                        <div class="overflow-x-auto font-mono text-xs sm:text-sm text-gray-200 whitespace-nowrap py-1">
+                            <span class="text-redstone-bright select-none">$ </span><code id="heroInstallCmd">curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install.sh | sudo sh</code>
+                        </div>
+                        <button type="button" data-copy-target="heroInstallCmd"
+                            class="copy-btn shrink-0 mc-btn mc-btn-stone rounded-md px-4 py-2 font-pixel text-xs text-white">
+                            COPY
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1">
+        <!-- ========================================================= -->
+        <!-- INTERACTIVE LIVE PANEL SIMULATOR                          -->
+        <!-- ========================================================= -->
+        <section id="simulator" class="py-16 sm:py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-10">
+                <span class="font-pixel text-xs uppercase tracking-widest redstone-glow-text">Interactive Demo</span>
+                <h2 class="mt-2 font-pixel text-2xl sm:text-4xl text-white">TRY THE CONTROL PANEL</h2>
+                <p class="mt-3 text-sm sm:text-base text-gray-400">
+                    Switch between cluster nodes, start or stop Java &amp; Bedrock instances, tune v1.17 resource limits, and send live RCON commands right in your browser.
+                </p>
+            </div>
+
+            <!-- Main Simulator Chassis -->
+            <div class="mc-panel redstone-wire-border rounded-xl overflow-hidden">
+                <!-- Top Panel Bar: Node Selector Tabs + Live Cluster Telemetry -->
+                <div class="bg-[#15171f] border-b-2 border-[#090a0d] p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <!-- Node Tabs -->
+                    <div class="flex flex-wrap items-center gap-2" role="tablist" aria-label="Cluster Nodes">
+                        <button type="button" data-node="node1"
+                            class="node-tab mc-btn mc-btn-redstone rounded-md px-3.5 py-2 text-xs font-mono font-semibold">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            Node 1: ubuntu-prod-01
+                        </button>
+                        <button type="button" data-node="node2"
+                            class="node-tab mc-btn mc-btn-stone rounded-md px-3.5 py-2 text-xs font-mono font-semibold">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            Node 2: bedrock-lan-02
+                        </button>
+                    </div>
+
+                    <!-- Live Simulated Node Gauges -->
+                    <div class="grid grid-cols-2 sm:flex sm:items-center gap-4 text-xs font-mono">
+                        <div class="mc-slot rounded-md px-3 py-2 min-w-[140px]">
+                            <div class="flex justify-between text-gray-400 mb-1">
+                                <span>NODE CPU</span>
+                                <span id="nodeCpuVal" class="text-white font-bold">24%</span>
+                            </div>
+                            <div class="w-full h-2 bg-[#1c202c] rounded-sm overflow-hidden">
+                                <div id="nodeCpuBar" class="h-full bg-redstone-bright transition-all duration-500" style="width: 24%;"></div>
+                            </div>
+                        </div>
+                        <div class="mc-slot rounded-md px-3 py-2 min-w-[155px]">
+                            <div class="flex justify-between text-gray-400 mb-1">
+                                <span>NODE RAM</span>
+                                <span id="nodeRamVal" class="text-white font-bold">5.4 / 16 GB</span>
+                            </div>
+                            <div class="w-full h-2 bg-[#1c202c] rounded-sm overflow-hidden">
+                                <div id="nodeRamBar" class="h-full bg-emerald-500 transition-all duration-500" style="width: 34%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Simulator Body: Left (Server Cards + Resource Sliders) | Right (RCON Console) -->
+                <div class="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <!-- Left Column: Servers & v1.17 Resource Limits -->
+                    <div class="lg:col-span-7 space-y-5">
+                        <!-- Server Cards Container (Rendered dynamically by JS) -->
+                        <div id="serverCardsContainer" class="space-y-4"></div>
+
+                        <!-- v1.17 Resource Limit Controls -->
+                        <div class="mc-slot rounded-lg p-4 sm:p-5">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                                <div>
+                                    <span class="inline-block px-2 py-0.5 text-[10px] font-pixel bg-redstone/20 text-redstone-bright border border-redstone/40 rounded mb-1">NEW IN v1.17</span>
+                                    <h3 class="font-pixel text-sm sm:text-base text-white">OS-LEVEL RESOURCE LIMITS</h3>
+                                </div>
+                                <span id="activeServerLimitBadge" class="text-xs font-mono text-gray-400 bg-[#1a1c23] px-2.5 py-1 rounded border border-[#2d3242]">
+                                    Target: Survival SMP
+                                </span>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                <!-- Max RAM Slider -->
+                                <div>
+                                    <div class="flex justify-between text-xs font-mono mb-2">
+                                        <label for="ramSlider" class="text-gray-300">Max RAM Limit</label>
+                                        <span id="ramSliderValue" class="text-redstone-bright font-bold">6 GB</span>
+                                    </div>
+                                    <input id="ramSlider" type="range" min="1" max="16" step="1" value="6" class="mc-slider">
+                                    <div class="flex justify-between text-[10px] font-mono text-gray-500 mt-1">
+                                        <span>1 GB</span>
+                                        <span>8 GB</span>
+                                        <span>16 GB</span>
+                                    </div>
+                                </div>
+
+                                <!-- CPU Cap Slider -->
+                                <div>
+                                    <div class="flex justify-between text-xs font-mono mb-2">
+                                        <label for="cpuSlider" class="text-gray-300">CPU Cap (systemd)</label>
+                                        <span id="cpuSliderValue" class="text-emerald-400 font-bold">200%</span>
+                                    </div>
+                                    <input id="cpuSlider" type="range" min="50" max="400" step="25" value="200" class="mc-slider">
+                                    <div class="flex justify-between text-[10px] font-mono text-gray-500 mt-1">
+                                        <span>50%</span>
+                                        <span>200%</span>
+                                        <span>400%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Live Interactive RCON Console -->
+                    <div class="lg:col-span-5 flex flex-col mc-slot rounded-lg overflow-hidden min-h-[380px]">
+                        <!-- Console Header -->
+                        <div class="bg-[#15171f] border-b-2 border-[#090a0d] px-4 py-2.5 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-sm bg-emerald-400 animate-pulse"></span>
+                                <span class="font-pixel text-xs text-white">LIVE RCON CONSOLE</span>
+                            </div>
+                            <span id="consoleTargetLabel" class="font-mono text-[11px] text-gray-400">Survival SMP</span>
+                        </div>
+
+                        <!-- Console Log Output -->
+                        <div id="rconOutput" class="console-scroll flex-1 p-3.5 font-mono text-xs space-y-1.5 overflow-y-auto max-h-[300px] bg-[#0b0d12]">
+                            <!-- Populated by JS -->
+                        </div>
+
+                        <!-- Quick Command Chips -->
+                        <div class="px-3 py-2 bg-[#12141c] border-t border-[#1f2330] flex flex-wrap gap-1.5">
+                            <button type="button" class="rcon-chip text-[11px] font-mono px-2 py-1 rounded bg-[#1d212d] hover:bg-redstone/25 hover:text-redstone-bright text-gray-300 border border-[#2f3444] transition-colors cursor-pointer" data-cmd="help">help</button>
+                            <button type="button" class="rcon-chip text-[11px] font-mono px-2 py-1 rounded bg-[#1d212d] hover:bg-redstone/25 hover:text-redstone-bright text-gray-300 border border-[#2f3444] transition-colors cursor-pointer" data-cmd="list">list</button>
+                            <button type="button" class="rcon-chip text-[11px] font-mono px-2 py-1 rounded bg-[#1d212d] hover:bg-redstone/25 hover:text-redstone-bright text-gray-300 border border-[#2f3444] transition-colors cursor-pointer" data-cmd="status">status</button>
+                            <button type="button" class="rcon-chip text-[11px] font-mono px-2 py-1 rounded bg-[#1d212d] hover:bg-redstone/25 hover:text-redstone-bright text-gray-300 border border-[#2f3444] transition-colors cursor-pointer" data-cmd="say Hello from RedstonePanel!">say hello</button>
+                            <button type="button" class="rcon-chip text-[11px] font-mono px-2 py-1 rounded bg-[#1d212d] hover:bg-redstone/25 hover:text-redstone-bright text-gray-300 border border-[#2f3444] transition-colors cursor-pointer" data-cmd="backup">backup</button>
+                        </div>
+
+                        <!-- Console Input Form -->
+                        <form id="rconForm" class="p-2.5 bg-[#15171f] border-t-2 border-[#090a0d] flex items-center gap-2">
+                            <span class="font-mono text-redstone-bright text-sm font-bold pl-1">&gt;</span>
+                            <input id="rconInput" type="text" placeholder="Type command (help, list, status, backup)..."
+                                autocomplete="off"
+                                class="flex-1 bg-transparent text-xs sm:text-sm font-mono text-white placeholder-gray-500 focus:outline-none">
+                            <button type="submit" class="mc-btn mc-btn-redstone rounded px-3 py-1.5 font-pixel text-[11px]">
+                                SEND
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- FEATURE BLOCKS (6 MINECRAFT INVENTORY-STYLED CARDS)       -->
+        <!-- ========================================================= -->
+        <section id="features" class="py-16 sm:py-24 bg-[#14161d]/80 border-y-2 border-[#232734]">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center max-w-3xl mx-auto mb-14">
+                    <span class="font-pixel text-xs uppercase tracking-widest redstone-glow-text">Built Like Bedrock</span>
+                    <h2 class="mt-2 font-pixel text-2xl sm:text-4xl text-white">CORE CAPABILITIES</h2>
+                    <p class="mt-3 text-sm sm:text-base text-gray-400">
+                        Engineered for system administrators and Minecraft communities who prefer native Linux tooling over heavy container stacks.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Card 1: APT-Native Installation -->
+                    <article class="mc-panel feature-card rounded-xl p-6 flex flex-col">
+                        <div class="w-12 h-12 mc-slot rounded-lg flex items-center justify-center mb-5 p-2">
+                            <svg viewBox="0 0 16 16" class="w-full h-full" shape-rendering="crispEdges">
+                                <rect x="1" y="1" width="14" height="14" fill="#9a6b3e"/>
+                                <rect x="2" y="2" width="12" height="12" fill="#b88450"/>
+                                <rect x="1" y="6" width="14" height="2" fill="#52361c"/>
+                                <rect x="7" y="5" width="2" height="4" fill="#d1d5db"/>
+                            </svg>
+                        </div>
+                        <h3 class="font-pixel text-base text-white mb-2">APT-Native Installation</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed flex-1">
+                            Signed <code class="text-gray-200 font-mono text-xs bg-[#101218] px-1.5 py-0.5 rounded">qrussell-repo</code> APT package for Ubuntu 24.04 &amp; 25.04. Update anytime with <code class="text-redstone-bright font-mono text-xs">sudo apt update &amp;&amp; sudo apt upgrade</code>.
+                        </p>
+                    </article>
+
+                    <!-- Card 2: Multi-Node Architecture -->
+                    <article class="mc-panel feature-card rounded-xl p-6 flex flex-col">
+                        <div class="w-12 h-12 mc-slot rounded-lg flex items-center justify-center mb-5 p-2">
+                            <svg viewBox="0 0 16 16" class="w-full h-full redstone-svg-glow" shape-rendering="crispEdges">
+                                <rect x="1" y="2" width="5" height="5" fill="#4b5563"/>
+                                <rect x="2" y="3" width="3" height="3" fill="#22c55e"/>
+                                <rect x="10" y="2" width="5" height="5" fill="#4b5563"/>
+                                <rect x="11" y="3" width="3" height="3" fill="#22c55e"/>
+                                <rect x="5" y="10" width="6" height="5" fill="#4b5563"/>
+                                <rect x="6" y="11" width="4" height="3" fill="#ff3b30"/>
+                                <rect x="6" y="4" width="4" height="2" fill="#e52521"/>
+                                <rect x="7" y="6" width="2" height="4" fill="#e52521"/>
+                            </svg>
+                        </div>
+                        <h3 class="font-pixel text-base text-white mb-2">Multi-Node Architecture</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed flex-1">
+                            Control local and remote server nodes from a single unified web interface. Scale across bare-metal machines or VPS hosts effortlessly.
+                        </p>
+                    </article>
+
+                    <!-- Card 3: Java & Bedrock Ready -->
+                    <article class="mc-panel feature-card rounded-xl p-6 flex flex-col">
+                        <div class="w-12 h-12 mc-slot rounded-lg flex items-center justify-center mb-5 p-2">
+                            <svg viewBox="0 0 16 16" class="w-full h-full" shape-rendering="crispEdges">
+                                <!-- Grass Block -->
+                                <rect x="1" y="1" width="14" height="5" fill="#3fa34d"/>
+                                <rect x="2" y="5" width="3" height="2" fill="#3fa34d"/>
+                                <rect x="9" y="5" width="4" height="2" fill="#3fa34d"/>
+                                <rect x="1" y="6" width="14" height="9" fill="#7c5333"/>
+                                <rect x="3" y="8" width="2" height="2" fill="#5e3e24"/>
+                                <rect x="10" y="10" width="3" height="2" fill="#5e3e24"/>
+                                <rect x="5" y="12" width="2" height="2" fill="#9c6c46"/>
+                            </svg>
+                        </div>
+                        <h3 class="font-pixel text-base text-white mb-2">Java &amp; Bedrock Ready</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed flex-1">
+                            Unified lifecycle management for both editions, featuring automatic <code class="text-gray-200 font-mono text-xs bg-[#101218] px-1.5 py-0.5 rounded">server.properties</code> port parsing and native IPv6 port handling.
+                        </p>
+                    </article>
+
+                    <!-- Card 4: Resource Limits (New in v1.17) -->
+                    <article class="mc-panel redstone-wire-border feature-card rounded-xl p-6 flex flex-col">
+                        <div class="flex items-start justify-between mb-5">
+                            <div class="w-12 h-12 mc-slot rounded-lg flex items-center justify-center p-2">
+                                <svg viewBox="0 0 16 16" class="w-full h-full redstone-svg-glow" shape-rendering="crispEdges">
+                                    <rect x="2" y="12" width="12" height="2" fill="#4b5563"/>
+                                    <rect x="3" y="7" width="3" height="5" fill="#22c55e"/>
+                                    <rect x="7" y="4" width="3" height="8" fill="#f59e0b"/>
+                                    <rect x="11" y="2" width="3" height="10" fill="#ff3b30"/>
+                                </svg>
+                            </div>
+                            <span class="px-2 py-0.5 text-[10px] font-pixel bg-redstone/20 text-redstone-bright border border-redstone/50 rounded">
+                                NEW IN v1.17
+                            </span>
+                        </div>
+                        <h3 class="font-pixel text-base text-white mb-2">Resource Limits</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed flex-1">
+                            Enforce per-server memory and CPU caps directly at the OS level using native Linux controls—without container virtualization overhead.
+                        </p>
+                    </article>
+
+                    <!-- Card 5: Live RCON & Backups -->
+                    <article class="mc-panel feature-card rounded-xl p-6 flex flex-col">
+                        <div class="w-12 h-12 mc-slot rounded-lg flex items-center justify-center mb-5 p-2">
+                            <svg viewBox="0 0 16 16" class="w-full h-full" shape-rendering="crispEdges">
+                                <rect x="1" y="2" width="14" height="12" fill="#111827"/>
+                                <rect x="2" y="3" width="12" height="10" fill="#090d16"/>
+                                <rect x="3" y="5" width="2" height="2" fill="#22c55e"/>
+                                <rect x="5" y="7" width="2" height="2" fill="#22c55e"/>
+                                <rect x="3" y="9" width="2" height="2" fill="#22c55e"/>
+                                <rect x="8" y="9" width="5" height="2" fill="#e52521"/>
+                            </svg>
+                        </div>
+                        <h3 class="font-pixel text-base text-white mb-2">Live RCON &amp; Backups</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed flex-1">
+                            Real-time interactive console chat, automated scheduled world backups, and fast one-click world exports straight from the dashboard.
+                        </p>
+                    </article>
+
+                    <!-- Card 6: Lightweight by Design -->
+                    <article class="mc-panel feature-card rounded-xl p-6 flex flex-col">
+                        <div class="w-12 h-12 mc-slot rounded-lg flex items-center justify-center mb-5 p-2">
+                            <svg viewBox="0 0 16 16" class="w-full h-full" shape-rendering="crispEdges">
+                                <rect x="7" y="1" width="3" height="5" fill="#fbbf24"/>
+                                <rect x="5" y="5" width="5" height="3" fill="#f59e0b"/>
+                                <rect x="7" y="8" width="4" height="3" fill="#fbbf24"/>
+                                <rect x="6" y="11" width="3" height="4" fill="#f59e0b"/>
+                            </svg>
+                        </div>
+                        <h3 class="font-pixel text-base text-white mb-2">Lightweight by Design</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed flex-1">
+                            Built for speed and minimal footprint—saving precious RAM and CPU cycles for chunk generation on homelabs, VPS hosts, and bare-metal servers.
+                        </p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- TABBED INSTALLATION & UPGRADE SECTION                     -->
+        <!-- ========================================================= -->
+        <section id="install" class="py-16 sm:py-24 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-2xl mx-auto mb-10">
+                <span class="font-pixel text-xs uppercase tracking-widest redstone-glow-text">Deploy in Seconds</span>
+                <h2 class="mt-2 font-pixel text-2xl sm:text-4xl text-white">INSTALL &amp; UPGRADE</h2>
+                <p class="mt-3 text-sm sm:text-base text-gray-400">
+                    Targeting Ubuntu 24.04 &amp; 25.04 via the official GPG-signed APT repository.
+                </p>
+            </div>
+
+            <div class="mc-panel rounded-xl overflow-hidden">
+                <!-- Tab Buttons -->
+                <div class="bg-[#15171f] border-b-2 border-[#090a0d] p-3 flex flex-wrap gap-2" role="tablist">
+                    <button type="button" data-install-tab="install"
+                        class="install-tab mc-btn mc-btn-redstone rounded-md px-4 py-2 font-pixel text-xs">
+                        One-Line Install
+                    </button>
+                    <button type="button" data-install-tab="upgrade"
+                        class="install-tab mc-btn mc-btn-stone rounded-md px-4 py-2 font-pixel text-xs">
+                        APT Upgrade
+                    </button>
+                    <button type="button" data-install-tab="gpg"
+                        class="install-tab mc-btn mc-btn-stone rounded-md px-4 py-2 font-pixel text-xs">
+                        GPG Verification
+                    </button>
+                </div>
+
+                <!-- Tab Content Panels -->
+                <div class="p-5 sm:p-8">
+                    <!-- Tab 1: One-Line Install -->
+                    <div id="tab-install" class="install-pane space-y-4">
+                        <p class="text-sm text-gray-300">
+                            Verifies the signing key, configures the <code class="font-mono text-xs text-redstone-bright">qrussell-repo</code> APT source, and installs <code class="font-mono text-xs text-white">redstonepanel</code>.
+                        </p>
+                        <div class="mc-slot rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <code id="cmdInstall" class="font-mono text-xs sm:text-sm text-emerald-400 overflow-x-auto whitespace-nowrap">curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install.sh | sudo sh</code>
+                            <button type="button" data-copy-target="cmdInstall" class="copy-btn shrink-0 mc-btn mc-btn-stone rounded px-3.5 py-2 font-pixel text-xs">COPY</button>
+                        </div>
+                        <p class="text-xs font-mono text-gray-500">
+                            Tip: Testing on an unsupported Debian/Ubuntu derivative? Prefix with <span class="text-gray-300">FORCE=1</span> to bypass the OS version guard.
+                        </p>
+                    </div>
+
+                    <!-- Tab 2: APT Upgrade -->
+                    <div id="tab-upgrade" class="install-pane hidden space-y-4">
+                        <p class="text-sm text-gray-300">
+                            Keep RedstonePanel up to date alongside your regular Ubuntu security patches using standard APT commands:
+                        </p>
+                        <div class="mc-slot rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <code id="cmdUpgrade" class="font-mono text-xs sm:text-sm text-emerald-400 overflow-x-auto whitespace-nowrap">sudo apt update &amp;&amp; sudo apt upgrade</code>
+                            <button type="button" data-copy-target="cmdUpgrade" class="copy-btn shrink-0 mc-btn mc-btn-stone rounded px-3.5 py-2 font-pixel text-xs">COPY</button>
+                        </div>
+                        <p class="text-xs font-mono text-gray-500">
+                            Repository URL: <span class="text-gray-300">https://qrussell.github.io/qrussell-repo/deb</span>
+                        </p>
+                    </div>
+
+                    <!-- Tab 3: GPG Verification -->
+                    <div id="tab-gpg" class="install-pane hidden space-y-4">
+                        <p class="text-sm text-gray-300">
+                            Every package in the APT repository is cryptographically signed. Verify the official GPG signing key fingerprint:
+                        </p>
+                        <div class="mc-slot rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <code id="cmdGpg" class="font-mono text-xs sm:text-sm text-amber-400 break-all">9994A9EB39EB3C101C949FB2012BA14E0FE3A355</code>
+                            <button type="button" data-copy-target="cmdGpg" class="copy-btn shrink-0 mc-btn mc-btn-stone rounded px-3.5 py-2 font-pixel text-xs">COPY</button>
+                        </div>
+                        <p class="text-xs font-mono text-gray-500">
+                            Automatically verified by <span class="text-gray-300">install.sh</span> before adding the APT repository keyring.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- RELEASE ROADMAP (REDSTONE-RAIL TIMELINE)                  -->
+        <!-- ========================================================= -->
+        <section id="roadmap" class="py-16 sm:py-24 bg-[#14161d]/80 border-t-2 border-[#232734]">
+            <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-14">
+                    <span class="font-pixel text-xs uppercase tracking-widest redstone-glow-text">Active Development</span>
+                    <h2 class="mt-2 font-pixel text-2xl sm:text-4xl text-white">RELEASE ROADMAP</h2>
+                </div>
+
+                <!-- Redstone Rail Timeline -->
+                <div class="relative pl-8 sm:pl-12 space-y-10">
+                    <!-- Vertical Redstone Wire Rail -->
+                    <div class="absolute left-3 sm:left-5 top-2 bottom-2 w-1.5 rounded-full redstone-rail transition-all duration-300"></div>
+
+                    <!-- Milestone 1: v1.17 Current Release -->
+                    <div class="relative">
+                        <!-- Glowing Redstone Node -->
+                        <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] redstone-lamp"></div>
+
+                        <div class="mc-panel redstone-wire-border rounded-xl p-6">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.17 — Current Release</h3>
+                                <span class="px-2.5 py-1 text-[10px] font-pixel bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded">
+                                    SHIPPING NOW
+                                </span>
+                            </div>
+                            <ul class="space-y-2 text-sm text-gray-300">
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Per-server resource limits</strong> enforced directly at the OS level for predictable memory and CPU usage.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Multi-node management</strong> to orchestrate local and remote Minecraft hosts from one panel.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Ubuntu 24.04 &amp; 25.04 APT repository</strong> with GPG-verified package delivery and seamless upgrades.</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Milestone 2: v1.17.2 Up Next -->
+                    <div class="relative">
+                        <!-- Dim/Repeater Node -->
+                        <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] bg-[#2e3342]"></div>
+
+                        <div class="mc-panel rounded-xl p-6">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.17.2 — Up Next</h3>
+                                <span class="px-2.5 py-1 text-[10px] font-pixel bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded">
+                                    IN DEVELOPMENT
+                                </span>
+                            </div>
+                            <ul class="space-y-2 text-sm text-gray-300">
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Advanced Minecraft Java deployment options</strong> with granular server configuration controls.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Custom JVM flag presets</strong> (e.g., Aikar's flags &amp; ZGC tuning) selectable directly from the UI.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Streamlined version provisioning</strong> for rapid Java server builds and upgrades.</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ========================================================= -->
+    <!-- FOOTER                                                    -->
+    <!-- ========================================================= -->
+    <footer class="bg-[#0c0d11] border-t-2 border-[#232734] py-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div class="flex items-center gap-3">
+                <span class="w-3 h-3 rounded-sm redstone-lamp"></span>
+                <span class="font-pixel text-sm text-white">REDSTONE<span class="redstone-glow-text">PANEL</span></span>
+                <span class="text-xs font-mono text-gray-500">&bull; Built for Ubuntu 24.04 &amp; 25.04</span>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-center gap-6 text-sm font-medium text-gray-400">
+                <a href="https://github.com/qrussell/redstonepanel" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">GitHub Repo</a>
+                <a href="https://github.com/qrussell/redstonepanel/blob/main/docs/guide/README.md" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">User Manual</a>
+                <a href="https://qrussell.github.io/qrussell-repo/deb" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">APT Repo</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ========================================================= -->
+    <!-- INTERACTIVE JAVASCRIPT                                    -->
+    <!-- ========================================================= -->
+    <script>
+        (function () {
+            'use strict';
+
+            /* ---------------------------------------------------------
+             * 1. REDSTONE POWER LEVER TOGGLE
+             * --------------------------------------------------------- */
+            const redstoneToggle = document.getElementById('redstoneToggle');
+            const leverArm = document.getElementById('leverArm');
+            const leverTip = document.getElementById('leverTip');
+            const powerStateText = document.getElementById('powerStateText');
+            let isRedstonePowered = true;
+
+            redstoneToggle.addEventListener('click', () => {
+                isRedstonePowered = !isRedstonePowered;
+                document.body.setAttribute('data-redstone', isRedstonePowered ? 'on' : 'off');
+                redstoneToggle.setAttribute('aria-pressed', String(isRedstonePowered));
+
+                if (isRedstonePowered) {
+                    leverArm.style.transform = 'rotate(28deg)';
+                    leverTip.setAttribute('fill', '#ff3b30');
+                    powerStateText.textContent = 'POWER: ON';
+                    powerStateText.classList.remove('text-gray-500');
+                    powerStateText.classList.add('text-redstone-bright');
+
+                    // Brief surge effect across viewport
+                    document.body.classList.remove('surge-active');
+                    void document.body.offsetWidth;
+                    document.body.classList.add('surge-active');
+                } else {
+                    leverArm.style.transform = 'rotate(-28deg)';
+                    leverTip.setAttribute('fill', '#525866');
+                    powerStateText.textContent = 'POWER: OFF';
+                    powerStateText.classList.remove('text-redstone-bright');
+                    powerStateText.classList.add('text-gray-500');
+                }
+            });
+
+            /* ---------------------------------------------------------
+             * 2. MOBILE NAVIGATION MENU
+             * --------------------------------------------------------- */
+            const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+            const mobileMenu = document.getElementById('mobileMenu');
+            mobileMenuBtn.addEventListener('click', () => {
+                mobileMenu.classList.toggle('hidden');
+            });
+            document.querySelectorAll('.mobile-nav-link').forEach(link => {
+                link.addEventListener('click', () => mobileMenu.classList.add('hidden'));
+            });
+
+            /* ---------------------------------------------------------
+             * 3. HERO REDSTONE DUST PARTICLE CANVAS (RESPONSIVE)
+             * --------------------------------------------------------- */
+            const canvas = document.getElementById('redstoneCanvas');
+            const ctx = canvas.getContext('2d');
+            let particles = [];
+
+            function resizeCanvas() {
+                const rect = canvas.parentElement.getBoundingClientRect();
+                canvas.width = rect.width;
+                canvas.height = rect.height;
+                initParticles();
+            }
+
+            function initParticles() {
+                const count = Math.min(48, Math.max(18, Math.floor(canvas.width / 28)));
+                particles = [];
+                for (let i = 0; i < count; i++) {
+                    particles.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        size: Math.random() > 0.5 ? 4 : 3,
+                        vx: (Math.random() - 0.5) * 0.35,
+                        vy: -(0.2 + Math.random() * 0.45),
+                        alpha: 0.25 + Math.random() * 0.65,
+                        pulseSpeed: 0.015 + Math.random() * 0.025,
+                        phase: Math.random() * Math.PI * 2
+                    });
+                }
+            }
+
+            function animateParticles() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.phase += p.pulseSpeed;
+
+                    if (p.y < -10) {
+                        p.y = canvas.height + 10;
+                        p.x = Math.random() * canvas.width;
+                    }
+                    if (p.x < -10) p.x = canvas.width + 10;
+                    if (p.x > canvas.width + 10) p.x = -10;
+
+                    const dynamicAlpha = p.alpha * (0.6 + 0.4 * Math.sin(p.phase));
+
+                    if (isRedstonePowered) {
+                        ctx.fillStyle = `rgba(255, 59, 48, ${dynamicAlpha.toFixed(2)})`;
+                        ctx.shadowColor = 'rgba(229, 37, 33, 0.85)';
+                        ctx.shadowBlur = 8;
+                    } else {
+                        ctx.fillStyle = `rgba(120, 125, 140, ${(dynamicAlpha * 0.28).toFixed(2)})`;
+                        ctx.shadowBlur = 0;
+                    }
+
+                    // Crisp Minecraft square pixel particle
+                    ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+                }
+                ctx.shadowBlur = 0;
+                requestAnimationFrame(animateParticles);
+            }
+
+            window.addEventListener('resize', resizeCanvas);
+            window.addEventListener('load', () => {
+                resizeCanvas();
+                animateParticles();
+            });
+
+            /* ---------------------------------------------------------
+             * 4. CLIPBOARD COPY HELPER (iFrame-safe execCommand)
+             * --------------------------------------------------------- */
+            function copyTextToClipboard(text) {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.setAttribute('readonly', '');
+                textarea.style.position = 'fixed';
+                textarea.style.top = '-9999px';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                } catch (err) {
+                    console.error('Copy failed:', err);
+                }
+                document.body.removeChild(textarea);
+            }
+
+            document.querySelectorAll('.copy-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const targetId = btn.getAttribute('data-copy-target');
+                    const el = document.getElementById(targetId);
+                    if (!el) return;
+
+                    copyTextToClipboard(el.textContent.trim());
+                    const originalText = btn.textContent;
+                    btn.textContent = 'COPIED!';
+                    btn.classList.remove('mc-btn-stone');
+                    btn.classList.add('mc-btn-emerald');
+
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.classList.remove('mc-btn-emerald');
+                        btn.classList.add('mc-btn-stone');
+                    }, 1800);
+                });
+            });
+
+            /* ---------------------------------------------------------
+             * 5. TABBED INSTALLATION SECTION
+             * --------------------------------------------------------- */
+            const installTabs = document.querySelectorAll('.install-tab');
+            const installPanes = document.querySelectorAll('.install-pane');
+
+            installTabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const target = tab.getAttribute('data-install-tab');
+
+                    installTabs.forEach(t => {
+                        t.classList.remove('mc-btn-redstone');
+                        t.classList.add('mc-btn-stone');
+                    });
+                    tab.classList.remove('mc-btn-stone');
+                    tab.classList.add('mc-btn-redstone');
+
+                    installPanes.forEach(pane => {
+                        pane.classList.toggle('hidden', pane.id !== `tab-${target}`);
+                    });
+                });
+            });
+
+            /* ---------------------------------------------------------
+             * 6. INTERACTIVE LIVE PANEL SIMULATOR
+             * --------------------------------------------------------- */
+            const clusterData = {
+                node1: {
+                    name: 'ubuntu-prod-01',
+                    totalRam: 16,
+                    baseCpu: 8,
+                    servers: [
+                        {
+                            id: 'java-smp',
+                            name: 'Survival SMP',
+                            edition: 'Java 1.21',
+                            port: '25565 (TCP)',
+                            status: 'online', // online | starting | offline
+                            players: 14,
+                            maxPlayers: 40,
+                            ramLimit: 6,
+                            ramUsed: 4.1,
+                            cpuCap: 200
+                        },
+                        {
+                            id: 'bedrock-2',
+                            name: 'minecraft-bedrock2',
+                            edition: 'Bedrock',
+                            port: '19132 (UDP/IPv6)',
+                            status: 'online',
+                            players: 6,
+                            maxPlayers: 20,
+                            ramLimit: 3,
+                            ramUsed: 1.3,
+                            cpuCap: 150
+                        }
+                    ]
+                },
+                node2: {
+                    name: 'bedrock-lan-02',
+                    totalRam: 8,
+                    baseCpu: 5,
+                    servers: [
+                        {
+                            id: 'creative-dev',
+                            name: 'Redstone Lab',
+                            edition: 'Java 1.21',
+                            port: '25566 (TCP)',
+                            status: 'online',
+                            players: 3,
+                            maxPlayers: 12,
+                            ramLimit: 4,
+                            ramUsed: 2.2,
+                            cpuCap: 150
+                        },
+                        {
+                            id: 'bedrock-lan',
+                            name: 'Family Realm LAN',
+                            edition: 'Bedrock',
+                            port: '19134 (UDP)',
+                            status: 'offline',
+                            players: 0,
+                            maxPlayers: 10,
+                            ramLimit: 2,
+                            ramUsed: 0,
+                            cpuCap: 100
+                        }
+                    ]
+                }
+            };
+
+            let currentNodeKey = 'node1';
+            let selectedServerId = 'java-smp';
+
+            const serverCardsContainer = document.getElementById('serverCardsContainer');
+            const nodeCpuVal = document.getElementById('nodeCpuVal');
+            const nodeCpuBar = document.getElementById('nodeCpuBar');
+            const nodeRamVal = document.getElementById('nodeRamVal');
+            const nodeRamBar = document.getElementById('nodeRamBar');
+            const ramSlider = document.getElementById('ramSlider');
+            const ramSliderValue = document.getElementById('ramSliderValue');
+            const cpuSlider = document.getElementById('cpuSlider');
+            const cpuSliderValue = document.getElementById('cpuSliderValue');
+            const activeServerLimitBadge = document.getElementById('activeServerLimitBadge');
+            const consoleTargetLabel = document.getElementById('consoleTargetLabel');
+            const rconOutput = document.getElementById('rconOutput');
+            const rconForm = document.getElementById('rconForm');
+            const rconInput = document.getElementById('rconInput');
+
+            function getTimeStamp() {
+                const now = new Date();
+                return now.toTimeString().split(' ')[0];
+            }
+
+            function appendConsoleLog(message, type = 'info') {
+                const line = document.createElement('div');
+                const colors = {
+                    info: 'text-gray-300',
+                    success: 'text-emerald-400',
+                    warn: 'text-amber-400',
+                    error: 'text-redstone-bright',
+                    cmd: 'text-sky-400'
+                };
+                line.className = colors[type] || colors.info;
+                line.innerHTML = `<span class="text-gray-500">[${getTimeStamp()}]</span> ${message}`;
+                rconOutput.appendChild(line);
+                rconOutput.scrollTop = rconOutput.scrollHeight;
+            }
+
+            function getSelectedServer() {
+                const node = clusterData[currentNodeKey];
+                return node.servers.find(s => s.id === selectedServerId) || node.servers[0];
+            }
+
+            function syncSlidersToSelectedServer() {
+                const srv = getSelectedServer();
+                if (!srv) return;
+                selectedServerId = srv.id;
+                ramSlider.value = srv.ramLimit;
+                ramSliderValue.textContent = `${srv.ramLimit} GB`;
+                cpuSlider.value = srv.cpuCap;
+                cpuSliderValue.textContent = `${srv.cpuCap}%`;
+                activeServerLimitBadge.textContent = `Target: ${srv.name}`;
+                consoleTargetLabel.textContent = srv.name;
+            }
+
+            function updateNodeGauges() {
+                const node = clusterData[currentNodeKey];
+                let usedRam = 0.6; // OS overhead
+                let cpuLoad = node.baseCpu;
+
+                node.servers.forEach(s => {
+                    if (s.status === 'online') {
+                        usedRam += s.ramUsed;
+                        cpuLoad += Math.min(28, 8 + s.players * 1.1);
+                    } else if (s.status === 'starting') {
+                        usedRam += s.ramLimit * 0.45;
+                        cpuLoad += 22;
+                    }
+                });
+
+                // Add subtle live jitter
+                const jitterCpu = Math.min(98, Math.max(3, Math.round(cpuLoad + (Math.random() * 4 - 2))));
+                const clampedRam = Math.min(node.totalRam, usedRam).toFixed(1);
+                const ramPct = Math.round((clampedRam / node.totalRam) * 100);
+
+                nodeCpuVal.textContent = `${jitterCpu}%`;
+                nodeCpuBar.style.width = `${jitterCpu}%`;
+                nodeRamVal.textContent = `${clampedRam} / ${node.totalRam} GB`;
+                nodeRamBar.style.width = `${ramPct}%`;
+            }
+
+            function renderServers() {
+                const node = clusterData[currentNodeKey];
+                serverCardsContainer.innerHTML = '';
+
+                node.servers.forEach(srv => {
+                    const isSelected = srv.id === selectedServerId;
+                    const statusMap = {
+                        online: { label: 'ONLINE', dot: 'bg-emerald-400 shadow-[0_0_8px_#34d399]', text: 'text-emerald-400' },
+                        starting: { label: 'STARTING', dot: 'bg-amber-400 animate-pulse shadow-[0_0_8px_#fbbf24]', text: 'text-amber-400' },
+                        offline: { label: 'OFFLINE', dot: 'bg-redstone-bright shadow-[0_0_8px_#ff3b30]', text: 'text-redstone-bright' }
+                    };
+                    const st = statusMap[srv.status];
+
+                    const card = document.createElement('div');
+                    card.className = `mc-slot rounded-lg p-4 transition-all cursor-pointer ${isSelected ? 'ring-2 ring-redstone-bright/70 bg-[#141720]' : 'hover:bg-[#13161f]'}`;
+                    card.addEventListener('click', (e) => {
+                        if (e.target.closest('button')) return;
+                        selectedServerId = srv.id;
+                        syncSlidersToSelectedServer();
+                        renderServers();
+                        appendConsoleLog(`Switched console focus to <strong>${srv.name}</strong> (${srv.edition}).`, 'info');
+                    });
+
+                    card.innerHTML = `
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <div class="flex items-center gap-2.5">
+                                    <span class="w-3 h-3 rounded-sm ${st.dot}"></span>
+                                    <h4 class="font-pixel text-sm sm:text-base text-white">${srv.name}</h4>
+                                    <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-[#232631] text-gray-300 border border-[#323747]">${srv.edition}</span>
+                                </div>
+                                <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono text-gray-400">
+                                    <span class="${st.text} font-semibold">${st.label}</span>
+                                    <span>Players: <strong class="text-white">${srv.players}/${srv.maxPlayers}</strong></span>
+                                    <span>Port: <strong class="text-gray-300">${srv.port}</strong></span>
+                                    <span>Caps: <strong class="text-redstone-bright">${srv.ramLimit}GB</strong> / <strong class="text-emerald-400">${srv.cpuCap}%</strong></span>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 shrink-0">
+                                <button type="button" data-action="start" data-id="${srv.id}"
+                                    class="srv-action mc-btn mc-btn-emerald rounded px-2.5 py-1.5 font-pixel text-[10px] ${srv.status === 'online' || srv.status === 'starting' ? 'opacity-45 cursor-not-allowed' : ''}"
+                                    ${srv.status === 'online' || srv.status === 'starting' ? 'disabled' : ''}>
+                                    START
+                                </button>
+                                <button type="button" data-action="restart" data-id="${srv.id}"
+                                    class="srv-action mc-btn mc-btn-amber rounded px-2.5 py-1.5 font-pixel text-[10px] ${srv.status === 'starting' ? 'opacity-45 cursor-not-allowed' : ''}"
+                                    ${srv.status === 'starting' ? 'disabled' : ''}>
+                                    RESTART
+                                </button>
+                                <button type="button" data-action="stop" data-id="${srv.id}"
+                                    class="srv-action mc-btn mc-btn-redstone rounded px-2.5 py-1.5 font-pixel text-[10px] ${srv.status === 'offline' ? 'opacity-45 cursor-not-allowed' : ''}"
+                                    ${srv.status === 'offline' ? 'disabled' : ''}>
+                                    STOP
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    serverCardsContainer.appendChild(card);
+                });
+
+                // Bind action buttons
+                serverCardsContainer.querySelectorAll('.srv-action').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const action = btn.getAttribute('data-action');
+                        const id = btn.getAttribute('data-id');
+                        handleServerAction(id, action);
+                    });
+                });
+            }
+
+            function handleServerAction(serverId, action) {
+                const node = clusterData[currentNodeKey];
+                const srv = node.servers.find(s => s.id === serverId);
+                if (!srv) return;
+
+                selectedServerId = srv.id;
+                syncSlidersToSelectedServer();
+
+                if (action === 'stop') {
+                    srv.status = 'offline';
+                    srv.players = 0;
+                    srv.ramUsed = 0;
+                    appendConsoleLog(`[${srv.name}] Saving chunks &amp; stopping server cleanly...`, 'warn');
+                    appendConsoleLog(`[${srv.name}] Server is now OFFLINE.`, 'error');
+                    renderServers();
+                    updateNodeGauges();
+                } else if (action === 'start' || action === 'restart') {
+                    srv.status = 'starting';
+                    srv.players = 0;
+                    appendConsoleLog(`[${srv.name}] ${action === 'restart' ? 'Restarting' : 'Starting'} instance (Max RAM: ${srv.ramLimit}GB, CPU Cap: ${srv.cpuCap}%)...`, 'warn');
+                    renderServers();
+                    updateNodeGauges();
+
+                    setTimeout(() => {
+                        srv.status = 'online';
+                        srv.players = Math.floor(Math.random() * Math.min(12, srv.maxPlayers - 1)) + 1;
+                        srv.ramUsed = +(Math.min(srv.ramLimit * 0.72, 1.1 + srv.players * 0.18)).toFixed(1);
+                        appendConsoleLog(`[${srv.name}] Done! Listening on ${srv.port}. (${srv.players} players joined)`, 'success');
+                        renderServers();
+                        updateNodeGauges();
+                    }, 1200);
+                }
+            }
+
+            // Node Tab Switching
+            document.querySelectorAll('.node-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    currentNodeKey = tab.getAttribute('data-node');
+                    selectedServerId = clusterData[currentNodeKey].servers[0].id;
+
+                    document.querySelectorAll('.node-tab').forEach(t => {
+                        t.classList.remove('mc-btn-redstone');
+                        t.classList.add('mc-btn-stone');
+                    });
+                    tab.classList.remove('mc-btn-stone');
+                    tab.classList.add('mc-btn-redstone');
+
+                    syncSlidersToSelectedServer();
+                    renderServers();
+                    updateNodeGauges();
+                    appendConsoleLog(`Connected to node <strong>${clusterData[currentNodeKey].name}</strong> via RedstonePanel agent.`, 'info');
+                });
+            });
+
+            // Resource Limit Sliders (v1.17)
+            ramSlider.addEventListener('input', () => {
+                const srv = getSelectedServer();
+                if (!srv) return;
+                srv.ramLimit = parseInt(ramSlider.value, 10);
+                ramSliderValue.textContent = `${srv.ramLimit} GB`;
+                renderServers();
+            });
+            ramSlider.addEventListener('change', () => {
+                const srv = getSelectedServer();
+                if (!srv) return;
+                appendConsoleLog(`[systemd] Applied MemoryMax=${srv.ramLimit}G to <strong>${srv.name}</strong>.`, 'success');
+            });
+
+            cpuSlider.addEventListener('input', () => {
+                const srv = getSelectedServer();
+                if (!srv) return;
+                srv.cpuCap = parseInt(cpuSlider.value, 10);
+                cpuSliderValue.textContent = `${srv.cpuCap}%`;
+                renderServers();
+            });
+            cpuSlider.addEventListener('change', () => {
+                const srv = getSelectedServer();
+                if (!srv) return;
+                appendConsoleLog(`[systemd] Applied CPUQuota=${srv.cpuCap}% to <strong>${srv.name}</strong>.`, 'success');
+            });
+
+            // RCON Command Processor
+            function executeRconCommand(rawCmd) {
+                const cmd = rawCmd.trim();
+                if (!cmd) return;
+                const srv = getSelectedServer();
+                const lower = cmd.toLowerCase();
+
+                appendConsoleLog(`&gt; ${cmd}`, 'cmd');
+
+                if (srv.status !== 'online' && lower !== 'help' && lower !== 'status' && lower !== 'clear') {
+                    appendConsoleLog(`Cannot execute "${cmd}" — ${srv.name} is currently ${srv.status.toUpperCase()}.`, 'error');
+                    return;
+                }
+
+                if (lower === 'help') {
+                    appendConsoleLog(`Available commands: <strong>help</strong>, <strong>list</strong>, <strong>status</strong>, <strong>say &lt;msg&gt;</strong>, <strong>backup</strong>, <strong>clear</strong>`, 'info');
+                } else if (lower === 'list') {
+                    const sampleNames = ['Steve', 'Alex', 'RedstoneEng', 'Qrussell', 'CraftMaster', 'CreeperBane'];
+                    const activeList = sampleNames.slice(0, Math.min(srv.players, sampleNames.length)).join(', ');
+                    appendConsoleLog(`There are ${srv.players} of a max of ${srv.maxPlayers} players online${activeList ? ': ' + activeList : '.'}`, 'success');
+                } else if (lower === 'status') {
+                    appendConsoleLog(`[${srv.name}] Status: ${srv.status.toUpperCase()} | Edition: ${srv.edition} | RAM Cap: ${srv.ramLimit}GB | CPU Cap: ${srv.cpuCap}%`, 'info');
+                } else if (lower.startsWith('say ')) {
+                    const msg = cmd.slice(4).trim();
+                    appendConsoleLog(`[Server] ${msg}`, 'success');
+                } else if (lower === 'backup') {
+                    appendConsoleLog(`[Backup] Creating compressed world snapshot for ${srv.name}...`, 'warn');
+                    setTimeout(() => {
+                        appendConsoleLog(`[Backup] Saved /var/backups/redstonepanel/${srv.id}-${Date.now()}.tar.gz`, 'success');
+                    }, 700);
+                } else if (lower === 'clear') {
+                    rconOutput.innerHTML = '';
+                    appendConsoleLog('Console buffer cleared.', 'info');
+                } else {
+                    appendConsoleLog(`Unknown command "${cmd}". Type <strong>help</strong> for available commands.`, 'error');
+                }
+            }
+
+            rconForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                executeRconCommand(rconInput.value);
+                rconInput.value = '';
+            });
+
+            document.querySelectorAll('.rcon-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    executeRconCommand(chip.getAttribute('data-cmd'));
+                });
+            });
+
+            // Initialize Simulator & Periodic Live Gauge Updates
+            syncSlidersToSelectedServer();
+            renderServers();
+            updateNodeGauges();
+            appendConsoleLog('RedstonePanel v1.17 Web Console initialized.', 'success');
+            appendConsoleLog('Connected to <strong>ubuntu-prod-01</strong> &bull; Type <strong>help</strong> or click a quick command.', 'info');
+
+            setInterval(updateNodeGauges, 2800);
+        })();
+    </script>
 </body>
 </html>
