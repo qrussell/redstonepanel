@@ -82,6 +82,8 @@ echo "$out" | grep -q "Joined cluster 'Home'" && ok "rpn joined" || { bad "rpn j
 wait_https rpn || bad "rpn: back up on HTTPS"
 login jar admin "$PASS_ADMIN"
 login ujar alex "$PASS_USER"
+# 1.18: a new user account starts with no servers; give alex what users could always do, everywhere
+api jar PUT /api/users/alex/grants '{"grants":{"*":["view","console","power","players","settings","backups"]}}' >/dev/null
 
 ov=$(api jar GET /api/cluster/overview)
 NID=$(echo "$ov" | json "[n['id'] for n in d['nodes'] if not n.get('local')][0]")
