@@ -38,7 +38,8 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Let Bedrock players join a Java server | [Finding mods and plugins](#finding-mods-and-plugins) (the **Bedrock players** bundle) |
 | Edit a plugin's config file | [Files](#11-files) |
 | Get a Discord message when a server crashes | [Notifications](#notifications) |
-| Give a friend access without full control | [Users](#16-users) |
+| Give a friend access to only some servers | [What a helper may do](#what-a-helper-may-do) |
+| Move files with FileZilla or WinSCP | [SFTP](#sftp-filezilla-winscp) |
 | Turn on HTTPS | [Panel Settings](#17-panel-settings-name-https-sign-in) |
 | Manage servers on several machines | [Clusters](#18-clusters) |
 | Fix "players can't connect" or a lock-out | [Troubleshooting](#20-troubleshooting) |
@@ -989,7 +990,7 @@ and the restart happens at the time you chose. Things to know:
 
 ## 11. Files
 
-**Files** (admins only) shows the server's folder in `/opt/minecraft-…`, so you can change
+**Files** (admins, and users given **Files** on the server) shows the server's folder in `/opt/minecraft-…`, so you can change
 things the other tabs don't cover: plugin and mod settings, `ops.json`, `bukkit.yml`, and so on.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/files.png"><img src="images/files.png" alt="Files tab"></picture>
@@ -1021,7 +1022,48 @@ Safety:
   point) but never followed, and a file with other hard links isn't opened.
 - Files and folders the panel creates belong to the `minecraft` user, like the rest of the
   server.
-- Every change is in the activity log with the admin who made it (`[FILES] alex saved …`).
+- Every change is in the activity log with who made it (`[FILES] alex saved …`).
+
+### SFTP (FileZilla, WinSCP)
+
+For moving a whole world or many files at once, use an SFTP program such as FileZilla or WinSCP
+instead of the browser. SFTP is **off** until an admin turns it on under
+**🛡️ Settings → SFTP** (port 2022 unless you change it). After that, the top of each server's
+**Files** tab shows what to type:
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/sftp.png"><img src="images/sftp.png" alt="SFTP host, port and username on the Files tab"></picture>
+
+- **Host** and **Port**: the panel's address and the SFTP port. **Open** starts your SFTP
+  program with them filled in, and **Copy** copies the `sftp://` address.
+- **Username**: your account, a dot, and the server, such as `alex.minecraft-java`. Each
+  sign-in reaches one server's folder and nothing else.
+- **Password**: your panel password (or Linux password, for a Linux account).
+- Admins reach every server. A user account needs **Files** on the server
+  (see [What a helper may do](#what-a-helper-may-do)); taking it away ends their open session
+  within 30 seconds.
+- The first time, your SFTP program shows the server's **host key**. Compare it with the one
+  on the Files tab before accepting.
+
+**SSH keys.** Under **🔑 Password → SSH keys**, paste a public key (the `.pub` file) to sign in
+without a password. Accounts with [two-factor sign-in](#two-factor-sign-in) **must** use a key,
+because an SFTP program can't ask for the six-digit code.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/ssh-keys.png"><img src="images/ssh-keys.png" alt="SSH keys in the Password dialog" width="420"></picture>
+
+Good to know:
+
+- It is SFTP only: no shell, no commands, no port forwarding. Files go through the same
+  safety checks as the Files tab (nothing outside the folder, symlinks never followed) and
+  belong to the `minecraft` user.
+- Uploads, deletes and renames are in the activity log (`[SFTP] alex uploaded …`), and wrong
+  passwords count towards the same limit as the sign-in page (5 in 10 minutes).
+- Turning SFTP on opens its port in this machine's firewall (ufw); turning it off closes it.
+  For people outside your home, forward the port on your router too.
+- It needs the `python3-paramiko` package, which is installed with the panel unless you
+  installed without recommended packages; the setting tells you if it is missing.
+- **On a cluster**, each machine serves SFTP for its own servers. For a server on a node, turn
+  SFTP on in that node's own panel and sign in with an account of that panel; the master's
+  accounts don't reach node servers over SFTP.
 
 ## 12. Mods, plugins and add-ons
 
@@ -1218,9 +1260,12 @@ sudo redstonepanel restore minecraft-java-2
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/users.png"><img src="images/users.png" alt="Panel users"></picture>
 
 - **Add user**: a username, a password of at least 8 characters, and a role:
-  - **User** can manage servers;
-  - **Admin** can also manage panel users and Panel Settings, uninstall and purge servers,
-    restore backups, and delete backups and removed servers.
+  - **User** can do what you allow on the servers you pick, under **Servers**
+    (see [What a helper may do](#what-a-helper-may-do)). A new user account sees no servers
+    until you give it some;
+  - **Admin** can do everything on every server, and also manage panel users and Panel
+    Settings, create, import, uninstall and purge servers, restore backups, and delete backups
+    and removed servers.
 - For each account you can change the role, **Reset password**, **Disable** (it can't sign
   in until enabled again) or **Delete**.
 - Accounts with two-factor sign-in on show **2FA**. **Reset two-factor** turns it off for
@@ -1228,6 +1273,37 @@ sudo redstonepanel restore minecraft-java-2
 - Linux accounts aren't listed here; they're managed with the usual Linux tools.
 
 An admin account controls a service that runs as root, so treat it like `sudo` access.
+
+### What a helper may do
+
+**Servers** next to a user account opens what that account may do, server by server:
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/user-servers.png"><img src="images/user-servers.png" alt="What a user account may do on each server"></picture>
+
+| Tick | Lets them |
+| --- | --- |
+| **View** | See the server on the dashboard and in the list, its Overview, performance and logs. |
+| **Console & chat** | Read the console, send commands and chat. |
+| **Start/stop/restart** | Start, stop and restart it, and dismiss a crash card. |
+| **Players** | Whitelist, operators, kick, ban, and the access log. |
+| **Files** | The Files tab, **Export Server**, and SFTP for this server. |
+| **Mods & plugins** | Install, update, turn off and remove mods, plugins and add-ons. |
+| **Settings** | `server.properties`, scheduled restarts, updating the server and its update settings, saving and applying templates. |
+| **Backups** | Make and download backups and world downloads, and set the schedule. Restoring stays with admins. |
+
+- Pick **Moderator** (view, console and players) or **Co-owner** (everything in the table)
+  from the list, or tick boxes yourself. **No access** hides the server from them.
+- **Every server** at the top applies to all servers, including ones added later.
+- Creating, importing, uninstalling and restoring servers, editing templates, Java, memory
+  and limits, moving servers between machines and Panel Settings stay with admins whatever
+  is ticked.
+- A user sees only their servers: the dashboard, the list, Needs attention and the activity
+  log leave the rest out. With nothing ticked they see a note to ask an admin.
+- On a cluster, the master keeps what its users may do on node servers too.
+- **Updating from before 1.18:** user accounts that already existed keep what users could
+  always do (everything in the table except **Files** and **Mods & plugins**) on every
+  server, so nothing changes for them until you narrow it. Visitors let in by trusted-LAN
+  sign-in have the same rights.
 
 ## 17. Panel Settings: name, HTTPS, sign-in
 
@@ -1255,6 +1331,10 @@ dashboard** or **Hide it** (see [The dashboard](#3-the-dashboard)).
 In a cluster, the choices are different (as in the screenshot): a node always uses the
 cluster's HTTPS, and a master chooses between **HTTPS from the cluster** and **HTTPS with my
 own certificate**. See [Clusters](#18-clusters).
+
+**SFTP**: tick **Let people move files with FileZilla or WinSCP (SFTP)**, choose the port
+(2022 by default) and **Save SFTP**. It's off until you turn it on. See
+[SFTP](#sftp-filezilla-winscp).
 
 ### Notifications
 

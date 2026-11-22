@@ -25,7 +25,7 @@ Depends: ${misc:Depends},
          unzip,
          screen,
          sudo
-Recommends: ufw, rsync, openssh-client
+Recommends: ufw, rsync, openssh-client, python3-paramiko
 Suggests: openjdk-25-jre-headless
 Description: web panel to install and manage Minecraft servers
  RedstonePanel deploys and manages Minecraft Java Edition and Bedrock Dedicated

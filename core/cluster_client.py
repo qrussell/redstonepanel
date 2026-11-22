@@ -94,7 +94,7 @@ def node_ctx(node):
     return ssl.create_default_context() if cluster.node_verify(node) == "system" else _cluster_ctx()
 
 
-def _node_headers(node, actor=None, role=None):
+def _node_headers(node, actor=None, role=None, perms=None):
     st = cluster.state()
     headers = {"Authorization": f"Bearer {node['token']}",
                "X-RedstonePanel-Epoch": str(st.get("epoch", 1))}
@@ -102,6 +102,9 @@ def _node_headers(node, actor=None, role=None):
         headers["X-RedstonePanel-Actor"] = str(actor)[:64]
     if role:
         headers["X-RedstonePanel-Role"] = "admin" if role == "admin" else "user"
+    if perms is not None:
+        # 1.18: what this master user may do on the server the request is about
+        headers["X-RedstonePanel-Perms"] = ",".join(sorted(perms))
     return headers
 
 
@@ -143,11 +146,12 @@ class Proxied:
         self.conn.close()
 
 
-def open_proxy(node, method, path, body=None, length=None, content_type=None, actor=None, role="user"):
+def open_proxy(node, method, path, body=None, length=None, content_type=None, actor=None, role="user",
+               perms=None):
     """Sends one request to a node with its token and the master user's name and role. `body` is
     a file object of `length` bytes (or None). The caller streams the answer back."""
     host, port = _split(node["url"])
-    headers = _node_headers(node, actor, role)
+    headers = _node_headers(node, actor, role, perms)
     headers["Accept"] = "application/json, */*"
     if content_type:
         headers["Content-Type"] = content_type

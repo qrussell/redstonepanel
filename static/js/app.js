@@ -80,6 +80,37 @@ const ServerApp = {
         return !!(u && u.cluster && u.cluster.role === 'master' && u.source !== 'trusted');
     },
 
+    // --- 1.18: per-server permissions ---
+    // Admins can do everything. A `user` account gets, with each server in the list, what an
+    // admin ticked for it under Users → Servers (srv.perms); the API checks the same.
+    can(perm, srv) {
+        if (this.isAdmin()) return true;
+        srv = srv || this.activeServer;
+        return !!(srv && Array.isArray(srv.perms) && srv.perms.includes(perm));
+    },
+
+    // Shows only the tabs, sub-tabs and buttons this account may use on this server
+    applyPerms(srv) {
+        const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+        const c = p => this.can(p, srv);
+        show('ws-power-controls', c('power'));
+        show('tab-btn-chat', c('console'));
+        show('tab-btn-properties', c('settings') || c('players'));
+        show('tab-btn-maintenance', c('settings'));
+        show('tab-btn-backups', c('backups'));
+        show('tab-btn-world', c('settings') || c('backups'));
+        show('tab-btn-files', c('files'));
+        ['visual', 'raw'].forEach(t => show(`subtab-${t}`, c('settings')));
+        ['players', 'access', 'permissions'].forEach(t => show(`subtab-${t}`, c('players')));
+        show('export-card', c('files'));
+        show('world-export-card', c('backups'));
+        show('world-rename-card', c('settings'));
+    },
+
+    firstConfigSubTab() {
+        return this.can('settings') ? 'visual' : 'players';
+    },
+
     sameServer(a, b) {
         return !!(a && b && a.name === b.name && (a.node || null) === (b.node || null));
     },
@@ -405,6 +436,7 @@ const ServerApp = {
         this.renderSidebar();
 
         this.updateAddonsTab(srv);
+        this.applyPerms(srv);
         document.getElementById('ws-title').innerText = srv.name;
         document.getElementById('ws-subtitle').innerText = srv.node ? `🌐 ${srv.nodeName}: ${srv.directory}` : srv.directory;
         document.getElementById('ws-status').innerText = srv.status === 'online' ? '🟢' : '🔴';
@@ -449,7 +481,7 @@ const ServerApp = {
         if (propSearch) propSearch.value = '';
 
         this.switchTab('overview');
-        this.switchConfigSubTab('visual');
+        if (this.can('settings', srv)) this.switchConfigSubTab('visual');
     },
 
     // --- 1.17.1: the "Last crash" card on the Overview (core/crashes.py)
@@ -501,7 +533,7 @@ const ServerApp = {
             <section class="p-4 rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-sm text-gray-900 dark:text-gray-100">
                 <div class="flex items-start justify-between gap-2">
                     <h3 class="font-bold text-base">💥 Last crash: ${esc(verb)} ${esc(this.fmtAgo(rec.at))}${rec.exit ? ` <span class="font-normal text-xs text-gray-500 dark:text-gray-400">(${esc(rec.exit)})</span>` : ''}</h3>
-                    <button onclick="ServerApp.dismissCrash()" class="text-xs underline text-gray-600 dark:text-gray-400 whitespace-nowrap">Dismiss</button>
+                    ${this.can('power') ? `<button onclick="ServerApp.dismissCrash()" class="text-xs underline text-gray-600 dark:text-gray-400 whitespace-nowrap">Dismiss</button>` : ''}
                 </div>
                 ${causes}${suspects}${undo}${none}${log}
             </section>`;
@@ -615,7 +647,7 @@ const ServerApp = {
             this.chatInterval = null;
         }
         
-        if (tabId === 'properties') this.switchConfigSubTab('visual');
+        if (tabId === 'properties') this.switchConfigSubTab(this.firstConfigSubTab());
         if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadAutoUpdate(); this.loadJavaChoice(); this.loadResources(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
@@ -2706,6 +2738,66 @@ const ServerApp = {
         this.filesPath = this.filesData.path;
         this.filesServer = this.serverKey(this.activeServer);
         this.renderFiles();
+        this.loadSftpInfo();
+    },
+
+    // --- 1.18: SFTP (core/sftp.py). The Files tab says how to connect with FileZilla or WinSCP.
+    sftpInfo: null,
+
+    async loadSftpInfo() {
+        try {
+            const res = await fetch('/api/sftp');
+            this.sftpInfo = res.ok ? await res.json() : null;
+        } catch (e) { this.sftpInfo = null; }
+        const box = document.getElementById('files-sftp');
+        if (box) box.innerHTML = this.sftpCardHtml();
+    },
+
+    sftpAddress() {
+        const i = this.sftpInfo, srv = this.activeServer;
+        if (!i || !srv || !i.account) return null;
+        const host = window.location.hostname.includes(':') ? `[${window.location.hostname}]` : window.location.hostname;
+        const user = `${i.account}.${srv.name}`;
+        return { host: window.location.hostname, port: i.port, user, url: `sftp://${encodeURIComponent(user)}@${host}:${i.port}/` };
+    },
+
+    sftpCardHtml() {
+        const i = this.sftpInfo, srv = this.activeServer;
+        if (!i || !srv) return '';
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const box = 'mb-3 p-3 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300';
+        const small = 'px-2 py-1 rounded text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+        if (srv.node) {
+            return this.isAdmin() ? `<div class="${box}"><b class="text-gray-900 dark:text-white">SFTP</b> for this server comes from ${esc(srv.nodeName)}'s own panel: turn it on there (Panel Settings → SFTP) and sign in with an account of that panel.</div>` : '';
+        }
+        if (!i.enabled || !i.running) {
+            if (!this.isAdmin()) return '';
+            return `<div class="${box}"><b class="text-gray-900 dark:text-white">SFTP</b> ${i.enabled ? 'is on but its service isn\'t running.' : 'is off.'} To move files with FileZilla or WinSCP, turn it on under <button onclick="ServerApp.openPanelSettings('sftp')" class="underline text-theme">Panel Settings → SFTP</button>.</div>`;
+        }
+        const a = this.sftpAddress();
+        if (!a) return '';
+        const row = (label, value) => `<span class="whitespace-nowrap">${label} <span class="font-mono text-gray-900 dark:text-white select-all">${esc(value)}</span></span>`;
+        return `<div class="${box}">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <b class="text-gray-900 dark:text-white">SFTP</b>
+                ${row('Host', a.host)} ${row('Port', a.port)} ${row('Username', a.user)}
+                <span class="flex gap-2 ml-auto">
+                    <button onclick="ServerApp.copySftp(this)" class="${small}">Copy</button>
+                    <a href="${esc(a.url)}" class="${small}" title="Opens FileZilla, WinSCP or another SFTP program">Open</a>
+                </span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${i.two_factor
+                ? 'Your account has two-factor sign-in, so SFTP needs an SSH key: add one under 🔑 Password → SSH keys.'
+                : 'Password: your panel password, or an SSH key from 🔑 Password → SSH keys.'}${i.host_key ? ` Host key: <span class="font-mono break-all">${esc(i.host_key)}</span>` : ''}</p>
+        </div>`;
+    },
+
+    copySftp(button) {
+        const a = this.sftpAddress();
+        if (!a) return;
+        const done = () => { const t = button.innerText; button.innerText = 'Copied'; setTimeout(() => { button.innerText = t; }, 1500); };
+        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(a.url).then(done).catch(() => prompt('Copy the address:', a.url));
+        else prompt('Copy the address:', a.url);
     },
 
     filesNotice: null,
@@ -2751,6 +2843,7 @@ const ServerApp = {
         }).join('');
 
         document.getElementById('files-content').innerHTML = `
+            <div id="files-sftp">${this.sftpCardHtml()}</div>
             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <div class="text-sm font-mono break-all">${crumbs}</div>
                 <div class="flex flex-wrap gap-2">
@@ -2898,12 +2991,12 @@ const ServerApp = {
         return apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/addons${q ? '?' + q : ''}`);
     },
 
-    // The Mods / Plugins / Add-ons tab: admins, on Fabric, Paper and Bedrock servers
+    // The Mods / Plugins / Add-ons tab: admins and accounts with Mods & plugins, on Fabric, Paper and Bedrock servers
     updateAddonsTab(srv) {
         const btn = document.getElementById('tab-btn-addons');
         if (!btn) return;
         const kind = this.addonKind(srv);
-        const show = kind && this.currentUser && this.currentUser.role === 'admin';
+        const show = kind && this.can('mods', srv);
         btn.classList.toggle('hidden', !show);
         btn.innerText = { fabric: 'Mods', paper: 'Plugins', bedrock: 'Add-ons' }[kind] || 'Mods';
     },
@@ -4144,7 +4237,8 @@ const ServerApp = {
 
     async loadRemovedServers() {
         try {
-            const res = await api('/api/servers/removed', { node: this.removedNode() });
+            // Removed servers are an admin's business (1.18)
+            const res = this.isAdmin() ? await api('/api/servers/removed', { node: this.removedNode() }) : { ok: false };
             this.removedServers = res.ok ? await res.json() : [];
         } catch (e) {
             this.removedServers = [];
@@ -4542,6 +4636,44 @@ const ServerApp = {
 		badge.classList.toggle('hidden', c.role === 'standalone');
 	},
 
+	// --- 1.18: Panel Settings → SFTP (its own switch; saving it never restarts the panel) ---
+	async loadSftpSettings(message, ok) {
+		const box = document.getElementById('set-sftp');
+		if (!box) return;
+		const res = await fetch('/api/sftp');
+		if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = this.sftpInfo = await res.json();
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const state = !d.available ? `<p class="text-sm text-yellow-700 dark:text-yellow-300 mb-2">SFTP needs the ${esc(d.package)} package. Install it on this server with <span class="font-mono">sudo apt install ${esc(d.package)}</span>, then turn it on here.</p>`
+			: d.enabled ? `<p class="${note} mb-2">${d.running ? `<span class="text-green-600 dark:text-green-400 font-bold">Running</span> on port ${esc(d.port)}.` : '<span class="text-red-500 font-bold">Not running.</span> Check <span class="font-mono">systemctl status redstonepanel-sftp</span>.'}${d.host_key ? ` Host key: <span class="font-mono break-all">${esc(d.host_key)}</span>` : ''}</p>` : '';
+		box.innerHTML = `
+			<label class="flex items-start gap-2 mb-2 text-sm ${d.available ? 'cursor-pointer' : ''}">
+				<input type="checkbox" id="set-sftp-on" ${d.enabled ? 'checked' : ''} ${d.available ? '' : 'disabled'} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Let people move files with FileZilla or WinSCP (SFTP)</b><br><span class="${note}">They sign in as <span class="font-mono">account.server</span> (shown on each server's Files tab) with their panel password or an SSH key, and see only that server's folder. Admins reach every server; other accounts need <b>Files</b> on it (👥 Users). Accounts with two-factor must use a key.</span></span>
+			</label>
+			<div class="flex flex-wrap items-end gap-2 mb-2">
+				<label class="${note}">Port<br><input id="set-sftp-port" type="number" min="1" max="65535" value="${esc(d.port)}" ${d.available ? '' : 'disabled'} class="${field} w-28 mt-1"></label>
+				<button onclick="ServerApp.saveSftpSettings(this)" ${d.available ? '' : 'disabled'} class="px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold text-sm disabled:opacity-50">Save SFTP</button>
+			</div>
+			${state}
+			<p id="set-sftp-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-1">${esc(message || '')}</p>
+			<p class="${note}">The port is opened in this server's firewall (ufw). People outside your home also need it forwarded on your router.</p>`;
+	},
+
+	async saveSftpSettings(button) {
+		button.disabled = true;
+		const res = await fetch('/api/settings/sftp', {
+			method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ enabled: document.getElementById('set-sftp-on').checked,
+			                       port: parseInt(document.getElementById('set-sftp-port').value, 10) || 0 })
+		});
+		if (!res.ok) return this.loadSftpSettings(await this.apiError(res), false);
+		const d = await res.json();
+		this.loadSftpSettings(d.enabled ? `SFTP is on, port ${d.port}.` : 'SFTP is off.', true);
+	},
+
 	// --- Panel Settings: connection (HTTP/HTTPS) and sign-in (admins only) ---
 	async openPanelSettings(section) {
 		const overlay = document.getElementById('settings-overlay');
@@ -4584,6 +4716,9 @@ const ServerApp = {
 
 			<h4 id="set-section-storage" class="font-bold text-gray-900 dark:text-white mb-2">Backup storage</h4>
 			<div id="set-storage" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+
+			<h4 id="set-section-sftp" class="font-bold text-gray-900 dark:text-white mb-2">SFTP</h4>
+			<div id="set-sftp" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
@@ -4645,6 +4780,7 @@ const ServerApp = {
 		this.storageEdit = null;
 		this.loadStorageSettings();
 		this.loadSetupSettings();
+		this.loadSftpSettings();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
 	},
@@ -5029,8 +5165,17 @@ const ServerApp = {
 				</section>`;
 		}
 
+		// 1.18: an account limited to some servers sees those, and a note when it has none yet
+		if (d.limited && !this.servers.length) {
+			document.getElementById('dash-body').innerHTML = `
+				<section class="${card} p-6 text-sm text-gray-700 dark:text-gray-300">
+					<h3 class="${h3} mb-1">No servers yet</h3>
+					<p>Your account can't use any server on this panel yet. Ask an admin to give it access (👥 Users → Servers).</p>
+				</section>`;
+			return;
+		}
 		document.getElementById('dash-body').innerHTML = this.setupCard() + attentionHtml + tiles + this.hostHistoryHtml() + serverTable
-			+ `<section class="grid grid-cols-1 lg:grid-cols-3 gap-4">${host}${disks}${services}</section>` + nodes
+			+ `<section class="grid grid-cols-1 lg:grid-cols-3 gap-4">${host}${disks}${d.limited ? '' : services}</section>` + nodes
 			+ (d.redacted ? `<p class="${note}">You're on the trusted local network without signing in, so addresses, versions and settings are hidden.</p>` : '');
 	},
 
@@ -6145,6 +6290,7 @@ const ServerApp = {
 		document.getElementById('modal-content').innerHTML = `
 			${password}${forcedIntro}
 			<div id="tf-box"><p class="text-sm text-gray-500">Loading two-factor sign-in...</p></div>
+			${this.accountForced ? '' : '<div id="ssh-box" class="mt-6"></div>'}
 			${footer}`;
 		document.getElementById('modal-overlay').classList.remove('hidden');
 		const res = await fetch('/api/auth/2fa');
@@ -6152,6 +6298,54 @@ const ServerApp = {
 		this.tfStatus = await res.json();
 		if (this.accountForced && !this.tfStatus.enabled) return this.startTwoFactorSetup();
 		this.renderTwoFactor();
+		this.loadSshKeys();
+	},
+
+	// --- 1.18: SSH keys for SFTP (🔑 Password → SSH keys) ---
+	async loadSshKeys(message, ok) {
+		const box = document.getElementById('ssh-box');
+		if (!box) return;
+		const res = await fetch('/api/auth/ssh-keys');
+		if (!res.ok) { box.innerHTML = ''; return; }
+		const d = await res.json();
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white mb-2';
+		const keys = d.keys.map(k => `
+			<div class="flex items-start justify-between gap-2 p-2 mb-2 rounded border border-gray-200 dark:border-gray-700">
+				<div class="min-w-0 text-sm">
+					<div class="font-bold text-gray-900 dark:text-white truncate">${esc(k.label || 'Key')} <span class="font-normal text-xs text-gray-500">${esc(k.type.replace('ssh-', '').replace('ecdsa-sha2-', 'ecdsa '))}</span></div>
+					<div class="text-xs font-mono text-gray-500 dark:text-gray-400 break-all">${esc(k.fingerprint)}</div>
+				</div>
+				<button data-fp="${esc(k.fingerprint)}" onclick="ServerApp.removeSshKey(this.dataset.fp)" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white shrink-0">Remove</button>
+			</div>`).join('');
+		box.innerHTML = `
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">SSH keys</h4>
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-3">For SFTP (FileZilla, WinSCP): sign in with a key instead of your password.${(this.tfStatus || {}).enabled ? ' <b>With two-factor on, SFTP only accepts a key.</b>' : ''}</p>
+			${keys}
+			<textarea id="ssh-key" rows="3" placeholder="ssh-ed25519 AAAA… (your public key, the .pub file)" autocapitalize="none" autocomplete="off" spellcheck="false" class="${field} font-mono"></textarea>
+			<input id="ssh-label" maxlength="60" placeholder="Name for this key (optional), e.g. Laptop" class="${field}">
+			<p id="ssh-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-2">${esc(message || '')}</p>
+			<button onclick="ServerApp.addSshKey()" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Add Key</button>`;
+	},
+
+	async addSshKey() {
+		const res = await fetch('/api/auth/ssh-keys', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ key: document.getElementById('ssh-key').value, label: document.getElementById('ssh-label').value })
+		});
+		if (!res.ok) {
+			const msg = document.getElementById('ssh-msg');
+			msg.innerText = await this.apiError(res);
+			msg.className = 'text-sm text-red-500 mb-2';
+			return;
+		}
+		this.loadSshKeys('Key added.', true);
+	},
+
+	async removeSshKey(fingerprint) {
+		if (!confirm('Remove this key? SFTP programs using it will stop signing in.')) return;
+		const res = await fetch(`/api/auth/ssh-keys/${encodeURIComponent(fingerprint)}`, { method: 'DELETE' });
+		this.loadSshKeys(res.ok ? 'Key removed.' : await this.apiError(res), res.ok);
 	},
 
 	// The password part hides while setting up or showing codes, so the dialog stays short
@@ -6160,6 +6354,8 @@ const ServerApp = {
 		if (box) box.innerHTML = html;
 		const pw = document.getElementById('pw-section');
 		if (pw) pw.classList.toggle('hidden', !!focused);
+		const ssh = document.getElementById('ssh-box');
+		if (ssh) ssh.classList.toggle('hidden', !!focused);
 	},
 
 	renderTwoFactor() {
@@ -6341,13 +6537,15 @@ const ServerApp = {
 						${u.two_factor ? '<span class="text-xs ml-1 px-2 py-0.5 rounded border border-green-500 text-green-600 dark:text-green-400" title="Two-factor sign-in is on">2FA</span>' : ''}
 						${self ? '<span class="text-xs ml-1 text-gray-500">(you)</span>' : ''}
 						<div class="text-xs text-gray-500 dark:text-gray-400">Last sign-in: ${esc(when(u.last_login))}</div>
+						<div class="text-xs text-gray-500 dark:text-gray-400">${u.role === 'admin' ? 'Everything on every server' : esc(this.grantsSummary(u.grants))}</div>
 					</div>
 					<select data-user="${esc(u.username)}" onchange="ServerApp.updateUser(this.dataset.user, {role: this.value})" ${self ? 'disabled title="You can\'t change your own role"' : ''} class="${field}">
 						<option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
 						<option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
 					</select>
 				</div>
-				<div class="flex gap-2 mt-2 text-xs">
+				<div class="flex flex-wrap gap-2 mt-2 text-xs">
+					${u.role === 'user' ? `<button data-user="${esc(u.username)}" onclick="ServerApp.openUserGrants(this.dataset.user)" class="px-2 py-1 rounded bg-theme hover-bg-theme text-white font-bold">Servers</button>` : ''}
 					<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserPassword(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset password</button>
 					${u.two_factor && !self ? `<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserTwoFactor(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset two-factor</button>` : ''}
 					${self ? '' : `<button data-user="${esc(u.username)}" onclick="ServerApp.updateUser(this.dataset.user, {disabled: ${!u.disabled}})" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">${u.disabled ? 'Enable' : 'Disable'}</button>
@@ -6365,8 +6563,8 @@ const ServerApp = {
 				<input id="new-user-name" placeholder="Username" autocomplete="off" autocapitalize="none" class="w-full mb-2 ${field}">
 				<input id="new-user-pass" type="password" placeholder="Password (8+ characters)" autocomplete="new-password" class="w-full mb-2 ${field}">
 				<select id="new-user-role" class="w-full mb-2 ${field}">
-					<option value="user">User: manage servers</option>
-					<option value="admin">Admin: manage servers and panel users</option>
+					<option value="user">User: only the servers you choose</option>
+					<option value="admin">Admin: everything, and panel users</option>
 				</select>
 				<p id="new-user-error" class="hidden text-sm text-red-500 mb-2"></p>
 				<button onclick="ServerApp.createUser()" class="w-full bg-theme hover-bg-theme text-white py-2 rounded font-bold">Add User</button>
@@ -6386,6 +6584,107 @@ const ServerApp = {
 			})
 		});
 		if (!res.ok) { err.innerText = await this.apiError(res); err.classList.remove('hidden'); return; }
+		// A new user account can't do anything yet: go straight to choosing its servers
+		const name = document.getElementById('new-user-name').value.trim().toLowerCase();
+		if (document.getElementById('new-user-role').value === 'user') return this.openUserGrants(name);
+		this.openUsersModal();
+	},
+
+	// --- 1.18: Users → Servers: what a `user` account may do on each server ---
+	grantsSummary(grants) {
+		const keys = Object.keys(grants || {});
+		if (!keys.length) return 'No servers yet: choose them under Servers';
+		const n = keys.filter(k => k !== '*').length;
+		const all = grants['*'] ? `Every server (${grants['*'].length} of 8)` : '';
+		const some = n ? `${n} server${n === 1 ? '' : 's'}` : '';
+		return [all, some && (all ? `more on ${some}` : some)].filter(Boolean).join(', ');
+	},
+
+	async openUserGrants(username) {
+		const content = document.getElementById('modal-content');
+		content.innerHTML = '<p class="text-gray-500">Loading...</p>';
+		document.getElementById('modal-overlay').classList.remove('hidden');
+		const res = await fetch('/api/users');
+		if (!res.ok) { content.innerHTML = `<p class="text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const data = await res.json();
+		const u = data.users.find(x => x.username === username);
+		if (!u) return this.openUsersModal();
+		const grants = JSON.parse(JSON.stringify(u.grants || {}));
+		const rows = [{ key: '*', label: 'Every server', note: 'Also servers added later' }];
+		this.servers.forEach(s => rows.push({ key: s.node ? `${s.node}/${s.name}` : s.name, label: s.name,
+			note: `${s.edition}${s.node ? ` · on ${s.nodeName}` : ''}` }));
+		// Kept for servers that aren't listed right now (a node that's switched off)
+		Object.keys(grants).forEach(k => { if (!rows.some(r => r.key === k)) rows.push({ key: k, label: k.split('/').pop(), note: 'Not reachable right now' }); });
+		this.grantsEdit = { username, perms: data.perms, presets: data.presets, grants, rows, open: {} };
+		this.renderUserGrants();
+	},
+
+	grantPreset(perms) {
+		const g = this.grantsEdit, have = [...(perms || [])].sort().join(',');
+		if (!have) return 'none';
+		return Object.keys(g.presets).find(p => [...g.presets[p]].sort().join(',') === have) || 'custom';
+	},
+
+	renderUserGrants(error) {
+		const g = this.grantsEdit, esc = t => this.escapeHtml(String(t ?? ''));
+		const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const names = { none: 'No access', moderator: 'Moderator', 'co-owner': 'Co-owner', custom: 'Custom' };
+		const rows = g.rows.map((r, i) => {
+			const perms = g.grants[r.key] || [];
+			const preset = this.grantPreset(perms);
+			const open = perms.length || g.open[r.key];
+			const boxes = open ? `<div class="grid grid-cols-2 gap-x-3 mt-2">${g.perms.map(p => `
+				<label class="flex items-center gap-2 py-2 text-sm text-gray-800 dark:text-gray-200 cursor-pointer">
+					<input type="checkbox" ${perms.includes(p.id) ? 'checked' : ''} onchange="ServerApp.toggleGrant(${i}, '${p.id}', this.checked)"> ${esc(p.label)}</label>`).join('')}</div>` : '';
+			return `
+			<div class="p-3 border border-gray-200 dark:border-gray-700 rounded mb-2">
+				<div class="flex items-center justify-between gap-2">
+					<div class="min-w-0">
+						<div class="font-bold text-gray-900 dark:text-white truncate">${esc(r.label)}</div>
+						<div class="text-xs text-gray-500 dark:text-gray-400 truncate">${esc(r.note)}</div>
+					</div>
+					<select aria-label="Access to ${esc(r.label)}" onchange="ServerApp.setGrantPreset(${i}, this.value)" class="${field} shrink-0">
+						${['none', 'moderator', 'co-owner', 'custom'].map(p => `<option value="${p}" ${preset === p ? 'selected' : ''}>${names[p]}</option>`).join('')}
+					</select>
+				</div>${boxes}
+			</div>`;
+		}).join('');
+		document.getElementById('modal-content').innerHTML = `
+			<h3 class="text-xl font-bold mb-1 text-gray-900 dark:text-white">What ${esc(g.username)} may do</h3>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-3"><b>Moderator</b>: view, console and players. <b>Co-owner</b>: everything on the server except deleting it, restoring backups, Java and memory limits, which stay with admins. <b>Files</b> also lets them use SFTP.</p>
+			<div class="mb-3">${rows}</div>
+			<p id="grants-error" class="${error ? '' : 'hidden'} text-sm text-red-500 mb-2">${esc(error || '')}</p>
+			<div class="flex gap-2">
+				<button onclick="ServerApp.openUsersModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Back</button>
+				<button onclick="ServerApp.saveUserGrants()" class="flex-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold">Save</button>
+			</div>`;
+	},
+
+	setGrantPreset(i, preset) {
+		const g = this.grantsEdit, key = g.rows[i].key;
+		if (preset === 'none') { delete g.grants[key]; g.open[key] = false; }
+		else if (preset === 'custom') { g.open[key] = true; if (!g.grants[key]) g.grants[key] = ['view']; }
+		else g.grants[key] = [...g.presets[preset]];
+		this.renderUserGrants();
+	},
+
+	toggleGrant(i, perm, on) {
+		const g = this.grantsEdit, key = g.rows[i].key;
+		let perms = new Set(g.grants[key] || []);
+		if (on) { perms.add(perm); perms.add('view'); }
+		else if (perm === 'view') perms = new Set();          // nothing works without seeing the server
+		else perms.delete(perm);
+		g.open[key] = true;
+		if (perms.size) g.grants[key] = g.perms.map(p => p.id).filter(p => perms.has(p)); else delete g.grants[key];
+		this.renderUserGrants();
+	},
+
+	async saveUserGrants() {
+		const g = this.grantsEdit;
+		const res = await fetch(`/api/users/${encodeURIComponent(g.username)}/grants`, {
+			method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ grants: g.grants })
+		});
+		if (!res.ok) return this.renderUserGrants(await this.apiError(res));
 		this.openUsersModal();
 	},
 

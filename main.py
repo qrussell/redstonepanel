@@ -37,8 +37,13 @@ import core.backup_copies as backup_copies
 import core.backup_targets as backup_targets
 import core.perf as perf
 import core.crashes as crashes
+import core.grants as grants
+import core.sshkeys as sshkeys
+import core.sftp as sftp
+from starlette.routing import Match
 from starlette.background import BackgroundTask
 import json
+import re
 import uuid
 import os
 import platform
@@ -134,6 +139,9 @@ async def access_control(request: Request, call_next):
                 # allowlist, which never reaches users, settings or cluster membership).
                 user = cluster.master_identity(user, request.headers.get("x-redstonepanel-actor"),
                                                request.headers.get("x-redstonepanel-role"))
+                # 1.18: what the master's user may do on the server this request is about (the
+                # master checked its own grants); not sent by an older master
+                user["perms"] = grants.parse_header(request.headers.get("x-redstonepanel-perms"))
                 if request.method in STATE_CHANGING:
                     manager.write_log(f"[CLUSTER] {user['username']}: {request.method} {path} (from {ip})")
             else:
@@ -154,8 +162,87 @@ async def access_control(request: Request, call_next):
                     detail = ("Sign in as an admin to change this." if user["source"] == "trusted"
                               else "Only admins can do this.")
                     return JSONResponse({"detail": detail}, status_code=403)
+            refused = _grant_refusal(request.method, request.scope, user)
+            if refused:
+                return JSONResponse({"detail": refused}, status_code=403)
             request.state.user = user
     return await call_next(request)
+
+# ---------------------------------------------------------------------------
+# 1.18: per-server permissions. Every route has a rule in core/grants.py (RULES); an account
+# with the `user` role passes only when its grants allow it. Admins pass everything.
+# ---------------------------------------------------------------------------
+def _route_of(method, path):
+    """(path template, path parameters) of the API route that would serve this request."""
+    scope = {"type": "http", "method": method, "path": path, "root_path": "", "path_params": {}}
+    for r in app.router.routes:
+        if getattr(r, "path", "").startswith("/api/"):
+            match, child = r.matches(scope)
+            if match == Match.FULL:
+                return r.path, child.get("path_params") or {}
+    return None, {}
+
+def _admin_only_detail(user):
+    return "Sign in as an admin to do this." if user.get("source") == "trusted" else "Only admins can do this."
+
+def _rule_refusal(user, rule, params, member=None):
+    """None when `user` passes this rule, else why not. member: the cluster node the server is
+    on, when the path doesn't say (the proxy)."""
+    if user["role"] == "admin" or rule in ("user", "public", "proxy"):
+        return None
+    if rule == "signed":
+        return "Sign in to do this." if user.get("source") == "trusted" else None
+    if rule == "node":
+        return None if user.get("source") == "cluster" else "Only the cluster's master can use this."
+    need = grants.needs(rule)
+    if not need:
+        return _admin_only_detail(user)
+    perm, param = need
+    if param:
+        member = params.get(param)
+    if grants.can(user, perm, params.get("server_name", ""), member):
+        return None
+    return grants.refusal(perm) if user.get("source") != "trusted" else _admin_only_detail(user)
+
+def _grant_refusal(method, scope, user):
+    if user["role"] == "admin":
+        return None
+    template, params = _route_of(method, scope["path"])
+    if template is None:
+        return None                       # no such route: the 404 follows
+    return _rule_refusal(user, grants.rule_for(method, template), params)
+
+def _visible_servers(user, servers, member=None):
+    """A server list cut down to what the account may see, each with what it may do there
+    ("perms"). Admins get the list as it is."""
+    if user["role"] == "admin":
+        return servers
+    out = []
+    for s in servers:
+        perms = grants.perms_for(user, grants.server_key(s.get("name", ""), member))
+        if "view" in perms:
+            out.append(dict(s, perms=[p for p in grants.PERMS if p in perms]))
+    return out
+
+_LOG_SERVER_RE = re.compile(r"(?<![A-Za-z0-9_.@-])minecraft[A-Za-z0-9_.@-]*")
+_LOG_PRIVATE = ("[AUTH]", "[SETTINGS]", "[CLUSTER]", "[SFTP]", "[FIREWALL]")
+
+def _visible_log(user, content, member=None, lines=100):
+    """The action console for an account limited to some servers: only lines that name a server
+    it may see (and no other), and nothing about accounts, settings or the cluster."""
+    seen = _can_view(user, member)
+    out = []
+    for line in (content or "").splitlines():
+        if any(tag in line for tag in _LOG_PRIVATE):
+            continue
+        names = {n.rstrip(".:,") for n in _LOG_SERVER_RE.findall(line)}
+        names = {n[:-len(".service")] if n.endswith(".service") else n for n in names}
+        if names and all(seen(n) for n in names):
+            out.append(line)
+    return "\n".join(out[-lines:])
+
+def _can_view(user, member=None):
+    return lambda name: bool(name) and grants.can(user, "view", name, member)
 
 @app.get("/api/health")
 def health():
@@ -320,7 +407,72 @@ def me_api(request: Request):
     st = cluster.state()
     user["cluster"] = {"role": st["role"], "name": st.get("name") or st.get("cluster_name"),
                        "master_name": st.get("master_name")}
+    # 1.18: a `user` account's per-server permissions ({server key: [perms]}, "*" = every server)
+    user.pop("perms", None)
+    if user["role"] != "admin":
+        user["grants"] = (grants.get(user["username"]) if user["source"] == "panel"
+                          else {grants.ALL_SERVERS: list(grants.LEGACY)})
     return user
+
+# --- 1.18: SSH keys for SFTP (each account's own; Password > SSH keys) ---
+class NewSshKey(BaseModel):
+    key: str
+    label: Optional[str] = ""
+
+@app.get("/api/auth/ssh-keys")
+def ssh_keys_api(request: Request):
+    _, key = _tf_account(request)
+    return {"keys": sshkeys.list_keys(key), "max": sshkeys.MAX_KEYS}
+
+@app.post("/api/auth/ssh-keys")
+def add_ssh_key_api(req: NewSshKey, request: Request):
+    user, key = _tf_account(request)
+    try:
+        added = sshkeys.add(key, req.key, req.label)
+    except sshkeys.KeyError_ as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) added an SSH key for SFTP ({added['fingerprint']})")
+    return {"status": "success", "key": added, "keys": sshkeys.list_keys(key)}
+
+@app.delete("/api/auth/ssh-keys/{fingerprint}")
+def remove_ssh_key_api(fingerprint: str, request: Request):
+    user, key = _tf_account(request)
+    if not sshkeys.remove(key, fingerprint):
+        raise HTTPException(status_code=404, detail="No such key.")
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) removed an SSH key for SFTP ({fingerprint})")
+    return {"status": "success", "keys": sshkeys.list_keys(key)}
+
+# --- 1.18: SFTP (core/sftp.py). Anyone signed in sees whether it's on and the port, to connect;
+# admins switch it under Panel Settings > SFTP.
+def _sftp_view(request: Request):
+    user = request.state.user
+    st = sftp.status()
+    out = {"enabled": st["enabled"], "running": st["running"], "port": st["port"], "host_key": st["host_key"],
+           "account": user["username"] if user.get("source") in ("panel", "linux") else None,
+           "two_factor": bool(user.get("two_factor"))}
+    if user["role"] == "admin":
+        out.update(available=st["available"], package=st["package"])
+    return out
+
+@app.get("/api/sftp")
+def sftp_api(request: Request):
+    return _sftp_view(request)
+
+class SftpSettings(BaseModel):
+    enabled: bool
+    port: int = 2022
+
+@app.put("/api/settings/sftp")
+def set_sftp_api(req: SftpSettings, request: Request):
+    old = panel_settings.load()
+    try:
+        s = panel_settings.validate(dict(old, sftp_enabled=req.enabled, sftp_port=req.port))
+        sftp.check_can_enable(s, old)
+    except (panel_settings.SettingsError, sftp.SftpError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    panel_settings.save(s)
+    sftp.apply(s, old, actor=request.state.user["username"])
+    return _sftp_view(request)
 
 # --- Panel Settings: connection (HTTP/HTTPS) and sign-in mode (admins only) ---
 def _restart_soon():
@@ -347,6 +499,8 @@ def get_settings_api(request: Request):
 @app.put("/api/settings")
 def update_settings_api(request: Request, new: dict = Body(...)):
     old = panel_settings.load()
+    # SFTP has its own switch (PUT /api/settings/sftp); this form never changes it
+    new = dict(new, sftp_enabled=old["sftp_enabled"], sftp_port=old["sftp_port"])
     try:
         s = panel_settings.validate(new)
     except panel_settings.SettingsError as e:
@@ -440,7 +594,29 @@ class PanelUserUpdate(BaseModel):
 
 @app.get("/api/users")
 def list_users_api():
-    return {"users": auth.list_panel_users(), "linux_groups": list(auth.ALLOWED_LINUX_GROUPS)}
+    users = auth.list_panel_users()
+    for u in users:
+        u["grants"] = grants.get(u["username"])
+    return {"users": users, "linux_groups": list(auth.ALLOWED_LINUX_GROUPS),
+            "perms": [{"id": p, "label": grants.PERM_LABELS[p]} for p in grants.PERMS],
+            "presets": {k: list(v) for k, v in grants.PRESETS.items()}}
+
+class GrantsUpdate(BaseModel):
+    grants: dict
+
+@app.put("/api/users/{username}/grants")
+def set_user_grants_api(username: str, req: GrantsUpdate, request: Request):
+    """What a `user` account may do on each server (1.18). {server key: [perms]}; "*" = every server."""
+    if not any(u["username"] == username for u in auth._load_users()):
+        raise HTTPException(status_code=404, detail=f"Panel user '{username}' not found.")
+    try:
+        saved = grants.set_user(username, req.grants)
+    except grants.GrantError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    summary = "; ".join(f"{'every server' if k == grants.ALL_SERVERS else k}: {', '.join(v)}"
+                        for k, v in sorted(saved.items())) or "nothing"
+    manager.write_log(f"[AUTH] {request.state.user['username']} set what '{username}' may do: {summary}")
+    return {"status": "success", "grants": saved}
 
 @app.post("/api/users")
 def create_user_api(req: NewPanelUser, request: Request):
@@ -486,6 +662,8 @@ def delete_user_api(username: str, request: Request):
         auth.delete_panel_user(username)
     except auth.AuthError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    grants.remove_user(username)
+    sshkeys.remove_account(sshkeys.account_key("panel", username))
     manager.write_log(f"[AUTH] {me['username']} deleted panel user '{username}'")
     return {"status": "success"}
 
@@ -494,14 +672,16 @@ def index():
     return RedirectResponse(url="/static/index.html")
 
 @app.get("/api/servers")
-def get_servers():
-    return manager.list_servers()
+def get_servers(request: Request):
+    return _visible_servers(request.state.user, manager.list_servers())
 
 # --- The dashboard (no server selected): this machine and what the panel relies on.
 # Trusted-LAN visitors get it without addresses, versions or paths; the cluster master reads it too.
 @app.get("/api/host")
 def host_api(request: Request):
-    return host.report(redacted=request.state.user.get("source") == "trusted")
+    user = request.state.user
+    rep = host.report(redacted=user.get("source") == "trusted")
+    return host.for_user(rep, _can_view(user)) if grants.limited(user) else rep
 
 # --- 1.17: performance, history, memory and hard limits (core/perf.py)
 class ResourcesUpdate(BaseModel):
@@ -887,6 +1067,7 @@ def uninstall_server(request: Request, server_name: str, keep_world: bool = True
         raise HTTPException(status_code=400, detail=str(e))
     if not keep_world:
         playerlog.forget(server_name)
+        grants.forget_server(server_name)
     return {"status": "success"}
 
 # Backups: /var/backups/redstonepanel/<server>/, scheduled by a systemd timer per server
@@ -1172,7 +1353,12 @@ class FileRename(BaseModel):
     name: str
 
 def _files_call(request: Request, fn, *args, **kw):
-    _require_admin(request, "use the file manager")
+    # Who may: the Files grant for the file manager, Mods & plugins for add-ons. The middleware
+    # checks the exact one for the route (core/grants.py); this is the backstop behind it.
+    user = request.state.user
+    if user["role"] != "admin" and not grants.perms_for(user, str(args[0]) if args else "") & {"files", "mods"}:
+        raise HTTPException(status_code=403, detail="Only admins, and accounts an admin gave Files or Mods & "
+                                                    "plugins on this server, can do this.")
     try:
         return fn(*args, **kw)
     except files.FileError as e:
@@ -1348,11 +1534,15 @@ def delete_removed_server(request: Request, server_name: str):
         manager.delete_removed_server(server_name)
     except manager.ServerError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    grants.forget_server(server_name)
     return {"status": "success"}
     
 @app.get("/api/logs")
-def get_logs():
+def get_logs(request: Request):
     """Returns the most recent 100 lines of the live action console."""
+    user = request.state.user
+    if grants.limited(user):
+        return {"content": _visible_log(user, manager.get_panel_logs(400))}
     return {"content": manager.get_panel_logs(100)}
 
 # Update the deploy endpoint to log its output
@@ -1622,15 +1812,32 @@ def _need_master():
         raise HTTPException(status_code=404, detail="This panel isn't a cluster master.")
 
 @app.get("/api/cluster/overview")
-def cluster_overview_api():
+def cluster_overview_api(request: Request):
     _need_master()
-    return cluster_client.overview(manager.list_servers)
+    ov = cluster_client.overview(manager.list_servers)
+    user = request.state.user
+    if user["role"] != "admin":
+        ov = dict(ov, nodes=[dict(n, servers=_visible_servers(user, n.get("servers") or [],
+                                                              None if n.get("local") else n["id"]))
+                             for n in ov["nodes"]])
+    return ov
 
 @app.get("/api/cluster/hosts")
-def cluster_hosts_api():
+def cluster_hosts_api(request: Request):
     """Each panel's CPU, memory, disk and servers online, the master's own first."""
     _need_master()
-    return cluster_client.hosts(lambda: host.summary(host.report()), host.summary)
+    out = cluster_client.hosts(lambda: host.summary(host.report()), host.summary)
+    user = request.state.user
+    if user["role"] != "admin":           # only the problems of servers the account may see
+        nodes = []
+        for n in out["nodes"]:
+            if n.get("summary"):
+                seen = _can_view(user, None if n.get("local") else n["id"])
+                n = dict(n, summary=dict(n["summary"], attention=[a for a in n["summary"].get("attention") or []
+                                                                  if a.get("server") and seen(a["server"])]))
+            nodes.append(n)
+        out = dict(out, nodes=nodes)
+    return out
 
 @app.post("/api/cluster/nodes/{node_id}/servers/{server_name}/action")
 def cluster_node_action_api(node_id: str, server_name: str, req: ServerActionRequest, request: Request):
@@ -1687,6 +1894,19 @@ async def cluster_proxy_api(node_id: str, path: str, request: Request):
     target = "/" + path
     if not cluster.proxy_allowed(request.method, target):
         raise HTTPException(status_code=403, detail="That can't be done on a node from the master.")
+    # 1.18: the route inside decides what a `user` account needs; grants for a node's servers
+    # are kept here, on the master, and the node is told what this user may do on that server
+    perms, cut = None, None
+    if user["role"] != "admin":
+        template, params = _route_of(request.method, target)
+        rule = grants.rule_for(request.method, template) if template else "admin"
+        refused = _rule_refusal(user, "admin" if rule == "proxy" else rule, params, member=node_id)
+        if refused:
+            raise HTTPException(status_code=403, detail=refused)
+        if params.get("server_name"):
+            perms = grants.perms_for(user, grants.server_key(params["server_name"], node_id))
+        if request.method == "GET" and template in ("/api/servers", "/api/host", "/api/logs"):
+            cut = template
     if await run_in_threadpool(_node_too_old, node):
         raise HTTPException(status_code=409, detail=_too_old_detail(node))
     # Pass on the path as the browser encoded it (server and file names), with its query string
@@ -1705,7 +1925,8 @@ async def cluster_proxy_api(node_id: str, path: str, request: Request):
         body.seek(0)
     try:
         res = await run_in_threadpool(cluster_client.open_proxy, node, request.method, raw_target, body, length,
-                                      request.headers.get("content-type"), user["username"], user["role"])
+                                      request.headers.get("content-type"), user["username"], user["role"],
+                                      perms=perms)
     except cluster_client.NodeError as e:
         if body:
             body.close()
@@ -1728,6 +1949,17 @@ async def cluster_proxy_api(node_id: str, path: str, request: Request):
         if detail == "Not allowed for the cluster master.":
             detail = _too_old_detail(node)
         return JSONResponse({"detail": detail or "Refused."}, status_code=403)
+    if cut and res.status == 200:
+        # A node's server list or dashboard, cut down to the servers this account may see
+        raw_body = await run_in_threadpool(res.read_all)
+        try:
+            data = json.loads(raw_body)
+            data = (_visible_servers(user, data, node_id) if cut == "/api/servers"
+                    else {"content": _visible_log(user, data.get("content"), node_id)} if cut == "/api/logs"
+                    else host.for_user(data, _can_view(user, node_id)))
+        except (ValueError, TypeError, AttributeError, KeyError):
+            return JSONResponse({"detail": f"{node['name']} sent an answer the master couldn't read."}, status_code=502)
+        return JSONResponse(data)
     return StreamingResponse(res.chunks(), status_code=res.status, headers=res.headers,
                              background=BackgroundTask(body.close) if body else None)
 

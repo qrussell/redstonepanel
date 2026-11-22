@@ -296,6 +296,13 @@ def _run(job, a, b, start_copy):
     except Exception as e:
         manager.write_log(f"[MOVE] Confirming on {b.name} failed (it keeps the server anyway): {_why(e)}")
     cluster_client.forget_cached()
+    if move:
+        # 1.18: what `user` accounts may do on the server follows it to its new machine and name
+        try:
+            from core import grants
+            grants.rename_server(grants.server_key(server, a.id), grants.server_key(result["name"], b.id))
+        except Exception as e:
+            manager.write_log(f"[MOVE] Couldn't carry over the accounts' permissions on {server}: {_why(e)}")
     manager.write_log(f"[MOVE] {'Moved' if move else 'Copied'} {server} from {a.name} to {b.name} as "
                       f"{result['name']} (port {result['port']}).")
     _set(job, state="done", step="Done", finished=int(time.time()), warning=warning, result=result)

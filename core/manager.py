@@ -213,6 +213,11 @@ def rules_in_use(servers=None):
     needed = set()
     for s in list_servers() if servers is None else servers:
         needed |= {tuple(r) for r in s.get("firewall_rules") or []}
+    try:
+        from core import sftp            # 1.18: the SFTP port, while SFTP is on
+        needed |= sftp.firewall_rules()
+    except Exception:
+        pass
     return needed | phantom_firewall_rules()
 
 
