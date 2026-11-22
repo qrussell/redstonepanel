@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.17.2**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.18**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,13 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.18: helpers with their own access, and SFTP
-
-- **Per-server permissions** for user accounts: view, console, power, players, files, mods,
-  settings and backups, with Moderator and Co-owner presets.
-- **SFTP** for FileZilla, WinSCP or any SFTP client, signed in with your panel account (or an
-  SSH key) and limited to the servers you may use.
 
 ### 1.19: change a server's type or version
 
@@ -78,4 +71,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.17.2** adds Advanced options to New server (builds, Java, memory, limits, startup flags, world and settings); **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.
+See [What's New](Whats-New.md). The latest: **1.18** adds per-server permissions for helpers and SFTP for FileZilla or WinSCP; **1.17.2** adds Advanced options to New server (builds, Java, memory, limits, startup flags, world and settings); **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.

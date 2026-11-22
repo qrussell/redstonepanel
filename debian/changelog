@@ -1,3 +1,28 @@
+redstonepanel (1.18.0) noble; urgency=medium
+
+  * Per-server permissions for user accounts: Users, Servers sets what a
+    helper may do on each server (View, Console & chat, Start/stop/restart,
+    Players, Files, Mods & plugins, Settings, Backups), with Moderator and
+    Co-owner presets and an Every server row. Users see only their servers
+    on the dashboard, in the list, under Needs attention and in the
+    activity log. On a cluster the master keeps and enforces what its
+    users may do on node servers.
+  * User accounts that already exist keep what users could always do
+    (everything except Files and Mods & plugins) on every server. New
+    user accounts start with no servers.
+  * Importing a server, the removed-servers list and restore, editing and
+    deleting templates and the cluster's list of moves are for admins only.
+  * SFTP for FileZilla, WinSCP or any SFTP program, off until turned on
+    under Panel Settings, SFTP (port 2022). Sign in as ACCOUNT.SERVER with
+    the panel or Linux password, or an SSH key added under Password, SSH
+    keys; accounts with two-factor sign-in must use a key. Each sign-in
+    reaches one server's folder, with the file manager's safety checks and
+    no shell. Users need Files on the server; admins reach every server.
+    Runs as redstonepanel-sftp.service and needs python3-paramiko (a new
+    Recommends). Each cluster member serves SFTP for its own servers.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sun, 22 Nov 2026 22:45:00 +0000
+
 redstonepanel (1.17.2) noble; urgency=medium
 
   * Advanced options on New server: choose the name and game port, a
