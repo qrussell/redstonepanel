@@ -304,6 +304,13 @@
                         <button onclick="ServerApp.exportServer()" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold">Download .zip</button>
                     </div>
                 </div>
+                <!-- A server made from a modpack (1.20; filled by ServerApp.loadModpack) -->
+                <div id="modpack-card" class="hidden">
+                    <h3 class="text-lg font-bold mb-2 text-gray-900 dark:text-white">Modpack</h3>
+                    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm">
+                        <div id="modpack-body"><p class="text-sm text-gray-500">Loading…</p></div>
+                    </div>
+                </div>
                 <div>
                     <h3 class="text-lg font-bold mb-2 text-gray-900 dark:text-white">Update Server</h3>
                     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center shadow-sm">
