@@ -203,17 +203,23 @@ def _is_panel_server(server):
         return False
 
 def stop_requested(server):
-    """True if systemd was asked to stop or restart the unit (a job is queued on it).
+    """True if systemd was asked to stop or restart the unit (a stop or restart job is queued).
 
-    Exit statuses can't tell: Bedrock's screen exits 1 on every normal stop. A crash has no job
-    queued while ExecStopPost runs; `systemctl stop/restart` (and the panel) always does."""
+    Exit statuses can't tell: Bedrock's screen exits 1 on every normal stop. A crash has no such
+    job queued while ExecStopPost runs; `systemctl stop/restart` (and the panel) always does.
+    A start job doesn't count (1.17.1): a server that dies within a second of starting (the
+    wrong Java, say) exits while its start job is still waiting for ExecStartPost."""
     import subprocess
     try:
-        r = subprocess.run(["systemctl", "show", "-p", "Job", "--value", f"{server}.service"],
+        r = subprocess.run(["systemctl", "list-jobs", "--no-legend", "--plain", f"{server}.service"],
                            capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
         return False
-    return bool(r.stdout.strip())
+    for line in r.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[1] == f"{server}.service" and parts[2] != "start":
+            return True
+    return False
 
 def describe_stop(env, requested=False):
     """(event, message) for an ExecStopPost run, from the environment systemd sets."""
@@ -326,4 +332,24 @@ def unit_event(phase, server, env=None):
                 _log(f"[CRASH] Couldn't schedule a restart of {server}: {e}")
         if event == "crashed":
             _log(f"[CRASH] {server} {message}")
+        if not requested:
+            # 1.17.1: why? (a crash, or a stop nobody asked for, such as a failed start)
+            why = explain_stop(server, os.environ if env is None else env, event == "crashed")
+            if why:
+                message = f"{message} {why}"
+                if event == "crashed":
+                    _log(f"[CRASH] {server}: {why}")
     send(event, server, f"{server} {message}")
+
+def explain_stop(server, env, crashed):
+    """core/crashes.py's one-line cause for this stop (saved for the Last crash card), or None."""
+    from core import crashes
+    d = None
+    for line in _unit_text(server).splitlines():
+        if line.startswith("WorkingDirectory="):
+            d = line.split("=", 1)[1].strip()
+    if not d or not os.path.isdir(d):
+        return None
+    rec = crashes.record(server, d, "Bedrock" if "bedrock_server" in _unit_text(server) else None,
+                         dict(env), crashed=crashed)
+    return crashes.summary(rec)

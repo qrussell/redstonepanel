@@ -593,10 +593,15 @@ def _needs_attention(rep, failed, phantoms):
     for unit in failed:
         server = unit[:-8] if unit.startswith("minecraft") and unit.endswith(".service") else None
         out.append(_attention("error", f"{unit} has failed.", server=server, where="services"))
+    from core import crashes                    # 1.17.1: the cause of the last crash, if known
+    crashed = {c["server"]: c["text"] for c in crashes.attention([s["name"] for s in rep["servers"]])}
     for s in rep["servers"]:
         if s["crash_loop"]:
-            out.append(_attention("error", f"{s['name']} keeps crashing (restarted {s['restarts'] or 0} times).",
-                                  server=s["name"]))
+            why = crashes.summary(crashes.load(s["name"])) if s["name"] in crashed else None
+            out.append(_attention("error", f"{s['name']} keeps crashing (restarted {s['restarts'] or 0} times)." +
+                                  (f" {why}" if why else ""), server=s["name"], where="crash"))
+        elif s["name"] in crashed:
+            out.append(_attention("warn", crashed[s["name"]], server=s["name"], where="crash"))
         lb = s["last_backup"]
         if lb and not lb.get("ok"):
             out.append(_attention("warn", f"The last backup of {s['name']} failed: {lb.get('error') or 'unknown error'}",

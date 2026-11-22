@@ -1,0 +1,36 @@
+[14:34:46] [ServerMain/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, name=PROD]
+[14:34:46] [ServerMain/WARN]: Failed to load world data from ./world/level.dat
+java.util.zip.ZipException: Not in GZIP format
+	at java.base/java.util.zip.GZIPInputStream.readHeader(GZIPInputStream.java:197) ~[?:?]
+	at java.base/java.util.zip.GZIPInputStream.<init>(GZIPInputStream.java:81) ~[?:?]
+	at java.base/java.util.zip.GZIPInputStream.<init>(GZIPInputStream.java:112) ~[?:?]
+	at ud.a(SourceFile:42) ~[server-1.21.4.jar:?]
+	at ud.a(SourceFile:50) ~[server-1.21.4.jar:?]
+	at ud.a(SourceFile:37) ~[server-1.21.4.jar:?]
+	at evg.c(SourceFile:216) ~[server-1.21.4.jar:?]
+	at evg.a(SourceFile:220) ~[server-1.21.4.jar:?]
+	at evg$c.b(SourceFile:444) ~[server-1.21.4.jar:?]
+	at evg$c.h(SourceFile:435) ~[server-1.21.4.jar:?]
+	at net.minecraft.server.Main.main(SourceFile:145) ~[server-1.21.4.jar:?]
+	at net.minecraft.bundler.Main.lambda$run$0(Main.java:54) ~[?:?]
+	at java.base/java.lang.Thread.run(Thread.java:1583) [?:?]
+[14:34:46] [ServerMain/INFO]: Attempting to use fallback
+[14:34:46] [ServerMain/ERROR]: Failed to load world data from ./world/level.dat_old
+java.nio.file.NoSuchFileException: ./world/level.dat_old
+	at java.base/sun.nio.fs.UnixException.translateToIOException(UnixException.java:92) ~[?:?]
+	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:106) ~[?:?]
+	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:111) ~[?:?]
+	at java.base/sun.nio.fs.UnixFileSystemProvider.newByteChannel(UnixFileSystemProvider.java:261) ~[?:?]
+	at java.base/java.nio.file.Files.newByteChannel(Files.java:380) ~[?:?]
+	at java.base/java.nio.file.Files.newByteChannel(Files.java:432) ~[?:?]
+	at java.base/java.nio.file.spi.FileSystemProvider.newInputStream(FileSystemProvider.java:420) ~[?:?]
+	at java.base/java.nio.file.Files.newInputStream(Files.java:160) ~[?:?]
+	at ud.a(SourceFile:34) ~[server-1.21.4.jar:?]
+	at evg.c(SourceFile:216) ~[server-1.21.4.jar:?]
+	at evg.a(SourceFile:220) ~[server-1.21.4.jar:?]
+	at evg$c.b(SourceFile:444) ~[server-1.21.4.jar:?]
+	at evg$c.i(SourceFile:439) ~[server-1.21.4.jar:?]
+	at net.minecraft.server.Main.main(SourceFile:152) ~[server-1.21.4.jar:?]
+	at net.minecraft.bundler.Main.lambda$run$0(Main.java:54) ~[?:?]
+	at java.base/java.lang.Thread.run(Thread.java:1583) [?:?]
+[14:34:46] [ServerMain/ERROR]: Failed to load world data from ./world/level.dat and ./world/level.dat_old. World files may be corrupted. Shutting down.

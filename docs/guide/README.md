@@ -507,6 +507,34 @@ The **Overview** tab (shown in [The dashboard](#3-the-dashboard)) shows quick st
 
 For Java servers it also shows which Java version the server needs and which one is installed.
 
+### Last crash
+
+When a server crashes, or stops without anyone asking it to (a start that fails, say), a
+**Last crash** card appears under the quick stats. It says what went wrong in plain words and
+what to do about it.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/overview-crash.png"><img src="images/overview-crash.png" alt="The Last crash card of a Fabric server that is missing Fabric API"></picture>
+
+- **The cause, named**, when it's one the panel knows: a missing dependency ("Ledger requires
+  Fabric API and Fabric Language Kotlin, which aren't installed"), a mod or plugin made for
+  another Minecraft version, the wrong Java (`UnsupportedClassVersionError`), the port already
+  in use, out of memory (including being stopped for going over its
+  [hard memory limit](#memory-and-limits)), an EULA that hasn't been accepted, and a damaged
+  `level.dat` or world chunk.
+- **The likely mod or plugin**: names in the crash report ("Suspected Mods"), in the log and in
+  the missing-dependency lines are matched against what's installed. Admins get
+  **Turn off and restart**, which renames the jar to `.disabled` (as the Mods tab does) and
+  starts the server again.
+- **Undo the last mod update**, when the mods or plugins were updated in the last three days.
+  It puts back the files the update replaced, then restarts the server.
+- **The log**: the newest crash report if one was just written, otherwise the end of
+  `logs/latest.log` (Bedrock: `server.log`) or of what the server printed before it had a log.
+  The error lines are highlighted; open it with the link under the card.
+
+Nothing is changed until you click. **Dismiss** hides the card; the next crash brings it back.
+The [crash notification](#notifications) gets the same one-line cause, and the dashboard's
+**Needs attention** lists the crash for a week with a link to the card.
+
 ### Performance
 
 Under the quick stats, **Performance** answers "is the game lagging, since when, and why?". It
@@ -1474,6 +1502,10 @@ sudo redstonepanel reset-2fa NAME
 - on Windows with WSL, mirrored networking is on and the ports are allowed in the Hyper-V and
   Windows firewalls (see [On Windows with WSL](#on-windows-with-wsl)).
 
+**A server crashed or won't start.** Open it: the **Last crash** card on its **Overview** says
+why, when the panel recognises the cause, and offers the fix (see [Last crash](#last-crash)).
+If it found no known cause, the highlighted lines in its log are the place to look.
+
 **Live Chat says RCON isn't answering.** The server is probably still starting; wait a moment.
 Otherwise **Restart** it so it picks up its RCON settings.
 
@@ -1510,7 +1542,7 @@ Every screenshot in this manual, in the theme you pick:
 <tr><td><img src="images/console.png" width="280" alt="Console (dark theme)"><br>Console</td><td><img src="images/templates.png" width="280" alt="Template manager (dark theme)"><br>Template manager</td><td><img src="images/users.png" width="280" alt="Panel users (dark theme)"><br>Panel users</td></tr>
 <tr><td><img src="images/panel-settings.png" width="280" alt="Panel Settings: name, notifications and cluster (dark theme)"><br>Panel Settings: name, notifications and cluster</td><td><img src="images/panel-settings-1.png" width="280" alt="Panel Settings on a cluster master: connection and sign-in (dark theme)"><br>Panel Settings on a cluster master: connection and sign-in</td><td><img src="images/notifications.png" width="280" alt="Notification settings (dark theme)"><br>Notification settings</td></tr>
 <tr><td><img src="images/cluster.png" width="280" alt="The Cluster page (dark theme)"><br>The Cluster page</td><td><img src="images/node-server.png" width="280" alt="A node's Fabric server opened from the master (dark theme)"><br>A node's Fabric server opened from the master</td><td><img src="images/cluster-move.png" width="280" alt="Moving a server to another cluster member (dark theme)"><br>Moving a server to another cluster member</td></tr>
-<tr><td><img src="images/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (dark theme)"><br>A finished move, with the old copy still kept</td><td><img src="images/port-forwarding.png" width="280" alt="The Port forwarding page (dark theme)"><br>The Port forwarding page</td></tr>
+<tr><td><img src="images/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (dark theme)"><br>A finished move, with the old copy still kept</td><td><img src="images/port-forwarding.png" width="280" alt="The Port forwarding page (dark theme)"><br>The Port forwarding page</td><td><img src="images/overview-crash.png" width="280" alt="The Last crash card (dark theme)"><br>The Last crash card</td></tr>
 </table>
 
 </details>
@@ -1529,7 +1561,7 @@ Every screenshot in this manual, in the theme you pick:
 <tr><td><img src="images/light/console.png" width="280" alt="Console (light theme)"><br>Console</td><td><img src="images/light/templates.png" width="280" alt="Template manager (light theme)"><br>Template manager</td><td><img src="images/light/users.png" width="280" alt="Panel users (light theme)"><br>Panel users</td></tr>
 <tr><td><img src="images/light/panel-settings.png" width="280" alt="Panel Settings: name, notifications and cluster (light theme)"><br>Panel Settings: name, notifications and cluster</td><td><img src="images/light/panel-settings-1.png" width="280" alt="Panel Settings on a cluster master: connection and sign-in (light theme)"><br>Panel Settings on a cluster master: connection and sign-in</td><td><img src="images/light/notifications.png" width="280" alt="Notification settings (light theme)"><br>Notification settings</td></tr>
 <tr><td><img src="images/light/cluster.png" width="280" alt="The Cluster page (light theme)"><br>The Cluster page</td><td><img src="images/light/node-server.png" width="280" alt="A node's Fabric server opened from the master (light theme)"><br>A node's Fabric server opened from the master</td><td><img src="images/light/cluster-move.png" width="280" alt="Moving a server to another cluster member (light theme)"><br>Moving a server to another cluster member</td></tr>
-<tr><td><img src="images/light/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (light theme)"><br>A finished move, with the old copy still kept</td><td><img src="images/light/port-forwarding.png" width="280" alt="The Port forwarding page (light theme)"><br>The Port forwarding page</td></tr>
+<tr><td><img src="images/light/cluster-moved.png" width="280" alt="A finished move, with the old copy still kept (light theme)"><br>A finished move, with the old copy still kept</td><td><img src="images/light/port-forwarding.png" width="280" alt="The Port forwarding page (light theme)"><br>The Port forwarding page</td><td><img src="images/light/overview-crash.png" width="280" alt="The Last crash card (light theme)"><br>The Last crash card</td></tr>
 </table>
 
 </details>

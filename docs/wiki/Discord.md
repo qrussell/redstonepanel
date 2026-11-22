@@ -119,7 +119,7 @@ panel post into one channel. No bot is needed.
 
    | Event | Why |
    | --- | --- |
-   | **Server crashed** | The most important one. The server restarts by itself, and you learn about it. |
+   | **Server crashed** | The most important one. The server restarts by itself, and you learn about it, with the cause in plain words when the panel recognises it. |
    | **Backup failed** | So a broken backup never goes unnoticed. |
    | **Scheduled restart** | Confirms nightly restarts happen (or tells you when one fails). |
    | **Player turned away** | Someone tried to join and the whitelist refused them, so you can let them in from **Configuration → Whitelist & Access**. |
