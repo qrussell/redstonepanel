@@ -207,6 +207,10 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   from a copy, and bringing a server back on a new machine (**Panel Settings → Backup storage**)
 - notifications to Discord or any webhook when a server crashes, starts or stops, and when a
   backup finishes or fails
+- a **Last crash** card when a server crashes or won't start: the cause in plain words (missing
+  dependency, mod for another version, wrong Java, port in use, out of memory, EULA, damaged
+  world), the likely mod or plugin with **Turn off and restart**, **Undo the last mod update**,
+  and the log with its error lines highlighted
 - scheduled restarts that warn players in game first
 - update alerts for every server (Bedrock, Minecraft releases, Paper builds, Fabric loader),
   checked every 6 hours, and **Update automatically** for Bedrock servers (**Maintenance**, or
@@ -463,6 +467,9 @@ Other services get a JSON body with `text`, `event`, `server`, `panel`, `message
 - **Crashes are reported even while the panel is stopped.** The package installs a systemd
   drop-in for every `minecraft-*.service` whose start and stop hooks send the message. A
   server stuck in a crash loop sends one "crashed" message per 5 minutes, not one per restart.
+- **Crash messages say why** when the panel recognises the cause (from 1.17.1), for example
+  "survival crashed (exit status 1). … Ledger requires Fabric API, which isn't installed." The
+  same line is on the server's **Last crash** card.
 - **Crashed Bedrock servers come back.** Bedrock runs under `screen`, which exits normally when
   the game dies, so until 1.8 systemd didn't notice and left a crashed Bedrock server stopped.
   The same hook now tells a crash from a `stop` typed in the console and starts the server

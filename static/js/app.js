@@ -439,6 +439,8 @@ const ServerApp = {
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Max RAM</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.ram}</p></div>
         `;
         document.getElementById('overview-notes').innerHTML = this.serverNotes(srv);
+        document.getElementById('overview-crash').innerHTML = '';
+        this.loadCrash();
         this.perfData = null;
         document.getElementById('overview-perf').innerHTML = '<p class="text-sm text-gray-500">Loading performance…</p>';
 
@@ -448,6 +450,88 @@ const ServerApp = {
 
         this.switchTab('overview');
         this.switchConfigSubTab('visual');
+    },
+
+    // --- 1.17.1: the "Last crash" card on the Overview (core/crashes.py)
+    async loadCrash() {
+        const srv = this.activeServer;
+        const box = document.getElementById('overview-crash');
+        if (!srv || !box) return;
+        let rec = null;
+        try {
+            const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/crash`);
+            if (res.ok) rec = (await res.json()).crash;
+        } catch (e) { /* no card */ }
+        if (this.activeServer !== srv) return;
+        this.crash = rec;
+        box.innerHTML = rec && !rec.dismissed ? this.crashCard(rec) : '';
+    },
+
+    crashCard(rec) {
+        const esc = t => this.escapeHtml(String(t));
+        const admin = this.isAdmin();
+        const noun = rec.noun || 'mod';
+        const verb = rec.crashed === false ? 'stopped' : 'crashed';
+        const causes = (rec.causes || []).map(c => `
+            <div class="mt-2">
+                <p class="font-bold text-gray-900 dark:text-white">${esc(c.title)}</p>
+                <p class="text-gray-800 dark:text-gray-200">${esc(c.text)}</p>
+                <p class="text-gray-600 dark:text-gray-400"><b>Fix:</b> ${esc(c.fix)}</p>
+            </div>`).join('');
+        const suspects = (rec.suspects || []).filter(s => s.present !== false).map(s => `
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+                <span>Likely ${esc(noun)}: <b>${esc(s.name)}</b> <span class="font-mono text-xs text-gray-500 dark:text-gray-400">${esc(s.file)}</span>${s.enabled ? '' : ' (turned off)'}</span>
+                ${admin && s.enabled ? `<button onclick="ServerApp.crashTurnOff(${this.jsArg(s.file)})" class="bg-theme hover-bg-theme text-white px-3 py-1.5 rounded text-sm font-bold">Turn off and restart</button>` : ''}
+            </div>`).join('');
+        const undo = rec.undo && admin ? `
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+                <span>The last ${esc(noun)} update was ${esc(this.fmtAgo(rec.undo.at))} (${esc((rec.undo.files || []).join(', '))}).</span>
+                <button onclick="ServerApp.crashUndo()" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white px-3 py-1.5 rounded text-sm font-bold">Undo the last ${esc(noun)} update</button>
+            </div>` : '';
+        const none = !causes && !suspects ? `<p class="mt-2 text-gray-700 dark:text-gray-300">No known cause was found. The highlighted lines below are the errors to look at.</p>` : '';
+        const lines = (rec.lines || []);
+        const hl = lines.filter(l => l.hl).length;
+        const log = lines.length ? `
+            <details class="mt-3">
+                <summary class="cursor-pointer text-sm text-theme">${esc(rec.source || 'Log')}: ${hl} error line${hl === 1 ? '' : 's'} highlighted (${lines.length} lines)</summary>
+                <pre class="mt-2 max-h-80 overflow-auto text-xs font-mono p-2 rounded bg-gray-900 text-gray-300">${lines.map(l => l.hl
+                    ? `<span class="text-red-300 bg-red-900/40">${esc(l.text)}</span>` : esc(l.text)).join('\n')}</pre>
+            </details>` : '';
+        return `
+            <section class="p-4 rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-sm text-gray-900 dark:text-gray-100">
+                <div class="flex items-start justify-between gap-2">
+                    <h3 class="font-bold text-base">💥 Last crash: ${esc(verb)} ${esc(this.fmtAgo(rec.at))}${rec.exit ? ` <span class="font-normal text-xs text-gray-500 dark:text-gray-400">(${esc(rec.exit)})</span>` : ''}</h3>
+                    <button onclick="ServerApp.dismissCrash()" class="text-xs underline text-gray-600 dark:text-gray-400 whitespace-nowrap">Dismiss</button>
+                </div>
+                ${causes}${suspects}${undo}${none}${log}
+            </section>`;
+    },
+
+    async crashTurnOff(file) {
+        const srv = this.activeServer;
+        if (!confirm(`Turn off ${file} (renamed to ${file}.disabled) and restart ${srv.name}?`)) return;
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/crash/turn-off`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file }) });
+        if (!res.ok) return alert(await this.apiError(res));
+        this.addonsChanged = this.addonsChanged || {};
+        this.addonsChanged[srv.name] = true;
+        await this.loadCrash();
+    },
+
+    async crashUndo() {
+        const srv = this.activeServer;
+        if (!confirm(`Put back the files the last update replaced and restart ${srv.name}?`)) return;
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/crash/undo`, { method: 'POST' });
+        if (!res.ok) return alert(await this.apiError(res));
+        this.addonsChanged = this.addonsChanged || {};
+        this.addonsChanged[srv.name] = true;
+        await this.loadCrash();
+    },
+
+    async dismissCrash() {
+        const srv = this.activeServer;
+        await api(`/api/servers/${encodeURIComponent(srv.name)}/crash`, { method: 'DELETE' });
+        await this.loadCrash();
     },
 
     // A running Phantom proxy with a problem: worth a marker in the sidebar

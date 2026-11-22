@@ -184,6 +184,13 @@ A stop that systemd was not asked for is a crash. Bedrock servers run under \fBs
 exits 0 when the game dies, so systemd would not restart them; when a Bedrock server's console
 log doesn't end with "Quit correctly" (its \fBstop\fR command), the hook starts the server again
 after 20 seconds with a transient \fBsystemd-run\fR timer.
+.PP
+After a crash, or a stop nobody asked for (such as a failed start), the hook also reads the
+newest crash report, the end of the server's log and what it printed to the journal, names the
+cause when it is a known one (missing dependency, mod or plugin for another version, wrong
+Java, port in use, out of memory, EULA, damaged world) and the mod or plugin it points at, and
+keeps the result in \fI/var/lib/redstonepanel/crashes/NAME.json\fR for the server's Last crash
+card. The cause is added to the "crashed" notification.
 .SH CLUSTER COMMANDS
 A cluster lets one panel, the master, manage the game servers of other RedstonePanels, its
 nodes, with every tab of each server. The master runs a small certificate authority and issues

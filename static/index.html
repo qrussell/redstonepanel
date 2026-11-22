@@ -36,7 +36,7 @@
     <!-- Phones (below md): a top bar with the menu button, and the sidebar slides in over the page -->
     <div id="mobile-bar" class="md:hidden flex items-center gap-2 px-2 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shrink-0 z-20">
         <button id="btn-nav" onclick="ServerApp.openNav()" aria-label="Menu" aria-controls="sidebar" aria-expanded="false" class="text-2xl leading-none px-3 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white">☰</button>
-        <img src="/static/img/redstonepanel-icon.svg" alt="" class="w-7 h-7 shrink-0">
+        <a href="https://redstonepanel.cielocloud.org" target="_blank" rel="noopener" title="RedstonePanel website (opens in a new tab)" class="shrink-0 rounded hover:opacity-80 transition"><img src="/static/img/redstonepanel-icon.svg" alt="RedstonePanel website" class="w-7 h-7"></a>
         <div class="min-w-0 flex-1">
             <p id="mobile-title" class="font-bold text-gray-900 dark:text-white truncate">RedstonePanel</p>
             <p id="mobile-subtitle" class="text-xs text-gray-500 dark:text-gray-400 truncate"></p>
@@ -46,9 +46,13 @@
 
     <aside id="sidebar" class="rp-sidebar w-72 max-w-[85vw] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full shadow-xl z-40 md:z-10">
         <div class="p-5 bg-gray-50 dark:bg-gray-900">
+            <!-- The logo and name open the project website -->
             <h1 class="flex items-center gap-2.5 text-xl font-extrabold tracking-tight">
-                <img src="/static/img/redstonepanel-icon.svg" alt="" class="w-9 h-9 shrink-0">
-                <span><span class="text-redstone-600 dark:text-redstone-400">Redstone</span><span class="text-gray-900 dark:text-gray-100">Panel</span> <span id="panel-version" class="text-xs font-normal tracking-normal text-gray-500 dark:text-gray-400"></span></span>
+                <a href="https://redstonepanel.cielocloud.org" target="_blank" rel="noopener" title="RedstonePanel website (opens in a new tab)" class="flex items-center gap-2.5 rounded hover:opacity-80 transition">
+                    <img src="/static/img/redstonepanel-icon.svg" alt="" class="w-9 h-9 shrink-0">
+                    <span><span class="text-redstone-600 dark:text-redstone-400">Redstone</span><span class="text-gray-900 dark:text-gray-100">Panel</span></span>
+                </a>
+                <span id="panel-version" class="text-xs font-normal tracking-normal text-gray-500 dark:text-gray-400"></span>
             </h1>
             <!-- Which server this panel runs on (Panel Settings > Panel name; default: host name) -->
             <p id="panel-name" class="text-sm font-bold text-gray-700 dark:text-gray-300 truncate mt-1"></p>
@@ -134,6 +138,8 @@
             <div id="tab-overview">
                 <h3 class="text-lg font-bold mb-4 text-gray-900 dark:text-white">Quick Stats</h3>
                 <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4" id="overview-stats"></div>
+                <!-- 1.17.1: why the last crash or failed start happened, and the one-click fixes -->
+                <div class="mt-4" id="overview-crash"></div>
                 <div class="mt-4 space-y-2" id="overview-notes"></div>
                 <div class="mt-6" id="overview-perf"></div>
             </div>

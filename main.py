@@ -36,6 +36,7 @@ import core.moves as moves
 import core.backup_copies as backup_copies
 import core.backup_targets as backup_targets
 import core.perf as perf
+import core.crashes as crashes
 from starlette.background import BackgroundTask
 import json
 import uuid
@@ -538,6 +539,39 @@ def set_resources(request: Request, server_name: str, req: ResourcesUpdate):
     _require_admin(request, "change a server's memory or limits")
     return _perf_call(perf.set_resources, server_name, xms=req.xms, xmx=req.xmx, memory=req.memory, cpu=req.cpu,
                       restart=req.restart, actor=request.state.user["username"])
+
+# --- 1.17.1: why did it crash? (core/crashes.py)
+class CrashFix(BaseModel):
+    file: str
+
+def _crash_call(fn, *args, **kw):
+    try:
+        manager._check_server(args[0])
+        return fn(*args, **kw)
+    except crashes.CrashError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except files.FileError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+@app.get("/api/servers/{server_name}/crash")
+def last_crash(server_name: str):
+    return {"crash": _crash_call(crashes.get, server_name)}
+
+@app.delete("/api/servers/{server_name}/crash")
+def dismiss_crash(request: Request, server_name: str):
+    return _crash_call(crashes.dismiss, server_name)
+
+@app.post("/api/servers/{server_name}/crash/turn-off")
+def crash_turn_off(request: Request, server_name: str, req: CrashFix):
+    _require_admin(request, "turn off mods or plugins")
+    return _crash_call(crashes.turn_off_and_restart, server_name, req.file, actor=request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/crash/undo")
+def crash_undo(request: Request, server_name: str):
+    _require_admin(request, "undo mod or plugin updates")
+    return _crash_call(crashes.undo_and_restart, server_name, actor=request.state.user["username"])
 
 @app.get("/api/servers/{server_name}/properties")
 def get_properties(server_name: str):
