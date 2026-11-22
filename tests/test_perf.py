@@ -14,6 +14,12 @@ os.environ.setdefault("RP_DATA_DIR", os.path.join(TMP, "data"))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core import manager as M, notify as N, perf as P  # noqa: E402
 
+try:
+    import fastapi  # noqa: F401
+    HAVE_FASTAPI = True
+except ImportError:
+    HAVE_FASTAPI = False
+
 GB = 1024 ** 3
 MB = 1024 ** 2
 
@@ -435,6 +441,7 @@ class AlertEvents(unittest.TestCase):
             self.assertFalse(N._quiet("disk_full", "disk:/srv"))
 
 
+@unittest.skipUnless(HAVE_FASTAPI, "needs fastapi")
 class Routes(unittest.TestCase):
     def test_routes_exist_and_changes_are_admin_only(self):
         import main
