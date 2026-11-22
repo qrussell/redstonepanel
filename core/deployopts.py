@@ -203,7 +203,7 @@ def validate(advanced, edition, loader="vanilla", is_admin=True):
     if not isinstance(advanced, dict):
         raise OptionError("Advanced options must be an object.")
     a = {k: v for k, v in advanced.items() if v not in (None, "")}
-    known = {"name", "port", "build", "snapshot", "java", "heap", "flags", "seed", "level_type", "level_name",
+    known = {"name", "port", "build", "snapshot", "java", "heap", "memory_limit", "cpu", "flags", "seed", "level_type", "level_name",
              "motd", "gamemode", "difficulty", "max_players", "online_mode", "whitelist", "whitelist_players",
              "ops"}
     unknown = sorted(set(a) - known)
@@ -251,6 +251,28 @@ def validate(advanced, edition, loader="vanilla", is_admin=True):
         if b < 512 * 1024 ** 2 or b > 256 * 1024 ** 3:
             raise OptionError("Heap must be between 512M and 256G.")
         plan["heap"] = heap
+    if "memory_limit" in a:
+        lim = str(a["memory_limit"]).strip().upper()
+        if lim in ("OFF", "NONE"):
+            pass
+        elif lim == "AUTO":
+            if not java:
+                raise OptionError("Automatic follows a Java server's heap; give a Bedrock server a size such as 2G.")
+            plan["memory_limit"] = "auto"
+        elif HEAP_CHOICE_RE.match(lim) and 256 * 1024 ** 2 <= heap_bytes(lim) <= 512 * 1024 ** 3:
+            plan["memory_limit"] = lim
+        else:
+            raise OptionError("The hard memory limit is Automatic, Off or a size such as 3G or 2560M.")
+    if "cpu" in a:
+        try:
+            cpu = round(float(a["cpu"]), 2)
+        except (TypeError, ValueError):
+            raise OptionError("Write the CPU limit as a number of cores, like 1 or 1.5.")
+        cores = os.cpu_count() or 1
+        if cpu and not 0.1 <= cpu <= cores:
+            raise OptionError(f"The CPU limit is between 0.1 and {cores} cores (this machine has {cores}), or 0 for none.")
+        if cpu:
+            plan["cpu"] = cpu
     if java and "flags" in a:
         flags = clean_flags(a["flags"])
         if flags["extra"] and not is_admin:
@@ -342,6 +364,10 @@ def summary(plan):
             bits.append(f"{label} {plan[k]}")
     if plan.get("snapshot"):
         bits.append("snapshots allowed")
+    if plan.get("memory_limit"):
+        bits.append(f"hard memory limit {plan['memory_limit'].lower() if plan['memory_limit'] == 'auto' else plan['memory_limit']}")
+    if plan.get("cpu"):
+        bits.append(f"CPU {plan['cpu']} cores")
     if plan.get("flags"):
         bits.append(f"flags: {describe_flags(plan['flags'])}")
     for k, v in (plan.get("properties") or {}).items():

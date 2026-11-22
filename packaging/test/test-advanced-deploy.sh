@@ -57,7 +57,7 @@ dx "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommend
 BUILDS=$(dx "curl -s -b /tmp/jar 'http://127.0.0.1:8080/api/java/builds?loader=paper&version=$PAPER'")
 BUILD=$(echo "$BUILDS" | $PY -c "import json,sys; b=[x['build'] for x in json.load(sys.stdin)['builds'] if '(' not in x['label']]; print(b[1] if len(b) > 1 else b[0])")
 [ -n "$BUILD" ] && ok "Paper $PAPER builds listed; pinning $BUILD (not the newest)" || bad "Paper builds ($BUILDS)"
-c=$(deploy "{\"edition\":\"java\",\"loader\":\"paper\",\"version\":\"$PAPER\",\"advanced\":{\"name\":\"survival\",\"port\":25700,\"build\":\"$BUILD\",\"java\":$JAVA,\"heap\":\"1G\",\"flags\":{\"preset\":\"aikar\",\"extra\":[\"-Dfile.encoding=UTF-8\"]},\"seed\":\"8675309\",\"level_type\":\"flat\",\"level_name\":\"main\",\"motd\":\"Advanced test\",\"gamemode\":\"creative\",\"difficulty\":\"hard\",\"max_players\":7,\"online_mode\":true,\"whitelist_players\":\"Notch\",\"ops\":\"Notch\"}}")
+c=$(deploy "{\"edition\":\"java\",\"loader\":\"paper\",\"version\":\"$PAPER\",\"advanced\":{\"name\":\"survival\",\"port\":25700,\"build\":\"$BUILD\",\"java\":$JAVA,\"heap\":\"1G\",\"memory_limit\":\"auto\",\"cpu\":1.5,\"flags\":{\"preset\":\"aikar\",\"extra\":[\"-Dfile.encoding=UTF-8\"]},\"seed\":\"8675309\",\"level_type\":\"flat\",\"level_name\":\"main\",\"motd\":\"Advanced test\",\"gamemode\":\"creative\",\"difficulty\":\"hard\",\"max_players\":7,\"online_mode\":true,\"whitelist_players\":\"Notch\",\"ops\":\"Notch\"}}")
 [ "$c" = 200 ] && ok "Paper deployed with every option" || bad "Paper deploy ($c $(dx 'cat /tmp/body'))"
 S=minecraft-survival
 check "  named $S"                          dx "test -f /etc/systemd/system/$S.service"
@@ -67,6 +67,10 @@ U=$(unit $S)
 echo "$U" | grep -q -- "-Xms1G -Xmx1G -XX:+UseG1GC" && ok "  unit: 1G heap up front with Aikar's flags" || bad "  unit: $U"
 echo "$U" | grep -q -- "-Dfile.encoding=UTF-8 -jar server.jar nogui" && ok "  unit: extra flag before -jar" || bad "  unit extra: $U"
 echo "$U" | grep -q "java-$JAVA" && ok "  unit: Java $JAVA" || bad "  unit java: $U"
+D=$(dx "cat /etc/systemd/system/$S.service.d/redstonepanel-limits.conf 2>/dev/null")
+echo "$D" | grep -qx "MemoryMax=1610612736" && echo "$D" | grep -qx "CPUQuota=150%" \
+    && ok "  hard limits: Automatic memory (1.5G) and 1.5 cores in the drop-in" || bad "  limits drop-in: $D"
+[ "$(dx "systemctl show -p CPUQuotaPerSecUSec --value $S")" = 1.500000s ] && ok "  systemd applies the CPU limit" || bad "  CPUQuota not applied"
 for kv in level-seed=8675309 level-type=minecraft:flat level-name=main motd=Advanced\ test gamemode=creative difficulty=hard max-players=7 online-mode=true white-list=true; do
     # Paper rewrites server.properties and escapes the colon (minecraft\:flat): the same value
     [ "$(prop $S "${kv%%=*}" | sed 's/\\:/:/g')" = "${kv#*=}" ] && ok "  $kv" || bad "  ${kv%%=*}=$(prop $S "${kv%%=*}")"

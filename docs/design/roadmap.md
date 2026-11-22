@@ -1273,6 +1273,9 @@ refused joins, so those are Java only.
       cycle, and choose an installed Java (never older than the version needs).
     - **Memory (Java):** the heap, refused when it leaves under 1 GB for the system (768 MB on
       machines with 3 GB or less). Java starts with half of it.
+    - **Hard limits (Java and Bedrock):** 1.17's hard memory limit (Automatic for Java, or a size)
+      and CPU limit in cores, set through `perf.set_resources()` before the first start, so the
+      drop-in is there from the start. A size too close to the heap is refused before any download.
     - **Startup flags (Java):** none, or Aikar's flags (with the heap fully allocated up front,
       as Aikar recommends), plus extra flags for admins: only `-XX:`, `-D` and `-Xss`, never
       `-XX:OnError`, `OnOutOfMemoryError`, `Flags` or `VMOptionsFile`, and none of the characters
@@ -1292,8 +1295,8 @@ refused joins, so those are Java only.
     their plugins), Folia, Pufferfish and Leaf (Folia breaks most plugins; the forks can join the
     Paper family if asked), hybrids such as Mohist and Arclight (mods plus plugins break
     unpredictably), Limbo and Sponge, CurseForge auto-download (see 1.20), Docker settings, JMX,
-    disk quotas, auto-pause (a scheduled-commands idea, not a deploy option). Hard memory limit
-    and CPU share join the Memory group once 1.17 is merged. Add-ons at creation join 1.20.
+    disk quotas, auto-pause (a scheduled-commands idea, not a deploy option). Add-ons at creation
+    join 1.20.
 
     **How:** `core/deployopts.py` (checks, Aikar's flags, the flags store),
     `ServerDeployRequest.advanced`, `GET /api/java/builds`, `GET /api/java/snapshots`,
@@ -1302,7 +1305,8 @@ refused joins, so those are Java only.
     **Size:** about a week.
 
     **As built (21 Nov 2026, MR on `feature/advanced-deploy-options`):** as planned, except that
-    templates don't store the Software, Memory and Startup flags groups yet. Tested:
+    templates don't store the Software, Memory and Startup flags groups yet. Rebased on 1.17.1
+    on 22 Nov 2026 and the hard limits added (2 more tests). Tested:
     `tests/test_deployopts.py` (27 tests: every check, flags in the unit across rewrites, pinned
     Paper and Fabric builds, snapshots and the downgrade check, deploy with every option,
     template order, Maintenance flags); `test-install.sh` (refusals with nothing left behind,

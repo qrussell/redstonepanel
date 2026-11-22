@@ -1511,6 +1511,17 @@ const ServerApp = {
                 <p class="text-xs text-gray-500 mt-1">Only -XX: options, -D properties and -Xss. Set memory with Heap.</p>` : ''}</div>
             </div>
 
+            <h4 class="${head}">Hard limits</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div><label class="${label}" for="adv-memory-limit">Hard memory limit</label>
+                    <select id="adv-memory-limit" class="${input}"><option value="">Off</option>
+                    <option value="auto" class="adv-java-only">Automatic (heap plus room for Java)</option>
+                    ${['1G', '2G', '3G', '4G', '6G', '8G', '12G', '16G', '24G', '32G'].map(h => `<option value="${h}">${h.replace('G', ' GB')}</option>`).join('')}</select></div>
+                <div><label class="${label}" for="adv-cpu">CPU limit (cores)</label>
+                    <input id="adv-cpu" type="number" min="0" step="0.5" inputmode="decimal" placeholder="no limit" class="${input}"></div>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">So one busy server can't slow the others. At the memory limit the server is stopped, so leave room above the heap.</p>
+
             <h4 class="${head}">World</h4>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div><label class="${label}" for="adv-seed">Seed</label>
@@ -1557,6 +1568,7 @@ const ServerApp = {
         document.getElementById('adv-java-groups').classList.toggle('hidden', !java);
         document.querySelectorAll('#deploy-advanced .adv-java-only').forEach(e => e.classList.toggle('hidden', !java));
         document.getElementById('adv-whitelist-label').innerText = java ? 'Whitelist' : 'Allowlist';
+        if (!java && document.getElementById('adv-memory-limit').value === 'auto') document.getElementById('adv-memory-limit').value = '';
         document.getElementById('adv-snapshot-wrap').classList.toggle('hidden', loader !== 'vanilla');
         if (loader !== 'vanilla') document.getElementById('adv-snapshot').checked = false;
         document.getElementById('adv-build-wrap').classList.toggle('hidden', !['paper', 'fabric'].includes(loader));
@@ -1637,10 +1649,13 @@ const ServerApp = {
             if (document.getElementById('adv-snapshot').checked) a.snapshot = true;
             if (v('adv-java')) a.java = +v('adv-java');
             if (v('adv-heap')) a.heap = v('adv-heap');
+            if (v('adv-memory-limit') === 'auto') a.memory_limit = 'auto';
             const extra = v('adv-flags-extra').split(/\s+/).filter(Boolean);
             if (v('adv-flags') !== 'none' || extra.length) a.flags = { preset: v('adv-flags'), extra };
             if (v('adv-ops')) a.ops = v('adv-ops');
         }
+        if (v('adv-memory-limit') && v('adv-memory-limit') !== 'auto') a.memory_limit = v('adv-memory-limit');
+        if (v('adv-cpu') && +v('adv-cpu') > 0) a.cpu = +v('adv-cpu');
         if (v('adv-seed')) a.seed = v('adv-seed');
         if (v('adv-level-type') && v('adv-level-type') !== 'default') a.level_type = v('adv-level-type');
         if (v('adv-level-name')) a.level_name = v('adv-level-name');

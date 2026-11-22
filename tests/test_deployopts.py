@@ -83,6 +83,18 @@ class Validate(unittest.TestCase):
         self.assertTrue(D.validate({"snapshot": "on"}, "java", "vanilla")["snapshot"])
         self.assertNotIn("snapshot", D.validate({"snapshot": False}, "java", "vanilla"))
 
+    def test_hard_limits(self):
+        self.assertEqual(D.validate({"memory_limit": "auto", "cpu": "1.5"}, "java"), {"memory_limit": "auto", "cpu": 1.5})
+        self.assertEqual(D.validate({"memory_limit": "3g"}, "bedrock"), {"memory_limit": "3G"})
+        self.assertEqual(D.validate({"memory_limit": "off", "cpu": 0}, "java"), {})
+        with self.assertRaises(D.OptionError):
+            D.validate({"memory_limit": "auto"}, "bedrock")        # nothing to follow
+        for bad in ({"memory_limit": "100M"}, {"memory_limit": "lots"}, {"cpu": "0.05"}, {"cpu": "x"},
+                    {"cpu": (os.cpu_count() or 1) + 1}):
+            with self.assertRaises(D.OptionError, msg=bad):
+                D.validate(bad, "java")
+        self.assertIn("hard memory limit auto; CPU 1.5 cores", D.summary({"memory_limit": "auto", "cpu": 1.5}))
+
     def test_heap_bounds(self):
         for bad in ("256M", "300G", "2T", "2", "1.5G"):
             with self.assertRaises(D.OptionError, msg=bad):
@@ -370,6 +382,17 @@ class Deploy(unittest.TestCase):
             name = M.deploy_server("java", template_id="t1", advanced={"motd": "Chosen"})
         p = self.props(name)
         self.assertEqual((p["motd"], p["pvp"]), ("Chosen", "false"))
+
+    def test_hard_limits_set_through_1_17(self):
+        from core import perf
+        calls = []
+        with mock.patch.object(perf, "set_resources", lambda server, **kw: calls.append((server, kw))):
+            name = M.deploy_server("java", advanced={"heap": "2G", "memory_limit": "auto", "cpu": 2}, actor="quentin")
+            self.assertEqual(calls, [(name, {"memory": "auto", "cpu": 2.0, "actor": "quentin"})])
+            # A size too close to the heap is refused before anything is downloaded
+            with self.assertRaisesRegex(M.ServerError, "well above the heap"):
+                M.deploy_server("java", advanced={"heap": "2G", "memory_limit": "2G"})
+        self.assertEqual(len(self.installs), 1)
 
     def test_server_flags_on_maintenance(self):
         name = M.deploy_server("java")

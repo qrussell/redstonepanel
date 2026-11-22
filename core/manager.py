@@ -1562,6 +1562,13 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
         raise ServerError("Choose a Minecraft release such as 1.21.4, or allow snapshots.")
     if plan.get("heap"):
         _heap_fits(plan["heap"])
+    if isinstance(plan.get("memory_limit"), str) and plan["memory_limit"] != "auto":
+        from core import perf
+        lim = deployopts.heap_bytes(plan["memory_limit"])
+        xmx = deployopts.heap_bytes(plan.get("heap") or default_heap()["xmx"]) if edition == "java" else 0
+        if xmx and lim < xmx + perf.LIMIT_HEADROOM:
+            raise ServerError(f"The hard memory limit must be well above the heap: at least "
+                              f"{perf.heap_text(xmx + perf.LIMIT_HEADROOM)}, or Automatic.")
     if template_id:
         get_checked_template(template_id, edition)   # fail before downloading anything
     if edition == "bedrock":
@@ -1625,6 +1632,14 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
             run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
             write_log(f"[DEPLOY] {actor + ' created ' if actor else 'Created '}{svc_name} with advanced options: "
                       f"{deployopts.summary(plan) or 'name only'}.")
+        if plan.get("memory_limit") or plan.get("cpu"):
+            # 1.17's hard limits, as Maintenance > Memory and limits sets them (a systemd drop-in)
+            from core import perf
+            try:
+                perf.set_resources(svc_name, memory=plan.get("memory_limit"), cpu=plan.get("cpu"),
+                                   actor=actor or "New server")
+            except perf.PerfError as e:
+                write_log(f"[WARNING] {svc_name}: hard limits not set: {e}")
         # The ports it needs, from what server.properties says now (a template may set the transport)
         open_server_firewall(svc_name, edition, mc_dir)
         run_and_log(["systemctl", "enable", f"{svc_name}.service"])

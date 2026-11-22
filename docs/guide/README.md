@@ -467,6 +467,7 @@ are checked before anything is downloaded, so a taken name or port fails straigh
 | **Server** | The name (it becomes `minecraft-NAME`) and the game port. |
 | **Software** (Java) | **Build**: a specific Paper build or Fabric loader instead of the newest stable one, for when a plugin or mod needs a known one. **Show snapshots and pre-releases** (Vanilla) lists the current test versions in **Minecraft Version**. **Java**: an installed Java to run on, never older than the version needs. |
 | **Memory** (Java) | **Heap**: Java's memory. Refused if it would leave less than 1 GB for the system. |
+| **Hard limits** | A hard memory limit (Automatic for Java: the heap plus room for Java) and a CPU limit in cores, the same as **Maintenance → Memory and limits**. |
 | **Startup flags** (Java) | **Aikar's flags**, the usual tuning for Paper, and for admins extra flags: `-XX:` options, `-D` properties and `-Xss` only. |
 | **World** | Seed, world type (Flat, Large biomes, Amplified; Bedrock: Flat) and the world folder name. |
 | **Settings** | MOTD, game mode, difficulty, max players, online mode, players on the whitelist (Bedrock: allowlist) and, for Java, operators. |
