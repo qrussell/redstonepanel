@@ -133,6 +133,13 @@ api POST /api/settings/backup-storage "{\"type\":\"ssh\",\"name\":\"Creative Lab
 api POST /api/servers/minecraft-java/backups >/dev/null
 api POST /api/servers/minecraft-bedrock/backups >/dev/null
 
+say "helpers with their own access, and SFTP (1.18)"
+api POST /api/users '{"username":"alex","password":"demo-helper-alex-1","role":"user"}' >/dev/null
+api POST /api/users '{"username":"sam","password":"demo-helper-sam-1","role":"user"}' >/dev/null
+api PUT /api/users/alex/grants "{\"grants\":{\"minecraft-java\":[\"view\",\"console\",\"power\",\"players\",\"files\",\"mods\",\"settings\",\"backups\"],\"$NID/minecraft-java\":[\"view\",\"console\",\"players\"]}}" >/dev/null
+api PUT /api/users/sam/grants '{"grants":{"minecraft-bedrock":["view","console","players"]}}' >/dev/null
+api PUT /api/settings/sftp '{"enabled":true,"port":2022}' >/dev/null
+
 else
     PASS=$(docker exec $M cat /root/.demo-pass) || { echo "No demo to reuse: run without SETUP=0 first."; exit 1; }
 fi

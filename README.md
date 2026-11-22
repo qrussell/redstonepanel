@@ -188,7 +188,12 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   version you choose, each run with the Java it needs
 - live chat and console commands (over RCON)
 - a `server.properties` editor
-- a file manager for each server's folder (admins): browse, edit text files such as plugin
+- per-server permissions for helpers (1.18): give a user account View, Console & chat,
+  Start/stop/restart, Players, Files, Mods & plugins, Settings or Backups on the servers you
+  pick, with **Moderator** and **Co-owner** presets (**Users → Servers**)
+- SFTP for FileZilla, WinSCP or any SFTP program (1.18, off until turned on): sign in as
+  `account.server` with the panel password or an SSH key, and reach only that server's folder
+- a file manager for each server's folder (admins, and users given **Files**): browse, edit text files such as plugin
   configs, drag and drop uploads, download, rename and delete
 - mods (Fabric), plugins (Paper) and add-ons (Bedrock): drop `.jar`, `.mcpack` or `.mcaddon`
   files on the server and they're checked and put in the right place; the list shows what's
@@ -515,8 +520,10 @@ There are two kinds of account:
   ```
 
   The password is asked for interactively, or read from standard input when it is piped.
-  The default role is `admin`. A `user` manages servers; only an `admin` can also manage
-  accounts and Panel Settings, uninstall or purge a server, and restore or delete backups.
+  The default role is `admin`. A `user` can do what an admin allows on the servers the admin
+  picks (**👥 Users → Servers**: view, console, start/stop, players, files, mods, settings,
+  backups), and sees no servers until given some. Only an `admin` can manage accounts and
+  Panel Settings, create, import, uninstall or purge a server, and restore or delete backups.
 
 `sudo redstonepanel status` shows the service state, the address, the HTTPS and sign-in
 mode, and the panel accounts. See `man redstonepanel` for details.
@@ -537,10 +544,16 @@ Admins can also change how the panel is reached under **Panel Settings**:
   browser or OS to get rid of the warning.
 - **HTTPS, custom certificate.** Point the panel at a certificate and key you already
   have, for example from certbot.
+- **SFTP.** Off by default. Turned on, people sign in with FileZilla or WinSCP on port 2022 as
+  `account.server` with their panel password or an SSH key (**🔑 Password → SSH keys**), and
+  reach only that server's folder. Admins reach every server; users need **Files** on it.
+  Accounts with two-factor sign-in must use a key. It needs `python3-paramiko` (installed
+  with the panel as a recommended package).
 - **Trusted-LAN sign-in.** Visitors from the private networks you list (by default
   `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) can use the panel without
   signing in. Its limits:
-  - LAN visitors get the **user** role, never admin. Changing panel settings and
+  - LAN visitors get the **user** role, never admin, with what user accounts could do
+    before 1.18 on every server (no files, no mods). Changing panel settings and
     accounts, and uninstalling or purging a server, still need an admin sign-in.
   - It never applies to requests through a reverse proxy (any `X-Forwarded-For`,
     `Forwarded` or `X-Real-IP` header) or from loopback, so a proxy on the same machine

@@ -1366,6 +1366,62 @@ refused joins, so those are Java only.
     **Size:** two to three weeks: one for the permissions and their per-route tests, the rest
     for SFTP and its security tests (path escapes, symlinks, the sign-in limit).
 
+    **As built (22 Nov 2026, MR on `feature/permissions-sftp`):** as planned, with these
+    differences.
+    - **One rule per route, not a dependency.** `core/grants.py` holds a table with a rule for
+      every API route (`public`, `user`, `signed`, `admin`, `node`, `proxy`, or a permission,
+      optionally with the path parameter that names the server). The middleware in `main.py`
+      finds the route's template and applies the rule; a route missing from the table is
+      admin-only, and `tests/test_grants.py` fails when a route has no rule. Server lists, the
+      dashboard, Needs attention, the cluster overview and the activity log are cut down to
+      what the account may view, and each server carries the account's `perms` so the page
+      hides the tabs and buttons that would be refused.
+    - **Clusters:** the master keeps node grants under `<node id>/<server>` and checks the
+      inner route's rule before it proxies, then tells the node what the user may do in an
+      `X-RedstonePanel-Perms` header that only a node token can send. A master older than 1.18
+      sends no header and the node gives its users what they could always do. `CLUSTER_API`
+      stays 6. A moved server takes its grants along.
+    - **Updating:** the first start of 1.18 gives the user accounts that already exist the old
+      user rights (everything except Files and Mods & plugins) on every server, so nothing
+      changes for them; accounts made afterwards start with nothing. Trusted-LAN visitors
+      keep the same old rights.
+    - **Tightened for users:** importing a server, the removed-servers list and restore,
+      editing and deleting templates, the cluster's list of moves and pushing a template to a
+      node are admin-only now, since none of them belongs to one server a grant could name.
+    - **SFTP is off by default** and turned on under **Panel Settings → SFTP**: opening a new
+      port on a machine that may face the internet should be the owner's choice. The panel
+      writes `redstonepanel-sftp.service` (`redstonepanel sftp-serve`) itself and opens or
+      closes the port in ufw.
+    - **Node servers aren't reachable through the master's SFTP,** and nodes don't check
+      sign-ins with the master: nodes never call the master (a design rule of the cluster).
+      Each machine serves SFTP for its own servers and its own panel's accounts; a node
+      server's Files tab says so on the master.
+    - **Sign-in:** `account.server` is split at the last `.minecraft`, so account names with
+      dots work. Password (panel or Linux account) or an SSH key (Ed25519, ECDSA, RSA of 2048
+      bits or more; ten per account, in `data/ssh_keys.json`). Accounts with two-factor must
+      use a key. Failed sign-ins share the panel's limit through
+      `/run/redstonepanel/signin-fails.json`. A session re-checks the account and its
+      **Files** grant every 30 seconds, so disabling an account or taking the grant away ends
+      it. Only the `sftp` subsystem is offered: no shell, exec or forwarding. The host key is
+      ECDSA P-256 and its fingerprint is shown on the Files tab.
+    - **Files:** new descriptor-based helpers in `core/files.py` (`open_fd`, `scan`,
+      `stat_path`, `move`, `remove_file`, `remove_empty_dir`, `set_mtime`) walk each path
+      component with `O_NOFOLLOW`, refuse files with other hard links and give new files to
+      the folder's owner. Symlinks are listed but can't be followed, made or read through.
+    - **Tested:** `tests/test_grants.py` (31 tests: the store, every route has a rule and each
+      per-server route needs its permission, filtered lists, the proxy and the node side) and
+      `tests/test_sftp.py` (19 tests against a live paramiko server: sign-in by password and
+      key, two-factor, the grant, path and symlink escapes, hard links, revocation, no shell).
+      `packaging/test/test-permissions-sftp.sh` (also in the GitHub `cluster` job) installs the
+      .deb on Ubuntu 24.04 (paramiko 2.12) with two stand-in servers and checks, with the real
+      OpenSSH `sftp` client: what each permission opens and refuses, the filtered dashboard,
+      SFTP off until turned on, password and key sign-in for panel and Linux accounts, upload
+      and download checksums, escapes through `..` and symlinks, a refused shell, access ending
+      when a grant is removed, the shared sign-in limit, changing the port, turning it off,
+      a start with no grants file (as after updating from 1.17.2) and running without
+      `python3-paramiko`. `test-install.sh` still passes. Not tested on a real
+      cluster end to end; the node side is covered by unit tests.
+
 ### 1.19: change a server's type or version
 
 24. **Turn a Vanilla server into Paper or Fabric (and any other way round), and roll back an

@@ -154,7 +154,9 @@ ports. So:
 - sign-in uses Linux accounts (PAM) or panel accounts, with **admin** and **user** roles;
   admins are effectively root, so treat admin accounts like `sudo`;
 - HTTPS can be self-signed, your own certificate (certbot), or a cluster's CA;
-- the file manager can't leave a server's folder and never follows symlinks;
+- the file manager and SFTP can't leave a server's folder and never follow symlinks; SFTP is
+  off until you turn it on, and gives no shell;
+- user accounts can do only what an admin allows, on the servers the admin picks;
 - the packages come from a signed apt repository;
 - keep it off the open internet unless it's behind a VPN or a reverse proxy, as the
   [README describes](../../README.md#exposing-the-panel-to-the-internet).
@@ -164,9 +166,18 @@ Found a problem? Please report it privately through a
 
 ## Can friends help run the servers without full access?
 
-Yes: give them a panel account with the **user** role. Users can start, stop and configure
-servers, chat, and take backups, but can't manage accounts or settings, use the file manager,
-install Java, or uninstall servers. Finer per-server permissions are planned for 2.0.
+Yes: give them a panel account with the **user** role, then choose under **👥 Users → Servers**
+what they may do on each server: view, console and chat, start/stop/restart, players, files,
+mods and plugins, settings, and backups. **Moderator** and **Co-owner** fill the boxes in for
+you. They see only their servers, and can never manage accounts or Panel Settings, install
+Java, or create, uninstall or restore a server.
+
+## Can I use FileZilla or WinSCP?
+
+Yes. An admin turns on SFTP under **Panel Settings → SFTP** (port 2022). Each server's
+**Files** tab then shows the host, port and username (`account.server`); the password is your
+panel password, or use an SSH key added under **🔑 Password → SSH keys** (required for accounts
+with two-factor sign-in). A sign-in reaches one server's folder only.
 
 ## Can I manage servers on several machines?
 

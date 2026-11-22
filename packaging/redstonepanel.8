@@ -73,6 +73,23 @@ server gets a 2 GB heap (1 GB on a machine with 3 GB of memory or less); change 
 server's Maintenance tab (Memory and limits), which also sets optional hard memory and CPU
 limits as a systemd drop\-in,
 .IR /etc/systemd/system/minecraft-NAME.service.d/redstonepanel-limits.conf .
+.PP
+A panel account with the
+.B user
+role can do only what an admin allows on each server (Users > Servers in the panel: view,
+console, start/stop, players, files, mods, settings, backups); the grants are kept in
+.IR /var/lib/redstonepanel/grants.json .
+SFTP (Panel Settings > SFTP, off by default, port 2022) lets FileZilla, WinSCP or
+.BR sftp (1)
+reach one server's folder per sign\-in: the user name is
+.IB ACCOUNT . SERVER
+with the account's password or an SSH key added under Password > SSH keys (accounts with
+two\-factor sign\-in must use a key). It runs as
+.BR redstonepanel\-sftp.service ,
+which the panel writes, starts and stops with the setting, and needs the
+.B python3\-paramiko
+package. Its host key is
+.IR /var/lib/redstonepanel/sftp_host_key .
 .SH COMMANDS
 .TP
 .B status

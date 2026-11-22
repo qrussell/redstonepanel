@@ -338,6 +338,28 @@ class Shooter:
             self.close_modals()
         step("users", users)
 
+        # 1.18: what a helper may do on each server, SFTP on the Files tab and in Panel Settings,
+        # and SSH keys under Password
+        def user_servers():
+            page.evaluate("ServerApp.openUserGrants('alex')")
+            page.wait_for_selector("#modal-content:has-text('Co-owner')", timeout=15000)
+            page.wait_for_timeout(800)
+            shot("user-servers")
+            self.close_modals()
+        step("user servers", user_servers)
+
+        def sftp():
+            self.open_server("minecraft-java", tab="files")
+            page.wait_for_selector("#files-sftp:has-text('Username')", timeout=20000)
+            shot("sftp", element="#files-sftp")
+            page.evaluate("ServerApp.openAccountModal({})")
+            page.wait_for_selector("#ssh-box", timeout=15000)
+            page.wait_for_timeout(1500)
+            page.evaluate("document.getElementById('ssh-box').scrollIntoView({block: 'center'})")
+            shot("ssh-keys", element="#modal-content")
+            self.close_modals()
+        step("sftp", sftp)
+
         def settings():
             page.reload()
             page.wait_for_timeout(4000)
