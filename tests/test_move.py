@@ -46,7 +46,7 @@ class Member(unittest.TestCase):
                 self.active.add(cmd[-1].replace(".service", ""))
         self.removed = []
 
-        def write_unit(name, d, edition, xms="1G", xmx="2G", java="/usr/bin/java"):
+        def write_unit(name, d, edition, xms="1G", xmx="2G", java="/usr/bin/java", jvm=None):
             with open(M._unit_path(name), "w") as f:
                 f.write(f"WorkingDirectory={d}\nExecStart={java} -Xms{xms} -Xmx{xmx} -jar server.jar\n")
         patches = [

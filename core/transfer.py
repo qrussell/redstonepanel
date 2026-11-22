@@ -165,7 +165,9 @@ def _phantom_installed(server):
 
 def _meta(server, edition):
     exec_start = manager._unit_exec_start(server)
+    from core import deployopts
     return {"name": server, "edition": edition, **manager.unit_heap(exec_start),
+            "jvm": deployopts.get_flags(server) if edition == "java" else None,
             "backup": backups.get_schedule(server), "restart": restarts.get_schedule(server),
             "phantom": edition == "bedrock" and _phantom_installed(server)}
 
@@ -423,6 +425,12 @@ def _clean_meta(meta):
     for k in ("xms", "xmx"):
         if isinstance(meta.get(k), str) and manager.HEAP_RE.match(meta[k]):
             out[k] = meta[k]
+    if meta["edition"] == "java" and isinstance(meta.get("jvm"), dict):
+        from core import deployopts
+        try:
+            out["jvm"] = deployopts.clean_flags(meta["jvm"])     # startup flags (1.17.2), checked again here
+        except deployopts.OptionError:
+            pass
     for k in ("backup", "restart"):
         v = meta.get(k)
         if isinstance(v, dict) and len(v) <= 8 and all(isinstance(x, (str, int, bool)) for x in v.values()):
@@ -686,7 +694,7 @@ def install(tid, keep_name=True, start=True, carry=True, actor="master"):
             _save(rec)
         result = manager.import_transferred(root, meta["edition"], prefer_name=meta.get("name") if keep_name else None,
                                             heap={k: meta[k] for k in ("xms", "xmx") if k in meta}, java=java,
-                                            start=start, on_placed=placed)
+                                            start=start, on_placed=placed, jvm=meta.get("jvm") or {})
         if start:
             checked = time.time()
             _stays_running(result["name"])

@@ -38,8 +38,10 @@ from core.version import panel_version
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
-CLUSTER_API = 5                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
-                                # 4: backup copies on another member (1.16.8), 5: pre-copy moves (1.16.13)
+CLUSTER_API = 6                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
+                                # 4: backup copies on another member (1.16.8), 5: pre-copy moves (1.16.13),
+                                # 6: New server's Advanced options and moves that keep startup flags (1.17.2)
+ADVANCED_API = 6                # a node needs this for New server's Advanced options
 MIN_JOIN_API = 1                # oldest node contract a master still lets join (phase 1 nodes)
 PROXY_API = 2                   # a node needs this for the master's proxy (phase 2, 1.15)
 JOIN_TTL = 3600                 # join codes are single-use and valid for an hour

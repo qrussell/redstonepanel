@@ -454,12 +454,34 @@ Click **➕ New Server**.
    settings.
 4. On a cluster master, choose **Where**: this panel or one of its nodes. The Java line and
    ports then come from that machine. See [Clusters](#18-clusters).
-5. Click **Deploy Fresh Server**.
+5. Optionally open **Advanced options** (see below).
+6. Click **Deploy Fresh Server**.
+
+**Advanced options**
+
+Everything in this section is optional; a field left empty is decided as usual. All choices
+are checked before anything is downloaded, so a taken name or port fails straight away.
+
+| Group | What you can choose |
+| --- | --- |
+| **Server** | The name (it becomes `minecraft-NAME`) and the game port. |
+| **Software** (Java) | **Build**: a specific Paper build or Fabric loader instead of the newest stable one, for when a plugin or mod needs a known one. **Show snapshots and pre-releases** (Vanilla) lists the current test versions in **Minecraft Version**. **Java**: an installed Java to run on, never older than the version needs. |
+| **Memory** (Java) | **Heap**: Java's memory. Refused if it would leave less than 1 GB for the system. |
+| **Hard limits** | A hard memory limit (Automatic for Java: the heap plus room for Java) and a CPU limit in cores, the same as **Maintenance → Memory and limits**. |
+| **Startup flags** (Java) | **Aikar's flags**, the usual tuning for Paper, and for admins extra flags: `-XX:` options, `-D` properties and `-Xss` only. |
+| **World** | Seed, world type (Flat, Large biomes, Amplified; Bedrock: Flat) and the world folder name. |
+| **Settings** | MOTD, game mode, difficulty, max players, online mode, players on the whitelist (Bedrock: allowlist) and, for Java, operators. |
+
+A **Base Template** is applied first, and anything chosen here wins over it. A snapshot server
+can't be "updated" back to an older release, because worlds can't go back. On a node, the node
+needs RedstonePanel 1.17.2 or later. Startup flags can be changed later under
+**Maintenance → Java → Startup flags** (a running server restarts); they stay through updates,
+Java changes, restores and moves.
 
 The panel then:
 
 - names the server (`minecraft-java`, then `minecraft-java-2`, and so on) and picks a free
-  port (Java from 25565, Bedrock from 19132);
+  port (Java from 25565, Bedrock from 19132), unless you chose them in Advanced options;
 - downloads the server: Mojang's `server.jar`, the newest stable Paper build, or Fabric's
   server launcher for the chosen version (always saved as `server.jar`), or the latest
   Bedrock Dedicated Server. Vanilla and Paper downloads are checked against their published

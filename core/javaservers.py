@@ -188,15 +188,43 @@ def _mojang_releases():
     return [v for v in data.get("versions", []) if v.get("type") == "release"]
 
 
+SNAPSHOT_RE = re.compile(r"^[0-9][0-9A-Za-z.+_-]{1,39}$")   # 25w14a, 1.21.5-pre1, 1.21.5-rc1, 26.1-snapshot-1
+
+
+def list_snapshots():
+    """Vanilla snapshots, pre-releases and release candidates newer than the newest release,
+    newest first (the current development cycle; older ones were superseded by that release)."""
+    versions = (_get_json(MOJANG_MANIFEST) or {}).get("versions", [])
+    out = []
+    for v in versions:                      # the manifest lists newest first
+        if v.get("type") == "release":
+            break
+        if v.get("type") == "snapshot" and SNAPSHOT_RE.match(v.get("id", "")):
+            out.append(v["id"])
+    return out
+
+
+def _mojang_entry(minecraft):
+    data = _get_json(MOJANG_MANIFEST) or {}
+    return next((v for v in data.get("versions", []) if v.get("id") == minecraft
+                 and v.get("type") in ("release", "snapshot")), None)
+
+
+def is_release(minecraft):
+    return bool(RELEASE_RE.match(str(minecraft or "")))
+
+
 def mojang_version(minecraft):
-    """Mojang's data for a release: server jar URL and SHA-1, and the Java it needs."""
-    entry = next((v for v in _mojang_releases() if v["id"] == minecraft), None)
+    """Mojang's data for a release or snapshot: server jar URL and SHA-1, the Java it needs,
+    and when it came out."""
+    entry = _mojang_entry(minecraft)
     if not entry:
         raise JavaServerError(f"Minecraft {minecraft} isn't a Minecraft release.")
     data = _get_json(entry["url"]) or {}
     server = (data.get("downloads") or {}).get("server")
     return {"java_required": int((data.get("javaVersion") or {}).get("majorVersion") or 8),
-            "server_url": server and server.get("url"), "sha1": server and server.get("sha1")}
+            "server_url": server and server.get("url"), "sha1": server and server.get("sha1"),
+            "released": entry.get("releaseTime") or ""}
 
 
 def list_versions(loader):
@@ -224,15 +252,62 @@ def _paper_build(minecraft):
     return None
 
 
+def list_builds(loader, minecraft):
+    """Builds that can be pinned, newest first: [{"build", "label"}]. Paper: every build of that
+    version (experimental ones labelled); Fabric: loader versions (unstable ones labelled)."""
+    if loader == "paper":
+        if not RELEASE_RE.match(str(minecraft or "")):
+            raise JavaServerError("Choose a Minecraft release such as 1.21.4.")
+        builds = _get_json(f"{PAPER_API}/versions/{minecraft}/builds") or []
+        out = []
+        for b in sorted(builds, key=lambda b: b.get("id", 0), reverse=True):
+            if (b.get("downloads") or {}).get("server:default", {}).get("url"):
+                ch = b.get("channel")
+                out.append({"build": str(b["id"]), "label": str(b["id"]) + ("" if ch in ("STABLE", "RECOMMENDED")
+                                                                            else f" ({str(ch).lower()})")})
+        return out
+    if loader == "fabric":
+        return [{"build": i["version"], "label": i["version"] + ("" if i.get("stable") else " (unstable)")}
+                for i in _get_json(f"{FABRIC_META}/versions/loader") or [] if i.get("version")][:40]
+    raise JavaServerError("Only Paper and Fabric servers have builds to choose.")
+
+
+def _paper_pinned(minecraft, build):
+    for b in _get_json(f"{PAPER_API}/versions/{minecraft}/builds") or []:
+        if str(b.get("id")) == str(build):
+            dl = (b.get("downloads") or {}).get("server:default")
+            if dl and dl.get("url"):
+                return {"build": str(b["id"]), "url": dl["url"], "sha256": (dl.get("checksums") or {}).get("sha256")}
+    raise JavaServerError(f"Paper has no build {build} for Minecraft {minecraft}.")
+
+
 def _latest_stable(items):
     return next((i["version"] for i in items or [] if i.get("stable")), None)
 
 
-def resolve(loader, minecraft=None):
+def resolve(loader, minecraft=None, build=None, snapshot=False):
     """What to download: {loader, minecraft, build, url, sha1|sha256, java_required}.
-    Without a version: the newest release this loader has a stable build of."""
+    Without a version: the newest release this loader has a stable build of.
+    build: a Paper build or Fabric loader version to use instead of the newest stable one.
+    snapshot: a Vanilla snapshot or pre-release may be named (or, with no version, the newest one)."""
     if loader not in LOADERS:
         raise JavaServerError(f"Unknown server type '{loader}'.")
+    if snapshot:
+        if loader != "vanilla":
+            raise JavaServerError("Snapshots and pre-releases are offered for Vanilla only.")
+        if minecraft is None or not RELEASE_RE.match(str(minecraft).strip()):
+            snaps = list_snapshots()
+            mc = str(minecraft).strip() if minecraft else (snaps[0] if snaps else None)
+            if mc is None:
+                minecraft = None                  # no snapshot running now: the newest release
+            else:
+                if mc not in snaps:
+                    raise JavaServerError(f"Minecraft {mc} isn't a current snapshot or pre-release.")
+                info = mojang_version(mc)
+                if not info["server_url"]:
+                    raise JavaServerError(f"Mojang has no server download for Minecraft {mc}.")
+                return {"loader": loader, "minecraft": mc, "build": None, "url": info["server_url"],
+                        "sha1": info["sha1"], "java_required": info["java_required"]}
     if minecraft is not None:
         minecraft = str(minecraft).strip()
         if not RELEASE_RE.match(minecraft):
@@ -241,6 +316,9 @@ def resolve(loader, minecraft=None):
     if minecraft and minecraft not in versions:
         raise JavaServerError(f"{LOADERS[loader]} doesn't offer Minecraft {minecraft}.")
     candidates = [minecraft] if minecraft else versions[:5]
+    pinned = build
+    if pinned and not minecraft:
+        candidates = versions[:1]              # a pin belongs to one version: the newest
     for mc in candidates:
         if loader == "vanilla":
             info = mojang_version(mc)
@@ -251,7 +329,7 @@ def resolve(loader, minecraft=None):
             return {"loader": loader, "minecraft": mc, "build": None, "url": info["server_url"],
                     "sha1": info["sha1"], "java_required": info["java_required"]}
         if loader == "paper":
-            build = _paper_build(mc)
+            build = _paper_pinned(mc, pinned) if pinned else _paper_build(mc)
             if not build:
                 if minecraft:
                     raise JavaServerError(f"Paper has no stable build for Minecraft {mc} yet; "
@@ -259,7 +337,10 @@ def resolve(loader, minecraft=None):
                 continue
             return {"loader": loader, "minecraft": mc, **build, "java_required": mojang_version(mc)["java_required"]}
         # fabric
-        fabric_loader = _latest_stable(_get_json(f"{FABRIC_META}/versions/loader"))
+        loaders = _get_json(f"{FABRIC_META}/versions/loader") or []
+        if pinned and not any(i.get("version") == pinned for i in loaders):
+            raise JavaServerError(f"Fabric has no loader version {pinned}.")
+        fabric_loader = pinned or _latest_stable(loaders)
         installer = _latest_stable(_get_json(f"{FABRIC_META}/versions/installer"))
         if not fabric_loader or not installer:
             raise JavaServerError("Fabric meta didn't list a stable loader and installer.")
@@ -309,16 +390,31 @@ def sniff_jar(jar):
     return {}
 
 
-def install(d, loader, minecraft=None, current=None):
+def _older(target, current):
+    """True if Minecraft `target` came out before `current` (a downgrade). Releases compare by
+    number; a snapshot by Mojang's release time, since its name says nothing about order."""
+    if RELEASE_RE.match(str(target)) and RELEASE_RE.match(str(current)):
+        return version_key(target) < version_key(current)
+    try:
+        return mojang_version(target)["released"] < mojang_version(current)["released"]
+    except JavaServerError:
+        return False
+
+
+def install(d, loader, minecraft=None, current=None, build=None, snapshot=False, java_major=None):
     """Downloads the server jar into d (as server.jar) and records what it is.
     current: the folder's existing info, to refuse a Minecraft downgrade.
+    build/snapshot: see resolve(). java_major: run on this installed Java instead of the
+    closest one (refused if it's older than the version needs).
     Checks for the Java it needs before downloading. Returns (info, path to java)."""
-    target = resolve(loader, minecraft)
-    if current and current.get("minecraft") and RELEASE_RE.match(str(current["minecraft"])):
-        if version_key(target["minecraft"]) < version_key(current["minecraft"]):
-            raise JavaServerError(f"This server runs Minecraft {current['minecraft']}; worlds can't be moved "
-                                  f"back to {target['minecraft']}. Choose {current['minecraft']} or newer.")
-    java = choose_java(target["java_required"], target["minecraft"])
+    target = resolve(loader, minecraft, build=build, snapshot=snapshot)
+    if current and current.get("minecraft") and _older(target["minecraft"], current["minecraft"]):
+        raise JavaServerError(f"This server runs Minecraft {current['minecraft']}; worlds can't be moved "
+                              f"back to {target['minecraft']}. Choose {current['minecraft']} or newer.")
+    if java_major:
+        java = choose_exact_java(java_major, target["java_required"], target["minecraft"])
+    else:
+        java = choose_java(target["java_required"], target["minecraft"])
     os.makedirs(d, exist_ok=True)
     _download(target["url"], os.path.join(d, "server.jar"), sha1=target.get("sha1"), sha256=target.get("sha256"))
     info = {k: target[k] for k in ("loader", "minecraft", "build", "java_required")}
@@ -372,6 +468,17 @@ def choose_java(required, minecraft=None):
     if not newer:
         raise MissingJavaError(required, minecraft)
     return javas[newer[0]]
+
+
+def choose_exact_java(major, required, minecraft=None):
+    """The installed Java `major`, which must be at least `required`."""
+    major, required = int(major), int(required or 8)
+    if major < required:
+        raise JavaServerError(f"Minecraft {minecraft or ''} needs Java {required} or newer; Java {major} can't run it.")
+    javas = installed_javas()
+    if major not in javas:
+        raise MissingJavaError(major, minecraft)
+    return javas[major]
 
 
 def java_major_of(path):
