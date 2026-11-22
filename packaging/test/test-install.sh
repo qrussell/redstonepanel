@@ -196,6 +196,69 @@ check "no unpack leftovers in /opt"        bash -c '! ls -d /opt/.redstonepanel-
 echo "not an archive" > /tmp/notes.txt
 check "non-archive upload refused (400)"   test "$(code -b $L -X POST $B/api/servers/import -H "$O" -F "file=@/tmp/notes.txt")" = 400
 
+# --- performance (1.17): history, Memory and hard limits, on a stand-in Java server (a "java"
+#     that only sleeps, so nothing is downloaded and it runs without a real JRE)
+mkdir -p /usr/local/lib/rp-fakejava /opt/minecraft-perfjava
+printf '#!/bin/bash\nexec -a "java $*" sleep 3600\n' > /usr/local/lib/rp-fakejava/java
+chmod +x /usr/local/lib/rp-fakejava/java
+echo "server-port=25599" > /opt/minecraft-perfjava/server.properties
+chown -R minecraft:minecraft /opt/minecraft-perfjava
+cat > /etc/systemd/system/minecraft-perfjava.service <<'UNIT'
+[Unit]
+Description=Minecraft Server (minecraft-perfjava)
+[Service]
+User=minecraft
+Group=minecraft
+WorkingDirectory=/opt/minecraft-perfjava
+ExecStart=/usr/local/lib/rp-fakejava/java -Xms256M -Xmx512M -jar server.jar nogui
+Restart=on-failure
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload && systemctl start minecraft-perfjava
+PJ=$B/api/servers/minecraft-perfjava
+DROPIN=/etc/systemd/system/minecraft-perfjava.service.d/redstonepanel-limits.conf
+AUTO=$(( (768 + 512) * 1024 * 1024 ))
+check "perf: Performance card answers"    test "$(code -b $L $PJ/perf)" = 200
+check "  tick health needs RCON (not a guess)" grep -q 'RCON is off' /tmp/body
+check "  week range answers"              test "$(code -b $L "$PJ/perf?range=week")" = 200
+check "  unknown range -> 400"            test "$(code -b $L "$PJ/perf?range=year")" = 400
+check "perf: resources show the heap"     bash -c "test \"\$(curl -s -o /tmp/body -w '%{http_code}' -b $L $PJ/resources)\" = 200 && grep -q '\"xmx\":\"512M\"' /tmp/body"
+c=$(code -b $L -X PUT $PJ/resources -H "$J" -H "$O" -d '{"xms":"256M","xmx":"64G"}')
+[ "$c" = 400 ] && grep -q 'leave at least 1 GB' /tmp/body && ok "  heap over the machine's memory -> 400" || bad "  heap over memory ($c $(cat /tmp/body))"
+c=$(code -b $L -X PUT $PJ/resources -H "$J" -H "$O" -d '{"memory":"600M"}')
+[ "$c" = 400 ] && grep -q 'well above' /tmp/body && ok "  hard limit under the heap -> 400" || bad "  limit under heap ($c $(cat /tmp/body))"
+c=$(code -b $L -X PUT $PJ/resources -H "$J" -H "$O" -d '{"xms":"256M","xmx":"768M","memory":"auto","cpu":0.5,"restart":true}')
+[ "$c" = 200 ] && grep -q '"restarted":true' /tmp/body && ok "  set Memory 768M, automatic limit, 0.5 CPU, restart" || bad "  set resources ($c $(cat /tmp/body))"
+check "  unit has the new heap, same java" grep -q '^ExecStart=/usr/local/lib/rp-fakejava/java -Xms256M -Xmx768M -jar server.jar nogui' /etc/systemd/system/minecraft-perfjava.service
+check "  restarted with the new heap"     bash -c 'sleep 2; pgrep -f "java -Xms256M -Xmx768M"'
+check "  drop-in has MemoryMax and CPUQuota" bash -c "grep -qx 'MemoryMax=$AUTO' $DROPIN && grep -qx 'CPUQuota=50%' $DROPIN"
+check "  systemd applies MemoryMax"       test "$(systemctl show -p MemoryMax --value minecraft-perfjava)" = "$AUTO"
+check "  systemd applies CPUQuota"        test "$(systemctl show -p CPUQuotaPerSecUSec --value minecraft-perfjava)" = 500ms
+CG=/sys/fs/cgroup/system.slice/minecraft-perfjava.service
+if [ -f $CG/memory.max ]; then
+    check "  cgroup memory.max set"        test "$(cat $CG/memory.max)" = "$AUTO"
+    check "  cgroup cpu.max set"           grep -q '^50000 100000' $CG/cpu.max
+fi
+check "  no runtime override left behind"  test ! -e /run/systemd/system.control/minecraft-perfjava.service.d
+check "  change logged with who"          grep -q '\[PERF\] rpadmin set minecraft-perfjava' /var/log/redstonepanel/panel.log
+c=$(code -b $L -X PUT $PJ/resources -H "$J" -H "$O" -d '{"memory":"off","cpu":0}')
+[ "$c" = 200 ] && ok "  limits off" || bad "  limits off ($c $(cat /tmp/body))"
+check "  drop-in removed, no limit live"  bash -c "test ! -e $DROPIN && test \"\$(systemctl show -p MemoryMax --value minecraft-perfjava)\" = infinity"
+check "  heap kept"                       grep -q -- '-Xmx768M' /etc/systemd/system/minecraft-perfjava.service
+# History: the sampler writes once a minute (first sample about 20 s after the panel starts)
+for _ in $(seq 1 45); do
+    [ -s /var/lib/redstonepanel/metrics/minecraft-perfjava.ring ] && curl -s -b $L $B/api/host/history | grep -q '"points":\[\[' && break
+    sleep 2
+done
+check "perf: host history has points"     bash -c "curl -s -b $L $B/api/host/history | grep -q '\"points\":\[\['"
+check "  server ring file, fixed size, 0600" bash -c 'f=/var/lib/redstonepanel/metrics/minecraft-perfjava.ring; test "$(stat -c %a $f)" = 600 && test "$(stat -c %s $f)" = $((8 + 2112 * 24))'
+check "  metrics folder root-only"        test "$(stat -c %a /var/lib/redstonepanel/metrics)" = 700
+check "  dashboard rows carry TPS"        bash -c "curl -s -b $L $B/api/host | grep -q '\"tps\"'"
+c=$(code -b $L -X PUT $PJ/resources -H "$J" -H "$O" -d '{"cpu":1}')
+check "  limit set again before uninstall" test "$c" = 200
+check "  uninstall (keep world) removes the drop-in" bash -c "test \"\$(curl -s -o /dev/null -w '%{http_code}' -b $L -X DELETE -H '$O' '$PJ?keep_world=true')\" = 200 && test ! -e $DROPIN"
+
 # --- HTTPS switch from Panel Settings, restart by systemd
 c=$(code -b $L -X PUT $B/api/settings -H "$J" -H "$O" -d '{"https_mode":"self_signed","http_port":8080,"https_port":8443,"login_mode":"required"}')
 [ "$c" = 200 ] && ok "enable self-signed HTTPS" || bad "enable self-signed HTTPS ($c $(cat /tmp/body))"

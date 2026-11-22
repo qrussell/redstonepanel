@@ -163,6 +163,20 @@ class Shooter:
                 shot(name)
         step("master java tabs", master_java)
 
+        # 1.17: the Performance card (tick health, history, suggestions) and Memory and limits.
+        # The history is whatever the sampler measured since the demo started (one point a minute).
+        def performance():
+            self.ctx.request.put(BASE + "/api/servers/minecraft-java/resources", data={"memory": "auto", "cpu": 2})
+            self.open_server("minecraft-java")
+            page.wait_for_selector("#overview-perf h3", timeout=15000)
+            page.evaluate("document.getElementById('overview-perf').scrollIntoView({block: 'start'})")
+            shot("performance")
+            shot("performance-card", element="#overview-perf")
+            self.open_server("minecraft-java", tab="maintenance")
+            page.wait_for_selector("#res-limit-mode", timeout=15000)
+            shot("memory-and-limits", element="#resources-card")
+        step("performance", performance)
+
         def configuration():
             self.open_server("minecraft-java", tab="properties")
             page.fill("#prop-search", "difficulty")
@@ -329,6 +343,8 @@ class Shooter:
         def server():
             self.open_server("minecraft-java")
             shot("phone-server")
+            page.evaluate("document.getElementById('overview-perf').scrollIntoView({block: 'start'})")
+            shot("phone-performance")
             for tab in ("backups", "chat"):
                 page.evaluate(f"ServerApp.switchTab('{tab}')")
                 page.wait_for_timeout(2500)

@@ -541,6 +541,8 @@ def _servers(listed, shown, unit_cpu, fw):
         size, measured = cached_size(s["directory"])
         backup_files = backups.list_backups(name) if backups.NAME_RE.fullmatch(name) else []
         players = java_players(name, s["directory"]) if s["edition"] == "Java" and s["status"] == "online" else None
+        from core import perf          # 1.17: tick health next to players (cached, read-only RCON)
+        tick = perf.tick_health(name, s) if s["edition"] == "Java" and s["status"] == "online" else None
         next_restart = _unix(rt.get("NextElapseUSecRealtime")) if rt.get("LoadState") == "loaded" else None
         if next_restart:
             next_restart += restarts.get_schedule(name)["warn"] * 60
@@ -556,6 +558,8 @@ def _servers(listed, shown, unit_cpu, fw):
             "uptime": _unit_uptime(u), "cpu_percent": unit_cpu.get(f"{name}.service"),
             "memory": _int(u.get("MemoryCurrent")), "heap": s.get("ram"),
             "players": players[0] if players else None, "max_players": players[1] if players else None,
+            "tps": tick.get("tps") if tick and tick.get("available") else None,
+            "mspt": tick.get("mspt") if tick and tick.get("available") else None,
             "port": port, "directory": s["directory"], "folder_size": size, "folder_measured": measured,
             "backups_size": sum(b["size"] for b in backup_files), "backups": len(backup_files),
             "last_backup": backups.read_status(name) if backups.NAME_RE.fullmatch(name) else None,

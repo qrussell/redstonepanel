@@ -150,6 +150,9 @@ def main():
     # The update check timer (1.16.12): written here so upgrading the package sets it up
     from core import updates
     updates.ensure_timer()
+    # Performance history: every server and the host, once a minute (1.17)
+    from core import perf
+    perf.sampler()
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 

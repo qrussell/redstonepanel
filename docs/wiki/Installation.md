@@ -56,8 +56,8 @@ A **Raspberry Pi 4 or 5** with 4 GB or more runs a Java server for a family or a
 | 8 GB | Two or three servers at 2 GB, or one at 4 to 5 GB. |
 | 16 GB | Several servers; the CPU is the limit. |
 
-To give a server more memory, `sudo systemctl edit --full minecraft-java` (with its name),
-change `-Xmx2G`, and restart it. A Pi 5 needs its active cooler to run all day at full speed.
+To give a server more memory, use **Maintenance → Memory and limits** (1.17); a
+**Hard memory limit** of **Automatic** keeps one server from taking the whole Pi. A Pi 5 needs its active cooler to run all day at full speed.
 Raspberry Pi OS packages Java 21 and 25, which run Minecraft 1.17 and newer; for older versions
 the panel offers Java 21 and says that it may not start them.
 

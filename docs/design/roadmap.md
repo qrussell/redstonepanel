@@ -1145,6 +1145,43 @@ refused joins, so those are Java only.
 
     **Size:** one to two weeks. The ring file format and the SVG charts are the fiddly parts.
 
+    **As built:** `core/perf.py`, built as one release in stages (asked 21 Nov 2026). Tick health
+    sends only `tps`/`mspt` (Paper, Purpur, Folia) or `tick query` (everything else, and Paper as
+    a fallback), cached 25 s per server; no RCON, Bedrock, a stopped server or an older version
+    each say why it's not available. History is one ring file per server plus `host.ring` under
+    `/var/lib/redstonepanel/metrics/` (0700, files 0600): an 8-byte header, then 1,440 one-minute
+    and 672 fifteen-minute slots of a uint32 time and five float32 values (NaN = not measured),
+    about 50 KB each. A slot is found from its time, so there's no head pointer to lose in a
+    crash; each write recomputes its 15-minute average from the minute slots. A daemon thread
+    (`perf.sampler()`, started in `run.py` next to the backup-copy sweep, nice 10) samples every
+    60 s with its own previous sample, so it doesn't disturb the dashboard's rates. Server
+    fields: CPU % of the machine, process memory, players, TPS, MSPT; host: CPU %, memory %, the
+    servers' disk %, network in and out (without `lo`). Routes: `GET /api/servers/{name}/perf`,
+    `GET|PUT /api/servers/{name}/resources` (PUT admins only, logged as `[PERF]`) and
+    `GET /api/host/history` (also on the node allowlist, read-only); the dashboard's server rows
+    gain `tps` and `mspt`. **Memory** and the limits ended up as one **Memory and limits** card
+    on Maintenance rather than two settings. The heap check counts only *running* Java servers
+    and keeps 1 GB for the system, or 768 MB on machines with 3 GB or less, because a 2 GB
+    Raspberry Pi reports about 1.8 GB and its default 1 GB heap must still fit. Limits are a
+    drop-in (`minecraft-NAME.service.d/redstonepanel-limits.conf`), not part of the unit, so
+    every path that rewrites the unit (update, Java change, restore, move) keeps them; they're
+    also set live with `systemctl set-property --runtime`. "Automatic" is the heap plus half
+    again (at least 512 MB): a smaller margin made healthy servers look like crashes. Limits stay
+    on the machine (a move doesn't take them; a restore puts them back from `limits.json`).
+    "Held back" reads `cpu.stat` `throttled_usec` between samples, `MemoryCurrent` against the
+    limit, and `Result=oom-kill`. Suggestions dropped "move a server to another node" as its own
+    rule (it's part of the memory ones) and added swap; "frequent restarts" means `NRestarts` ≥ 2.
+    The webhook gets `tps_low` and `disk_full`, off by default, once an hour per server or disk.
+    Charts are inline SVG drawn at their real width (text stays readable on phones), one
+    measure per chart, a crosshair and tooltip on hover or touch, two colours checked for colour
+    blindness and contrast on both themes. Tested: 37 unit tests (`tests/test_perf.py`: tick
+    parsers with Paper's colour codes, ring wrap-around and averaging, refusals, the 2 GB Pi,
+    drop-in contents, suggestions, alerts); `test-install.sh` on Ubuntu 24.04 in a systemd
+    container with a stand-in Java server: Memory rewrites the unit with the same Java and the
+    restart picks it up, `MemoryMax`/`CPUQuota` applied live, limits off, history written,
+    uninstall removes the drop-in (cgroup `memory.max`/`cpu.max` are checked where the host has
+    cgroup v2 controllers); the screens with canned data at 1440 and 390 px in both themes.
+
 ### 1.17.1: why did it crash?
 
 22. **When a server crashes or won't start, say why in plain words, and offer the fix.** Today

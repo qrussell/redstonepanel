@@ -35,6 +35,7 @@ import core.transfer as transfer
 import core.moves as moves
 import core.backup_copies as backup_copies
 import core.backup_targets as backup_targets
+import core.perf as perf
 from starlette.background import BackgroundTask
 import json
 import uuid
@@ -500,6 +501,43 @@ def get_servers():
 @app.get("/api/host")
 def host_api(request: Request):
     return host.report(redacted=request.state.user.get("source") == "trusted")
+
+# --- 1.17: performance, history, memory and hard limits (core/perf.py)
+class ResourcesUpdate(BaseModel):
+    xms: Optional[str] = None
+    xmx: Optional[str] = None
+    memory: Optional[str] = None          # hard memory limit: "off", "auto" or a size like "3G"
+    cpu: Optional[float] = None           # CPU limit in cores; 0 = none
+    restart: bool = False
+
+def _perf_call(fn, *args, **kw):
+    try:
+        return fn(*args, **kw)
+    except perf.PerfError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/api/host/history")
+def host_history(range: str = "day"):
+    return _perf_call(perf.host_history, range)
+
+@app.get("/api/servers/{server_name}/perf")
+def server_perf(request: Request, server_name: str, range: str = "day"):
+    out = _perf_call(perf.server_perf, server_name, range)
+    if request.state.user.get("source") == "trusted":
+        out.pop("address", None)
+    return out
+
+@app.get("/api/servers/{server_name}/resources")
+def get_resources(server_name: str):
+    return _perf_call(perf.resources, server_name)
+
+@app.put("/api/servers/{server_name}/resources")
+def set_resources(request: Request, server_name: str, req: ResourcesUpdate):
+    _require_admin(request, "change a server's memory or limits")
+    return _perf_call(perf.set_resources, server_name, xms=req.xms, xmx=req.xmx, memory=req.memory, cpu=req.cpu,
+                      restart=req.restart, actor=request.state.user["username"])
 
 @app.get("/api/servers/{server_name}/properties")
 def get_properties(server_name: str):

@@ -221,6 +221,10 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
 - a port forwarding guide for your internet router: which ports, TCP or UDP, to which
   machine's LAN address, for every server and cluster member, with pfSense steps, a check
   through your internet address, and warnings for shared ports and carrier-grade NAT
+- performance for each server (1.17): tick health (TPS) over RCON, memory against its limits,
+  24-hour and 7-day history charts for every server and the machine, and suggestions based on
+  what was measured (never applied for you); a **Memory** setting and optional hard memory and
+  CPU limits per server; webhook alerts for low TPS and a nearly full disk
 - clusters: one master panel manages the servers of other RedstonePanels with every tab,
   creates servers on them, moves or copies servers between them, renews their certificates and
   backs the cluster up every night
@@ -297,9 +301,9 @@ A **Raspberry Pi 4 or 5** makes a quiet, cheap Java server for a family or a few
 | 8 GB | Two or three servers at 2 GB, or one at 4 to 5 GB with more players or mods. |
 | 16 GB | Several servers; CPU, not memory, is the limit. |
 
-To change a server's limit, run `sudo systemctl edit --full minecraft-java` (with the server's
-name), change `-Xmx2G` to, say, `-Xmx4G`, then restart the server. The panel keeps it through
-updates and moves.
+To change a server's memory, open it and go to **Maintenance → Memory and limits**. The
+panel refuses a size that would leave too little for the system with the other running servers,
+and a **Hard memory limit** of **Automatic** keeps one server from taking the whole Pi.
 
 **Storage.** Run from an SSD (USB 3, or NVMe on a Pi 5) rather than a microSD card if you
 can: worlds and backups write a lot, and cards wear out and slow the server down. Keep backups
