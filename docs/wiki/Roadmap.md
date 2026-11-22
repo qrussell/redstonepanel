@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.14**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.17.0**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,19 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.17: server performance and tuning
-
-- **Tick health** (TPS and MSPT) for Paper, Vanilla and Fabric 1.20.3+.
-- **Memory:** the heap limit next to what the server really uses, and a **Memory** setting to
-  change it safely.
-- **History charts:** 24 hours at 1-minute detail and 7 days at 15-minute detail, for each
-  server and the host.
-- **Suggestions based on what was measured, never applied automatically:** lower simulation
-  distance when TPS drops, Lithium for Fabric, FastAsyncWorldEdit, pre-generating with Chunky,
-  or moving a busy server to a quieter node.
-- **Hard memory and CPU limits** per server, so one runaway server can't starve the rest.
-- **Alerts** for low TPS or a nearly full disk (off by default).
 
 ### 1.17.1: why did it crash?
 
@@ -98,4 +85,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.14** adds the Port forwarding page; **1.16.13** moves big worlds with seconds of downtime and finds panels on your network, and **1.16.12** adds update alerts and Bedrock servers that update themselves.
+See [What's New](Whats-New.md). The latest: **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.

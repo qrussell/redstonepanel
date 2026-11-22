@@ -4,6 +4,16 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.17.0 (2026-11-22)
+
+Release notes: release-notes/v1.17.0.md
+
+- Performance on each server's Overview: tick health (TPS and MSPT for Paper, Vanilla and Fabric 1.20.3+), memory against its heap and limit, players and connections, world size, and Held back by its limits when a limit is biting.
+- History charts: 24 hours at 1-minute detail and 7 days at 15-minute detail for each server (CPU, memory, players, TPS) and the machine (CPU, memory, disk, network), kept in small fixed-size files with no database. The dashboard's server list gains a TPS column.
+- Maintenance > Memory and limits: change a Java server's heap safely, and set optional hard memory and CPU limits per server, applied live through a systemd drop-in.
+- Suggestions based on what was measured, never applied automatically, and optional tps_low and disk_full webhook alerts (off by default, at most once an hour).
+- Raspberry Pi: on machines with 3 GB or less the heap check keeps 768 MB for the system, and the Pi instructions now point to Memory and limits.
+
 ## 1.16.14 (2026-11-22)
 
 Release notes: release-notes/v1.16.14.md
