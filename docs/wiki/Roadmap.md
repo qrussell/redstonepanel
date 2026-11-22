@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.13**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.14**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,14 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.14: port forwarding, for players outside your home
-
-- **🔀 Port forwarding** lists what to forward on your internet router for every server, and
-  on a cluster for every machine with its LAN address: ports, TCP or UDP, and what each is for.
-- **Step-by-step for pfSense** and for other routers, a warning when two servers want the
-  same outside port, and a check through your internet address.
-- Your internet address is asked of your own router, never an outside website.
 
 ### 1.17: server performance and tuning
 
@@ -106,4 +98,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.13** moves big worlds with seconds of downtime and finds panels on your network; **1.16.12** adds update alerts and Bedrock servers that update themselves, and **1.16.11** copies backups to SSH or S3-compatible storage.
+See [What's New](Whats-New.md). The latest: **1.16.14** adds the Port forwarding page; **1.16.13** moves big worlds with seconds of downtime and finds panels on your network, and **1.16.12** adds update alerts and Bedrock servers that update themselves.

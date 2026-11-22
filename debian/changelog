@@ -1,3 +1,18 @@
+redstonepanel (1.16.14) noble; urgency=medium
+
+  * Port forwarding (admins): a page listing what to forward on your
+    internet router for every server, and on a cluster master for every
+    node, with each machine's LAN address, the protocol and what each port
+    is for. RCON, LAN discovery, Phantom and the panel itself are marked
+    leave closed.
+  * Step-by-step for pfSense and other routers, a warning when two servers
+    want the same outside port, Check from here, and the internet address
+    asked of your own router (NAT-PMP or UPnP), never an outside website.
+  * The phone menu scrolls as one page, so the account buttons no longer
+    cover the last servers on short phones.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sun, 22 Nov 2026 01:50:00 +0000
+
 redstonepanel (1.16.13) noble; urgency=medium
 
   * Pre-copy while it runs: an option in the Move window copies a server's
