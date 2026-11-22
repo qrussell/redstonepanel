@@ -4,8 +4,8 @@ What's planned after **1.17.2**. Version numbers are targets, not promises, and 
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
-The guiding rules stay the same: **protect people's worlds first**, use systemd rather than
-reinventing it, and add no dependencies that aren't in Ubuntu's archive. The full working plan,
+The guiding rules stay the same: **protect people's worlds first**, use the system's own service manager rather than
+reinventing it (systemd on Linux), and add no dependencies that aren't in Ubuntu's archive. The full working plan,
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
@@ -40,6 +40,29 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 - **CurseForge server packs:** download the pack's server files from CurseForge and upload
   them. A CurseForge browser in the panel isn't planned yet, because CurseForge's API needs a
   key and some authors block third-party downloads.
+
+### 1.21 to 1.24: RedstonePanel on Windows
+
+A native Windows version with every feature of the Linux one: the same panel in your browser,
+no Docker and no WSL. Each game server runs as an ordinary Windows service, schedules are Task
+Scheduler tasks, and ports are opened in Windows Defender Firewall, so Windows' own tools
+show everything the panel does. It arrives in four releases:
+
+- **1.21: groundwork.** The Linux panel is reorganised so one codebase can serve both systems.
+  Nothing changes on screen.
+- **1.22: Windows preview.** An installer for Windows 11 and Windows Server 2022 or 2025, for
+  one machine with Java servers: create, console, files, mods and plugins, backups, schedules,
+  firewall, webhooks and two-factor sign-in. The first installer is unsigned, so Windows
+  shows a warning; checksums are published with it.
+- **1.23: everything on one machine.** Bedrock servers with auto-update, memory and CPU
+  limits, performance history, crash explanations, off-site backups, panel updates from the
+  panel, and the port forwarding guide.
+- **1.24: mixed clusters.** Windows and Linux machines in one cluster, with either as the
+  master, and servers and backup copies moving between them. Windows stops being a preview.
+
+A few things work differently on Windows and will be documented: Let's Encrypt comes after the
+first release, Windows accounts without a password can't sign in to the panel (panel accounts
+can), and Windows 10 installs with an end-of-support note. Windows on ARM comes later.
 
 ### 2.0: an API for scripts and bots
 

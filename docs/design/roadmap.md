@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.17.2 (22 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1) and Advanced options on New server (1.17.2) shipped; per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.17.2 (22 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1) and Advanced options on New server (1.17.2) shipped; per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20), a native Windows version (1.21 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -17,9 +17,12 @@ targets, not promises.
 - **Use systemd, don't reinvent it.** Schedules are timers, crash handling is `Restart=` and
   `OnFailure=`, resource numbers come from the unit's cgroup. Work keeps happening when the
   panel itself is stopped.
+  On Windows (from 1.22) the same rule reads "use the system's own service manager and
+  scheduler": Windows services, Task Scheduler and Job Objects.
 - **The panel runs as root.** Every feature that touches files or runs commands is a security
   feature. Confine it to the server's own folder and do the work as the `minecraft` user.
-- **No new hard dependencies** unless they're in Ubuntu's archive.
+- **No new hard dependencies** unless they're in Ubuntu's archive. On Windows, nothing the
+  installer doesn't carry.
 - **One developer.** One major feature per minor release. Build a feature once someone asks
   for it, not because a competitor has it.
 
@@ -1516,9 +1519,110 @@ refused joins, so those are Java only.
     **Size:** two to three weeks; Forge's installer and the modpack update path are the slow
     parts.
 
+### 1.21 to 1.24: RedstonePanel on Windows
+
+Decided 22 Nov 2026: a native Windows version that keeps every feature, built after 1.20 so
+the releases before it aren't refactored underneath. One codebase and the same web UI; no
+Docker and no WSL. The four releases below ship in order, and each has a gate the next one
+waits for. From 1.21 on, every new feature is built against the platform layer and lands on
+both systems in the same release.
+
+**Why:** many people's spare machine is a Windows PC, and "install Ubuntu first" is where they
+stop. The panel's promise carries over: each game server is an ordinary Windows service that
+`services.msc`, `sc query` and Task Scheduler show, the way `systemctl` does on Linux.
+
+**What maps to what.** Every Linux-specific part has an equivalent that ships with Windows:
+
+| Linux today | Windows |
+| --- | --- |
+| systemd unit `minecraft-<name>.service`, `Restart=on-failure` | Windows service `minecraft-<name>` hosted by the panel's runner, restarted by service recovery actions |
+| `screen` for the Bedrock console | The runner's console pipe (administrators and the system only) and a rotated log file |
+| systemd timers (backups, restarts, update check, firewall sync) | Task Scheduler tasks run as SYSTEM, so they work while the panel is stopped |
+| `ExecStopPost` crash hook, journal | The runner writes to the Windows Event Log; a task triggered by that entry sends the webhook |
+| `ufw` | Windows Defender Firewall rules in a `RedstonePanel` group |
+| cgroup `MemoryMax` and `CPUQuota`, cgroup numbers | Job Object limits and accounting |
+| User `minecraft` | A virtual service account per server, with rights to its own folder only |
+| PAM and the `sudo` group | Windows sign-in check and the Administrators group; panel accounts are the default |
+| `/opt/minecraft-<name>`, `/var/lib`, `/var/backups`, `/var/log` | `C:\ProgramData\RedstonePanel\servers\<name>`, `\data`, `\backups`, `\logs`; the installer offers another drive |
+| `.deb`, signed apt repository, `redstonepanel upgrade` | MSI installer carrying Python and the web framework, published on GitHub Releases with SHA-256 sums, updated by a one-off scheduled task |
+| `openjdk-N-jre-headless` from apt | Eclipse Temurin JREs from the Adoptium API, hash-checked, one folder per version |
+| Bedrock's Linux build | Mojang's Windows build from the same download-links API |
+| `ssh` and `rsync --partial` for off-site backups | `ssh` and `sftp` from the OpenSSH client that ships with Windows |
+| `openssl` command, certbot | The `cryptography` library; a Windows ACME client for Let's Encrypt |
+
+**The runner.** Windows can't run `java.exe` as a service, hold its console and cap its memory
+on its own. Each server's service is a short Python program (standard library and `ctypes`)
+that talks to the service manager, starts the game inside a Job Object, holds its console for
+commands and a clean `stop`, and logs starts, stops and crashes. Bundling WinSW was considered
+and stays as the fallback for the service part only.
+
+**What won't match exactly** (each gets a line in the docs):
+
+- A memory limit refuses memory, so Java reports out of memory and exits, where Linux kills
+  the process. Crash explanations gain a "reached its memory limit" result.
+- Let's Encrypt needs a different client; self-signed, cluster CA and your own certificate
+  come first.
+- Windows accounts that sign in with a PIN, Hello or a passwordless Microsoft account have no
+  password to check, so they can't be used to sign in to the panel.
+- An unsigned installer shows a SmartScreen warning. The preview ships unsigned with SHA-256
+  sums while the project applies to SignPath Foundation for free open-source signing.
+- apt no longer updates Java, so the update check also looks for newer Temurin builds.
+- Windows locks a running server's jars, so replacing a loaded jar needs a stop first.
+
+**Systems:** Windows 11 and Windows Server 2022 or 2025, 64-bit Intel or AMD. Windows 10
+installs with an end-of-support note and isn't tested. Windows on ARM is left for later.
+
+26. **1.21: groundwork, no visible change.** Move every Linux-specific call behind a new
+    `core/platform/` package with a Linux side only (about 105 `systemctl` calls in 13 files,
+    48 `ufw` calls in 5, about 59 `screen` references in 11 and 48 apt or dpkg calls in 7, at
+    1.17.2). Paths come from one module; `curl`, `wget`, `jq`, `unzip` and `tar` give way to
+    Python where they're still used; unit tests gain a fake platform so they run on any
+    system. **Gate:** every existing unit test and install script passes unchanged on all
+    supported Linux systems. **Size:** large; it touches most of `core/`.
+
+27. **1.22: Windows preview.** One machine, Java servers. The MSI installer with bundled
+    Python, the panel service, the runner, Java from Adoptium, Defender Firewall, Task
+    Scheduler schedules, backups and restore, console, file manager (refusing symlinks,
+    junctions and Windows trap names such as `CON` and `name:stream`), catalog, webhooks,
+    panel accounts with two-factor, self-signed HTTPS, the host dashboard and the first-run
+    guide. Labelled a preview in the panel and the release notes. **Gate:** a Windows install
+    test passes on GitHub's `windows-2022` and `windows-2025` runners. **Size:** large.
+
+28. **1.23: the whole single machine.** Bedrock and its auto-update, Phantom, hard limits and
+    performance history, crash explanations with Windows causes, off-site backups over `sftp`
+    and S3, self-update, Windows account sign-in, the port forwarding guide and diagnostics
+    (including port ranges reserved by Hyper-V or WSL), and Needs attention notes when the PC
+    is set to sleep or a Windows Update restart is pending. **Gate:** every 1.17.2 feature
+    checked on a real Windows machine. **Size:** large.
+
+29. **1.24: mixed Linux and Windows clusters.** Windows nodes and masters; members report
+    their system (`CLUSTER_API` goes up by one). Java servers move both ways unchanged;
+    Bedrock servers move with their program downloaded again for the target system. Before a
+    move or restore onto Windows the master checks for file names Windows can't hold (names
+    differing only by case, `:` or trailing dots, reserved names) and refuses with the list.
+    Backup copies cross systems, and paths are never sent between members. Let's Encrypt
+    through a Windows client, and 1.18's SFTP and permissions confirmed on Windows. The
+    preview label comes off. **Size:** medium.
+
+**Alongside 1.18 to 1.20:** new code that runs `systemctl`, `ufw`, `apt` or a shell tool goes
+in a small helper function, with no new hard-coded `/opt` or `/var` paths, so the port doesn't
+grow. A runner prototype on a Windows PC (start a Paper server as a service, send it `stop`,
+cap its memory, survive a reboot) can start at any time; it's new files only.
+
+**Testing:** unit tests on both systems (the Windows run in GitHub Actions on the mirror,
+since GitLab CI has no Windows runner); a Windows install test on GitHub's Windows runners;
+several panels side by side on one runner for cluster tests; mixed clusters on a Windows PC
+with Linux nodes in Docker Desktop. A tag publishes the `.deb` and the MSI together, and only
+when both systems' tests pass.
+
+**Risks to settle with the prototype:** the runner itself, backing up a live world whose
+files the server holds open (fallback: a Volume Shadow Copy snapshot), antivirus scanning
+slowing or locking world saves, clean stops inside the time Windows allows at shutdown, and
+third-party firewalls that ignore Defender's rules.
+
 ### 2.0: an API for scripts and bots
 
-26. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
+30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes and, after 1.18, the servers they may touch. Shown once, revocable, and
     logged under the token's name. Per-server permissions moved to 1.18; if nothing else joins
