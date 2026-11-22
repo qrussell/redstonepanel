@@ -104,6 +104,8 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.17
 
+**Why did it crash?** *(1.17.1)*. When a server crashes or won't start, its Overview shows a **Last crash** card that names the cause in plain words (a missing dependency, a mod for another version, the wrong Java, the port already in use, out of memory, the EULA, a damaged world) and the mod or plugin it points at, with **Turn off and restart** and **Undo the last mod update** one click away. Crash alerts now say why too. Read the [1.17.1 release notes](release-notes/v1.17.1.md).
+
 **Server performance and tuning** *(1.17)*. Each server shows how well it runs (TPS and MSPT, memory against its limits, players), with 24-hour and 7-day history charts for every server and the machine, and suggestions based on what was measured. **Memory and limits** changes a Java server's heap safely and can cap a server's memory and CPU, and webhooks can warn about low TPS or a full disk. Read the [1.17.0 release notes](release-notes/v1.17.0.md).
 
 ## What's new in 1.16

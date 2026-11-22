@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.17 (22 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14) and performance (1.17) shipped; crash explanations (1.17.1), per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.17.1 (22 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17) and crash explanations (1.17.1) shipped; per-server permissions and SFTP (1.18), changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1182,7 +1182,7 @@ refused joins, so those are Java only.
     uninstall removes the drop-in (cgroup `memory.max`/`cpu.max` are checked where the host has
     cgroup v2 controllers); the screens with canned data at 1440 and 390 px in both themes.
 
-### 1.17.1: why did it crash?
+### 1.17.1: why did it crash? *(released 22 Nov 2026)*
 
 22. **When a server crashes or won't start, say why in plain words, and offer the fix.** Today
     the owner gets a "crashed" webhook and then reads `crash-reports/` and `logs/latest.log`
@@ -1209,6 +1209,47 @@ refused joins, so those are Java only.
     on purpose in the systemd container.
 
     **Size:** about a week; the pattern table is most of it and grows with what people report.
+
+    **As built (1.17.1):** `core/crashes.py`, called from `notify.unit_event()` (the drop-in's
+    `ExecStopPost`) whenever a stop wasn't asked for, so a failed start counts too: a port in
+    use or an unaccepted EULA makes Minecraft exit 0, and those are reported as "stopped" with
+    the cause. It reads a crash report from `crash-reports/` only if written in the last 10
+    minutes, the end (256 KB) of `logs/latest.log` (Bedrock `server.log`), and this run's
+    journal by `_SYSTEMD_INVOCATION_ID`, because the wrong Java fails before the server opens
+    its log; a log older than 10 minutes is looked at last. Files are opened one component at a
+    time with `O_NOFOLLOW` (the hook runs as root). Causes are a table of line patterns, first
+    match per cause: Fabric's "Mod 'X' (x) … requires … which is missing / wrong version"
+    (every missing dependency of that mod in one line, with friendly names such as Fabric API),
+    Paper's "Unknown/missing dependency plugins" and "Unsupported API version",
+    `UnsupportedClassVersionError` (class file version minus 44 gives the Java, both needed and
+    running), `FAILED TO BIND TO PORT` and Bedrock's "Network port occupied" (with the port from
+    `server.properties`), `OutOfMemoryError` or systemd's `oom-kill` (the 1.17 hard limit), the
+    EULA, `level.dat`, and chunk/region errors. A real crash report often only says "Failed to
+    initialize server", so the log's causes are added to the report's. Suspects come from
+    "Suspected Mods", mixin "from mod", Paper's "Error occurred while enabling" and "Could not
+    load 'plugins/x.jar'", and the mod named in missing-dependency lines, matched against the
+    installed jars' ids, names and file names. The record is `/var/lib/redstonepanel/crashes/
+    NAME.json` (0600): causes, up to 400 log lines with error lines marked, suspects, and the
+    last mod update if it was in the last 3 days. Routes: `GET|DELETE /api/servers/{name}/crash`,
+    `POST …/crash/turn-off` (only a file the record names) and `POST …/crash/undo` (both admins
+    only, logged as `[CRASH]`, then restart and close the card). The webhook message gets the
+    first cause, or "Likely cause: the mod X"; **Needs attention** shows an undismissed crash for
+    a week (and adds the cause to "keeps crashing"). The world-touching fixes in the plan
+    (restoring a backup for a damaged world) stay as advice pointing at the Backups tab, which
+    already backs up first, so nothing here touches the world. Found while testing:
+    `stop_requested()` counted any queued job, and a server that dies within a second of starting
+    exits while its start job waits for `ExecStartPost`, so the wrong Java was reported as
+    "stopped"; now only stop and restart jobs count. Tested: `tests/test_crashes.py` (23 tests)
+    with logs and crash reports from real servers made to fail on purpose with Java 21: vanilla
+    26.3 (needs Java 25), vanilla 1.21.4 without the EULA, with its port taken, with a
+    corrupted `level.dat` and with a 40 MB heap, and Fabric 0.20.1 with Ledger from Modrinth but
+    no Fabric API or Fabric Language Kotlin, all named correctly (`tests/crash_samples/`);
+    `packaging/test/test-crashes.sh` (21 checks, also in the GitHub `cluster` job): the installed
+    .deb's real hooks write the record as root, the webhook line, Needs attention, the API,
+    Turn off and restart, the wrong Java from the journal, a failed start that exits 0, Dismiss;
+    the card with canned data from the real Fabric failure at 1440 and 390 px in both themes.
+    The release also makes the RedstonePanel logo and name link to the project website
+    (redstonepanel.cielocloud.org).
 
 ### 1.18: helpers with their own access, and SFTP
 

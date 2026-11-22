@@ -9,6 +9,18 @@ the dashboard.
 
 ---
 
+## 1.17.1: why did it crash? *(November 2026)*
+
+- **Last crash** on a server's Overview: when it crashes or won't start, the cause in plain
+  words (missing dependency, mod for another version, wrong Java, port in use, out of memory,
+  EULA, damaged world) and the likely mod or plugin, with the log's error lines highlighted.
+- **Turn off and restart** the suspected mod or plugin, or **Undo the last mod update**, in one
+  click (admins). Nothing changes without a click.
+- **Crash alerts say why**, and **Needs attention** links to the card.
+- The **RedstonePanel logo** opens the project website.
+
+[Release notes](../../release-notes/v1.17.1.md)
+
 ## 1.17.0: server performance and tuning *(November 2026)*
 
 - **Performance** on each server's Overview: TPS and MSPT, memory against its heap and limit,

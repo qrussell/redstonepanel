@@ -1,3 +1,22 @@
+redstonepanel (1.17.1) noble; urgency=medium
+
+  * Why did it crash? When a server crashes or won't start, a Last crash
+    card on its Overview names the cause in plain words (missing
+    dependency, mod or plugin for another version, wrong Java, port in
+    use, out of memory, EULA, damaged world) and the likely mod or
+    plugin, with the log's error lines highlighted.
+  * One-click fixes on the card, for admins: Turn off and restart the
+    suspected mod or plugin, and Undo the last mod update when there was
+    a recent one. Nothing changes without a click.
+  * The crash webhook says why, and Needs attention lists the crash with
+    a link to the card.
+  * Fixed: a server that died within a second of starting (the wrong
+    Java, say) was reported as "stopped" instead of "crashed".
+  * The RedstonePanel logo and name open the project website,
+    redstonepanel.cielocloud.org.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sun, 22 Nov 2026 15:10:00 +0000
+
 redstonepanel (1.17.0) noble; urgency=medium
 
   * Performance on each server's Overview: tick health (TPS and MSPT for
