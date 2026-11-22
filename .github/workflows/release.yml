@@ -20,7 +20,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check the tag matches debian/changelog
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -34,7 +34,7 @@ jobs:
           docker run --rm -v "$PWD:/src:ro" -v "$PWD/dist:/out" ubuntu:24.04 bash /src/packaging/build-deb.sh | tee build.log
           # lintian runs inside the build; fail on errors or warnings
           if grep -E '^[EW]: ' build.log; then echo "::error::lintian reported problems"; exit 1; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deb
           path: dist/*.deb
@@ -58,8 +58,8 @@ jobs:
           - {distro: debian, release: '13', flags: '', runner: ubuntu-24.04-arm}
     name: test ${{ matrix.distro }} ${{ matrix.release }} ${{ matrix.runner == 'ubuntu-24.04-arm' && 'arm64' || 'amd64' }} ${{ matrix.flags }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: deb
           path: dist
@@ -94,8 +94,8 @@ jobs:
         script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies, test-offsite, test-bedrock-firewall, test-bedrock-update, test-bedrock-stop, test-port-forwarding]
     name: ${{ matrix.script }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: deb
           path: dist
@@ -109,10 +109,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: release-notes
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: deb
           path: dist
