@@ -45,6 +45,10 @@ DEFAULTS = {
     "extra_hosts": [],
     # Shown in the sidebar, browser tab and sign-in page to tell panels apart. "" = this host's name.
     "panel_name": "",
+    # 1.18: the built-in SFTP server (its own service, redstonepanel-sftp.service). Off until an
+    # admin turns it on under Panel Settings > SFTP.
+    "sftp_enabled": False,
+    "sftp_port": 2022,
 }
 PANEL_NAME_MAX = 40
 CONNECTION_KEYS = ("https_mode", "http_port", "https_port", "cert_file", "key_file")
@@ -144,6 +148,17 @@ def validate(new):
     s["extra_hosts"] = hosts
 
     s["panel_name"] = clean_panel_name(s["panel_name"])
+
+    if not isinstance(s["sftp_enabled"], bool):
+        raise SettingsError("SFTP must be on or off.")
+    try:
+        s["sftp_port"] = int(s["sftp_port"])
+    except (TypeError, ValueError):
+        raise SettingsError("The SFTP port must be a number.")
+    if not 1 <= s["sftp_port"] <= 65535:
+        raise SettingsError("The SFTP port must be between 1 and 65535.")
+    if s["sftp_port"] in (s["http_port"], s["https_port"]) or s["sftp_port"] == 22:
+        raise SettingsError("Choose an SFTP port that isn't the panel's own port or 22 (this machine's SSH).")
     return s
 
 

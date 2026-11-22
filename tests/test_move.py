@@ -344,6 +344,9 @@ class Routes(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
         r = self.client.delete("/api/cluster/moved/n1/minecraft-java")
         self.assertEqual(r.status_code, 403)
+        # 1.18: the list of moves names every server, so it's for admins too
+        self.assertEqual(self.client.get("/api/cluster/moves").status_code, 403)
+        self.user["role"] = "admin"
         self.assertEqual(self.client.get("/api/cluster/moves").status_code, 200)
 
 

@@ -56,12 +56,14 @@ class MasterProxy(unittest.TestCase):
         self.calls, self.log = [], []
         self.answer = FakeAnswer()
 
-        def open_proxy(node, method, path, body, length, content_type, actor, role):
+        def open_proxy(node, method, path, body, length, content_type, actor, role, perms=None):
             self.calls.append({"node": node["id"], "method": method, "path": path, "length": length,
                                "body": body.read() if body else None, "content_type": content_type,
-                               "actor": actor, "role": role})
+                               "actor": actor, "role": role, "perms": perms})
             return self.answer
         for p in (mock.patch.object(main.auth, "read_session_token", lambda t: dict(self.user)),
+                  # 1.18: alex was given everything on every server (tests/test_grants.py covers the rest)
+                  mock.patch.object(main.grants, "get", lambda name: {"*": list(main.grants.PERMS)}),
                   mock.patch.object(main.cluster, "role", lambda: "master"),
                   mock.patch.object(main.cluster, "find_node", lambda i: dict(NODE) if i == NODE["id"] else None),
                   mock.patch.object(main.cluster_client, "open_proxy", open_proxy),
@@ -119,6 +121,7 @@ class MasterProxy(unittest.TestCase):
 
     def test_node_status_codes_pass_through(self):
         self.answer = FakeAnswer(409, b'{"detail": "Needs Java 21", "java": {"required": 21}}')
+        self.user["role"] = "admin"             # creating a server is an admin's job (1.18)
         r = self.client.post(self.url("/api/servers/deploy"), json={"edition": "java"})
         self.assertEqual(r.status_code, 409, "the browser can offer to install Java on the node")
         self.assertEqual(r.json()["java"], {"required": 21})
@@ -165,6 +168,7 @@ class MasterProxy(unittest.TestCase):
     def test_template_push(self):
         sent = []
         tpl = {"id": "t-1", "name": "Survival", "edition": "Java", "properties": {}, "permissions": "[]"}
+        self.user["role"] = "admin"             # sending templates to a node is an admin's job (1.18)
         with mock.patch.object(self.main.manager, "load_templates", lambda: [tpl]), \
                 mock.patch.object(self.main.cluster_client, "call_node",
                                   lambda node, m, p, body=None, **kw: sent.append((m, p, body, kw)) or {}):
@@ -174,7 +178,7 @@ class MasterProxy(unittest.TestCase):
                                               json={"template_id": "nope"}).status_code, 404)
         [(m, p, body, kw)] = sent
         self.assertEqual((m, p, body["template"]["id"], kw["actor"], kw["role"]),
-                         ("POST", "/api/cluster/templates", "t-1", "alex", "user"))
+                         ("POST", "/api/cluster/templates", "t-1", "alex", "admin"))
 
 
     def test_save_a_node_server_as_a_master_template(self):

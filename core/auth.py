@@ -18,6 +18,7 @@ step, so turning two-factor on signs out sessions that never did.
 import base64
 import ctypes
 import ctypes.util
+import fcntl
 import grp
 import hashlib
 import hmac
@@ -271,26 +272,93 @@ def linux_user_allowed(username):
 # ---------------------------------------------------------------------------
 # Login + throttling
 # ---------------------------------------------------------------------------
-def _recent_fails(key, now):
-    lst = [t for t in _fails.get(key, []) if now - t < FAIL_WINDOW]
-    _fails[key] = lst
+# The failures are shared with the SFTP service (core/sftp.py, its own process): on an installed
+# panel they are kept in a small file under /run, so guessing over SFTP and in the browser counts
+# towards one limit. Elsewhere (tests, a copy run by hand) they stay in memory. Starting the panel
+# clears them, as it always did.
+FAILS_FILE = os.environ.get("RP_FAILS_FILE") or ("/run/redstonepanel/signin-fails.json"
+                                                 if panel_settings.PACKAGED else None)
+
+def _with_fails(fn):
+    """Runs fn(store) on the failure store ({key: [timestamps]}) and saves what it changed."""
+    with _lock:
+        if not FAILS_FILE:
+            return fn(_fails)
+        try:
+            os.makedirs(os.path.dirname(FAILS_FILE), mode=0o700, exist_ok=True)
+            fd = os.open(FAILS_FILE, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        except OSError:
+            return fn(_fails)
+        with os.fdopen(fd, "r+") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                store = json.load(f)
+                if not isinstance(store, dict):
+                    store = {}
+            except ValueError:
+                store = {}
+            before = json.dumps(store, sort_keys=True)
+            out = fn(store)
+            after = json.dumps({k: v for k, v in store.items() if v}, sort_keys=True)
+            if after != before:
+                f.seek(0)
+                f.truncate()
+                f.write(after)
+            return out
+
+def reset_fails():
+    """Called when the panel starts."""
+    with _lock:
+        _fails.clear()
+        if FAILS_FILE:
+            try:
+                os.unlink(FAILS_FILE)
+            except OSError:
+                pass
+
+def _recent_fails(store, key, now):
+    lst = [t for t in store.get(key, []) if isinstance(t, (int, float)) and now - t < FAIL_WINDOW]
+    store[key] = lst
     return lst
 
 def _throttled(keys):
     now = time.time()
-    with _lock:
-        return any(len(_recent_fails(k, now)) >= MAX_FAILS for k in keys)
+    return _with_fails(lambda store: any(len(_recent_fails(store, k, now)) >= MAX_FAILS for k in keys))
 
 def _record_fail(keys):
     now = time.time()
-    with _lock:
+    def add(store):
         for k in keys:
-            _recent_fails(k, now).append(now)
+            _recent_fails(store, k, now).append(now)
+    _with_fails(add)
 
 def _clear_fails(keys):
-    with _lock:
+    def drop(store):
         for k in keys:
-            _fails.pop(k, None)
+            store.pop(k, None)
+    _with_fails(drop)
+
+def fail_keys(username, client_ip):
+    return (f"user:{(username or '').lower()}", f"ip:{client_ip}")
+
+def account_role(source, username):
+    """'admin' or 'user' for an account that may use the panel right now, else None (deleted,
+    disabled, or a Linux account no longer in an allowed group)."""
+    if source == "linux":
+        return "admin" if linux_user_allowed(username) else None
+    if source == "panel":
+        u = _find(_load_users(), username)
+        return u["role"] if u and not u.get("disabled") else None
+    return None
+
+def find_account(username):
+    """(source, name) of the account a sign-in name means, as login() picks it, or None."""
+    name = (username or "").strip()
+    if _find(_load_users(), name.lower()):
+        return "panel", name.lower()
+    if name and linux_account_exists(name):
+        return "linux", name
+    return None
 
 def login(username, password, client_ip):
     """Returns the session identity dict, or raises AuthError with a generic message."""

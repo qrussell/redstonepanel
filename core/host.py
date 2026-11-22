@@ -760,6 +760,22 @@ def redact(rep):
     return out
 
 
+def for_user(rep, can_view):
+    """The report for an account limited to some servers (1.18): only those servers, their
+    problems (and the machine's own, like a full disk), and no panel housekeeping."""
+    out = dict(rep, limited=True)
+    out["servers"] = [s for s in rep.get("servers") or [] if can_view(s.get("name"))]
+    out["attention"] = [a for a in rep.get("attention") or []
+                        if (can_view(a["server"]) if a.get("server") else a.get("where") in ("disk", "memory"))]
+    services = dict(rep.get("services") or {})
+    services["java"] = [dict(j, servers=[n for n in j.get("servers") or [] if can_view(n)])
+                        for j in services.get("java") or []]
+    for key in ("java_needed", "failed_units", "phantoms"):
+        services.pop(key, None)
+    out["services"] = services
+    return out
+
+
 def report(redacted=False):
     rep = _cached("report", REPORT_TTL, _build)
     return redact(rep) if redacted else rep

@@ -22,6 +22,8 @@
     redstonepanel check-updates       look for newer server versions and update the Bedrock servers
                                       set to update automatically (its timer runs this every 6 hours)
     redstonepanel notify-test         send a test message to the notification webhook
+    redstonepanel sftp-serve          run the SFTP server (its service, redstonepanel-sftp.service,
+                                      runs this while SFTP is on under Panel Settings > SFTP)
     redstonepanel upgrade             update the redstonepanel package (apt), as the panel's Update button does
 
   Clusters (one master panel controls the game servers of other panels, its nodes):
@@ -153,6 +155,23 @@ def main():
     # Performance history: every server and the host, once a minute (1.17)
     from core import perf
     perf.sampler()
+    # 1.18: sign-in failures are shared with the SFTP service; a start clears them as before
+    from core import auth, grants, sftp
+    auth.reset_fails()
+    # Once, on the first start of 1.18: `user` accounts made before per-server permissions keep
+    # what they could do, on every server
+    try:
+        kept = grants.migrate_existing_users([u["username"] for u in auth.list_panel_users() if u["role"] == "user"])
+        if kept:
+            manager.write_log(f"[AUTH] Per-server permissions: {', '.join(kept)} kept what user accounts could "
+                              "always do, on every server. Change it under Users.")
+    except Exception as e:
+        manager.write_log(f"[AUTH] Setting up per-server permissions failed: {e}")
+    # The SFTP service follows the setting (and an updated package's unit)
+    try:
+        sftp.apply(s)
+    except Exception as e:
+        manager.write_log(f"[SFTP] Couldn't set up the SFTP service: {e}")
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 
@@ -522,6 +541,9 @@ if __name__ == "__main__":
         check_updates_cmd()
     elif cmd == "notify-test" and not rest:
         notify_test_cmd()
+    elif cmd == "sftp-serve" and not rest:
+        from core import sftp
+        sys.exit(sftp.serve())
     elif cmd == "notify-unit" and len(rest) == 2 and rest[0] in ("start", "stop"):
         notify_unit_cmd(*rest)
     elif cmd == "stop-unit" and len(rest) in (1, 2):

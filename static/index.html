@@ -59,7 +59,7 @@
             <!-- On a cluster node: which cluster and master manage it -->
             <p id="cluster-badge" class="hidden text-xs text-gray-500 dark:text-gray-400 truncate mt-1"></p>
             <p id="https-error-banner" class="hidden mt-2 text-xs p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700"></p>
-            <button onclick="ServerApp.openDeployModal()" class="mt-4 w-full bg-theme hover-bg-theme text-white py-2 rounded text-sm font-bold transition mb-2">➕ New Server</button>
+            <button id="btn-new-server" onclick="ServerApp.openDeployModal()" class="admin-only mt-4 w-full bg-theme hover-bg-theme text-white py-2 rounded text-sm font-bold transition mb-2">➕ New Server</button>
             <!-- This machine: resources, services, what needs attention (also shown when no server is selected) -->
             <button id="btn-dashboard" onclick="ServerApp.showDashboard()" class="w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">📊 Dashboard</button>
             <!-- On a cluster master: every node's servers on one page -->
@@ -70,7 +70,7 @@
             <button id="btn-phone" onclick="ServerApp.openPhoneQr()" class="max-md:hidden w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">📱 Open on your phone</button>
             <div class="flex gap-2 mb-4">
                 <button onclick="ServerApp.toggleConsole(true)" class="flex-1 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition">🖥️ Console</button>
-                <button onclick="ServerApp.openTemplateManager()" class="flex-1 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition">📋 Templates</button>
+                <button onclick="ServerApp.openTemplateManager()" class="admin-only flex-1 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition">📋 Templates</button>
                 <button onclick="ServerApp.openSettingsModal()" title="Appearance" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white px-3 py-2 rounded text-sm transition">⚙️</button>
             </div>
             
@@ -129,7 +129,7 @@
 			<button onclick="ServerApp.switchTab('maintenance')" id="tab-btn-maintenance" class="py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Maintenance</button>
 			<button onclick="ServerApp.switchTab('backups')" id="tab-btn-backups" class="py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Backups</button>
 			<button onclick="ServerApp.switchTab('world')" id="tab-btn-world" class="py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">World &amp; Maps</button>
-			<button onclick="ServerApp.switchTab('files')" id="tab-btn-files" class="admin-only py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Files</button>
+			<button onclick="ServerApp.switchTab('files')" id="tab-btn-files" class="py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Files</button>
 			<!-- Mods (Fabric) / Plugins (Paper) / Add-ons (Bedrock), admins; shown by ServerApp.updateAddonsTab -->
 			<button onclick="ServerApp.switchTab('addons')" id="tab-btn-addons" class="hidden py-3 px-4 hover:text-gray-900 dark:hover:text-white transition">Mods</button>
 		</div>
@@ -297,7 +297,7 @@
                         </div>
                     </div>
                 </div>
-				<div>
+				<div id="export-card">
                     <h3 class="text-lg font-bold mb-2 text-theme">Export Server</h3>
                     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center shadow-sm">
                         <p class="text-sm text-gray-600 dark:text-gray-300">Download a full .zip backup of this server to migrate or save.</p>
@@ -349,17 +349,17 @@
 			<div id="tab-backups" class="hidden-tab space-y-6">
 				<div id="backups-content"><p class="text-sm text-gray-500">Loading…</p></div>
 			</div>
-			<!-- FILES TAB (admins; filled by ServerApp.renderFiles / openFileEditor) -->
+			<!-- FILES TAB (admins and accounts with Files; filled by ServerApp.renderFiles / openFileEditor) -->
 			<div id="tab-files" class="hidden-tab space-y-4 rounded">
 				<div id="files-content"><p class="text-sm text-gray-500">Loading…</p></div>
 			</div>
-			<!-- MODS / PLUGINS / ADD-ONS TAB (admins; filled by ServerApp.renderAddons) -->
+			<!-- MODS / PLUGINS / ADD-ONS TAB (admins and accounts with Mods & plugins; filled by ServerApp.renderAddons) -->
 			<div id="tab-addons" class="hidden-tab space-y-4 rounded">
 				<div id="addons-content" class="space-y-4"><p class="text-sm text-gray-500">Loading…</p></div>
 			</div>
 			<!-- WORLD TAB -->
 			<div id="tab-world" class="hidden-tab space-y-6">
-				<div>
+				<div id="world-export-card">
 					<h3 class="text-lg font-bold mb-2 text-theme">Export Active World</h3>
 					<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center shadow-sm">
 						<p class="text-sm text-gray-600 dark:text-gray-300">Download the current world data as a compressed .zip file.</p>
@@ -367,7 +367,7 @@
 					</div>
 				</div>
 				
-				<div>
+				<div id="world-rename-card">
 					<h3 class="text-lg font-bold mb-2 text-gray-900 dark:text-white">Rename World</h3>
 					<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm">
 						<p class="text-sm text-gray-600 dark:text-gray-300 mb-4">Change the display name of the world. This renames the physical folder and updates server.properties automatically. (Server will restart).</p>
