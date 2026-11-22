@@ -102,15 +102,36 @@ api POST "$P/api/servers/minecraft-java/action" '{"action":"restart"}'
 sleep 40
 
 say "backups, restarts, a template, nightly cluster backups"
+# Backup copies on another member (1.16.8): the master's Paper server on the node, the node's on the master
+api PUT /api/cluster/backup-copies/local/minecraft-java "{\"to\":\"$NID\"}"
+api PUT "/api/cluster/backup-copies/$NID/minecraft-java" '{"to":"local"}'
 for s in /api/servers/minecraft-java /api/servers/minecraft-bedrock "$P/api/servers/minecraft-java"; do
     api PUT "$s/backups/schedule" '{"enabled":true,"frequency":"daily","time":"04:00","keep":7}'
     api POST "$s/backups"
 done
+api POST /api/cluster/backup-copies/local/minecraft-java/sync
+api POST "/api/cluster/backup-copies/$NID/minecraft-java/sync"
 api PUT /api/servers/minecraft-java/restarts '{"enabled":true,"frequency":"daily","time":"05:00","warn":5}'
 api POST /api/servers/minecraft-java/template/save '{"name":"Paper survival"}'
 dx $M "printf '%s\n%s\n' '$PASSPHRASE' '$PASSPHRASE' | redstonepanel cluster nightly on" >/dev/null 2>&1 \
     || api PUT /api/settings/cluster/nightly "{\"enabled\":true,\"passphrase\":\"$PASSPHRASE\"}"
 api POST /api/servers/minecraft-java/chat '{"message":"Welcome to Survival Box!"}'
+
+say "update check: alerts for the 1.21.4 servers, Bedrock updating itself (1.16.12)"
+api PUT /api/servers/minecraft-bedrock/updates '{"enabled":true}'
+dx $M "redstonepanel check-updates" || true
+dx $N "redstonepanel check-updates" || true
+say "off-site copies: an SSH storage (on Creative Lab) for the master's servers"
+dx $N "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openssh-server rsync >/dev/null 2>&1 \
+    && (id mcbackup >/dev/null 2>&1 || useradd -m -s /bin/bash mcbackup) && install -d -m 700 -o mcbackup -g mcbackup /home/mcbackup/.ssh \
+    && systemctl enable --now ssh >/dev/null 2>&1 && (ufw allow 22/tcp >/dev/null 2>&1 || true)"
+dx $M "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends rsync openssh-client >/dev/null 2>&1"
+KEY=$(api GET /api/settings/backup-storage | python3 -c "import json,sys; print(json.load(sys.stdin)['public_key'])" 2>/dev/null \
+      || api GET /api/settings/backup-storage | python -c "import json,sys; print(json.load(sys.stdin)['public_key'])")
+dx $N "echo '$KEY' > /home/mcbackup/.ssh/authorized_keys && chown mcbackup:mcbackup /home/mcbackup/.ssh/authorized_keys && chmod 600 /home/mcbackup/.ssh/authorized_keys"
+api POST /api/settings/backup-storage "{\"type\":\"ssh\",\"name\":\"Creative Lab disk\",\"host\":\"$(ip_of $N)\",\"user\":\"mcbackup\",\"folder\":\"minecraft-backups\",\"keep_count\":14,\"keep_days\":30}" >/dev/null
+api POST /api/servers/minecraft-java/backups >/dev/null
+api POST /api/servers/minecraft-bedrock/backups >/dev/null
 
 else
     PASS=$(docker exec $M cat /root/.demo-pass) || { echo "No demo to reuse: run without SETUP=0 first."; exit 1; }

@@ -117,14 +117,24 @@ def _follow_udp_port(props, old_port, new_port):
     return new if cur and cur == old and old != new else None
 
 
+def bedrock_transport(props):
+    """The transport a Bedrock server really uses. BDS 1.26.50 and later default to NetherNet
+    when server.properties has no transport line (checked on 1.26.66.1: TCP server-port and UDP
+    7551, nothing on UDP server-port), and the panel only ever downloads the latest BDS. Only an
+    explicit transport=raknet means RakNet."""
+    return "raknet" if str(props.get("transport") or "").strip().lower() == "raknet" else "nethernet"
+
+
 def is_nethernet(props):
-    return str(props.get("transport") or "").strip().lower() == "nethernet"
+    return bedrock_transport(props) == "nethernet"
 
 
 def firewall_rules(edition, props):
     """The ufw rules (port spec, proto) a server needs, from its server.properties.
-    Java: TCP server-port. Bedrock over RakNet: UDP server-port. Bedrock over NetherNet: TCP
-    server-port (signaling), UDP server-udp-ports (gameplay) and UDP 7551 (LAN discovery)."""
+    Java: TCP server-port. Bedrock over NetherNet (the default): TCP server-port (signaling, one
+    dual-stack socket, so server-portv6 isn't used), UDP server-udp-ports (gameplay, opened once a
+    player connects) and UDP 7551 (LAN discovery, open even with enable-lan-visibility=false).
+    Bedrock over RakNet: UDP server-port and server-portv6."""
     port = str(props.get("server-port", "")).strip()
     if not port.isdigit():
         return set()
@@ -133,7 +143,49 @@ def firewall_rules(edition, props):
     if is_nethernet(props):
         return {(port, "tcp"), (str(NETHERNET_LAN_PORT), "udp")} | \
             {(p, "udp") for p in _udp_port_specs(props.get("server-udp-ports"))}
-    return {(port, "udp")}
+    v6 = str(props.get("server-portv6", "")).strip()
+    return {(port, "udp")} | ({(v6, "udp")} if v6.isdigit() else set())
+
+
+def fixed_udp_ports(d):
+    """A Bedrock server without server-udp-ports gets gameplay ports from the kernel's random
+    range, which no firewall rule or router forward can match. Gives it UDP on its own
+    server-port, as a new server gets (takes effect at its next start). True if it changed."""
+    props = read_properties(d)
+    port = str(props.get("server-port", "")).strip()
+    if str(props.get("server-udp-ports", "")).strip() or not port.isdigit():
+        return False
+    write_properties(d, {"server-udp-ports": port})
+    return True
+
+
+BEDROCK_FIREWALL_DONE = "bedrock-firewall-1.16.11"
+
+
+def upgrade_bedrock_firewall():
+    """Once, after upgrading to 1.16.11: Bedrock servers whose server.properties has no transport
+    line were treated as RakNet, so only UDP server-port was opened and players couldn't reach
+    them. Gives them a fixed gameplay port and opens what they need now. Nothing is closed."""
+    marker = os.path.join(DATA_DIR, BEDROCK_FIREWALL_DONE)
+    if os.path.exists(marker):
+        return
+    for s in list_servers():
+        if s.get("edition") != "Bedrock":
+            continue
+        try:
+            if fixed_udp_ports(s["directory"]):
+                write_log(f"[FIREWALL] {s['name']} had no server-udp-ports; set it to {s['port']} "
+                          f"(used from its next restart).")
+            rules = server_firewall_rules(s["name"])
+            if shutil.which("ufw"):
+                open_firewall_rules(rules)
+                firewall_record(s["name"], rules)
+                write_log(f"[FIREWALL] {s['name']}: allowed " + ", ".join(f"{p}/{q}" for p, q in sorted(rules)) + ".")
+        except Exception as e:                 # one odd server mustn't stop the others or the panel
+            write_log(f"[FIREWALL] Couldn't check {s.get('name')}: {e}")
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(marker, "w") as f:
+        f.write("done\n")
 
 
 def server_firewall_rules(server_name):
@@ -145,17 +197,145 @@ def open_firewall_rules(rules):
         open_firewall(port, proto)
 
 
+def phantom_firewall_rules(phantoms=None):
+    """The UDP ports Phantom proxies on this machine listen on: their bind port, and 19132 for
+    LAN discovery while there is any."""
+    try:
+        phantoms = proxies.find_phantoms() if phantoms is None else phantoms
+    except Exception:
+        return set()
+    rules = {(str(p["bind_port"]), "udp") for p in phantoms if str(p.get("bind_port") or "").isdigit()}
+    return rules | ({(str(proxies.PHANTOM_LAN_PORT), "udp")} if phantoms else set())
+
+
+def rules_in_use(servers=None):
+    """Every ufw rule a server on the panel or a Phantom proxy needs."""
+    needed = set()
+    for s in list_servers() if servers is None else servers:
+        needed |= {tuple(r) for r in s.get("firewall_rules") or []}
+    return needed | phantom_firewall_rules()
+
+
 def close_firewall_rules(rules):
     """Removes rules no server on the panel needs any more (another server may share one, as
     every NetherNet server shares 7551)."""
     if not rules or not shutil.which("ufw"):
         return
-    needed = set()
-    for s in list_servers():
-        needed |= {tuple(r) for r in s.get("firewall_rules") or []}
-    for port, proto in sorted(set(rules) - needed):
+    for port, proto in sorted(set(rules) - rules_in_use()):
         run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
     _firewall_changed()
+
+
+# The rules the panel last opened for each server, so a change it didn't make (server.properties
+# edited over SSH, a unit deleted by hand) can be followed: {"minecraft-x": [["19132", "tcp"], ...]}
+FIREWALL_RECORD = "firewall-rules.json"
+_fw_lock = threading.RLock()
+
+
+def _fw_path():
+    return os.path.join(DATA_DIR, FIREWALL_RECORD)
+
+
+def _fw_load():
+    try:
+        with open(_fw_path()) as f:
+            data = json.load(f)
+        return {k: {tuple(r) for r in v} for k, v in data.items() if isinstance(v, list)}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
+
+
+def _fw_save(rec):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = _fw_path() + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({k: sorted(map(list, v)) for k, v in sorted(rec.items())}, f, indent=1)
+    os.replace(tmp, _fw_path())
+
+
+def firewall_record(server_name, rules):
+    """Notes the rules the panel opened for a server (None: the server left the panel)."""
+    with _fw_lock:
+        rec = _fw_load()
+        if rules is None:
+            rec.pop(server_name, None)
+        else:
+            rec[server_name] = set(rules)
+        _fw_save(rec)
+
+
+def open_server_firewall(server_name, edition, d):
+    """Opens the rules a server needs from its server.properties, and notes them."""
+    rules = firewall_rules(edition, read_properties(d))
+    open_firewall_rules(rules)
+    firewall_record(server_name, rules)
+
+
+def sync_firewall():
+    """Keeps ufw in step with server.properties when it changed without the panel: a server whose
+    ports or transport were edited by hand gets its new rules and loses the old ones; a server
+    whose unit is gone loses its rules. Rules another server or a Phantom still needs stay.
+    A server seen for the first time is only noted (the dashboard names rules it lacks)."""
+    if not shutil.which("ufw"):
+        return []
+    done = []
+    with _fw_lock:
+        servers = list_servers()
+        with _busy_lock:
+            busy = set(_busy)
+        rec = _fw_load()
+        now = {s["name"]: {tuple(r) for r in s.get("firewall_rules") or []} for s in servers}
+        in_use = rules_in_use(servers)
+        changed = False
+        for name, need in now.items():
+            if name in busy:
+                continue
+            had = rec.get(name)
+            if had is None:
+                rec[name] = need
+                changed = True
+            elif had != need:
+                opened, closed = need - had, had - need - in_use
+                open_firewall_rules(opened)
+                for port, proto in sorted(closed):
+                    run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
+                rec[name] = need
+                changed = True
+                done.append(name)
+                write_log(f"[FIREWALL] {name}'s server.properties changed outside the panel: "
+                          + "; ".join(x for x in (
+                              opened and "allowed " + ", ".join(f"{p}/{q}" for p, q in sorted(opened)),
+                              closed and "removed " + ", ".join(f"{p}/{q}" for p, q in sorted(closed))) if x)
+                          + ".")
+        for name in sorted(set(rec) - set(now) - busy):
+            closed = rec.pop(name) - in_use
+            changed = True
+            for port, proto in sorted(closed):
+                run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
+            if closed:
+                done.append(name)
+                write_log(f"[FIREWALL] {name} is no longer on the panel: removed "
+                          + ", ".join(f"{p}/{q}" for p, q in sorted(closed)) + ".")
+        if changed:
+            _fw_save(rec)
+    if done:
+        _firewall_changed()
+    return done
+
+
+def firewall_watcher(every=120, first=20):
+    """Runs sync_firewall() in a daemon thread: shortly after start, then every two minutes."""
+    def loop():
+        time.sleep(first)
+        while True:
+            try:
+                sync_firewall()
+            except Exception as e:             # never let this take the panel down
+                write_log(f"[FIREWALL] Checking the firewall failed: {e}")
+            time.sleep(every)
+    t = threading.Thread(target=loop, name="firewall", daemon=True)
+    t.start()
+    return t
 
 
 def properties_changed(server_name, before):
@@ -165,6 +345,7 @@ def properties_changed(server_name, before):
     if after != before:
         open_firewall_rules(after - before)
         close_firewall_rules(before - after)
+    firewall_record(server_name, after)
 
 # Never part of a template: each server keeps its own RCON password. Templates saved before
 # 1.15.1 may still hold one; it's left out when they're read.
@@ -494,7 +675,7 @@ def list_servers():
         ver = server_version(d, "java" in exec_start, svc)
         is_bedrock = "java" not in exec_start and "bedrock" in exec_start
         proxy_list = []
-        transport = (props.get("transport") or "").lower() or None if is_bedrock else None
+        transport = bedrock_transport(props) if is_bedrock else None
         udp_ports = props.get("server-udp-ports", "")
         start = bedrock_start_status(d) if is_bedrock else None
         if is_bedrock:
@@ -502,8 +683,15 @@ def list_servers():
                 phantoms = proxies.find_phantoms()
             proxy_list = proxies.proxies_for_server(phantoms, props.get("server-port", "19132"))
 
+        try:
+            from core import updates
+            update = updates.server_update(svc, d, "java" in exec_start)
+        except Exception:
+            update = None                       # never let the alert break the server list
         servers.append({
             "name": svc,
+            # A newer release than it runs (cached by the update check, core/updates.py), or None
+            "update": update,
             # Minecraft version of the installed server, and (Java) the Java it needs vs. what's installed
             "version": ver["version"],
             "java_required": ver["java_required"],
@@ -632,8 +820,6 @@ def get_recent_players(server_name):
     result = sorted(players.values(), key=lambda p: (ROLE_RANK.get(p["role"], 9), p["name"].lower()))
     return {"players": result, "roles": JAVA_ROLES if is_java else BEDROCK_ROLES, "file": perm_file}
 
-BEDROCK_KEEP_FILES = ("server.properties", "permissions.json", "allowlist.json", "whitelist.json")
-
 def _unit_exec_start(server_name):
     return subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
                           capture_output=True, text=True).stdout.strip()
@@ -668,7 +854,14 @@ def update_server_binary(server_name, version=None):
         if version:
             raise ServerError("Bedrock servers always update to the newest release.")
         require_bedrock_machine()
-        require_tools("curl", "wget", "jq", "unzip")
+        # Downloaded and checked first, a "Before update" backup, and the old version put back
+        # if the new one doesn't start (core/updates.py, 1.16.12)
+        from core import updates
+        try:
+            updates.run_update(server_name, actor="Update button", force=True)
+        except updates.UpdateError as e:
+            raise ServerError(f"Bedrock update failed: {e}")
+        return
 
     if is_java:
         current = javaservers.read_info(d)
@@ -685,9 +878,8 @@ def update_server_binary(server_name, version=None):
         if os.path.realpath(unit_java(exec_start) or "") != os.path.realpath(java):
             _write_unit(server_name, d, "java", java=java, **unit_heap(exec_start))
         write_log(f"[UPDATE] {server_name} now runs {javaservers.describe(info)} with {java}.")
-    else:
-        run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
-        _fetch_bedrock(d)
+    from core import updates
+    updates.forget(server_name)
     run_and_log(["chown", "-R", "minecraft:minecraft", d])
     run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
 
@@ -724,35 +916,14 @@ def java_for_folder(d):
         raise JavaMissing(e)
 
 def _fetch_bedrock(d):
-    """Downloads the latest Bedrock Dedicated Server and unpacks it into d."""
-    fetch_cmd = """
-    SERVER_URL=$(curl -s https://net-secondary.web.minecraft-services.net/api/v1.0/download/links | jq -r '.result.links[] | select(.downloadType=="serverBedrockLinux") | .downloadUrl' 2>/dev/null)
-    if [ -z "$SERVER_URL" ] || [ "$SERVER_URL" == "null" ]; then
-        SERVER_URL=$(curl -s -H "User-Agent: Mozilla/4.0" https://www.minecraft.net/en-us/download/server/bedrock | grep -o 'https://[^"]*/bin-linux/bedrock-server-[^"]*\\.zip' | head -n 1)
-    fi
-    wget "$SERVER_URL" -O """ + d + "/bedrock-server.zip"
-    
-    run_and_log(fetch_cmd, shell=True)
-
-    # The official zip ships default copies of these files; unzip -o would overwrite
-    # the server's ports, operators and allowlist. Keep ours and put them back.
-    saved = {}
-    for name in BEDROCK_KEEP_FILES:
-        p = os.path.join(d, name)
-        if os.path.exists(p):
-            with open(p, "rb") as f:
-                saved[name] = f.read()
+    """Downloads the latest Bedrock Dedicated Server and unpacks it into d, keeping the folder's
+    own server.properties, permissions.json and allowlist.json (see core/updates.py)."""
+    from core import updates
     try:
-        run_and_log(["unzip", "-o", "-q", f"{d}/bedrock-server.zip", "-d", d])
-    finally:
-        for name, data in saved.items():
-            with open(os.path.join(d, name), "wb") as f:
-                f.write(data)
-        if saved:
-            write_log(f"[SYSTEM] Kept existing {', '.join(saved)}.")
-    if os.path.exists(f"{d}/bedrock-server.zip"):
-        os.remove(f"{d}/bedrock-server.zip")
-    run_and_log(["chmod", "+x", f"{d}/bedrock_server"])
+        updates.fetch_bedrock(d)
+    except updates.UpdateError as e:
+        write_log(f"[WARNING] {e}")
+        raise ServerError(str(e))
 
 def default_heap(meminfo="/proc/meminfo"):
     """A new Java server's heap: 1-2 GB, or 512 MB-1 GB on a machine with 3 GB of memory or less
@@ -883,10 +1054,12 @@ def remove_server(server_name, keep_world, note=None):
     subprocess.run(["systemctl", "reset-failed", f"{server_name}.service"], capture_output=True)
     # Its ports are closed again unless another server uses them (restoring opens them again)
     close_firewall_rules(rules)
+    firewall_record(server_name, None)
     # Its backup and restart timers go too; the backups themselves stay in /var/backups/redstonepanel
-    from core import backups, restarts
+    from core import backups, restarts, updates
     backups.on_server_removed(server_name, purged=not keep_world)
     restarts.on_server_removed(server_name, purged=not keep_world)
+    updates.on_server_removed(server_name, purged=not keep_world)
     from core import perf
     perf.on_server_removed(server_name, purged=not keep_world)
     # Its Phantom LAN proxy goes too (Phantom units made by hand stay)
@@ -1019,6 +1192,8 @@ def _restore_ports(d, edition):
             changes["query.port"] = str(port)
     if changes:
         write_properties(d, changes)
+    if edition == "bedrock" and fixed_udp_ports(d):
+        write_log(f"[RESTORE] server-udp-ports wasn't set; gameplay now uses UDP {port}.")
     if edition == "java":
         rcon_port = str(props.get("rcon.port", "")).strip()
         if rcon_port.isdigit() and int(rcon_port) in used | {port}:
@@ -1026,9 +1201,11 @@ def _restore_ports(d, edition):
             write_log(f"[RESTORE] RCON port {rcon_port} is used by another server; moved it.")
     return port, (old if str(port) != old else None)
 
-def restore_server(name):
+def restore_server(name, same_version=False):
     """Brings a removed server back: downloads the server binary only if it's missing, keeps
-    its port unless it's taken, writes a new systemd unit, then enables and starts it."""
+    its port unless it's taken, writes a new systemd unit, then enables and starts it.
+    same_version: a missing Java server.jar is downloaded at the Minecraft version the folder
+    records (a server made from an off-site backup, 1.16.11), not the newest."""
     match = next((s for s in list_removed_servers() if s["name"] == name), None)
     if not match:
         raise ServerError(f"There's no removed server called '{name}'.")
@@ -1045,13 +1222,14 @@ def restore_server(name):
         write_log(f"[RESTORE] Restoring {name} from {d}.")
         if edition != "java":                     # Java itself is checked below, per Minecraft version
             require_bedrock_machine()
-            require_tools("screen", *([] if match["has_binary"] else ["curl", "wget", "jq", "unzip"]))
+            require_tools("screen")
         downloaded = False
         if not match["has_binary"]:
             write_log(f"[RESTORE] {name} has no server binary; downloading the latest {edition.capitalize()} release.")
             if edition == "java":
                 current = javaservers.read_info(d)
-                _install_java(d, current.get("loader") or "vanilla", None, current)
+                _install_java(d, current.get("loader") or "vanilla",
+                              current.get("minecraft") if same_version else None, current)
             else:
                 _fetch_bedrock(d)
             downloaded = True
@@ -1072,7 +1250,7 @@ def restore_server(name):
         info = _read_removed_info(d)
         heap = {k: info[k] for k in ("xms", "xmx") if isinstance(info.get(k), str) and HEAP_RE.match(info[k])}
 
-        open_firewall_rules(firewall_rules(edition, read_properties(d)))
+        open_server_firewall(name, edition, d)
         ensure_minecraft_user(d)
         run_and_log(["chown", "-R", "minecraft:minecraft", d])
         _write_unit(name, d, edition, **heap, **({"java": java} if java else {}))
@@ -1137,7 +1315,6 @@ def _import_unpacked(staging, root):
     if edition == "java" and not os.path.isfile(os.path.join(root, "server.jar")):
         write_log("[WARNING] The backup has no server.jar; use Update on the new server to download one.")
 
-    proto = "tcp" if edition == "java" else "udp"
     svc_name, port = _reserve_name(edition)       # auto-allocated name and port
     try:
         mc_dir = os.path.join(SERVERS_ROOT, svc_name)
@@ -1157,6 +1334,8 @@ def _import_unpacked(staging, root):
             if udp:
                 props["server-udp-ports"] = udp
         write_properties(mc_dir, props)
+        if edition == "bedrock" and fixed_udp_ports(mc_dir):
+            write_log(f"[IMPORT] server-udp-ports wasn't set; gameplay uses UDP {port}.")
 
         java = None
         if edition == "bedrock":
@@ -1169,7 +1348,7 @@ def _import_unpacked(staging, root):
                 write_log(f"[WARNING] {e} The server was imported, but won't start until it is.")
                 java = "/usr/bin/java"
 
-        open_firewall_rules(firewall_rules(edition, read_properties(mc_dir)))
+        open_server_firewall(svc_name, edition, mc_dir)
         ensure_minecraft_user(mc_dir)
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
         _write_unit(svc_name, mc_dir, edition, **({"java": java} if java else {}))
@@ -1217,7 +1396,7 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
                 with open(eula, "w") as f:
                     f.write("eula=true\n")
         heap = {k: v for k, v in (heap or {}).items() if k in ("xms", "xmx") and HEAP_RE.match(str(v))}
-        open_firewall_rules(firewall_rules(edition, read_properties(mc_dir)))
+        open_server_firewall(name, edition, mc_dir)
         ensure_minecraft_user(mc_dir)
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
         _write_unit(name, mc_dir, edition, **heap, **({"java": java} if java else {}))
@@ -1254,7 +1433,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
         get_checked_template(template_id, edition)   # fail before downloading anything
     if edition == "bedrock":
         require_bedrock_machine()
-        require_tools("curl", "wget", "jq", "unzip", "screen")
+        require_tools("screen")
     proto = "tcp" if edition == "java" else "udp"
 
     svc_name, port = _reserve_name(edition)       # auto-allocated name and port
@@ -1278,7 +1457,11 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
             with open(f"{mc_dir}/server.properties", "w") as f:
                 f.write(f"server-port={port}\nquery.port={port}\nmotd=A Managed Java Minecraft Server\n")
         else:
-            _fetch_bedrock(mc_dir)
+            try:
+                _fetch_bedrock(mc_dir)
+            except ServerError:
+                shutil.rmtree(mc_dir, ignore_errors=True)    # nothing useful in it yet
+                raise
             # The zip ships a full server.properties with every setting; BDS never writes missing
             # keys back, so only the ports change and the rest stays as Mojang shipped it. It also
             # ships server-udp-ports=19132: each server gets its own (UDP on the same number as
@@ -1293,7 +1476,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None):
             # After daemon-reload, so systemd already knows the new unit's working directory
             apply_template_to_server(svc_name, template_id, edition=edition)
         # The ports it needs, from what server.properties says now (a template may set the transport)
-        open_firewall_rules(firewall_rules(edition, read_properties(mc_dir)))
+        open_server_firewall(svc_name, edition, mc_dir)
         run_and_log(["systemctl", "enable", f"{svc_name}.service"])
         run_and_log(["systemctl", "start", f"{svc_name}.service"])
         return svc_name

@@ -9,6 +9,86 @@ the dashboard.
 
 ---
 
+## 1.16.14: port forwarding, for players outside your home *(November 2026)*
+
+- **🔀 Port forwarding** lists what to forward on your internet router for every server, and on
+  a cluster for every machine with its LAN address: ports, TCP or UDP, and what each is for.
+- **Step-by-step for pfSense** and other routers, a warning when two servers want the same
+  outside port, and **Check from here**.
+- **The phone menu shows every server**: on short phones it now scrolls as one page, with your
+  account buttons after the last server.
+
+[Release notes](../../release-notes/v1.16.14.md)
+
+## 1.16.13: less downtime for big worlds, and finding panels on the network *(November 2026)*
+
+- **Pre-copy while it runs**, an option in the **Move** window: the world is copied while
+  players stay on, then the server stops only while what changed is sent. The window says how
+  long it was down.
+- **Find panels on your network** under **🛡️ Settings → Cluster → Add a node**, with **Add to
+  cluster** for each one found.
+
+[Release notes](../../release-notes/v1.16.13.md)
+
+## 1.16.12: Bedrock that keeps up, and update alerts *(November 2026)*
+
+- **Update available** on the dashboard, sidebar and a server's Overview when a newer
+  Minecraft release, Paper build, Fabric loader or Bedrock version is out, with an optional
+  webhook message.
+- **Bedrock servers update themselves** if you turn on **Update automatically** under
+  **Maintenance → Update Server**: players are warned, a backup is made, and a failed update
+  is rolled back.
+- **Bedrock saves before every stop**, so the last minutes of play are no longer lost on
+  **Stop** or **Restart**.
+
+[Release notes](../../release-notes/v1.16.12.md)
+
+## 1.16.11: backups off the machine, without a cluster *(November 2026)*
+
+- **Copy backups to an SSH server or S3-compatible storage**, set up under **🛡️ Settings →
+  Backup storage** and chosen per server on its **Backups** tab. Each copy is checked with
+  SHA-256.
+- **Keep backups by age** ("14 days") as well as by count, for local backups and for each
+  storage.
+- **Restore from a copy**, or bring a server back on a new machine with **New Server → From
+  backup storage**.
+- **Bedrock firewall fix:** servers using Bedrock's default NetherNet transport get TCP and
+  UDP 7551 opened, and the panel follows **server.properties** edited by hand.
+
+[Release notes](../../release-notes/v1.16.11.md)
+
+## 1.16.10: a panel that works on a phone *(November 2026)*
+
+- **Every page fits a phone:** a ☰ menu instead of the sidebar, big **Start**, **Restart** and
+  **Stop** buttons, tables as cards and full-screen dialogs.
+- **Install it as an app** from your phone's browser over HTTPS, so it opens like any other
+  app.
+- **📱 Open on your phone** on the desktop shows a QR code of the panel's address.
+
+[Release notes](../../release-notes/v1.16.10.md)
+
+## 1.16.9: newer Ubuntu, Debian, ARM64 and Raspberry Pi *(November 2026)*
+
+- **Ubuntu 26.04 LTS and 26.10, Debian 13**, as well as Ubuntu 24.04, on x86-64 and ARM64.
+- **Raspberry Pi 4 or 5** with the 64-bit Raspberry Pi OS, for Java servers. See
+  [On a Raspberry Pi](Installation.md#on-a-raspberry-pi) for memory, storage and cooling.
+- **Bedrock is x86-64 only**, so it's greyed out on ARM64 machines and nodes; Bedrock players
+  can join a Java server through Geyser.
+- **The Java versions your system packages** (Debian has 21 and 25), with a note when a
+  Minecraft version needs one it doesn't have.
+
+[Release notes](../../release-notes/v1.16.9.md)
+
+## 1.16.8: backups on another cluster node *(November 2026)*
+
+- **Also keep a copy on** another cluster member, from a server's **Backups** tab on the
+  master. Each copy is checked with SHA-256 and kept to the same number as the server's own.
+- **Restore from a copy** even after the original machine is gone: **Use a copy of another
+  server's backup…** on a new server, then **Put back** and **Restore**.
+- A failed copy shows under **Needs attention** and can send a webhook alert.
+
+[Release notes](../../release-notes/v1.16.8.md)
+
 ## 1.16.7: two-factor sign-in *(November 2026)*
 
 - **A code from your phone after your password**, for panel and Linux accounts. Set it up

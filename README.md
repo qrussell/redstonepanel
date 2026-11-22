@@ -39,6 +39,8 @@ ready in about a minute; watch it in **🖥️ Console**.
 
 **4. Join.** In Minecraft, add a server at **&lt;your-server&gt;**. The first Java server
 uses port 25565 and the first Bedrock server 19132; the server's **Overview** shows its port.
+Players outside your home also need port forwards on your internet router: **🔀 Port
+forwarding** lists exactly which, with steps for pfSense and other routers.
 
 That's it. The **setup guide** on the dashboard then walks you through the rest: backup
 schedules, HTTPS and crash alerts in Discord.
@@ -53,9 +55,9 @@ every feature step by step.
 
 | You want… | RedstonePanel gives you… |
 | --- | --- |
-| **Java and Bedrock** | Both, side by side. Java as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft version you pick, each with the Java it needs installed for you. |
+| **Java and Bedrock** | Both, side by side. Java as **Vanilla**, **Paper** (plugins) or **Fabric** (mods), on the Minecraft version you pick, each with the Java it needs installed for you. An **Update available** alert for every server, and Bedrock servers that can update themselves, with a backup first and the old version put back if the new one won't start. |
 | **Mods and plugins without the hassle** | A catalog from **Modrinth** and **Hangar** with one-click bundles (performance, essentials, Geyser for Bedrock players), dependencies installed for you, update checks and one-click undo. Or drop `.jar`, `.mcpack` and `.mcaddon` files on the server. |
-| **Worlds that are safe** | Scheduled and on-demand backups that copy running servers consistently, one-click restore (with an undo), a backup before mod updates, and uninstalled servers you can bring back. |
+| **Worlds that are safe** | Scheduled and on-demand backups that copy running servers consistently, copies off the machine on a NAS or S3 storage, one-click restore (with an undo), a backup before mod updates, and uninstalled servers you can bring back. |
 | **To know what's going on** | A dashboard of the machine and every server, a **Needs attention** list, Discord or webhook alerts for crashes and backups, and a log of who joined and who was turned away. |
 | **Everything from the browser** | Live chat and console, a `server.properties` editor, player roles and whitelists, a file manager with an editor, scheduled restarts that warn players, world downloads. |
 | **More than one machine** | **Clusters**: one master panel manages every node's servers with all their tabs, creates servers on any node, **moves or copies a server to another machine** *(new in 1.16)*, and renews the cluster's certificates for you. |
@@ -101,6 +103,28 @@ see them in the other theme:
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
 ## What's new in 1.16
+
+**Port forwarding** *(1.16.14)*. A new **🔀 Port forwarding** page says exactly what to forward on your internet router for players outside your home: every server's ports and protocols, and on a cluster each machine's LAN address, with step-by-step help for pfSense and other routers. Read the [1.16.14 release notes](release-notes/v1.16.14.md).
+
+**Less downtime for big worlds** *(1.16.13)*. Moving a server between cluster members can now copy the world while it keeps running, then stop it only for the last changes, so it's down for seconds. And the master can find the other RedstonePanels on your network to add as nodes. Read the [1.16.13 release notes](release-notes/v1.16.13.md).
+
+**Bedrock that keeps up** *(1.16.12)*. The panel tells you when a newer Minecraft, Paper, Fabric or Bedrock version is out, and Bedrock servers can update themselves: players are warned, a backup is taken first, and a failed update is rolled back. Bedrock servers also now always save before they stop. Read the [1.16.12 release notes](release-notes/v1.16.12.md).
+
+**Backups off the machine** *(1.16.11)*. Copy each server's backups to an SSH server or S3-compatible storage (Backblaze B2, Wasabi, Cloudflare R2, MinIO, AWS S3), checked as they're copied, keep them by age as well as by count, and bring a server back on a new machine straight from that storage. Bedrock servers also get the firewall rules they actually listen on. Read the [1.16.11 release notes](release-notes/v1.16.11.md).
+
+**A panel that works on a phone** *(1.16.10)*. Every page fits a phone: the sidebar becomes a
+☰ menu, Start, Restart and Stop are big buttons and tables turn into cards. Over HTTPS the panel
+installs as an app, and **📱 Open on your phone** shows a QR code to open it on your phone.
+Read the [1.16.10 release notes](release-notes/v1.16.10.md).
+
+**Debian, newer Ubuntu and the Raspberry Pi** *(1.16.9)*. The panel now installs on Ubuntu
+26.04 LTS and 26.10, Debian 13 and 64-bit Raspberry Pi OS on a Pi 4 or 5, as well as Ubuntu
+24.04, on x86-64 and ARM64 machines (Java servers only on ARM64, since Bedrock is made for
+x86-64 only). Read the [1.16.9 release notes](release-notes/v1.16.9.md).
+
+**Backups on another cluster member** *(1.16.8)*. In a cluster, a server's backups can also be
+kept on another member, checked as they're copied, so a world survives losing the machine it
+ran on. Read the [1.16.8 release notes](release-notes/v1.16.8.md).
 
 **Two-factor sign-in** *(1.16.7)*. Any account can ask for a code from an authenticator app
 after its password, with ten recovery codes for a lost phone, and admins can require it for
@@ -172,11 +196,17 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
 - restore servers you uninstalled with **Keep World** (➕ New Server → Removed servers, or
   `sudo redstonepanel restore NAME`): their files stay in `/opt`, and restoring gives them a
   new systemd service under the same name, on their old port if it's still free
-- scheduled and on-demand backups with retention, and restoring a world from a backup
-  (**Backups** tab, or `sudo redstonepanel backup NAME`)
+- scheduled and on-demand backups with retention by count and age, and restoring a world from
+  a backup (**Backups** tab, or `sudo redstonepanel backup NAME`)
+- off-site copies of backups on an SSH server (rsync) or S3-compatible storage (Backblaze B2,
+  Wasabi, Cloudflare R2, MinIO, AWS S3), checked with SHA-256, with their own retention, restore
+  from a copy, and bringing a server back on a new machine (**Panel Settings → Backup storage**)
 - notifications to Discord or any webhook when a server crashes, starts or stops, and when a
   backup finishes or fails
 - scheduled restarts that warn players in game first
+- update alerts for every server (Bedrock, Minecraft releases, Paper builds, Fabric loader),
+  checked every 6 hours, and **Update automatically** for Bedrock servers (**Maintenance**, or
+  `sudo redstonepanel check-updates`)
 - Phantom LAN proxies for Bedrock servers (**Add-ons → Server tools**): install, start, stop
   and remove one per server, so a server on another port shows up under LAN Games
 - a panel activity log, and a player access log per server: who joined, left or was turned away
@@ -188,6 +218,9 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   players and disk use, supporting services (Java, firewall, timers, certificates,
   Phantom proxies), a list of what needs attention, and on a cluster master each node's
   resources
+- a port forwarding guide for your internet router: which ports, TCP or UDP, to which
+  machine's LAN address, for every server and cluster member, with pfSense steps, a check
+  through your internet address, and warnings for shared ports and carrier-grade NAT
 - performance for each server (1.17): tick health (TPS) over RCON, memory against its limits,
   24-hour and 7-day history charts for every server and the machine, and suggestions based on
   what was measured (never applied for you); a **Memory** setting and optional hard memory and
@@ -356,8 +389,10 @@ Several Java versions can be installed side by side; each server's systemd unit 
 it runs (`/usr/lib/jvm/java-21-openjdk-amd64/bin/java`, or `…-arm64` on ARM64).
 
 `ufw` is also recommended. When it is installed, the panel opens each game server's ports
-in it (for NetherNet Bedrock servers: TCP server-port, UDP server-udp-ports and UDP 7551) and
-keeps them in step with the server's settings.
+in it (for Bedrock servers, which use NetherNet unless `transport=raknet` is set: TCP
+server-port, UDP server-udp-ports and UDP 7551) and keeps them in step with the server's
+settings, also when server.properties is edited by hand. The dashboard points out game-port
+rules that no server uses any more.
 
 | What | Where |
 | --- | --- |
@@ -387,15 +422,25 @@ root.
   the same with `save hold` / `save query` / `save resume`. A Java server without RCON is
   copied while it runs, and the panel warns you: open its **Live Chat** tab once to set RCON
   up.
-- **Retention.** Only scheduled backups are pruned to the number you keep. Manual backups and
-  the ones taken before a restore stay until you delete them.
+- **Retention.** Only scheduled backups are pruned to the number you keep and, if you set it,
+  to an age in days (the newest always stays). Manual backups and the ones taken before a
+  restore stay until you delete them.
+- **Off-site copies.** Under **Panel Settings → Backup storage** an admin adds an SSH server
+  (the panel's own SSH key, `rsync`, host key checked on first use) or S3-compatible storage
+  (AWS Signature Version 4, multipart uploads over 100 MB, nothing extra installed). Each
+  backup is copied there straight after it's taken, in its own transient systemd unit, and
+  checked with SHA-256; the storage keeps its own number and age of scheduled copies. A server's
+  **Backups** tab restores from a copy, and **➕ New Server → From backup storage** brings a
+  server back on a new machine. A failed copy shows under **Needs attention** and can send a
+  webhook. `rsync` and `openssh-client` are recommended packages.
 - **Restore** (admins) replaces the server's world with the one in a backup. The server is
   stopped while that happens, and the world it replaces is saved first as a "Before restore"
   backup, so a restore can be undone.
 - Uninstalling a server removes its timer and keeps its backups; restoring the server brings
   its schedule back.
 
-`sudo redstonepanel backup NAME` takes a manual backup from the command line.
+`sudo redstonepanel backup NAME` takes a manual backup from the command line;
+`sudo redstonepanel offsite-copy NAME` copies a server's backups to its backup storage now.
 
 ## Notifications
 
@@ -643,6 +688,7 @@ bash packaging/test/test-cluster.sh          # create, join, node allowlist, ren
 bash packaging/test/test-cluster-phase2.sh   # a master running game servers on its nodes
 bash packaging/test/test-move.sh             # move and copy servers between panels
 bash packaging/test/test-backup-copies.sh    # backup copies kept on another member (1.16.8)
+bash packaging/test/test-offsite.sh          # backup copies on SSH and S3 (SeaweedFS) storage (1.16.11)
 ```
 
 ### The stylesheet
@@ -673,7 +719,7 @@ Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which
 `.github/workflows/release.yml` runs on every push to `main` (each merge, once GitLab
 mirrors it) and on tags. It builds the .deb, runs
 the install tests on Ubuntu 24.04, 26.04 and 26.10 and Debian 13 (with and without
-recommends), and on Ubuntu 26.04 and Debian 13 on GitHub's ARM64 runners, runs the four
+recommends), and on Ubuntu 26.04 and Debian 13 on GitHub's ARM64 runners, runs the five
 cluster tests above, and for a tag publishes
 a GitHub Release with the .deb, using `release-notes/<tag>.md` as its description (or
 GitHub's generated notes if the file is missing). The tag must match the version in

@@ -14,8 +14,13 @@
     redstonepanel removed             list game servers uninstalled with "Keep World"
     redstonepanel restore NAME        give a removed server a systemd service again and start it
     redstonepanel backup NAME         back up a game server now (its backup timer runs this too)
+    redstonepanel offsite-copy NAME   copy a game server's backups to its backup storage now
+                                      (SSH or S3, Panel Settings > Backup storage)
+    redstonepanel offsite-key         show this panel's SSH public key for backup storage
     redstonepanel restart-server NAME warn players, then restart a game server (its restart timer
                                       runs this)
+    redstonepanel check-updates       look for newer server versions and update the Bedrock servers
+                                      set to update automatically (its timer runs this every 6 hours)
     redstonepanel notify-test         send a test message to the notification webhook
     redstonepanel upgrade             update the redstonepanel package (apt), as the panel's Update button does
 
@@ -131,6 +136,20 @@ def main():
     # Cluster masters: copy backups to the member chosen on each server's Backups tab (1.16.8)
     from core import backup_copies
     backup_copies.sweeper()
+    # Any panel: copy backups to SSH or S3 storage (1.16.11), retrying what's missing or failed
+    from core import backup_targets
+    backup_targets.sweeper()
+    # Once after upgrading to 1.16.11: open TCP server-port and UDP 7551 for Bedrock servers
+    # without a transport line (NetherNet by default), which only had UDP server-port
+    try:
+        manager.upgrade_bedrock_firewall()
+    except Exception as e:
+        manager.write_log(f"[FIREWALL] Bedrock firewall check failed: {e}")
+    # Follow server.properties edited outside the panel, and servers removed by hand (1.16.11)
+    manager.firewall_watcher()
+    # The update check timer (1.16.12): written here so upgrading the package sets it up
+    from core import updates
+    updates.ensure_timer()
     # Performance history: every server and the host, once a minute (1.17)
     from core import perf
     perf.sampler()
@@ -372,6 +391,38 @@ def backup_cmd(name):
         sys.exit(str(e))
     print(f"Saved {backups.server_backup_dir(name)}/{b['file']} ({b['size'] / 1048576:.1f} MB)"
           + ("" if b["consistent"] else "; copied while the server was writing (see the panel log)") + ".")
+    # 1.16.11: copies to backup storage run in their own unit, after this one has finished
+    from core import backup_targets
+    try:
+        if backup_targets.start_after_backup(name):
+            print("Copying it to backup storage (see the panel log).")
+    except Exception as e:
+        print(f"Couldn't start copying to backup storage: {e}", file=sys.stderr)
+
+
+def offsite_copy_cmd(name):
+    from core import backup_targets, backups
+    if not backups.NAME_RE.fullmatch(name):
+        sys.exit(f"'{name}' isn't a server name.")
+    if not backup_targets.targets_for(name):
+        sys.exit(f"No backup storage keeps copies of {name}. Add one in Panel Settings > Backup storage.")
+    failed = False
+    for tid, r in backup_targets.sync(name, force=True).items():
+        label = backup_targets.load()["targets"].get(tid, {}).get("name", tid)
+        if r.get("error"):
+            failed = True
+            print(f"{label}: {r['error']}")
+        else:
+            print(f"{label}: copied {len(r['copied'])}, deleted {len(r['deleted'])} old.")
+    sys.exit(1 if failed else 0)
+
+
+def offsite_key_cmd():
+    from core import backup_targets
+    try:
+        print(backup_targets.public_key())
+    except backup_targets.TargetError as e:
+        sys.exit(str(e))
 
 
 def restart_server_cmd(name):
@@ -381,6 +432,26 @@ def restart_server_cmd(name):
     except restarts.RestartError as e:
         sys.exit(str(e))
     print(f"{name}: {result}.")
+
+
+def check_updates_cmd():
+    from core import updates
+    try:
+        done = updates.run_timer()
+    except updates.UpdateError as e:
+        sys.exit(str(e))
+    state = updates.load_state()
+    for name, entry in sorted(state["servers"].items()):
+        print(f"{name}: {entry['label']} is available (runs {entry.get('current') or '?'}).")
+    for name, err in sorted(state["errors"].items()):
+        print(f"{name}: couldn't check ({err['error']}).")
+    for name, r in sorted(done.items()):
+        print(f"{name}: " + (f"updated to Bedrock {r.get('to')}." if r.get("ok") and not r.get("skipped")
+                             else "already up to date." if r.get("ok") else f"update failed: {r.get('error')}"))
+    if not state["servers"] and not state["errors"]:
+        print("Every server runs the newest version.")
+    if any(not r.get("ok") for r in done.values()):
+        sys.exit(1)
 
 
 def notify_test_cmd():
@@ -398,6 +469,15 @@ def notify_unit_cmd(phase, name):
         notify.unit_event(phase, name)
     except Exception as e:
         print(f"redstonepanel notify-unit: {e}", file=sys.stderr)
+
+
+def stop_unit_cmd(name, mainpid=""):
+    # Run by the minecraft-*.service drop-in's ExecStop; must never fail the unit's stop
+    try:
+        from core import notify
+        notify.stop_bedrock(name, int(mainpid) if mainpid.isdigit() else None)
+    except Exception as e:
+        print(f"redstonepanel stop-unit: {e}", file=sys.stderr)
 
 
 def restore_cmd(name):
@@ -432,12 +512,20 @@ if __name__ == "__main__":
         removed_cmd()
     elif cmd == "backup" and len(rest) == 1:
         backup_cmd(rest[0])
+    elif cmd == "offsite-copy" and len(rest) == 1:
+        offsite_copy_cmd(rest[0])
+    elif cmd == "offsite-key" and not rest:
+        offsite_key_cmd()
     elif cmd == "restart-server" and len(rest) == 1:
         restart_server_cmd(rest[0])
+    elif cmd == "check-updates" and not rest:
+        check_updates_cmd()
     elif cmd == "notify-test" and not rest:
         notify_test_cmd()
     elif cmd == "notify-unit" and len(rest) == 2 and rest[0] in ("start", "stop"):
         notify_unit_cmd(*rest)
+    elif cmd == "stop-unit" and len(rest) in (1, 2):
+        stop_unit_cmd(*rest)
     elif cmd == "restore" and len(rest) == 1:
         restore_cmd(rest[0])
     elif cmd == "set-name" and len(rest) == 1:

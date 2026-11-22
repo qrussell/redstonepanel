@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.16.7**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.16.14**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,52 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.16.8: backups on another cluster node
-
-- **Keep a copy of each backup on another cluster member**, checked as it's copied, with the
-  same retention.
-- Restore from the copy even if the original machine is gone.
-- A failed copy shows under **Needs attention** and can send an alert.
-
-### 1.16.9: newer Ubuntu, Debian and ARM64
-
-- **Ubuntu 26.04 LTS and 26.10**, as well as 24.04 (25.04 and 25.10 still install, but Ubuntu
-  no longer updates them).
-- **Debian 13**. Debian 12 comes later: its Python is older than the panel needs.
-- **ARM64** machines such as a **Raspberry Pi 4 or 5** with the 64-bit Raspberry Pi OS, for
-  Java servers. Bedrock is only made for x86-64, so it's hidden there; Bedrock players can join
-  through Geyser. A guide to memory, storage and cooling on a Pi.
-- The Java versions each system packages (Debian has only 21 and 25), and a clear message when a
-  Minecraft version needs one it doesn't have.
-
-### 1.16.10: a panel that works on a phone
-
-- **Every page fits a phone:** the sidebar becomes a ☰ menu, tables become cards, and Start,
-  Restart and Stop are big buttons at the top.
-- **Live Chat and the console** work with the on-screen keyboard.
-- **Install it as an app** from your phone's browser (over HTTPS), so it opens like any other
-  app.
-
-### 1.16.11: backups off the machine, without a cluster
-
-- **Copy each backup to an SSH server or S3-compatible storage** (Backblaze B2, Wasabi,
-  Cloudflare R2, MinIO, AWS S3), checked as it's copied.
-- **Keep backups by age** ("14 days") as well as by count, with separate settings for copies.
-- **Restore from a copy**, or bring a server back on a new machine straight from backup storage.
-
-### 1.16.12: Bedrock that keeps up, and update alerts
-
-- **Bedrock servers update themselves** if you turn it on: players are warned, a backup is
-  made, and a failed update is rolled back.
-- **Update available** on the dashboard when a new Minecraft release, Paper build, Fabric
-  loader or Bedrock version is out, with an optional webhook message.
-
-### 1.16.x: less downtime for big worlds
-
-- An optional **pre-copy** for moves: copy the world while the server keeps running, then only
-  what changed after it stops.
-- **Find panels on your network** and offer to add them to the cluster.
 
 ### 1.17: server performance and tuning
 
@@ -144,5 +98,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.16.7** adds two-factor sign-in; **1.16.6** stops the console
-covering the page, and **1.16.5** gives each Bedrock server its own gameplay port.
+See [What's New](Whats-New.md). The latest: **1.16.14** adds the Port forwarding page; **1.16.13** moves big worlds with seconds of downtime and finds panels on your network, and **1.16.12** adds update alerts and Bedrock servers that update themselves.

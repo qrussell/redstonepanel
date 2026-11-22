@@ -75,8 +75,8 @@ login ujar alex "$PASS_USER"
 OV=$(api jar GET /api/cluster/overview)
 N1=$(echo "$OV" | json "[n['id'] for n in d['nodes'] if n['name']=='Basement'][0]")
 N2=$(echo "$OV" | json "[n['id'] for n in d['nodes'] if n['name']=='Attic'][0]")
-echo "$OV" | json "sorted(n.get('cluster_api') for n in d['nodes'] if not n.get('local'))" | grep -qx "\[4, 4\]" \
-    && ok "the nodes speak cluster contract 4" || { bad "cluster contract 4"; echo "$OV"; }
+echo "$OV" | json "all((n.get('cluster_api') or 0) >= 4 for n in d['nodes'] if not n.get('local'))" | grep -qx True \
+    && ok "the nodes speak cluster contract 4 or later" || { bad "cluster contract 4"; echo "$OV"; }
 
 # --- stand-in Bedrock servers: one on the master, one on Basement (imported through the master)
 mkzip() {   # CONTAINER SEED-BYTES

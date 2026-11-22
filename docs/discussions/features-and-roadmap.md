@@ -133,7 +133,7 @@ people's worlds first**, and use systemd rather than reinventing it.
 - **Bedrock servers that update themselves** (opt-in), with a backup first.
 - **Update available** on the dashboard for new Minecraft, Paper, Fabric and Bedrock versions.
 
-### 1.16.x: less downtime for big worlds
+### 1.16.13: less downtime for big worlds
 - An optional **pre-copy** while the server keeps running.
 - **Find panels on your network** and add them to the cluster.
 

@@ -2,7 +2,9 @@
 # End-to-end test of moving and copying servers between cluster members (1.16): a master (mvm)
 # and a node (mvn), two throwaway systemd containers on one Docker network, both installing the
 # .deb from dist/. The game server is a stand-in Bedrock server (a bedrock_server script that
-# sleeps, run under screen like the real one), so nothing is downloaded.
+# keeps writing to its world, run under screen like the real one), so nothing is downloaded.
+# 1.16.13: a move with a pre-copy while it writes, and Find panels (a third, standalone panel
+# mvs is on the same network).
 # Run from the repository root on a machine with Docker, after building the .deb:
 #   docker run --rm -v "$PWD:/src:ro" -v "$PWD/dist:/out" ubuntu:24.04 bash /src/packaging/build-deb.sh
 #   bash packaging/test/test-move.sh          (KEEP=1 leaves the containers running)
@@ -25,10 +27,10 @@ login(){ dx mvm "curl -sk -c /tmp/$1 -H 'Content-Type: application/json' -d '{\"
 PY=python3; $PY -c 'import json' 2>/dev/null || PY=python
 json() { $PY -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 
-# move KIND SERVER FROM TO [START]: starts a move or copy and waits for it; prints the finished job
+# move KIND SERVER FROM TO [START] [PRECOPY]: starts a move or copy and waits for it; prints the finished job
 move() {
     local job id state
-    job=$(api jar POST /api/cluster/moves "{\"kind\":\"$1\",\"server\":\"$2\",\"from_node\":\"$3\",\"to_node\":\"$4\",\"start\":${5:-false}}")
+    job=$(api jar POST /api/cluster/moves "{\"kind\":\"$1\",\"server\":\"$2\",\"from_node\":\"$3\",\"to_node\":\"$4\",\"start\":${5:-false},\"precopy\":${6:-false}}")
     id=$(echo "$job" | json "d['id']" 2>/dev/null) || { echo "$job"; return 1; }
     for _ in $(seq 1 120); do
         job=$(api jar GET "/api/cluster/moves/$id")
@@ -40,8 +42,8 @@ move() {
 }
 
 cleanup() {
-    [ "${KEEP:-}" = 1 ] && { echo "Containers kept: mvm mvn (docker rm -f mvm mvn; docker network rm $NET)"; return; }
-    docker rm -f mvm mvn >/dev/null 2>&1
+    [ "${KEEP:-}" = 1 ] && { echo "Containers kept: mvm mvn mvs (docker rm -f mvm mvn mvs; docker network rm $NET)"; return; }
+    docker rm -f mvm mvn mvs >/dev/null 2>&1
     docker network rm "$NET" >/dev/null 2>&1
 }
 trap cleanup EXIT
@@ -50,20 +52,20 @@ DEB=${DEB:-$(ls dist/redstonepanel_*_all.deb 2>/dev/null | sort -V | tail -1)}
 [ -n "$DEB" ] || { echo "No dist/redstonepanel_*_all.deb: build it first (see the top of this file)."; exit 1; }
 echo "=== move test with $(basename "$DEB")"
 docker build -q -t "$IMG" packaging/test >/dev/null
-docker rm -f mvm mvn >/dev/null 2>&1
+docker rm -f mvm mvn mvs >/dev/null 2>&1
 docker network rm "$NET" >/dev/null 2>&1
 docker network create --subnet 172.30.80.0/24 "$NET" >/dev/null
-for c in mvm mvn; do
+for c in mvm mvn mvs; do
     docker run -d --privileged --cgroupns=private --name "$c" --hostname "$c" --network "$NET" \
         -v "$HOST_PWD/dist:/dist:ro" "$IMG" >/dev/null
 done
 sleep 3
-for c in mvm mvn; do
+for c in mvm mvn mvs; do
     ( dx "$c" "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends /dist/$(basename "$DEB") zip >/tmp/install.log 2>&1" \
         || { echo "install failed on $c"; dx "$c" "tail -20 /tmp/install.log"; } ) &
 done
 wait
-for c in mvm mvn; do check "$c: panel installed and running" dx "$c" "systemctl is-active --quiet redstonepanel"; done
+for c in mvm mvn mvs; do check "$c: panel installed and running" dx "$c" "systemctl is-active --quiet redstonepanel"; done
 
 # --- the cluster: mvm is the master, mvn joins
 dx mvm "echo '$PASS_ADMIN' | redstonepanel add-user admin --role admin && echo '$PASS_USER' | redstonepanel add-user alex --role user" >/dev/null
@@ -80,7 +82,25 @@ api jar GET /api/cluster/overview | json "[n.get('cluster_api') for n in d['node
     && ok "the node speaks cluster contract 3 or later" || bad "the node speaks cluster contract 3 or later"
 
 # --- a stand-in Bedrock server on the master, imported through the panel so it makes the unit
-dx mvm "mkdir -p /tmp/srv/worlds/Home/db && cd /tmp/srv && printf '#!/bin/sh\n[ -f /tmp/fail-here ] && exit 1\nexec sleep infinity\n' > bedrock_server && chmod +x bedrock_server \
+# It quits on Bedrock's own `stop` (sent by the panel before systemd stops it, since 1.16.12),
+# so a stop takes moments rather than the 75 s the panel waits for a server that ignores it.
+dx mvm "mkdir -p /tmp/srv/worlds/Home/db"
+docker exec -i mvm bash -c 'cat > /tmp/srv/bedrock_server' <<'EOF2'
+#!/bin/sh
+[ -f /tmp/fail-here ] && exit 1
+cd "$(dirname "$0")"
+( while :; do date +%s%N >> worlds/Home/db/000009.log; sleep 0.1; done ) &
+W=$!
+trap 'kill $W; exit 0' TERM HUP
+while :; do
+    if read -r line; then
+        [ "$line" = stop ] && { kill $W; echo "Quit correctly"; exit 0; }
+    else
+        sleep 1
+    fi
+done
+EOF2
+dx mvm "cd /tmp/srv && chmod +x bedrock_server \
     && printf 'server-port=19140\nserver-portv6=19141\nlevel-name=Home\nserver-name=Island\n' > server.properties \
     && printf '[]' > permissions.json && head -c 3000000 /dev/urandom > worlds/Home/db/000005.ldb && zip -qr /tmp/srv.zip ."
 r=$(dx mvm "curl -sk -b /tmp/jar -F file=@/tmp/srv.zip https://127.0.0.1:8443/api/servers/import")
@@ -147,6 +167,40 @@ check "its folder is gone" bash -c "! docker exec mvm test -e /opt/$SRV"
 [ "$(code jar DELETE "/api/cluster/moved/$NID/$SRV")" = 200 ] && ok "deleted the old copy on the node" || bad "delete the old copy on the node"
 check "its folder is gone there too" bash -c "! docker exec mvn test -e /opt/$SRV"
 check "logs name the move" dx mvm "grep -q '\[MOVE\] Moved minecraft-bedrock from Main to Basement' /var/log/redstonepanel/panel.log"
+
+# --- 1.16.13: a move with a pre-copy, while the server keeps writing to its world
+SRV2=minecraft-bedrock-2
+check "$SRV2 runs on the master" dx mvm "systemctl is-active --quiet $SRV2"
+dx mvm "head -c 20000000 /dev/urandom > /opt/$SRV2/worlds/Home/db/000010.ldb && chown minecraft: /opt/$SRV2/worlds/Home/db/000010.ldb"
+job=$(move move "$SRV2" local "$NID" false true)
+echo "$job" | json "(d['state'], d['precopy'])" | grep -qx "('done', True)" \
+    && ok "moved $SRV2 with a pre-copy" || { bad "move with a pre-copy"; echo "$job"; }
+NEW=$(echo "$job" | json "d['result']['name']")       # $SRV2 is taken on the node by the earlier copy
+down=$(echo "$job" | json "d['downtime']")
+[ -n "$down" ] && [ "$down" -le 10 ] && ok "it was down for ${down} s" || bad "downtime reported and short ($down)"
+check "it runs on the node as $NEW" dx mvn "systemctl is-active --quiet $NEW"
+sum() { dx "$1" "cd /opt/$2 && find worlds bedrock_server permissions.json -type f ! -name 000009.log | sort | xargs sha256sum"; }   # ports and paths change with the name
+[ "$(sum mvm $SRV2)" = "$(sum mvn $NEW)" ] && ok "every file arrived as it was when it stopped" \
+    || { bad "files match after the pre-copy"; diff <(sum mvm $SRV2) <(sum mvn $NEW) | head; }
+# The file it kept writing through the pre-copy: everything up to the stop arrived (the node's
+# copy has grown since, as the server runs there now)
+n=$(dx mvm "stat -c %s /opt/$SRV2/worlds/Home/db/000009.log")
+[ "$(dx mvm "md5sum < /opt/$SRV2/worlds/Home/db/000009.log")" = "$(dx mvn "head -c $n /opt/$NEW/worlds/Home/db/000009.log | md5sum")" ] \
+    && ok "the file it kept writing arrived complete up to the stop ($n bytes)" || bad "the file it kept writing arrived complete"
+check "the node applied only the changes" dx mvn "grep -q 'Applied the changes since the pre-copy' /var/log/redstonepanel/panel.log"
+check "the master packed a pre-copy, then what changed" dx mvm "grep -q 'for a pre-copy while it runs' /var/log/redstonepanel/panel.log && grep -q 'for the end of a move' /var/log/redstonepanel/panel.log"
+check "no staged folder or archives are left" bash -c "[ -z \"\$(docker exec mvn sh -c 'ls -A /opt | grep redstonepanel-import; ls /var/lib/redstonepanel/transfers')\" ] && [ -z \"\$(docker exec mvm ls /var/lib/redstonepanel/transfers)\" ]"
+
+# --- 1.16.13: Find panels on your network
+dx mvs "redstonepanel set-name Shed" >/dev/null
+[ "$(dx mvs "curl -sk https://127.0.0.1:8443/api/panel-info || curl -s http://127.0.0.1:8080/api/panel-info")" ] && ok "mvs answers panel-info" || bad "mvs answers panel-info"
+[ "$(code ujar POST /api/settings/cluster/discover)" = 403 ] && ok "a master user can't search" || bad "a master user can't search"
+found=$(api jar POST /api/settings/cluster/discover)
+echo "$found" | json "sorted((p['name'], p['cluster'], p['node']) for p in d['panels'])" \
+    | grep -qx "\[('Basement', 'node', 'Basement'), ('Shed', 'standalone', None)\]" \
+    && ok "found the node (as a node here) and the standalone panel" || { bad "find panels"; echo "$found"; }
+echo "$found" | json "d['networks']" | grep -q "172.30.80.0/24" && ok "searched the cluster's network" || bad "searched 172.30.80.0/24"
+echo "$found" | json "d['seconds']" | $PY -c "import sys; sys.exit(float(sys.stdin.read()) > 30)" && ok "the search took under 30 s" || bad "search time"
 
 echo
 [ "$FAILS" = 0 ] && echo "=== all passed" || echo "=== $FAILS failed"

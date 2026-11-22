@@ -60,6 +60,8 @@
             <button id="btn-dashboard" onclick="ServerApp.showDashboard()" class="w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">📊 Dashboard</button>
             <!-- On a cluster master: every node's servers on one page -->
             <button id="btn-cluster" onclick="ServerApp.openCluster()" class="hidden w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">🌐 Cluster</button>
+            <!-- Admins: what to forward on the internet router so players outside can join (1.16.14) -->
+            <button id="btn-ports" onclick="ServerApp.openPorts()" class="admin-only hidden w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">🔀 Port forwarding</button>
             <!-- Desktop only: a QR code that opens this panel on a phone -->
             <button id="btn-phone" onclick="ServerApp.openPhoneQr()" class="max-md:hidden w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">📱 Open on your phone</button>
             <div class="flex gap-2 mb-4">
@@ -81,8 +83,8 @@
         <div class="flex-1 overflow-y-auto p-3 space-y-1" id="server-list"></div>
         <!-- Servers uninstalled with "Keep World": their files are still in /opt -->
         <div id="removed-hint" class="hidden px-3 pb-3"></div>
-        <!-- Signed-in user -->
-        <div class="p-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+        <!-- Signed-in user (on phones it follows the server list instead of covering it) -->
+        <div class="rp-sidebar-footer p-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
             <div class="flex items-center justify-between gap-2">
                 <div class="min-w-0">
                     <p id="current-user-name" class="text-sm font-bold text-gray-900 dark:text-white truncate">...</p>
@@ -306,6 +308,8 @@
                         </div>
                         <button onclick="ServerApp.updateServer()" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold shrink-0">Check & Update</button>
                     </div>
+                    <!-- Update alerts and Bedrock's Update automatically (filled by ServerApp.loadAutoUpdate) -->
+                    <div id="autoupdate-content" class="mt-3"></div>
                 </div>
                 <div id="java-card" class="hidden">
                     <h3 class="text-lg font-bold mb-2 text-gray-900 dark:text-white">Java</h3>
@@ -394,6 +398,18 @@
             <button onclick="ServerApp.loadCluster()" aria-label="Refresh" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white px-4 py-2 rounded font-bold transition whitespace-nowrap shrink-0">↻<span class="max-sm:hidden"> Refresh</span></button>
         </header>
         <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-4" id="cluster-nodes"></div>
+    </main>
+
+    <!-- Port forwarding (admins): what to set up on the internet router, per server and cluster member -->
+    <main class="flex-1 flex flex-col min-h-0 min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="ports-view">
+        <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+            <div class="min-w-0">
+                <h2 class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Port forwarding</h2>
+                <p id="ports-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mt-1">What to set up on your internet router so players outside your home can join.</p>
+            </div>
+            <button onclick="ServerApp.loadPorts()" aria-label="Refresh" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white px-4 py-2 rounded font-bold transition whitespace-nowrap shrink-0">↻<span class="max-sm:hidden"> Refresh</span></button>
+        </header>
+        <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-4" id="ports-body"></div>
     </main>
 
     <!-- Panel Settings (admins): wider than the normal modal -->
