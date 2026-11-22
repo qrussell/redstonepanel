@@ -53,6 +53,21 @@ class Shooter:
             self.page.screenshot(path=path, full_page=full)
         taken.append(f"{self.theme}/{name}")
 
+    def tall_shot(self, name, element):
+        """An element taller than the screen, in a scrolling pane: makes the screen tall enough to
+        show all of it and hides the console dock waiting below the screen, then puts both back."""
+        page = self.page
+        size = page.viewport_size
+        extra = page.evaluate("""() => [...document.querySelectorAll('body *')]
+            .reduce((n, el) => Math.max(n, el.scrollHeight - el.clientHeight), 0)""")
+        page.evaluate("document.getElementById('console-dock').style.visibility = 'hidden'")
+        page.set_viewport_size({"width": size["width"], "height": size["height"] + extra})
+        try:
+            self.shot(name, element=element)
+        finally:
+            page.set_viewport_size(size)
+            page.evaluate("document.getElementById('console-dock').style.visibility = ''")
+
     def step(self, name, fn):
         try:
             fn()
@@ -169,6 +184,12 @@ class Shooter:
             self.ctx.request.put(BASE + "/api/servers/minecraft-java/resources", data={"memory": "auto", "cpu": 2})
             self.open_server("minecraft-java")
             page.wait_for_selector("#overview-perf h3", timeout=15000)
+            for _ in range(12):                          # the first history point comes a minute after start
+                if not page.locator("#overview-perf :text('Nothing measured yet')").count():
+                    break
+                page.wait_for_timeout(15000)
+                self.open_server("minecraft-java")
+                page.wait_for_selector("#overview-perf h3", timeout=15000)
             page.evaluate("document.getElementById('overview-perf').scrollIntoView({block: 'start'})")
             shot("performance")
             shot("performance-card", element="#overview-perf")
@@ -343,8 +364,7 @@ class Shooter:
         def server():
             self.open_server("minecraft-java")
             shot("phone-server")
-            page.evaluate("document.getElementById('overview-perf').scrollIntoView({block: 'start'})")
-            shot("phone-performance")
+            self.tall_shot("phone-performance", "#overview-perf")
             for tab in ("backups", "chat"):
                 page.evaluate(f"ServerApp.switchTab('{tab}')")
                 page.wait_for_timeout(2500)
@@ -355,18 +375,7 @@ class Shooter:
             page.evaluate("ServerApp.openPorts()")
             page.wait_for_selector("text=Forward these", timeout=30000)
             page.wait_for_timeout(1500)                  # the forwards for the master and the node
-            # the card is taller than the phone and sits in a scrolling pane: make the screen tall
-            # enough to show all of it, and hide the console dock waiting below the screen
-            size = page.viewport_size
-            extra = page.evaluate("""() => [...document.querySelectorAll('body *')]
-                .reduce((n, el) => Math.max(n, el.scrollHeight - el.clientHeight), 0)""")
-            page.evaluate("document.getElementById('console-dock').style.visibility = 'hidden'")
-            page.set_viewport_size({"width": size["width"], "height": size["height"] + extra})
-            try:
-                shot("phone-port-forwarding", element="div:has(> div > h3:text-is('Forward these'))")
-            finally:
-                page.set_viewport_size(size)
-                page.evaluate("document.getElementById('console-dock').style.visibility = ''")
+            self.tall_shot("phone-port-forwarding", "div:has(> div > h3:text-is('Forward these'))")
         step("phone port forwarding", ports)
 
     def move(self, server):
