@@ -280,6 +280,43 @@ class Shooter:
             self.close_modals()
         step("new server", new_server)
 
+        # 1.17.2: New server's Advanced options, opened and filled in for a Paper server on the
+        # master (builds and Javas are the real lists), and Maintenance -> Java -> Startup flags.
+        def new_server_advanced():
+            page.evaluate("ServerApp.openDeployModal()")
+            page.wait_for_timeout(2500)
+            page.select_option("#deploy-where", index=0)
+            page.select_option("#deploy-loader", "paper")
+            page.evaluate("ServerApp.loadDeployVersions(); ServerApp.refreshAdvanced()")
+            page.wait_for_timeout(3000)
+            page.evaluate("document.getElementById('deploy-advanced').open = true")
+            page.wait_for_timeout(2500)
+            page.fill("#adv-name", "survival")
+            page.fill("#adv-port", "25600")
+            page.select_option("#adv-build", index=2)
+            page.select_option("#adv-heap", "4G")
+            page.select_option("#adv-flags", "aikar")
+            page.select_option("#adv-memory-limit", "auto")
+            page.fill("#adv-cpu", "2")
+            page.fill("#adv-seed", "8675309")
+            page.select_option("#adv-level-type", index=3)
+            page.fill("#adv-motd", "Welcome to the SMP")
+            page.select_option("#adv-difficulty", "hard")
+            page.fill("#adv-max-players", "12")
+            page.fill("#adv-whitelist", "Alex Sam")
+            page.fill("#adv-ops", "Alex")
+            self.tall_shot("new-server-advanced", "#modal-content")
+            self.close_modals()
+        step("new server advanced", new_server_advanced)
+
+        def startup_flags():
+            self.open_server("minecraft-java", tab="maintenance")   # chosen, not saved: no restart
+            page.wait_for_selector("#flags-preset", timeout=15000)
+            page.select_option("#flags-preset", "aikar")
+            page.evaluate("document.getElementById('java-card').scrollIntoView({block: 'center'})")
+            shot("startup-flags", element="#java-card")
+        step("startup flags", startup_flags)
+
         def console():
             page.evaluate("ServerApp.toggleConsole(true)")
             page.wait_for_timeout(2500)
