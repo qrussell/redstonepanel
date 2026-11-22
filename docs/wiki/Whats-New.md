@@ -9,6 +9,17 @@ the dashboard.
 
 ---
 
+## 1.16.14: port forwarding, for players outside your home *(November 2026)*
+
+- **🔀 Port forwarding** lists what to forward on your internet router for every server, and on
+  a cluster for every machine with its LAN address: ports, TCP or UDP, and what each is for.
+- **Step-by-step for pfSense** and other routers, a warning when two servers want the same
+  outside port, and **Check from here**.
+- **The phone menu shows every server**: on short phones it now scrolls as one page, with your
+  account buttons after the last server.
+
+[Release notes](../../release-notes/v1.16.14.md)
+
 ## 1.16.13: less downtime for big worlds, and finding panels on the network *(November 2026)*
 
 - **Pre-copy while it runs**, an option in the **Move** window: the world is copied while

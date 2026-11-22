@@ -104,6 +104,8 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.16
 
+**Port forwarding** *(1.16.14)*. A new **🔀 Port forwarding** page says exactly what to forward on your internet router for players outside your home: every server's ports and protocols, and on a cluster each machine's LAN address, with step-by-step help for pfSense and other routers. Read the [1.16.14 release notes](release-notes/v1.16.14.md).
+
 **Less downtime for big worlds** *(1.16.13)*. Moving a server between cluster members can now copy the world while it keeps running, then stop it only for the last changes, so it's down for seconds. And the master can find the other RedstonePanels on your network to add as nodes. Read the [1.16.13 release notes](release-notes/v1.16.13.md).
 
 **Bedrock that keeps up** *(1.16.12)*. The panel tells you when a newer Minecraft, Paper, Fabric or Bedrock version is out, and Bedrock servers can update themselves: players are warned, a backup is taken first, and a failed update is rolled back. Bedrock servers also now always save before they stop. Read the [1.16.12 release notes](release-notes/v1.16.12.md).
