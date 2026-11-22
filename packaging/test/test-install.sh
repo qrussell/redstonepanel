@@ -231,7 +231,8 @@ c=$(code -b $L -X PUT $PJ/resources -H "$J" -H "$O" -d '{"memory":"600M"}')
 c=$(code -b $L -X PUT $PJ/resources -H "$J" -H "$O" -d '{"xms":"256M","xmx":"768M","memory":"auto","cpu":0.5,"restart":true}')
 [ "$c" = 200 ] && grep -q '"restarted":true' /tmp/body && ok "  set Memory 768M, automatic limit, 0.5 CPU, restart" || bad "  set resources ($c $(cat /tmp/body))"
 check "  unit has the new heap, same java" grep -q '^ExecStart=/usr/local/lib/rp-fakejava/java -Xms256M -Xmx768M -jar server.jar nogui' /etc/systemd/system/minecraft-perfjava.service
-check "  restarted with the new heap"     bash -c 'sleep 2; pgrep -f "java -Xms256M -Xmx768M"'
+# The unit's main process, not pgrep: Debian's minimal images have no procps
+check "  restarted with the new heap"     bash -c 'for i in $(seq 20); do p=$(systemctl show -p MainPID --value minecraft-perfjava); [ "${p:-0}" != 0 ] && tr "\0" " " < /proc/$p/cmdline | grep -q "java -Xms256M -Xmx768M" && exit 0; sleep 0.5; done; exit 1'
 check "  drop-in has MemoryMax and CPUQuota" bash -c "grep -qx 'MemoryMax=$AUTO' $DROPIN && grep -qx 'CPUQuota=50%' $DROPIN"
 check "  systemd applies MemoryMax"       test "$(systemctl show -p MemoryMax --value minecraft-perfjava)" = "$AUTO"
 check "  systemd applies CPUQuota"        test "$(systemctl show -p CPUQuotaPerSecUSec --value minecraft-perfjava)" = 500ms
