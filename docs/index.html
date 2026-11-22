@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedstonePanel - Lightweight Server Management</title>
+    <style>
+        :root {
+            --primary: #ff4500;
+            --primary-dark: #cc3700;
+            --bg-dark: #121212;
+            --card-bg: #1e1e1e;
+            --text-light: #e0e0e0;
+            --text-main: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            line-height: 1.6;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
+            padding: 4rem 2rem;
+            text-align: center;
+            border-bottom: 3px solid var(--primary);
+        }
+
+        h1 {
+            color: var(--text-main);
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            font-size: 1.25rem;
+            color: #aaa;
+            max-width: 600px;
+            margin: 0 auto 2rem;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background-color: var(--primary);
+            color: white;
+            padding: 0.8rem 2rem;
+            text-decoration: none;
+            font-weight: bold;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+
+        .cta-button:hover {
+            background-color: var(--primary-dark);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary);
+            transition: transform 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .feature-card h3 {
+            color: var(--text-main);
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>RedstonePanel</h1>
+    <p class="subtitle">The lightweight, APT-native game server manager designed specifically for Ubuntu and Debian environments.</p>
+    <a href="https://github.com/qrussell/redstonepanel" class="cta-button" target="_blank">View on GitHub</a>
+</header>
+
+<div class="container">
+    <div class="features-grid">
+        <div class="feature-card">
+            <h3>APT-Native Installation</h3>
+            <p>Install and update seamlessly using standard system package managers. No complex container setups required for core operations.</p>
+        </div>
+        <div class="feature-card">
+            <h3>Multi-Node Architecture</h3>
+            <p>Scale your infrastructure effortlessly. Manage multiple server instances across different nodes from a unified interface.</p>
+        </div>
+        <div class="feature-card">
+            <h3>Advanced Java Control</h3>
+            <p>Fine-tune your Minecraft Java deployments with granular resource limits and customized startup flags for optimal performance.</p>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
