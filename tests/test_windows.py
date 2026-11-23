@@ -186,6 +186,44 @@ class Notifications(unittest.TestCase):
         self.assertNotIn("ValueQueries", xml)
 
 
+class OtherPeoplesServices(unittest.TestCase):
+    """A PC may already have services called minecraft-java that something else made."""
+
+    def test_only_the_runners_services_are_the_panels(self):
+        ours = r'"C:\Program Files\RedstonePanel\python\python.exe" -X utf8 ' \
+               r'"C:\Program Files\RedstonePanel\app\core\platform\windows\runner.py" service minecraft-java.service'
+        self.assertTrue(_win.is_ours({"command": ours}))
+        for other in (r"C:\tools\nssm.exe", r'"C:\Users\me\Projects\mc\runner.py" service x', "", None):
+            self.assertFalse(_win.is_ours({"command": other}), other)
+        self.assertFalse(_win.is_ours(None))
+
+    def test_a_service_of_that_name_is_never_changed(self):
+        with mock.patch.object(_win, "service_config", return_value={"command": r"C:\tools\nssm.exe", "start": "auto"}), \
+                mock.patch.object(_win, "_scm", side_effect=AssertionError("the service manager was opened")):
+            with self.assertRaises(_win.NotOurs):
+                _win.ensure_service("minecraft-java", "x", "x", "x")
+
+    def test_stop_and_start_leave_it_alone(self):
+        from core.platform.windows import services
+        with mock.patch.object(_win, "service_config", return_value={"command": r"C:\tools\nssm.exe", "start": "auto"}), \
+                mock.patch.object(_win, "stop_service", side_effect=AssertionError("stopped")), \
+                mock.patch.object(_win, "start_service", side_effect=AssertionError("started")), \
+                mock.patch.object(_win, "set_start", side_effect=AssertionError("changed")):
+            for action in ("stop", "start", "restart", "enable", "disable"):
+                self.assertNotEqual(services.control("minecraft-java.service", action, quiet=True).returncode, 0, action)
+
+    def test_a_new_server_takes_another_name(self):
+        from core import manager
+        from core.platform import services
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(manager, "SERVERS_ROOT", tmp), \
+                mock.patch.object(manager, "_used_ports", return_value=set()), \
+                mock.patch.object(manager, "_unit_path", side_effect=lambda n: os.path.join(tmp, n + ".service")), \
+                mock.patch.object(services, "name_free", side_effect=lambda n: n != "minecraft-java"):
+            name, port = manager._reserve_name("java")
+            manager._release_name(name)
+        self.assertEqual(name, "minecraft-java-2")
+
+
 class Preview(unittest.TestCase):
     """What the Windows preview doesn't do yet is refused in one sentence; reading still works."""
 

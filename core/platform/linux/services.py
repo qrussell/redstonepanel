@@ -117,6 +117,12 @@ def queued_jobs(server, timeout=5):
     return jobs
 
 
+def name_free(server):
+    """False when the machine already has a service of this name that the panel didn't make."""
+    r = systemctl("cat", unit(server), timeout=10)
+    return r.returncode != 0
+
+
 def unit_files(prefix="minecraft", suffix=SUFFIX):
     """The unit files in the panel's unit folder whose name starts with prefix, e.g.
     ["minecraft-java.service"]. Top level only, in the folder's own order."""

@@ -197,7 +197,8 @@ WantedBy=multi-user.target
         for unit_name in services.unit_files("minecraft"):
             svc = unit_name[:-len(".service")]
             try:
-                if (_win.service_config(svc) or {}).get("start") == "auto" and _win.service_status(svc)[0] == "stopped":
+                cfg = _win.service_config(svc)
+                if _win.is_ours(cfg) and cfg.get("start") == "auto" and _win.service_status(svc)[0] == "stopped":
                     _win.start_service(svc)
             except OSError:
                 pass
@@ -214,7 +215,7 @@ def uninstall(args):
     for name in _win.list_services(("minecraft", "phantom-", "redstonepanel")):
         try:
             cfg = _win.service_config(name)
-            if not cfg or "runner.py" not in (cfg["command"] or ""):
+            if not _win.is_ours(cfg):
                 continue
             remembered[name] = cfg["start"]
             say(f"Stopping and removing the service {name}")
@@ -259,7 +260,7 @@ def stop(args):
     for name in sorted(names, key=lambda n: n != _win.PANEL_SERVICE):          # the panel first: it would start servers again
         try:
             cfg = _win.service_config(name)
-            if cfg and "runner.py" in (cfg["command"] or "") and _win.service_status(name)[0] not in (None, "stopped"):
+            if _win.is_ours(cfg) and _win.service_status(name)[0] not in (None, "stopped"):
                 say(f"Stopping {name}")
                 _win.stop_service(name, wait=120)
         except OSError as e:

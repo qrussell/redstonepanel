@@ -376,9 +376,26 @@ def service_config(name):
                     "command": cfg.lpBinaryPathName, "account": cfg.lpServiceStartName}
 
 
+RUNNER_TAIL = os.path.join("core", "platform", "windows", "runner.py").lower()
+
+
+def is_ours(config):
+    """True for a service the panel made: one that runs the panel's runner. The panel never
+    changes, stops or removes any other service, whatever its name (config: service_config())."""
+    command = ((config or {}).get("command") or "").lower().replace("/", "\\")
+    return RUNNER_TAIL.replace("/", "\\") in command and " service " in command
+
+
+class NotOurs(OSError):
+    """A service of that name exists and something else made it."""
+
+
 def ensure_service(name, command, display, description, account=None, restart_after=20):
     """Creates the Windows service `name` running `command` (one string), or brings an existing
     one in line. account None is the system account. Returns True when it was created."""
+    existing = service_config(name)
+    if existing is not None and not is_ours(existing):
+        raise NotOurs(f"Windows already has a service named {name} that RedstonePanel didn't make; it was left alone.")
     adv = _adv()
     created = False
     with _scm() as scm:

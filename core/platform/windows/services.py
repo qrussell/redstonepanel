@@ -327,6 +327,14 @@ def queued_jobs(server, timeout=5):
     return ["stop"] if status.get("state") == "deactivating" else []
 
 
+def name_free(server):
+    """False when Windows already has a service of this name, whoever made it."""
+    try:
+        return _win.service_config(server) is None
+    except OSError:
+        return False
+
+
 def unit_files(prefix="minecraft", suffix=SUFFIX):
     """The unit files in the panel's unit folder whose name starts with prefix, e.g.
     ["minecraft-java.service"]. Top level only."""
@@ -389,6 +397,10 @@ def control(unit_name, action, elevate=False, quiet=False):
     if not quiet:
         _log(f"[SERVICE] {action} {name}")
     try:
+        if "@" not in unit_name:
+            existing = _win.service_config(name)
+            if existing is not None and not _win.is_ours(existing):
+                raise _win.NotOurs(f"Windows has a service named {name} that RedstonePanel didn't make; it was left alone.")
         if action in ("start", "restart", "enable") and _register(unit_name) is None:
             if "@" in unit_name or units.load(unit_name) is not None:      # a one-off unit: run it now
                 if action != "enable":
@@ -457,7 +469,7 @@ def reload(elevate=False, quiet=False):
             continue
         try:
             cfg = _win.service_config(name)
-            if not cfg or "runner.py" not in (cfg["command"] or ""):
+            if not _win.is_ours(cfg):
                 continue                              # not one of ours
             _win.stop_service(name, wait=120)
             _win.delete_service(name)

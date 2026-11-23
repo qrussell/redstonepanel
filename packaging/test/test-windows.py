@@ -115,6 +115,39 @@ def service_state(name):
     return "?"
 
 
+NEIGHBOUR = "minecraft-java"      # the name the panel would give its first Java server
+NEIGHBOUR_MADE = []
+
+
+def service_command(name):
+    code, out = run(["sc", "qc", name])
+    for line in out.splitlines():
+        if "BINARY_PATH_NAME" in line:
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def neighbour_before():
+    """A service called minecraft-java that the panel didn't make: the one the PC already has, or
+    one made here. Returns what it runs, to compare at the end."""
+    if service_state(NEIGHBOUR) is None:
+        code, out = run(["sc", "create", NEIGHBOUR, "binPath=", r"C:\Windows\System32\cmd.exe /c rem someone else's server",
+                         "start=", "demand", "DisplayName=", "Someone else's Minecraft server"])
+        if code == 0:
+            NEIGHBOUR_MADE.append(NEIGHBOUR)
+    return service_command(NEIGHBOUR), service_state(NEIGHBOUR)
+
+
+def neighbour_after(before):
+    section("A service the panel didn't make")
+    now = (service_command(NEIGHBOUR), service_state(NEIGHBOUR))
+    check(f"the {NEIGHBOUR} service that was here before is exactly as it was", before[0] and now == before,
+          f"before {before} now {now}")
+    for name in NEIGHBOUR_MADE:
+        run(["sc", "delete", name])
+    del NEIGHBOUR_MADE[:]
+
+
 class Hook(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace")
@@ -199,6 +232,8 @@ def main():
     check("the Java page loads", code == 200, f"{code} {str(rt)[:300]}")
     print(f"        installable: {(rt or {}).get('installable')}  installed: {(rt or {}).get('installed')}")
     body = {"edition": "java", "loader": args.loader}
+    args.neighbour = neighbour_before()
+    print(f"        a service named {NEIGHBOUR} the panel didn't make: {args.neighbour}")
     code, dep = p.post("/api/servers/deploy", body, timeout=900)
     if code == 409 and isinstance(dep.get("java"), dict):
         major = dep["java"].get("major") or dep["java"].get("required")
@@ -218,6 +253,7 @@ def main():
         code, dep = p.post("/api/servers/deploy", body, timeout=900)
     name = (dep or {}).get("name")
     check("the server is deployed", code == 200 and bool(name), f"{code} {dep}")
+    check("... under a name no other Windows service has", name != NEIGHBOUR, str(name))
     if not name:
         return finish(p, args, None)
     d = os.path.join(home, "servers", name)
@@ -353,7 +389,9 @@ def main():
     check("a webhook is saved", code == 200, f"{code} {n}")
     code, out = run(["schtasks", "/Query", "/TN", "\\RedstonePanel\\notifications"])
     check("the notification task exists", code == 0, out[-300:])
-    code, out = ps("Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | Select-Object -ExpandProperty ProcessId")
+    # Only the Java the panel installed for this server: other Minecraft servers on the machine are left alone
+    code, out = ps("Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | Where-Object { $_.ExecutablePath -like '"
+                   + os.path.join(args.home, "java") + "\\*' } | Select-Object -ExpandProperty ProcessId")
     pids = [x for x in out.split() if x.isdigit()]
     print(f"        killing java.exe {pids}")
     for pid in pids:
@@ -451,6 +489,8 @@ def finish(p, args, name, port=None):
             check("its firewall rule is gone", out.strip().endswith("0"), out[-200:])
         code, out = run(["schtasks", "/Query", "/TN", f"\\RedstonePanel\\redstonepanel-restart@{name}"])
         check("its scheduled tasks are gone", code != 0, out[-200:])
+    if getattr(args, "neighbour", None):
+        neighbour_after(args.neighbour)
     print(f"\n{len(PASSED)} passed, {len(FAILED)} failed")
     for f in FAILED:
         print(f"  FAILED: {f}")

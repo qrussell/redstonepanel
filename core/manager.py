@@ -1092,7 +1092,7 @@ def _reserve_name(edition):
         while True:
             name = f"{base_name}{suffix}"
             taken = (name in _busy or os.path.exists(os.path.join(SERVERS_ROOT, name))
-                     or os.path.exists(_unit_path(name)))
+                     or os.path.exists(_unit_path(name)) or not services.name_free(name))
             if not taken:
                 # Check every port other servers claim (RCON included), and Bedrock's IPv6 port too
                 needed = {port, port + 1} if edition == "bedrock" else {port}

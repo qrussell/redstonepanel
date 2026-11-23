@@ -92,6 +92,10 @@ def queued_jobs(server, timeout=5):
     return list(fake.state.servers.get(server, {}).get("jobs", []))
 
 
+def name_free(server):
+    return server not in getattr(fake.state, "foreign_services", ())
+
+
 def unit_files(prefix="minecraft", suffix=SUFFIX):
     return [unit(n) for n in fake.state.servers if unit(n).startswith(prefix) and unit(n).endswith(suffix)]
 
