@@ -224,6 +224,16 @@ has "the list shows the public pages" 'href="/join/survival"' "$BODY"
 has "  the Bedrock one too" 'href="/join/bedrock"' "$BODY"
 lacks "  never the unlisted one" "Cobblemon" "$BODY"
 
+echo "--- an address that asks too much is slowed down"
+RATE=$(dx jp "for i in \$(seq 1 260); do curl -sk -m 10 -o /dev/null -w '%{http_code}\n' $PUB/join/survival; done | sort | uniq -c | tr -s ' \n' ' '")
+has "past 240 requests in a minute the public port answers 429" " 429" "$RATE"
+is "  the panel itself still answers" 200 "$(code admin GET /api/join-pages)"
+# The count is kept in memory, and a fast machine gets here inside the same minute as the
+# sweep above: start the panel again so the checks below aren't the ones slowed down.
+dx jp "systemctl restart redstonepanel"
+for _ in $(seq 1 40); do dx jp "curl -sf $URL/api/health" >/dev/null 2>&1 && listening jp 8444 && break; sleep 1; done
+is "  after a restart the page answers again" 200 "$(pcode /join/survival)"
+
 echo "--- it follows the server and the panel"
 dx jp "systemctl stop $J"
 for _ in $(seq 1 45); do [ "$(pub /join/survival/status.json | json "d['status']")" = offline ] && break; sleep 1; done

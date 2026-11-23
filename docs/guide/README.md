@@ -50,6 +50,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.21.5 | **🔗 Join pages**: a public page for each server that tells players how to join, on a port of its own. | [Join pages](#join-pages) |
 | 1.21.2 | Light and dark mode is a **sun/moon switch in the top right corner**, with a colored dot beside it for the accent color. The ⚙️ button in the sidebar is gone. | [The dashboard](#3-the-dashboard) |
 | 1.21.0 | Groundwork for the Windows version. Nothing new on screen. | [Roadmap](../wiki/Roadmap.md) |
 | 1.20.0 | **Purpur, Quilt, NeoForge and Forge** servers; **From a modpack** (Modrinth, `.mrpack`, CurseForge server packs) and pack updates. | [Create or import a server](#4-create-or-import-a-server), [Modpack](#modpack) |
@@ -450,7 +451,7 @@ page that says all of it and keeps itself up to date: whether the server is onli
 are playing, the address to type, the Minecraft version, and for a modpack server the exact
 pack to install.
 
-<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-page.png"><img src="images/join-page.png" alt="A modpack server's join page, as a player sees it"></picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-page.png"><img src="images/join-page.png" alt="A server's join page, as a player sees it"></picture>
 
 Nothing is public until you turn it on, twice: the port, and then each server's page.
 

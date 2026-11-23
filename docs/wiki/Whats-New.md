@@ -9,6 +9,22 @@ the dashboard.
 
 ---
 
+## 1.21.5: join pages for players *(November 2026)*
+
+- **🔗 Join pages**: a public page for each server that tells players how to join, with the
+  address, whether it's online, how many are playing and the Minecraft version. Off until you
+  turn it on.
+- A server made from a Modrinth modpack links to **the exact pack version it runs**, with
+  steps for Modrinth App and Prism Launcher. Bedrock servers get an **Add this server to
+  Minecraft** button.
+- The pages have **a port of their own** that answers nothing else, so the panel can stay off
+  the internet.
+- Unlisted pages with a random link, a note and a link of your own, and player names only if
+  you turn them on. On a cluster master, pages for the servers on every node. See
+  [Join pages](../guide/README.md#join-pages).
+
+[Release notes](../../release-notes/v1.21.5.md)
+
 ## 1.21.4: quick commands in Live Chat *(November 2026)*
 
 - **Live Chat suggests as you type**, like the game: commands after `/`, then the players
