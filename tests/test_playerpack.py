@@ -109,6 +109,28 @@ class Sorting(Base):
         self.assertEqual(m["loader_version"], "0.16.9")
         self.assertTrue(m["active"])
 
+    def test_what_a_required_mod_needs_is_required(self):
+        def with_deps(name, mod_id, depends, client):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as z:
+                z.writestr("fabric.mod.json", json.dumps({"id": mod_id, "name": mod_id.title(), "version": "1",
+                                                          "depends": {d: "*" for d in depends}}))
+            data = buf.getvalue()
+            with open(os.path.join(self.server, "mods", name), "wb") as f:
+                f.write(data)
+            self.known[hashlib.sha512(data).hexdigest()] = (f"P{mod_id}", client, "required", mod_id.title(), name, data)
+        with_deps("create.jar", "create", ["flywheel", "minecraft"], "required")
+        with_deps("flywheel.jar", "flywheel", ["fabric-api"], "optional")
+        with_deps("fabric-api.jar", "fabric-api", [], "optional")
+        with_deps("lithium.jar", "lithium", [], "optional")
+        m = K.manifest(SERVER)
+        self.assertEqual({l["file"]: l["state"] for l in m["mods"]},
+                         {"create.jar": "in", "flywheel.jar": "in", "fabric-api.jar": "in", "lithium.jar": "optional"})
+        self.assertEqual(next(l["why"] for l in m["mods"] if l["file"] == "fabric-api.jar"), "Needed by Flywheel")
+        K.save_config(SERVER, {"mods": {"flywheel.jar": "optional"}}, "admin")      # the admin's word stands
+        self.assertEqual(self.states()["flywheel.jar"], "optional")
+        self.assertEqual(self.states()["fabric-api.jar"], "optional")
+
     def test_admin_overrules(self):
         self.put("spark.jar", "spark", "unsupported", "required")
         self.put("create.jar", "create")

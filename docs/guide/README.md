@@ -1465,6 +1465,7 @@ For each file the panel asks Modrinth which mod it is and which side of the game
 | --- | --- |
 | Players need it | **In the pack** |
 | Works without it on the player's side | **Optional**: the launcher lets the player leave it out |
+| Works without it, but a mod in the pack needs it (Fabric API, for one) | **In the pack** |
 | Runs only on the server | **Left out** |
 | Modrinth doesn't know the file | **Left out**, and named on the join page so players know to ask |
 

@@ -307,7 +307,7 @@ def manifest(server, fresh=False):
     now = time.time()
     if hit and hit[0] == sig and not fresh and now - hit[1] < STALE_AFTER:
         return hit[2]
-    lines, problems = [], []
+    lines, problems, needs = [], [], {}          # needs: file -> (ids it is, ids it depends on)
     for j in jars:
         try:
             h = _hashes(server, folder, j)
@@ -317,6 +317,8 @@ def manifest(server, fresh=False):
         meta = mods._jar_meta(server, folder, j)
         lines.append({"file": j["name"], "size": j["size"], "name": _clean(meta.get("name") or j["name"]),
                       "version": _clean(meta.get("version"), 40), **h})
+        needs[j["name"]] = (set(filter(None, [meta.get("id")] + list(meta.get("provides") or []))),
+                            set(meta.get("depends") or []))
     looked_up = True
     try:
         found = modrinth.by_hashes([l["sha512"] for l in lines])
@@ -349,6 +351,21 @@ def manifest(server, fresh=False):
                 l["state"], l["why"] = "out", f"Too large to copy into the pack (over {MAX_BUNDLED >> 20} MB together)"
             else:
                 bundled += l["size"]
+    # A mod the pack requires makes what it depends on required too (Modrinth calls Fabric API
+    # "optional" on the player's side, but a mod that needs it won't start without it)
+    again = True
+    while again:
+        again = False
+        wanted = {}
+        for l in lines:
+            if l["state"] in ("in", "bundled"):
+                for dep in needs[l["file"]][1]:
+                    wanted.setdefault(dep, l["name"])
+        for l in lines:
+            if l["state"] == "optional" and l["choice"] == "auto":
+                by = next((wanted[i] for i in sorted(needs[l["file"]][0]) if i in wanted), None)
+                if by:
+                    l["state"], l["why"], again = "in", f"Needed by {by}", True
     have = {l.get("project") for l in lines if l.get("project")} | {l.get("slug") for l in lines if l.get("slug")}
     extras = []
     for project in cfg["extras"]:
