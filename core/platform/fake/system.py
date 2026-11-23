@@ -219,6 +219,11 @@ def game_programs(names=("java", "bedrock_server")):
     return out
 
 
+def other_game_services():
+    """What the test put in fake.state.other_game_services."""
+    return [dict(s) for s in getattr(fake.state, "other_game_services", [])]
+
+
 def owner_of(path):
     return getattr(fake.state, "owners", {}).get(path, "1000:1000")
 

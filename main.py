@@ -1646,7 +1646,10 @@ def list_removed_servers():
 def list_found_servers(request: Request):
     _require_admin(request, "see the Minecraft servers found on this machine")
     from core import found
-    return {"servers": found.listing(), "taken_over": found.taken_over()}
+    from core.platform import system
+    programs = system.game_programs()
+    return {"servers": found.listing(programs=programs), "taken_over": found.taken_over(),
+            "noticed": found.noticed(programs)}
 
 class FoundServer(BaseModel):
     folder: str

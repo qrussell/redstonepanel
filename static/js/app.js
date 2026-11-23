@@ -4532,6 +4532,8 @@ const ServerApp = {
     // --- Found servers: Minecraft servers on this machine that the panel doesn't manage ---
     foundServers: [],
     takenOver: [],
+    foundNotes: [],
+    foundLooked: false,       // true once the panel has answered, so "none found" isn't shown too early
 
     async loadFoundServers(message, ok) {
         try {
@@ -4539,9 +4541,13 @@ const ServerApp = {
             const d = res.ok ? await res.json() : {};
             this.foundServers = d.servers || [];
             this.takenOver = d.taken_over || [];
+            this.foundNotes = d.noticed || [];
+            this.foundLooked = res.ok;
         } catch (e) {
             this.foundServers = [];
             this.takenOver = [];
+            this.foundNotes = [];
+            this.foundLooked = false;
         }
         const box = document.getElementById('found-servers');
         if (box) box.innerHTML = this.foundServersHtml(message, ok);
@@ -4549,7 +4555,7 @@ const ServerApp = {
     },
 
     foundServersHtml(message, ok) {
-        if (this.deployNode || !(this.foundServers.length || this.takenOver.length || message)) return '';
+        if (this.deployNode || !(this.foundLooked || this.foundServers.length || this.takenOver.length || message)) return '';
         const esc = t => this.escapeHtml(t == null ? '' : String(t));
         const button = 'px-3 py-1 rounded text-sm font-bold whitespace-nowrap disabled:opacity-50';
         const rows = this.foundServers.map((f, i) => `
@@ -4569,12 +4575,19 @@ const ServerApp = {
                     </div>
                     <button onclick="ServerApp.undoFound(${this.jsArg(t.name)}, this)" class="${button} bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Undo</button>
                 </div>`).join('');
+        const notes = this.foundNotes.map(n => `
+                <div class="p-2 mb-2 rounded border border-dashed border-gray-300 dark:border-gray-600">
+                    <div class="text-sm text-gray-700 dark:text-gray-300"><b>${esc(n.title)}</b> <span class="text-xs text-gray-500">can't be managed yet</span></div>
+                    ${n.folder ? `<div class="text-xs text-gray-500 dark:text-gray-400 font-mono break-all">${esc(n.folder)}</div>` : ''}
+                    <div class="text-xs text-gray-500 dark:text-gray-400">${esc(n.reason)}</div>
+                </div>`).join('');
+        const none = !(rows || taken || notes) ? `<p class="text-sm text-gray-500 dark:text-gray-400 mb-2">No other Minecraft servers were found running on this computer. A server has to be running to be found.</p>` : '';
         return `
             <hr class="border-gray-200 dark:border-gray-700 my-4" />
             <label class="block text-sm text-gray-400 mb-1">Found on this computer</label>
             <p class="text-xs text-gray-500 mb-2">Minecraft servers here that were set up outside RedstonePanel. Nothing about them is changed until you choose Manage. Then the panel stops the service that runs one and turns it off (it isn't deleted), and runs the server from the same folder itself; no files are copied or moved, and Undo puts it back.</p>
             ${message ? `<p class="text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-2">${esc(message)}</p>` : ''}
-            ${rows}${taken}`;
+            ${none}${rows}${taken}${notes}`;
     },
 
     async manageFound(index, button) {

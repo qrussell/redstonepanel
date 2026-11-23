@@ -453,6 +453,37 @@ def game_programs(names=("java", "bedrock_server")):
     return found
 
 
+def other_game_services():
+    """Services the panel didn't make that are named for Minecraft: [{"service", "running",
+    "folder", "program"}], from the unit files in the unit folder whose name or command says
+    minecraft or bedrock and whose name isn't one of the panel's (minecraft-NAME.service).
+    Looking only."""
+    import os
+    import re
+    out = []
+    try:
+        names = sorted(n for n in os.listdir(paths.UNIT_DIR) if n.endswith(".service"))
+    except OSError:
+        return out
+    for name in names:
+        if name.startswith(("minecraft-", "redstonepanel")):
+            continue
+        try:
+            with open(os.path.join(paths.UNIT_DIR, name), errors="replace") as f:
+                text = f.read(65536)
+        except OSError:
+            continue
+        if not re.search(r"minecraft|bedrock", name + "\n" + text, re.I):
+            continue
+        folder = re.search(r"^WorkingDirectory=-?(.+)$", text, re.M)
+        command = re.search(r"^ExecStart=[-+@!:]*(\S+)", text, re.M)
+        r = quiet(["systemctl", "is-active", name])
+        out.append({"service": name, "running": r.stdout.strip() == "active",
+                    "folder": folder.group(1).strip() if folder else "",
+                    "program": command.group(1) if command else ""})
+    return out
+
+
 def owner_of(path):
     """Who a folder belongs to, as text give_back() understands ("uid:gid")."""
     import os

@@ -382,6 +382,26 @@ def program_list(names):
             "services": {int(a[0]): str(a[1]) for a in data.get("services") or []}}
 
 
+def services_like(pattern):
+    """[{"name", "path", "state"}] for the Windows services whose name or program path matches
+    the regular expression `pattern` (ours, never from a request)."""
+    import json
+    r = powershell(
+        "$m = " + ps_quote(pattern) + "; "
+        "$s = @(Get-CimInstance Win32_Service | Where-Object { $_.Name -match $m -or ([string]$_.PathName) -match $m } | "
+        "ForEach-Object { @{ name = [string]$_.Name; path = [string]$_.PathName; state = [string]$_.State } }); "
+        "ConvertTo-Json -InputObject $s -Depth 3 -Compress", timeout=60)
+    if r.returncode != 0:
+        return []
+    try:
+        data = json.loads(r.stdout or "[]")
+    except ValueError:
+        return []
+    if isinstance(data, dict):
+        data = [data]
+    return [d for d in data or [] if isinstance(d, dict)]
+
+
 class _Handle:
     def __init__(self, h):
         self.h = h

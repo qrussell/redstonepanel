@@ -80,6 +80,33 @@ class Describe(unittest.TestCase):
 
 
 class Scan(unittest.TestCase):
+    def test_what_it_saw_and_cannot_manage_is_said_with_the_reason(self):
+        gone = folder("gone-world")                                   # a server whose settings and world were moved away
+        os.makedirs(os.path.join(gone, "libraries"), exist_ok=True)
+        os.makedirs(os.path.join(gone, "versions"), exist_ok=True)
+        good = folder("good-one", 25590)
+        programs = [java(gone, "minecraft-java", argv=["java", "-jar", "x.jar"]), java(good, "mc-good.service"),
+                    java(folder("jenkins2"), argv=["java", "-jar", "jenkins.war"]),          # not Minecraft: said nothing of
+                    java("", "minecraft-hidden")]
+        others = [
+            {"service": "minecraft-java", "running": True, "folder": gone, "program": "x"},     # already explained above
+            {"service": "mc-good.service", "running": True, "folder": good, "program": "x"},    # a found server's
+            {"service": "minecraft-java2", "running": False, "folder": os.path.join(TMP, "nowhere"), "program": "x"},
+            {"service": "minecraft-old", "running": False, "folder": TMP, "program": "x"},
+            {"service": "phantom-minecraft-bedrock", "running": True, "folder": TMP, "program": "C:\\p\\phantom-windows.exe"}]
+        with mock.patch.object(F, "_managed_folders", return_value=[]), mock.patch.object(F, "_panel_units", return_value=set()), \
+             mock.patch.object(F, "taken_over", return_value=[]), \
+             mock.patch.object(F.system, "other_game_services", return_value=others):
+            notes = {n["service"]: n for n in F.noticed(programs)}
+        self.assertEqual(sorted(notes), ["minecraft-hidden", "minecraft-java", "minecraft-java2", "minecraft-old",
+                                         "phantom-minecraft-bedrock"])
+        self.assertIn("no server.properties", notes["minecraft-java"]["reason"])
+        self.assertEqual(notes["minecraft-java"]["folder"], gone)
+        self.assertIn("couldn't read which folder", notes["minecraft-hidden"]["reason"])
+        self.assertIn("no longer exists", notes["minecraft-java2"]["reason"])
+        self.assertIn("stopped", notes["minecraft-old"]["reason"])
+        self.assertIn("phantom-windows.exe", notes["phantom-minecraft-bedrock"]["reason"])
+
     def test_one_entry_per_folder_sorted_by_port(self):
         a, b = folder("scan-a", 25580), folder("scan-b", 25575)
         programs = [java(a, pid=1), java(a, pid=2), java(b, pid=3), java(folder("scan-none"), pid=4)]

@@ -311,6 +311,19 @@ class FoundServers(unittest.TestCase):
                             930: (920, 4980, "pwsh.exe"), 920: (4, 4000, "runner.worker.exe")},
                 "services": {400: "minecraft-java", 650: "other", 780: "minecraft-java-2", 880: "mc-nssm", 920: "actions.runner"}}
 
+    def test_services_named_for_minecraft_that_are_not_the_panels(self):
+        from core.platform.windows import system
+        listed = [{"name": "minecraft-java2", "path": '"C:\\Users\\quent\\Projects\\minecraft-java2\\minecraft-java2.exe"', "state": "Stopped"},
+                  {"name": "phantom-minecraft-bedrock", "path": "C:\\phantom\\phantom-windows.exe -server 1.2.3.4:19132", "state": "Running"},
+                  {"name": "minecraft-java-2", "state": "Running",
+                   "path": '"C:\\Program Files\\RedstonePanel\\python\\python.exe" "C:\\Program Files\\RedstonePanel\\app\\core\\platform\\windows\\runner.py" service minecraft-java-2'}]
+        with mock.patch.object(_win, "services_like", return_value=listed) as asked:
+            got = system.other_game_services()
+        self.assertEqual(asked.call_args[0][0], "minecraft|bedrock")
+        self.assertEqual([(g["service"], g["running"], g["folder"]) for g in got],                # the panel's own is left out
+                         [("minecraft-java2", False, "C:\\Users\\quent\\Projects\\minecraft-java2"),
+                          ("phantom-minecraft-bedrock", True, "C:\\phantom")])
+
     def test_a_wrapped_server_is_found_under_its_service(self):
         from core.platform.windows import system
         folders = {500: "C:\\Users\\quent\\Projects\\minecraft-java", 600: "D:\\mc", 800: "D:\\minecraft\\servers\\minecraft-java-2",
@@ -319,7 +332,8 @@ class FoundServers(unittest.TestCase):
              mock.patch.object(_win, "process_cwd", side_effect=lambda pid: folders.get(pid, "")):
             got = {g["pid"]: g for g in system.game_programs()}
         self.assertEqual(asked.call_args[0][0], ["java.exe", "bedrock_server.exe", "javaw.exe"])
-        self.assertEqual(sorted(got), [500, 600, 800, 900, 950])             # 700: its folder can't be read
+        self.assertEqual(sorted(got), [500, 600, 700, 800, 900, 950])
+        self.assertEqual(got[700]["cwd"], "")                                # its folder can't be read: noted, never handed over
         self.assertEqual(got[900]["service"], "mc-nssm")                     # through the service's start script
         self.assertEqual(got[950]["service"], "")                            # under a build agent: not its server
         self.assertEqual((got[500]["service"], got[500]["cwd"], got[500]["user"]),

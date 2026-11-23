@@ -675,7 +675,7 @@ def game_programs(names=("java", "bedrock_server")):
     """Running programs that could be game servers: [{"pid", "exe", "argv", "cwd", "user",
     "service", "started"}] for every program called one of `names` (java.exe and javaw.exe for
     "java"). "service" is the Windows service it runs under, its own or a wrapper's, "" when
-    none. One whose folder can't be read is left out."""
+    none. "cwd" is "" for one whose folder can't be read."""
     wanted = [f"{n}.exe" for n in names] + (["javaw.exe"] if "java" in names else [])
     listing = _win.program_list(wanted)
     found = []
@@ -685,7 +685,7 @@ def game_programs(names=("java", "bedrock_server")):
             argv = units.split_command(p.get("command") or "")
             exe = p.get("exe") or (argv[0] if argv else p.get("name") or "")
             cwd = _win.process_cwd(pid)
-            if not pid or not cwd:
+            if not pid:
                 continue
             service = _service_above(pid, listing["parents"], listing["services"], int(p.get("started") or 0))
             if service.lower() == _win.PANEL_SERVICE:
@@ -695,6 +695,23 @@ def game_programs(names=("java", "bedrock_server")):
         except (TypeError, ValueError):
             continue
     return found
+
+
+def other_game_services():
+    """Services the panel didn't make that are named for Minecraft: [{"service", "running",
+    "folder", "program"}], for every Windows service whose name or program path says minecraft
+    or bedrock and that doesn't run the panel's runner. "folder" is where its program is.
+    Looking only."""
+    out = []
+    for s in _win.services_like("minecraft|bedrock"):
+        command = s.get("path") or ""
+        if _win.is_ours({"command": command}) or (s.get("name") or "").lower() == _win.PANEL_SERVICE:
+            continue
+        argv = units.split_command(command)
+        program = argv[0] if argv else ""
+        out.append({"service": s.get("name") or "", "running": (s.get("state") or "").lower() == "running",
+                    "folder": __import__("ntpath").dirname(program), "program": program})
+    return out
 
 
 def owner_of(path):
