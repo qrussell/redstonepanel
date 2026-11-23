@@ -65,6 +65,12 @@ def stage(out):
         "--python-version", ".".join(PYTHON_VERSION.split(".")[:2]), "--implementation", "cp", "--abi", f"cp{short}",
         "--only-binary=:all:", "-r", os.path.join(HERE, "requirements.txt")])
     shutil.rmtree(os.path.join(site, "bin"), ignore_errors=True)
+    # What went in, next to the staged folder: the versions to pin in requirements.txt before a release
+    with open(out.rstrip("\\/") + "-versions.txt", "w", encoding="utf-8") as f:
+        f.write(f"python-{PYTHON_VERSION}-embed-amd64.zip sha256 {digest}\n")
+        for n in sorted(os.listdir(site)):
+            if n.endswith(".dist-info"):
+                f.write(n[:-len(".dist-info")].replace("-", "==", 1) + "\n")
     os.makedirs(app)
     for name in APP_FILES:
         shutil.copy2(os.path.join(ROOT, name), os.path.join(app, name))

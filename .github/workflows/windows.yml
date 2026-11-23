@@ -172,3 +172,7 @@ jobs:
           if (Get-NetFirewallRule -Group "RedstonePanel panel" -ErrorAction SilentlyContinue) { $left += "the panel's firewall rule" }
           if (-not (Test-Path "C:\ProgramData\RedstonePanel\servers")) { $left += "(the servers folder should have been kept)" }
           if ($left) { "Left behind: " + ($left -join "; "); exit 1 } else { "Removed cleanly; worlds, backups and settings were kept." }
+      - name: What the installer carries
+        if: always()
+        shell: pwsh
+        run: Get-Content build\stage-versions.txt -ErrorAction SilentlyContinue
