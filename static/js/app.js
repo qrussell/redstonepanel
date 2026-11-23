@@ -648,7 +648,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab(this.firstConfigSubTab());
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadAutoUpdate(); this.loadJavaChoice(); this.loadResources(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadAutoUpdate(); this.loadConvert(); this.loadJavaChoice(); this.loadResources(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
@@ -2022,7 +2022,7 @@ const ServerApp = {
         const rangeBtn = (r, label) => `<button onclick="ServerApp.setPerfRange('${r}')" class="px-3 py-1 text-sm rounded ${this.perfRange === r ? 'subtab-active' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}" aria-pressed="${this.perfRange === r}">${label}</button>`;
 
         // Suggestions
-        const where = { properties: ['properties', 'Open Configuration'], memory: ['maintenance', 'Open Memory and limits'],
+        const where = { properties: ['properties', 'Open Configuration'], memory: ['maintenance', 'Open Memory and limits'], type: ['maintenance', 'Open Server type'],
             addons: ['addons', 'Open Mods'], backups: ['backups', 'Open Backups'], files: ['files', 'Open Files'], chat: ['chat', 'Open Live Chat'] };
         const sug = (p.suggestions || []).map(s => {
             const w = where[s.where];
@@ -2428,6 +2428,8 @@ const ServerApp = {
         const note = document.getElementById('update-java-note');
         if (!srv || !text) return;
         note.innerText = '';
+        const backupRow = document.getElementById('update-backup-row');
+        if (backupRow) backupRow.classList.toggle('hidden', srv.edition !== 'Java');
         if (srv.edition !== 'Java') {
             select.classList.add('hidden');
             text.innerText = 'Download the newest Bedrock Dedicated Server release.';
@@ -2462,6 +2464,224 @@ const ServerApp = {
             select.innerHTML = '<option value="">Newest</option>';
             note.innerText = `Couldn't list versions: ${e.message}`;
         }
+    },
+
+    // Maintenance tab (Java): Server type card, Undo type change and Roll back the last update (1.19)
+    async loadConvert() {
+        const card = document.getElementById('convert-card');
+        const srv = this.activeServer;
+        if (!card || !srv) return;
+        const roll = document.getElementById('rollback-content');
+        if (srv.edition !== 'Java') {
+            card.classList.add('hidden');
+            if (roll) roll.innerHTML = '';
+            return;
+        }
+        card.classList.remove('hidden');
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/convert`);
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        if (!res.ok) {
+            document.getElementById('convert-body').innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        this.renderConvert(await res.json());
+    },
+
+    renderConvert(info) {
+        const body = document.getElementById('convert-body');
+        const roll = document.getElementById('rollback-content');
+        if (!body) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const when = t => t ? esc(new Date(t * 1000).toLocaleString()) : '';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const isAdmin = this.isAdmin();
+        const job = info.job;
+        const running = job && job.state === 'running';
+        const icon = { done: '✓', running: '⏳', failed: '✕', waiting: '○', skipped: '–' };
+        const tone = { done: 'text-green-600 dark:text-green-500', running: 'text-theme font-bold', failed: 'text-red-500 font-bold', waiting: 'text-gray-500 dark:text-gray-400', skipped: 'text-gray-400' };
+        const verb = { convert: 'Changing', undo: 'Undoing the change', rollback: 'Rolling back the update' };
+        let jobBox = '';
+        if (running) {
+            jobBox = `<div class="mt-3 border border-gray-200 dark:border-gray-700 rounded p-3">
+                <p class="text-sm font-bold text-gray-900 dark:text-white mb-1">${esc(verb[job.action] || 'Working')}: ${esc(job.from.name || this.typeName(job.from))} → ${esc(this.typeName(job.to))}</p>
+                <ul class="text-sm space-y-1">${job.steps.map(s => `<li class="${tone[s.state] || ''}">${icon[s.state] || ''} ${esc(s.label)}</li>`).join('')}</ul>
+                <p class="${note} mt-2">Leave this page if you like; it carries on. If the server doesn't start within ${Math.round(info.start_wait / 60)} minutes, everything is put back.</p></div>`;
+        } else if (job && job.state === 'failed') {
+            const why = job.why || {};
+            jobBox = `<div class="mt-3 border border-red-300 dark:border-red-800 bg-red-50 dark:bg-gray-900 rounded p-3">
+                <p class="text-sm font-bold text-red-600 dark:text-red-400">${job.action === 'convert' ? `Changing to ${esc(this.typeName(job.to))} didn't work` : 'Putting the old server back didn\'t work'} (${when(job.finished)})</p>
+                <p class="text-sm text-gray-700 dark:text-gray-300 mt-1">${esc(job.error)}</p>
+                ${(why.causes || []).map(c => `<p class="text-sm text-gray-700 dark:text-gray-300 mt-2"><b>${esc(c.title)}.</b> ${esc(c.text)} ${esc(c.fix)}</p>`).join('')}
+                ${(why.lines || []).length ? `<details class="mt-2"><summary class="${note} cursor-pointer">What the server's log said</summary><pre class="text-xs whitespace-pre-wrap break-all text-gray-700 dark:text-gray-300 mt-1">${why.lines.map(esc).join('\n')}</pre></details>` : ''}</div>`;
+        } else if (job && job.state === 'done' && (job.notes || []).length) {
+            jobBox = `<div class="mt-3 ${note}">${job.notes.map(esc).join('<br>')}</div>`;
+        }
+        const u = info.undo;
+        let undoBox = '';
+        if (u && u.kind === 'convert' && !running) {
+            undoBox = `<div class="mt-3 border-t border-gray-200 dark:border-gray-700 pt-3">
+                <p class="text-sm text-gray-700 dark:text-gray-300">Changed from <b>${esc(u.from.name)}</b> to <b>${esc(u.to.name)}</b> on ${when(u.at)} by ${esc(u.by)}.</p>
+                ${u.available
+                    ? (isAdmin ? `<button onclick="ServerApp.undoConvert('convert')" class="mt-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-bold text-sm">Undo type change</button>` : '')
+                      + `<p class="${note} mt-2">Undo puts ${esc(u.from.name)} and the world from before the change back ("Before type change" on the Backups tab). What was built since is saved as a "Before restore" backup, not kept in the world.</p>`
+                    : `<p class="${note} mt-1">It can't be undone any more: ${esc(u.reason)}.</p>`}</div>`;
+        }
+        const types = info.types.map(t => `<button onclick="ServerApp.previewConvert(${this.jsArg(t.id)})" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold text-sm">Change to ${esc(t.name)}…</button>`).join('');
+        body.innerHTML = `
+            <p class="text-sm text-gray-600 dark:text-gray-300">Runs <b>${esc(info.current.name)}</b>. Change it to another type and keep the world, settings, players and schedules: Paper for plugins, Fabric for mods, Vanilla for neither.</p>
+            ${running ? '' : isAdmin
+                ? `<div class="flex flex-wrap gap-2 mt-3">${types}</div>
+                   <p class="${note} mt-2">You see what will happen before anything changes. A backup is always taken first, and the old type comes back by itself if the new one doesn't start.</p>`
+                : `<p class="${note} mt-2">Only an admin can change a server's type.</p>`}
+            ${jobBox}${undoBox}`;
+        if (roll) {
+            roll.innerHTML = (u && u.kind === 'update' && !running) ? `
+                <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-4 shadow-sm">
+                    <p class="text-sm text-gray-700 dark:text-gray-300">Last update: <b>${esc(u.from.name)}</b> → <b>${esc(u.to.name)}</b> on ${when(u.at)} by ${esc(u.by)}.</p>
+                    ${u.available
+                        ? (isAdmin ? `<button onclick="ServerApp.undoConvert('update')" class="mt-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-bold text-sm">Roll back the last update</button>` : '')
+                          + `<p class="${note} mt-2">Puts ${esc(u.from.name)} and the world from before the update back ("Before update" on the Backups tab). A newer world can't be opened by an older version, so what was built since is saved as a "Before restore" backup, not kept in the world.</p>`
+                        : `<p class="${note} mt-1">It can't be rolled back: ${esc(u.reason)}.</p>`}
+                </div>` : '';
+        }
+        clearTimeout(this.convertTimer);
+        if (running) {
+            const name = info.server;
+            this.convertTimer = setTimeout(async () => {
+                if (!this.activeServer || this.activeServer.name !== name) return;
+                const r = await api(`/api/servers/${encodeURIComponent(name)}/convert`);
+                if (!r.ok || !this.activeServer || this.activeServer.name !== name) return;
+                const next = await r.json();
+                if (!next.job || next.job.state !== 'running') {
+                    await this.loadServers();
+                    this.loadUpdateOptions();
+                    this.loadAutoUpdate();
+                    this.loadJavaChoice();
+                }
+                if (document.getElementById('convert-body')) this.renderConvert(next);
+            }, 2000);
+        }
+    },
+
+    typeName(t) {
+        const names = { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' };
+        return t ? `${names[t.loader] || t.loader || ''} ${t.minecraft || ''}`.trim() : '';
+    },
+
+    // The preview of a type change: nothing changes until the button at the bottom is pressed
+    async previewConvert(to, minecraft) {
+        const srv = this.activeServer;
+        if (!srv) return;
+        const modal = document.getElementById('modal-overlay');
+        const content = document.getElementById('modal-content');
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const names = { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' };
+        const cancel = `<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>`;
+        content.innerHTML = `<h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Change ${esc(srv.name)} to ${esc(names[to] || to)}</h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Checking what would change…</p><div class="flex gap-2 mt-4">${cancel}</div>`;
+        modal.classList.remove('hidden');
+        const q = `to=${encodeURIComponent(to)}` + (minecraft ? `&minecraft=${encodeURIComponent(minecraft)}` : '');
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/convert?${q}`);
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        if (!res.ok) {
+            content.innerHTML = `<h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Change ${esc(srv.name)} to ${esc(names[to] || to)}</h3>
+                <p class="text-sm text-red-500">${esc(await this.apiError(res))}</p><div class="flex gap-2 mt-4">${cancel}</div>`;
+            return;
+        }
+        const p = await res.json();
+        this.convertPlan = p;
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const row = (title, html) => `<div class="border-t border-gray-200 dark:border-gray-700 py-3"><p class="text-sm font-bold text-gray-900 dark:text-white mb-1">${title}</p>${html}</div>`;
+        const text = t => `<p class="text-sm text-gray-700 dark:text-gray-300">${t}</p>`;
+        const versions = p.versions.includes(p.to.minecraft) ? p.versions : [p.to.minecraft, ...p.versions];
+        const versionSelect = `<select id="convert-version" onchange="ServerApp.previewConvert(${this.jsArg(to)}, this.value)" class="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-sm text-gray-900 dark:text-white">
+            ${versions.map(v => `<option value="${esc(v)}" ${v === p.to.minecraft ? 'selected' : ''}>${esc(v)}${v === p.from.minecraft ? ' (same as now)' : ''}</option>`).join('')}</select>`;
+        const java = p.java ? (p.java.installed
+            ? `Runs on Java ${esc(p.java.used)}, which is installed.`
+            : `Needs Java ${esc(p.java.required)}, which isn't installed yet. You're asked to install it when you press the button.`) : '';
+        const software = text(`${esc(p.from.name)} ${esc(p.from.minecraft)} → <b>${esc(p.to.name)} ${esc(p.to.minecraft)}</b>${p.to.build && to === 'paper' ? ` (build ${esc(p.to.build)})` : ''}. ${java}`)
+            + `<label class="flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mt-2">Minecraft version ${versionSelect}</label>
+               <p class="${note} mt-1">Only the same version or newer: a world can't go back to an older one.</p>`;
+        const moves = p.world.moves.map(m => `<li><code>${esc(m.from)}</code> → <code>${esc(m.to)}</code></li>`).join('');
+        const world = text(esc(p.world.note)) + (moves ? `<ul class="text-xs text-gray-600 dark:text-gray-400 mt-1 list-disc ml-5">${moves}</ul>` : '');
+        const a = p.addons;
+        let addons = '';
+        if (a.action === 'off') {
+            const eq = a.items.filter(i => i.equivalent && i.enabled);
+            const n = a.items.length;
+            const cant = to === 'vanilla' ? 'Vanilla loads neither mods nor plugins' : `${esc(p.to.name)} can't load ${esc(a.noun)}s`;
+            addons = text(`${cant}, so the <code>${esc(a.folder)}</code> folder (${n} ${esc(a.noun)}${n === 1 ? '' : 's'}) is renamed <code>${esc(a.folder)}.off</code> and kept for switching back.`)
+                + (eq.length ? `<p class="text-sm text-gray-700 dark:text-gray-300 mt-2">These also have a ${esc(p.to.name)} build. Install it now:</p>
+                    <div class="mt-1 space-y-1">${eq.map(i => `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" name="convert-install" value="${esc(i.equivalent.project)}" checked> ${esc(i.equivalent.title || i.name)}</label>`).join('')}</div>
+                    <p class="${note} mt-1">Their settings and saved data aren't carried over: a ${esc(a.noun)} and its ${esc(p.to.name)} build keep them differently.${to === 'fabric' ? ' Fabric API, which most mods need, is installed with them.' : ''}</p>` : '')
+                + (to !== 'vanilla' && n > eq.length ? `<p class="${note} mt-1">The others have no ${esc(p.to.name)} build on Modrinth${n - eq.length === n ? '' : ' (or aren\'t from Modrinth)'}.</p>` : '');
+        } else {
+            addons = text(p.from.loader === 'vanilla' ? 'Vanilla has none to carry over.' : `No ${esc(a.noun || 'add-on')}s are installed.`);
+        }
+        if (a.restore) addons += `<p class="text-sm text-gray-700 dark:text-gray-300 mt-2"><code>${esc(a.restore)}.off</code> from before comes back as <code>${esc(a.restore)}</code>.</p>`;
+        if (a.note) addons += `<p class="${note} mt-1">${esc(a.note)}</p>`;
+        if (p.suggest && to !== 'vanilla') addons += `<p class="${note} mt-1">Afterwards, the Mods tab offers the ${esc(p.suggest)} bundle for ${esc(p.to.name)}.</p>`;
+        const c = p.content;
+        const danger = p.confirm_name ? `<div class="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-gray-900 rounded p-3 my-3">
+            <p class="text-sm font-bold text-red-600 dark:text-red-400">This world uses things that mods added</p>
+            <p class="text-sm text-gray-700 dark:text-gray-300 mt-1">Without these mods, their blocks, items and mobs disappear from the world when ${esc(p.to.name)} opens it${c.dimensions.length ? `, and their dimensions (${c.dimensions.map(esc).join(', ')}) can't be reached` : ''}:</p>
+            <ul class="text-sm text-gray-700 dark:text-gray-300 list-disc ml-5 mt-1">${c.mods.map(m => `<li><b>${esc(m.name)}</b> <span class="${note}">adds ${esc(m.adds.join(', '))}</span></li>`).join('')}</ul>
+            <p class="text-sm text-gray-700 dark:text-gray-300 mt-2">Undo brings them back with the world from before. To go ahead, type the server's name (<b>${esc(p.server)}</b>):</p>
+            <input id="convert-confirm" type="text" autocomplete="off" oninput="ServerApp.checkConvertConfirm()" class="mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white"></div>` : '';
+        const mb = n => `${Math.max(1, Math.round(n / 1048576)).toLocaleString()} MB`;
+        const safety = text(`A <b>Before type change</b> backup is always taken first (about ${mb(p.backup.needed)}${p.backup.free != null ? `; ${mb(p.backup.free)} free` : ''}). ${p.running ? 'The server stops for the change, then starts' : 'The server is started'} on ${esc(p.to.name)} to check it${p.running ? '' : ', and stopped again'}. If it doesn't start, ${esc(p.from.name)} and the world are put back by themselves.`);
+        const blockers = p.blockers.map(b => `<p class="text-sm text-red-600 dark:text-red-400 mt-1">✕ ${esc(b)}</p>`).join('');
+        const warnings = p.warnings.map(w => `<p class="text-sm text-yellow-700 dark:text-yellow-500 mt-1">⚠ ${esc(w)}</p>`).join('');
+        content.innerHTML = `
+            <h3 class="text-xl font-bold mb-1 text-gray-900 dark:text-white">Change ${esc(p.server)} to ${esc(p.to.name)}</h3>
+            <p class="${note} mb-3">Nothing changes until you press the button. Port, settings, players, whitelist, backups and restart schedules stay as they are.</p>
+            ${row('Server software', software)}
+            ${row('World', world)}
+            ${row(p.from.loader === 'paper' ? 'Plugins' : 'Mods and plugins', addons)}
+            ${row('Safety', safety)}
+            ${danger}${warnings}${blockers}
+            <div class="flex gap-2 mt-4">${cancel}
+                <button id="convert-go" onclick="ServerApp.startConvert(this)" ${p.ok ? '' : 'disabled'} class="flex-1 px-4 py-2 rounded font-bold text-white ${p.ok ? 'bg-theme hover-bg-theme' : 'bg-gray-400 cursor-not-allowed'}">Change to ${esc(p.to.name)}</button></div>`;
+        this.checkConvertConfirm();
+    },
+
+    checkConvertConfirm() {
+        const p = this.convertPlan, go = document.getElementById('convert-go'), box = document.getElementById('convert-confirm');
+        if (!p || !go || !p.ok || !p.confirm_name) return;
+        const ok = box && box.value.trim() === p.server;
+        go.disabled = !ok;
+        go.className = `flex-1 px-4 py-2 rounded font-bold text-white ${ok ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 cursor-not-allowed'}`;
+    },
+
+    async startConvert(button) {
+        const p = this.convertPlan;
+        if (!p || !this.activeServer || this.activeServer.name !== p.server) return;
+        const install = [...document.querySelectorAll('input[name="convert-install"]:checked')].map(e => e.value);
+        const confirmBox = document.getElementById('convert-confirm');
+        button.disabled = true;
+        const send = () => api(`/api/servers/${encodeURIComponent(p.server)}/convert`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: p.to.loader, minecraft: p.to.minecraft, confirm: confirmBox ? confirmBox.value.trim() : null, install })
+        });
+        const res = await this.withJava(await send(), send);
+        if (!res.ok) {
+            button.disabled = false;
+            return alert(`Not changed: ${await this.apiError(res)}`);
+        }
+        this.closeModal();
+        this.loadConvert();
+    },
+
+    async undoConvert(kind) {
+        const srv = this.activeServer;
+        if (!srv) return;
+        const sure = kind === 'update'
+            ? `Roll back ${srv.name}'s last update? The server stops, the old version and the world from before the update are put back, and it starts again. What was built since the update is saved as a "Before restore" backup, but isn't in the world any more.`
+            : `Undo ${srv.name}'s type change? The server stops, the old type and the world from before the change are put back, and it starts again. What was built since the change is saved as a "Before restore" backup, but isn't in the world any more.`;
+        if (!confirm(sure)) return;
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/${kind === 'update' ? 'update/rollback' : 'convert/undo'}`, { method: 'POST' });
+        if (!res.ok) return alert(`Not done: ${await this.apiError(res)}`);
+        this.loadConvert();
     },
 
     // "⬆ 1.26.10.4" next to a server's version when the update check found a newer one (1.16.12)
@@ -2599,7 +2819,7 @@ const ServerApp = {
 
     copyRows(list, actions) {
         const esc = t => this.escapeHtml(String(t ?? ''));
-        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes', 'pre-update': 'Before update' };
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes', 'pre-update': 'Before update', 'pre-convert': 'Before type change' };
         return list.map(c => `
             <tr class="border-t border-gray-200 dark:border-gray-700">
                 <td class="rp-card-head py-2 pr-3 whitespace-nowrap">${esc(new Date(c.created * 1000).toLocaleString())}</td>
@@ -3706,7 +3926,7 @@ const ServerApp = {
         const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
         const freqOptions = Object.entries(info.frequencies)
             .map(([id, label]) => `<option value="${esc(id)}" ${id === s.frequency ? 'selected' : ''}>${esc(label)}</option>`).join('');
-        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes', 'pre-update': 'Before update' };
+        const kindLabel = { scheduled: 'Scheduled', manual: 'Manual', 'pre-restore': 'Before restore', 'pre-change': 'Before mod changes', 'pre-update': 'Before update', 'pre-convert': 'Before type change' };
 
         let last = '';
         if (info.last) {
@@ -3722,6 +3942,7 @@ const ServerApp = {
             <tr class="border-t border-gray-200 dark:border-gray-700">
                 <td class="rp-card-head py-2 pr-3 whitespace-nowrap">${esc(new Date(b.created * 1000).toLocaleString())}</td>
                 <td class="py-2 pr-3" data-label="Type">${esc(kindLabel[b.kind] || b.kind)}</td>
+                <td class="py-2 pr-3 whitespace-nowrap" data-label="Made by" title="The server software that last wrote this backup's world">${b.made_by ? esc(b.made_by.label) : '<span class="text-gray-400">not recorded</span>'}</td>
                 <td class="py-2 pr-3 text-right whitespace-nowrap" data-label="Size">${esc(this.formatSize(b.size))}</td>
                 <td class="rp-card-actions py-2 text-right whitespace-nowrap">
                     <a href="${apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/backups/${encodeURIComponent(b.file)}`)}" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white" title="Download">⬇</a>
@@ -3762,10 +3983,10 @@ const ServerApp = {
                 </div>
                 ${info.backups.length ? `
                 <div class="overflow-x-auto -mx-3 sm:mx-0"><table class="rp-cards w-full text-sm text-gray-700 dark:text-gray-300">
-                    <thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pb-1">Taken</th><th class="pb-1">Type</th><th class="pb-1 text-right">Size</th><th></th></tr></thead>
+                    <thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pb-1">Taken</th><th class="pb-1">Type</th><th class="pb-1">Made by</th><th class="pb-1 text-right">Size</th><th></th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table></div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Restore replaces the current world with the backup's. The server is stopped while that happens, and the world it replaces is saved first as a "Before restore" backup.</p>`
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Restore replaces the current world with the backup's. The server is stopped while that happens, and the world it replaces is saved first as a "Before restore" backup. A world made by a newer Minecraft version than the server runs isn't restored, because the older version would damage it.</p>`
                 : `<p class="text-sm text-gray-500 dark:text-gray-400">No backups yet.</p>`}
             </div>
             <div id="backup-copies-box"></div>
@@ -4511,6 +4732,8 @@ const ServerApp = {
         const version = this.activeServer.edition === 'Java' && select ? select.value : '';
         const target = version ? `Minecraft ${version}` : 'the newest version';
         let warn = '';
+        const backupBox = document.getElementById('update-backup');
+        const backupFirst = !backupBox || backupBox.checked;
         const kind = this.addonKind(this.activeServer);
         if (version && version !== this.activeServer.minecraft && ['fabric', 'paper'].includes(kind) && this.currentUser && this.currentUser.role === 'admin') {
             const r = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/addons/compatibility?minecraft=${encodeURIComponent(version)}`);
@@ -4523,19 +4746,22 @@ const ServerApp = {
         }
         const sure = this.activeServer.edition === 'Bedrock'
             ? `Update ${this.activeServer.name} to the newest Bedrock release? It stops, is backed up first ("Before update" on the Backups tab), and goes back to the old version and world if the new one doesn't start.`
-            : `Update ${this.activeServer.name} to ${target}? The server restarts. Take a backup first: a world opened by a newer version can't go back.${warn}`;
+            : `Update ${this.activeServer.name} to ${target}? The server restarts. ${backupFirst
+                ? 'It is backed up first ("Before update" on the Backups tab), and Roll back the last update puts that world and the old version back.'
+                : 'No backup is taken first: a world opened by a newer version can\'t go back.'}${warn}`;
         if (!confirm(sure)) return;
         this.toggleConsole(true);
         const name = this.activeServer.name;
         const send = () => api(`/api/servers/${encodeURIComponent(name)}/update`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(version ? { version } : {})
+            body: JSON.stringify(version ? { version, backup: backupFirst } : { backup: backupFirst })
         });
         const res = await this.withJava(await send(), send);
         if (!res.ok) alert(`Update failed: ${await this.apiError(res)}`);
         await this.loadServers();
         this.loadUpdateOptions();
         this.loadAutoUpdate();
+        this.loadConvert();
         this.loadJavaChoice();
     },
 

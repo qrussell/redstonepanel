@@ -116,6 +116,9 @@ Two more things to know:
 - **Java Edition:** Vanilla (Mojang), Paper and Fabric, on any release version you choose. The
   panel installs the Java each version needs (Java 8, 17, 21 or 25) and runs each server on
   its own Java, so old and new versions can run side by side.
+- A Java server can **change type** later (Vanilla to Paper or Fabric, and every other way
+  round) and keep its world: **Maintenance → Server type** shows what will happen first,
+  always backs up, and puts the old type back if the new one doesn't start.
 - **Bedrock Edition:** the official Bedrock Dedicated Server, always the newest release, with
   `.mcpack` and `.mcaddon` add-ons and Phantom LAN proxies.
 - Bedrock players can join Java servers through **Geyser** and **Floodgate**, one click away in

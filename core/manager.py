@@ -849,9 +849,11 @@ def unit_heap(exec_start):
             heap[key] = m.group(1)
     return heap
 
-def update_server_binary(server_name, version=None):
+def update_server_binary(server_name, version=None, backup=True, actor="Update button"):
     """Downloads the server software again. A Java server gets the chosen Minecraft version
-    (default: the newest) of the loader it already uses, and its unit the Java that needs."""
+    (default: the newest) of the loader it already uses, and its unit the Java that needs.
+    backup (Java): take a "Before update" backup first and keep the old server.jar, so Roll back
+    the last update (core/convert.py, 1.19) can put both back."""
     _check_server(server_name)
     d = get_server_dir(server_name)
     exec_start = _unit_exec_start(server_name)
@@ -876,14 +878,31 @@ def update_server_binary(server_name, version=None):
         try:
             # Download next to the server first, so a failed download leaves it untouched
             info, java = _install_java(staging, loader, version, current)
+            from core import backups, convert, updates
+            was_running = backups._is_active(server_name)
             run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
+            pre = None
+            if backup:
+                try:
+                    pre = backups.run_backup(server_name, "pre-update")["file"]
+                    updates._prune_pre_update(server_name)
+                except Exception as e:
+                    if was_running:
+                        run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
+                    raise ServerError(f"The backup before updating failed, so nothing was changed: {e}")
+            old_java = unit_java(exec_start) or "/usr/bin/java"
+            convert.keep_previous(d, current)
             os.replace(os.path.join(staging, "server.jar"), os.path.join(d, "server.jar"))
             os.replace(os.path.join(staging, javaservers.INFO_FILE), os.path.join(d, javaservers.INFO_FILE))
+            if current.get("loader") and current.get("minecraft"):
+                convert.remember(server_name, "update", current, info, pre, old_java, actor=actor,
+                                 was_running=was_running)
         finally:
             shutil.rmtree(staging, ignore_errors=True)
         if os.path.realpath(unit_java(exec_start) or "") != os.path.realpath(java):
             _write_unit(server_name, d, "java", java=java, **unit_heap(exec_start))
-        write_log(f"[UPDATE] {server_name} now runs {javaservers.describe(info)} with {java}.")
+        write_log(f"[UPDATE] {server_name} now runs {javaservers.describe(info)} with {java}"
+                  + (f" (was {javaservers.describe(current)}; backup from before: {pre})." if pre else "."))
     from core import updates
     updates.forget(server_name)
     run_and_log(["chown", "-R", "minecraft:minecraft", d])
@@ -1079,6 +1098,8 @@ def remove_server(server_name, keep_world, note=None):
         deployopts.set_flags(server_name, None)     # kept with the folder, for a restore
     restarts.on_server_removed(server_name, purged=not keep_world)
     updates.on_server_removed(server_name, purged=not keep_world)
+    from core import convert
+    convert.forget(server_name)
     from core import perf
     perf.on_server_removed(server_name, purged=not keep_world)
     # Its Phantom LAN proxy goes too (Phantom units made by hand stay)

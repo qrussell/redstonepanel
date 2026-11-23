@@ -3,8 +3,9 @@
 Archives live outside the server folders, so uninstalling or purging a server never deletes
 them:
     /var/backups/redstonepanel/<server>/<server>-YYYYmmdd-HHMMSS-<kind>.tar.gz
-kind is "scheduled", "manual", "pre-restore", "pre-change" (before a mod update) or
-"pre-update" (before a Bedrock update; core/updates.py keeps the newest three). Only
+kind is "scheduled", "manual", "pre-restore", "pre-change" (before a mod update),
+"pre-update" (before an update; the newest three are kept) or "pre-convert" (before a
+change of server type, core/convert.py). Only
 scheduled backups are pruned to the configured count; the others stay until someone deletes
 them.
 
@@ -21,6 +22,7 @@ as such.
 """
 import datetime
 import fcntl
+import io
 import json
 import os
 import re
@@ -41,9 +43,10 @@ SERVICE_TEMPLATE = "redstonepanel-backup@.service"
 
 # A server name is also a systemd instance name here, so no '@'
 NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.-]*$")
-KINDS = ("scheduled", "manual", "pre-restore", "pre-change", "pre-update")
+KINDS = ("scheduled", "manual", "pre-restore", "pre-change", "pre-update", "pre-convert")
+QUIET_KINDS = ("pre-restore", "pre-change", "pre-update", "pre-convert")     # no webhook of their own
 FILE_RE = re.compile(r"^(?P<server>minecraft[A-Za-z0-9_.-]*)-(?P<stamp>\d{8}-\d{6})-"
-                     r"(?P<kind>scheduled|manual|pre-restore|pre-change|pre-update)\.tar\.gz$")
+                     r"(?P<kind>scheduled|manual|pre-restore|pre-change|pre-update|pre-convert)\.tar\.gz$")
 
 # id -> (label, OnCalendar with {h} {m} {h6} {h12} filled in from the chosen time)
 FREQUENCIES = {
@@ -59,7 +62,7 @@ MAX_KEEP = 365
 MAX_KEEP_DAYS = 3650
 
 # Not worth backing up: downloaded again by Update, regenerated, or logs.
-SKIP_TOP = {"server.jar", "bedrock_server", "bedrock_server_symbols.debug", "bedrock-server.zip",
+SKIP_TOP = {"server.jar", "server.jar.previous", "bedrock_server", "bedrock_server_symbols.debug", "bedrock-server.zip",
             "libraries", "versions", "logs", "crash-reports", "debug", "server.log",
             manager.REMOVED_INFO}
 SKIP_TOP_PREFIXES = (".redstonepanel-",)
@@ -70,6 +73,9 @@ KEEP_TOP = {".redstonepanel-server.json"}
 SKIP_PACK_PREFIXES = ("behavior_packs/vanilla", "resource_packs/vanilla", "behavior_packs/chemistry",
                       "resource_packs/chemistry", "behavior_packs/experimental", "resource_packs/experimental",
                       "definitions")
+
+# 1.19: the first member of every archive says what wrote the world in it (never restored)
+MANIFEST = ".redstonepanel-backup.json"
 
 BEDROCK_READY = "Data saved. Files are now ready to be copied."
 LOG_PREFIX_RE = re.compile(r"^\s*\[[^\]]*\]\s*")
@@ -112,9 +118,100 @@ def list_backups(server):
             st = os.stat(os.path.join(d, f))
             created = datetime.datetime.strptime(m.group("stamp"), "%Y%m%d-%H%M%S").replace(
                 tzinfo=datetime.timezone.utc).timestamp()
-            out.append({"file": f, "kind": m.group("kind"), "size": st.st_size, "created": int(created)})
+            out.append({"file": f, "kind": m.group("kind"), "size": st.st_size, "created": int(created),
+                        "made_by": made_by(os.path.join(d, f), st)})
     out.sort(key=lambda b: (b["created"], b["file"]), reverse=True)
     return out
+
+
+# ---------------------------------------------------------------------------
+# What made a backup (1.19)
+# ---------------------------------------------------------------------------
+_made_cache = {}               # path -> (mtime_ns, size, manifest or None)
+_OLD_SCAN = 400                # members read looking for an older backup's server info
+
+def _manifest(server, d, edition, kind):
+    """What runs the world being archived: {edition, loader, minecraft, build, panel, kind}."""
+    from core.version import panel_version
+    out = {"edition": edition, "kind": kind, "panel": panel_version()}
+    if edition == "java":
+        from core import javaservers
+        info = javaservers.read_info(d) or {}
+        out.update({k: info.get(k) for k in ("loader", "minecraft", "build") if info.get(k)})
+    else:
+        try:
+            from core import updates
+            version = updates.bedrock_installed(d)
+        except Exception:
+            version = None
+        if version:
+            out["minecraft"] = version
+    return out
+
+def _add_manifest(tar, manifest):
+    data = json.dumps(manifest, sort_keys=True).encode()
+    ti = tarfile.TarInfo(MANIFEST)
+    ti.size, ti.mode, ti.mtime = len(data), 0o600, int(time.time())
+    tar.addfile(ti, io.BytesIO(data))
+
+def _clean_manifest(data):
+    if not isinstance(data, dict):
+        return None
+    out = {k: str(data[k])[:60] for k in ("edition", "loader", "minecraft", "build", "panel") if data.get(k)}
+    return out if out.get("minecraft") else None
+
+def read_manifest(path):
+    """The archive's manifest, or for a Java backup from before 1.19 what its server info file
+    says. None when the archive doesn't say."""
+    try:
+        with tarfile.open(path, "r:gz") as tar:
+            for i, m in enumerate(tar):
+                if i >= _OLD_SCAN or (i and "/" in m.name and m.isfile()):
+                    break                    # the top folder's own files come before any folder's
+                if m.name in (MANIFEST, ".redstonepanel-server.json") and m.isfile() and m.size < 65536:
+                    data = json.loads(tar.extractfile(m).read().decode("utf-8", "replace"))
+                    if m.name != MANIFEST and isinstance(data, dict):
+                        data = dict(data, edition="java")
+                    return _clean_manifest(data)
+    except (OSError, ValueError, tarfile.TarError, EOFError):
+        pass
+    return None
+
+def made_by(path, st=None):
+    """read_manifest() with a label ("Paper 1.21.4"), remembered until the file changes."""
+    try:
+        st = st or os.stat(path)
+    except OSError:
+        return None
+    hit = _made_cache.get(path)
+    if hit and hit[0] == st.st_mtime_ns and hit[1] == st.st_size:
+        return hit[2]
+    m = read_manifest(path)
+    if m:
+        loader = {"paper": "Paper", "fabric": "Fabric", "vanilla": "Vanilla"}.get(m.get("loader"))
+        m["label"] = " ".join(x for x in (loader or ("Bedrock" if m.get("edition") == "bedrock" else None),
+                                          m["minecraft"]) if x)
+    if len(_made_cache) > 5000:
+        _made_cache.clear()
+    _made_cache[path] = (st.st_mtime_ns, st.st_size, m)
+    return m
+
+def check_not_newer(server, d, path):
+    """Refuses a Java backup whose world was written by a newer Minecraft than the server runs:
+    the older version would open it and damage it."""
+    from core import javaservers
+    m = made_by(path)
+    current = (javaservers.read_info(d) or {}).get("minecraft")
+    if not m or not current or m.get("edition") == "bedrock":
+        return
+    try:
+        newer = javaservers._older(current, m["minecraft"])
+    except Exception:
+        return
+    if newer:
+        raise BackupError(f"This backup's world was last opened by Minecraft {m['minecraft']}, and {server} runs "
+                          f"{current}. An older version can't open a newer world without damaging it. "
+                          f"Update the server to {m['minecraft']} or newer first, then restore.")
 
 
 # ---------------------------------------------------------------------------
@@ -282,13 +379,13 @@ def run_backup(server, kind="manual"):
         msg = str(e) if isinstance(e, BackupError) else f"{type(e).__name__}: {e}"
         manager.write_log(f"[BACKUP] {kind.capitalize()} backup of {server} failed: {msg}")
         _write_status(server, {"at": int(started), "ok": False, "kind": kind, "error": msg})
-        if kind not in ("pre-restore", "pre-change", "pre-update"):
+        if kind not in QUIET_KINDS:
             notify.send("backup_failed", server, f"{kind.capitalize()} backup of {server} failed: {msg}")
         raise
     _write_status(server, {"at": int(started), "ok": True, "kind": kind, "file": info["file"],
                            "size": info["size"], "consistent": info["consistent"],
                            "seconds": round(time.time() - started, 1)})
-    if kind not in ("pre-restore", "pre-change", "pre-update"):
+    if kind not in QUIET_KINDS:
         notify.send("backup_ok", server, f"{kind.capitalize()} backup of {server} saved "
                     f"({info['size'] / 1048576:.1f} MB)" + ("." if info["consistent"] else
                     ", but copied while the server was writing: turn RCON on for consistent backups."))
@@ -311,6 +408,7 @@ def _run_backup_locked(server, kind):
                           f"{' (server running)' if running else ''}.")
         try:
             with tarfile.open(partial, "w:gz", compresslevel=6) as tar:
+                _add_manifest(tar, _manifest(server, d, edition, kind))
                 if not running:
                     _add_tree(tar, d)
                 elif edition == "java":
@@ -432,6 +530,8 @@ def restore_backup(server, filename):
         level, worlds = _archive_world(tar, edition)
     if not worlds:
         raise BackupError(f"{filename} has no world folder ('{level}') to restore.")
+    if edition == "java":
+        check_not_newer(server, d, path)
 
     was_running = _is_active(server)
     manager.write_log(f"[BACKUP] Restoring {server}'s world from {filename}.")

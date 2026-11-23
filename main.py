@@ -23,6 +23,7 @@ import core.notify as notify
 import core.setup as setup_guide
 import core.restarts as restarts
 import core.updates as updates
+import core.convert as convert
 import core.auth as auth
 import core.settings as panel_settings
 import core.twofactor as twofactor
@@ -886,14 +887,57 @@ def unban_player(request: Request, server_name: str, req: ModerationAction):
     return _moderate(request, server_name, f"unbanned {req.player.strip()}", moderation.unban, req.player)
 
 @app.post("/api/servers/{server_name}/update")
-def update_server(server_name: str, req: Optional[ServerUpdateRequest] = None):
+def update_server(request: Request, server_name: str, req: Optional[ServerUpdateRequest] = None):
     try:
-        manager.update_server_binary(server_name, req.version if req else None)
+        manager.update_server_binary(server_name, req.version if req else None,
+                                     backup=req.backup if req else True, actor=request.state.user["username"])
     except manager.JavaMissing:
         raise                                    # 409, see java_missing() below
     except (manager.DependencyError, manager.ServerError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
+
+# 1.19: change a Java server's type (Vanilla, Paper, Fabric) in place, undo it, and roll back
+# the last update (core/convert.py). Reading is for everyone signed in; changing is for admins.
+class ConvertRequest(BaseModel):
+    to: str
+    minecraft: Optional[str] = None
+    confirm: Optional[str] = None            # the server's name, when mods added things to the world
+    install: list[str] = []                  # Modrinth projects to install for the new type
+
+def _convert_call(fn, *args, **kw):
+    try:
+        return fn(*args, **kw)
+    except convert.ConvertError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except (files.FileError, backups.BackupError, manager.ServerError) as e:
+        raise HTTPException(status_code=getattr(e, "status", 400), detail=str(e))
+
+@app.get("/api/servers/{server_name}/convert")
+def convert_status(request: Request, server_name: str, to: str = "", minecraft: str = ""):
+    """Without ?to=: what the server runs, the change running now or last, and what can be undone.
+    With ?to=paper (and &minecraft=): the preview of that change, which changes nothing."""
+    if not to:
+        return _convert_call(convert.status, server_name)
+    _require_admin(request, "change a server's type")
+    return _convert_call(convert.plan, server_name, to, minecraft or None)
+
+@app.post("/api/servers/{server_name}/convert")
+def convert_server(request: Request, server_name: str, req: ConvertRequest):
+    _require_admin(request, "change a server's type")
+    return {"job": _convert_call(convert.start_change, server_name, req.to, req.minecraft or None,
+                                 confirm=req.confirm, install=req.install[:20],
+                                 actor=request.state.user["username"])}
+
+@app.post("/api/servers/{server_name}/convert/undo")
+def convert_undo(request: Request, server_name: str):
+    _require_admin(request, "undo a type change")
+    return {"job": _convert_call(convert.start_undo, server_name, "convert", actor=request.state.user["username"])}
+
+@app.post("/api/servers/{server_name}/update/rollback")
+def update_rollback(request: Request, server_name: str):
+    _require_admin(request, "roll back an update")
+    return {"job": _convert_call(convert.start_undo, server_name, "update", actor=request.state.user["username"])}
 
 # Java server software: which Minecraft versions each loader offers, and the Java one needs
 @app.get("/api/java/versions")

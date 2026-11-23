@@ -289,6 +289,7 @@ settings POST    {_S}/properties/raw
 settings PUT     {_S}/restarts
 settings PUT     {_S}/updates
 settings POST    {_S}/updates/check
+view     GET     {_S}/convert
 settings POST    {_S}/update
 settings POST    {_S}/template/save
 settings POST    {_S}/template/apply
@@ -327,6 +328,9 @@ admin    DELETE  {_S}
 admin    PUT     {_S}/resources
 admin    POST    {_S}/crash/turn-off
 admin    POST    {_S}/crash/undo
+admin    POST    {_S}/convert
+admin    POST    {_S}/convert/undo
+admin    POST    {_S}/update/rollback
 admin    POST    {_S}/java
 admin    POST    {_S}/jvm-flags
 admin    GET     {_S}/phantom

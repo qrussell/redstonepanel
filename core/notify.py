@@ -36,6 +36,7 @@ EVENTS = {
     "update_available": "Update available",
     "updated": "Bedrock server updated",
     "update_failed": "Server update failed",
+    "type_changed": "Server type changed",
     "tps_low": "TPS under 15 for 5 minutes",
     "disk_full": "Disk over 95 % full",
 }

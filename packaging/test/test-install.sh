@@ -204,6 +204,16 @@ c=$(code -b $L -X POST $B/api/servers/minecraft-java/jvm-flags -H "$J" -H "$O" -
 check "  unit runs Aikar's flags"           grep -q -- '-XX:+UseG1GC .*-Dfile.encoding=UTF-8 -jar server.jar nogui' /etc/systemd/system/minecraft-java.service
 check "  jvm-flags.json is 0600"            test "$(stat -c %a /var/lib/redstonepanel/jvm-flags.json)" = 600
 check "  listed with the server"            bash -c "curl -s -b $L $B/api/servers | grep -q '\"preset\":\"aikar\"'"
+# --- changing a server's type (1.19): the imported server's jar isn't one the panel recognises,
+#     so a change is refused before anything is touched (real changes: test-convert.sh)
+c=$(code -b $L $B/api/servers/minecraft-java/convert)
+[ "$c" = 200 ] && grep -q '"types":\[' /tmp/body && grep -q '"undo":null' /tmp/body && ok "Server type status of a Java server" || bad "convert status ($c $(cat /tmp/body))"
+c=$(code -b $L "$B/api/servers/minecraft-java/convert?to=paper")
+[ "$c" = 400 ] && grep -q "can't tell which type" /tmp/body && ok "  an unrecognised server.jar isn't changed (400)" || bad "convert preview ($c $(cat /tmp/body))"
+c=$(code -b $L -X POST $B/api/servers/minecraft-java/convert/undo -H "$J" -H "$O")
+[ "$c" = 404 ] && ok "  nothing to undo (404)" || bad "convert undo ($c $(cat /tmp/body))"
+c=$(code -b $L -X POST $B/api/servers/minecraft-java/update/rollback -H "$J" -H "$O")
+[ "$c" = 404 ] && ok "  no update to roll back (404)" || bad "update rollback ($c $(cat /tmp/body))"
 check "  -XX:OnError refused there too"     test "$(code -b $L -X POST $B/api/servers/minecraft-java/jvm-flags -H "$J" -H "$O" -d '{"extra":["-XX:OnError=sh"]}')" = 400
 code -b $L -X POST $B/api/servers/minecraft-java/jvm-flags -H "$J" -H "$O" -d '{"preset":"none"}' >/dev/null
 check "  removed again"                     bash -c '! grep -q UseG1GC /etc/systemd/system/minecraft-java.service'
