@@ -18,8 +18,10 @@
 
 - want to sell game servers to customers. RedstonePanel has no billing, tenant isolation or
   resale features, and none are planned;
-- need a native Windows or macOS app. It runs on Ubuntu 24.04, 26.04 and 26.10, Debian 13 and
-  64-bit Raspberry Pi OS (on Windows, in [WSL](#can-i-run-it-on-windows-with-wsl));
+- need a macOS app. It runs on Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit Raspberry
+  Pi OS, and from 1.22 on Windows as a [preview](Installation.md#on-windows-preview) (Java
+  servers on one computer; for everything else on Windows, use
+  [WSL](#can-i-run-it-on-windows-with-wsl));
 - want every server isolated in its own container. RedstonePanel deliberately uses systemd
   instead of Docker.
 
@@ -58,7 +60,8 @@ three. Use an SSD rather than a microSD card if you can, and the active cooler o
 
 ## Can I run it on Windows with WSL?
 
-Yes. Install **Ubuntu 26.04** or **24.04** from WSL (`wsl --install -d Ubuntu-24.04`), then run the install
+Yes, and until the [Windows version](Installation.md#on-windows-preview) is out of preview,
+WSL is how to get Bedrock servers, modpacks and clusters on a Windows PC. Install **Ubuntu 26.04** or **24.04** from WSL (`wsl --install -d Ubuntu-24.04`), then run the install
 command above inside it. Ubuntu under WSL starts systemd by default, which the panel and its
 game servers need; if yours doesn't, add `systemd=true` under `[boot]` in `/etc/wsl.conf` and
 run `wsl --shutdown`.
