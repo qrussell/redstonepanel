@@ -109,8 +109,9 @@ each needs its Windows shape before it can be given a good function name, so the
 
 ## As built (1.21)
 
-- 28 files changed outside the layer; about 170 program calls moved. `grep`, `find` and the
+- 29 files changed outside the layer; about 180 program calls moved, including the loader
+  installer and modpack calls 1.20 added (the guard test found those on the rebase). `grep`, `find` and the
   `systemctl ... | cut` fallback became Python. The other programs are run with the same
   arguments as before, including the `sudo` in front of the calls that have always had it.
-- Tested: the 734 unit tests from before pass unchanged, plus 20 new ones in
+- Tested: the 784 unit tests from before pass unchanged, plus 20 new ones in
   `tests/test_platform.py`. See the merge request for the install and feature test results.

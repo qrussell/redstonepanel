@@ -1725,6 +1725,28 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     system. **Gate:** every existing unit test and install script passes unchanged on all
     supported Linux systems. **Size:** large; it touches most of `core/`.
 
+    **As built (23 Nov 2026, MR !108):** as planned for programs and paths, with a line drawn
+    under them. `core/platform/` has six areas (`services`, `firewall`, `console`, `packages`,
+    `system`, `certs`) and `paths.py`; about 180 program calls left 29 files, including the
+    loader installer and modpack calls 1.20 added, which the new guard test found on the
+    rebase. Every program runs with the same arguments as before (the old tests check the
+    command lines), `grep`, `find` and a `systemctl | cut` fallback became Python, and `curl`,
+    `wget`, `jq`, `unzip` and `tar` were already gone. `core/platform/fake/` is a second side
+    that runs nothing and records every call. `tests/test_platform.py` reads the source and
+    fails when a file outside the layer starts a system program or spells out a system path,
+    and when the two sides' functions differ. Two files still start programs on purpose:
+    `core/manager.py` (`run_and_log`, and Bedrock's own program for an XUID lookup) and
+    `core/backup_targets.py` (`ssh`, `ssh-keygen`, `rsync`). **Not moved, and now part of
+    1.22:** the text of systemd unit files (game servers, timers, Phantom, SFTP, the limits
+    drop-in), the `/proc` and cgroup readers, `pwd`, `fcntl` and PAM, and messages that quote a
+    Linux command to type; each needs its Windows shape before it gets a good function name.
+    The old unit tests still replace `subprocess.run`, so they need Linux; only new tests use
+    the fake. Design notes: [platform.md](platform.md). Tested: the 784 unit tests from before
+    pass unchanged, plus 20 new; no test script was changed; `test-install.sh` 131/131 on
+    Ubuntu 24.04 in Docker; GitLab CI on Ubuntu 24.04, 26.04, 26.10 and Debian 13; and the
+    GitHub matrix on the branch (install tests on all four systems and ARM64, the cluster and
+    feature scripts). Not tested: nothing runs on Windows yet.
+
 27. **1.22: Windows preview.** One machine, Java servers. The MSI installer with bundled
     Python, the panel service, the runner, Java from Adoptium, Defender Firewall, Task
     Scheduler schedules, backups and restore, console, file manager (refusing symlinks,
