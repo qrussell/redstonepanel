@@ -542,7 +542,8 @@ def _tree_size(d):
         rel_root = os.path.relpath(root, d).replace(os.sep, "/")
         rel_root = "" if rel_root == "." else rel_root
         dirs[:] = [n for n in dirs if not backups._skipped(f"{rel_root}/{n}" if rel_root else n)
-                   and not os.path.islink(os.path.join(root, n))]
+                   and not os.path.islink(os.path.join(root, n))
+                   and not backups._is_junction(os.path.join(root, n))]
         for n in names:
             if backups._skipped(f"{rel_root}/{n}" if rel_root else n):
                 continue

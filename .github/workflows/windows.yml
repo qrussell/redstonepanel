@@ -49,7 +49,7 @@ jobs:
           $h = "C:\ProgramData\RedstonePanel"
           Get-ChildItem $h -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 80 FullName | Format-Table -HideTableHeaders
           foreach ($f in @(Get-ChildItem "$h\journal" -Recurse -Filter output.log -ErrorAction SilentlyContinue) + @(Get-Item "$h\logs\panel.log" -ErrorAction SilentlyContinue)) {
-            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 60; "::endgroup::"
+            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 40; "::endgroup::"
           }
           Get-ChildItem "$h\journal" -Recurse -Filter status.json -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName; Get-Content $_.FullName }
           "::group::event log"
@@ -122,7 +122,7 @@ jobs:
         run: |
           $h = "C:\ProgramData\RedstonePanel"
           foreach ($f in @(Get-ChildItem "$h\journal" -Recurse -Filter output.log -ErrorAction SilentlyContinue) + @(Get-Item "$h\logs\panel.log" -ErrorAction SilentlyContinue)) {
-            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 60; "::endgroup::"
+            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 40; "::endgroup::"
           }
       - name: Remove
         shell: pwsh

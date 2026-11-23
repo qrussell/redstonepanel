@@ -69,7 +69,8 @@ def status_text(timeout=10):
         "\"profiles=$on\"; "
         f"Get-NetFirewallRule -Group {_win.ps_quote(GROUP)} -ErrorAction SilentlyContinue | "
         "Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' } | "
-        "ForEach-Object { $f = $_ | Get-NetFirewallPortFilter; \"rule=$($f.Protocol)|$($f.LocalPort -join ',')\" }",
+        "ForEach-Object { $f = $_ | Get-NetFirewallPortFilter; \"rule=$($f.Protocol)|$($f.LocalPort -join ',')\" }; "
+        "exit 0",                        # no rules yet is not a failure (PowerShell would say 1)
         timeout=max(timeout, 30))
     if r.returncode != 0:
         raise subprocess.SubprocessError((r.stderr or r.stdout).strip()[:300])

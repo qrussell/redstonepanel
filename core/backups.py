@@ -243,6 +243,9 @@ def _skipped(rel, full=False):
         return True
     return any(rel == p or rel.startswith(p) for p in SKIP_PACK_PREFIXES)
 
+_is_junction = getattr(os.path, "isjunction", lambda path: False)
+
+
 def _add_tree(tar, d, skip_dirs=(), full=False):
     """Adds the server folder to tar, minus _skipped() paths and skip_dirs (relative)."""
     for root, dirs, files in os.walk(d):
@@ -257,6 +260,8 @@ def _add_tree(tar, d, skip_dirs=(), full=False):
             if os.path.islink(path):
                 tar.add(path, arcname=rel, recursive=False)   # the link itself, never its target
                 continue
+            if _is_junction(path):
+                continue                                      # Windows: a folder that is really somewhere else
             tar.add(path, arcname=rel, recursive=False)
             keep_dirs.append(name)
         dirs[:] = keep_dirs

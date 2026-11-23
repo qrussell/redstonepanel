@@ -327,7 +327,8 @@ def folder_size(path):
                 st = os.lstat(os.path.join(root, d))
             except OSError:
                 continue
-            if st.st_dev == dev and not os.path.islink(os.path.join(root, d)):
+            if st.st_dev == dev and not os.path.islink(os.path.join(root, d)) \
+                    and not backups._is_junction(os.path.join(root, d)):
                 keep.append(d)
         dirs[:] = keep
     return total

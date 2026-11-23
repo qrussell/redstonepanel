@@ -123,6 +123,8 @@ def _grant(path):
     server = _server_for(path)
     if not server or not os.path.exists(path):
         return _done(0)
+    if _win.service_status(server)[0] is None:
+        return _done(0)       # no service yet, so no account: services gives it its folder when it makes the service
     return _win.grant(path, _win.service_sid(server), inherit=os.path.isdir(path))
 
 

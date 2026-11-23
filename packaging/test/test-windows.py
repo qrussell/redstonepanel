@@ -241,9 +241,9 @@ def main():
             if s.get("name") == name:
                 return s
         return None
-    srv = port_of() or {}
+    srv = wait("online", lambda: (port_of() or {}).get("status") == "online" and port_of(), 60) or port_of() or {}
     port = int(srv.get("port") or 25565)
-    print(f"        {json.dumps(srv)[:600]}")
+    print(f"        {json.dumps(srv)[:300]}")
     check("the panel lists it as a Java server, online", srv.get("edition") == "Java" and srv.get("status") == "online", str(srv)[:300])
     check("the panel knows which Java it runs", bool(srv.get("java_installed")), str(srv.get("java_installed")))
 
@@ -256,8 +256,8 @@ def main():
     if not check(f"Minecraft is listening on port {port}", wait("listen", listening, 300, every=5)):
         return finish(p, args, name, port)          # nothing below can pass without a running server
     journal = os.path.join(home, "journal", f"{name}.service", "output.log")
-    check("the console output is kept", os.path.isfile(journal) and "Done" in open(journal, encoding="utf-8", errors="replace").read(),
-          journal)
+    check("the console output is kept",
+          wait("journal", lambda: "Done (" in open(journal, encoding="utf-8", errors="replace").read(), 120), journal)
     code, out = ps(f"(Get-NetFirewallRule -DisplayName 'RedstonePanel {port}/tcp').Group")
     check("Defender Firewall has a rule for its port, in the RedstonePanel group", "RedstonePanel" in out, out[-300:])
     code, out = ps(f"Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | ForEach-Object {{ (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User }}")
@@ -301,7 +301,7 @@ def main():
     check("... and the file manager won't go through it", code >= 400, f"{code} {str(t)[:200]}")
     code, t = p.get(f"/api/servers/{name}/files/text?path=way-out/win.ini")
     check("... nor read a file behind it", code >= 400, f"{code} {str(t)[:200]}")
-    code, r = p.call("DELETE", f"/api/servers/{name}/files", {"path": "way-out"})
+    code, r = p.call("DELETE", f"/api/servers/{name}/files?path=way-out")
     check("deleting the junction removes the link only", code == 200 and not os.path.lexists(os.path.join(d, "way-out"))
           and os.path.isdir(os.environ.get("SystemRoot", r"C:\Windows")), f"{code} {r}")
 

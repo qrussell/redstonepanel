@@ -84,6 +84,12 @@ def prepare():
 # ---------------------------------------------------------------------------
 # What the runner recorded
 # ---------------------------------------------------------------------------
+def _full(unit_name):
+    """"minecraft-java" -> "minecraft-java.service": systemctl takes either, so callers pass either."""
+    unit_name = str(unit_name)
+    return unit_name if unit_name.endswith((SUFFIX, ".timer")) else unit_name + SUFFIX
+
+
 def _json(unit_name, name):
     try:
         with open(os.path.join(paths.journal_dir(unit_name), name), encoding="utf-8") as f:
@@ -112,6 +118,7 @@ def _is_service_unit(unit_name, spec=None):
 
 def _states(unit_name):
     """(ActiveState, SubState, status.json) of a unit."""
+    unit_name = _full(unit_name)
     if unit_name.endswith(".timer"):
         on = _task_exists(unit_name)
         return ("active", "waiting", {}) if on else ("inactive", "dead", {})
@@ -178,6 +185,7 @@ def systemctl(*args, timeout=None, env=None):
 # ---------------------------------------------------------------------------
 def unit_state(unit_name, verb="is-active", timeout=None):
     """systemd's one-word answer about a unit: "active", "inactive", "failed", "enabled", ..."""
+    unit_name = _full(unit_name)
     if verb == "is-enabled":
         if unit_name.endswith(".timer"):
             return "enabled" if _task_exists(unit_name) else "disabled"
@@ -208,6 +216,7 @@ def _utc(epoch):
 
 
 def _properties(unit_name):
+    unit_name = _full(unit_name)
     spec = units.load(unit_name)
     active, sub, status = _states(unit_name)
     props = {"Id": unit_name, "LoadState": "loaded" if spec is not None else "not-found",
@@ -294,7 +303,7 @@ def failed(*patterns, timeout=10):
 
 def reset_failed(*units, timeout=None):
     """Forgets that these units failed."""
-    for u in units:
+    for u in map(_full, units):
         path = os.path.join(paths.journal_dir(u), "status.json")
         data = _json(u, "status.json")
         if data.get("state") in ("failed", "active", "activating", "deactivating") \
@@ -334,6 +343,7 @@ def unit_files(prefix="minecraft", suffix=SUFFIX):
 def _register(unit_name, spec=None):
     """Makes the Windows service for a unit file (or brings it in line with the file) and gives
     its account its folders. Returns the service name, or None when the unit isn't a service."""
+    unit_name = _full(unit_name)
     spec = units.load(unit_name) if spec is None else spec
     if not _is_service_unit(unit_name, spec):
         return None
@@ -372,6 +382,7 @@ def _change(args, elevate=False, quiet=False, timeout=None):
 
 def control(unit_name, action, elevate=False, quiet=False):
     """start, stop, restart, enable or disable any unit by its full name."""
+    unit_name = _full(unit_name)
     if unit_name.endswith(".timer"):
         return systemctl(action, unit_name)
     name = _service_name(unit_name)
@@ -607,6 +618,7 @@ def set_runtime_limits(server, memory_max=None, cpu=None):
 # ---------------------------------------------------------------------------
 def _records(unit_name, since=None, invocation=None):
     """[(time, run id, text)] the unit printed, oldest first, from output.log and its rotations."""
+    unit_name = _full(unit_name) if unit_name else unit_name
     base = os.path.join(paths.journal_dir(unit_name), "output.log")
     out = []
     for path in [f"{base}.{i}" for i in (3, 2, 1)] + [base]:
