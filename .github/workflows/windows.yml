@@ -1,0 +1,36 @@
+# RedstonePanel on Windows (preview, from 1.22): unit tests, the installer build and the install
+# test on GitHub's Windows runners. GitLab CI has no Windows runner, so this is where the Windows
+# side is tested; GitLab mirrors branches here.
+name: windows
+
+on:
+  push:
+    branches: [main, 'feature/windows-*']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, windows-2025]
+    steps:
+      - uses: actions/checkout@v7
+      - name: What the runner has
+        shell: pwsh
+        run: |
+          python --version
+          whoami /groups | Select-String "Administrators|High Mandatory"
+          "WIX=$env:WIX"; Get-ChildItem "$env:WIX\bin" -ErrorAction SilentlyContinue | Select-Object -First 5 Name
+          dotnet --version
+          (Get-Command wix -ErrorAction SilentlyContinue).Source
+          (Get-Command java -ErrorAction SilentlyContinue).Source
+          (Get-Command ssh -ErrorAction SilentlyContinue).Source
+          (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version | Format-List
+          Get-NetFirewallProfile | Select-Object Name, Enabled | Format-Table
