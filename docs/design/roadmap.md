@@ -1659,7 +1659,7 @@ refused joins, so those are Java only.
     recorded build, a modpack server keeps its type, and the modpack routes have their rules in
     `core/grants.py` (admins; the Modpack card is visible with view access). The end-to-end
     script gained a NeoForge update roll back and Paper → Purpur → undo, Fabric → Quilt → undo,
-    Quilt → Fabric → undo. Not tested: ARM64 (the installers are plain Java).
+    Quilt → Fabric → undo, and passes 119/119 on the rebased build. Not tested: ARM64 (the installers are plain Java).
 
 ### 2.0: an API for scripts and bots
 
