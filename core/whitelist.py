@@ -104,7 +104,9 @@ def _write(path, entries, d):
     try:
         st = os.stat(os.path.join(d, "server.properties"))
         os.chown(path, st.st_uid, st.st_gid)
-    except OSError:
+    except (OSError, AttributeError):       # AttributeError: Windows, where the folder's rights carry over
+        pass
+    except Exception:
         pass
 
 

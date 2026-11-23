@@ -385,6 +385,18 @@ class FoundServers(unittest.TestCase):
                     services.other_control("gone", "start")
 
 
+class NoUnixOnlyCalls(unittest.TestCase):
+    """Windows' Python has no os.major, os.chown and the like: a call outside core/platform must
+    be guarded, or the page it serves answers HTTP 500 there (the Performance card did)."""
+
+    def test_disk_kind_is_unknown_without_device_numbers(self):
+        from core import perf
+        with mock.patch.object(perf.os, "major", create=True) as major:
+            del perf.os.major
+            self.assertIsNone(perf.rotational(os.getcwd()))
+        self.assertTrue(major is not None)
+
+
 class Preview(unittest.TestCase):
     """What the Windows preview doesn't do yet is refused in one sentence; reading still works."""
 

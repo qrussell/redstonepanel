@@ -401,6 +401,8 @@ def main():
     check("a killed server is reported as crashed by webhook",
           wait("hook", lambda: any("crashed" in h for h in HOOKS), 90), str(HOOKS)[-400:])
     check("... and is started again by itself", wait("listen", listening, 400, every=5))
+    code, pf = p.get(f"/api/servers/{name}/perf")
+    check("the Performance card loads", code == 200 and isinstance(pf, dict) and pf.get("server") == name, f"{code} {str(pf)[:200]}")
     code, cr = p.get(f"/api/servers/{name}/crash")
     print(f"        crash card: {str(cr)[:400]}")
     code, out = ps("Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='RedstonePanel'} -MaxEvents 5 | "
