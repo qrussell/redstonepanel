@@ -116,6 +116,11 @@ def prepare_servers_folder(folder):
     return ""
 
 
+def adopt_folder(path):
+    fake.record("system.adopt_folder", path)
+    return give_to_game_account(path)
+
+
 def found_folder_problem(folder):
     import re
     if not re.fullmatch(r"/[A-Za-z0-9._/-]+", folder or ""):

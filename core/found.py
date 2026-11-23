@@ -290,7 +290,7 @@ def manage(folder, actor="?"):
             system.give_to_game_account(folder)
             manager._write_unit(name, folder, edition, **heap, **({"java": java} if java else {}), jvm={})
             services.enable(name)
-            system.give_to_game_account(folder)       # Windows: the server's account exists only now
+            system.adopt_folder(folder)               # Windows: the server's account exists only now
             services.start(name)
             deadline = time.time() + START_WAIT
             while time.time() < deadline and services.state(name) in ("active", "activating"):
