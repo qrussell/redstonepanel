@@ -1505,6 +1505,7 @@ const ServerApp = {
                 <div id="storage-import"><button onclick="ServerApp.openStorageImport()" class="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 py-2 rounded text-gray-900 dark:text-white font-bold transition">Choose a backup…</button></div>
             </div>` : ''}
             <div id="removed-servers" class="mb-6">${this.removedServersHtml()}</div>
+            <div id="found-servers" class="mb-6">${this.foundServersHtml()}</div>
             <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white transition">Cancel</button>
         `;
         modal.classList.remove('hidden');
@@ -1512,6 +1513,7 @@ const ServerApp = {
         this.loadDeployVersions();
         this.refreshAdvanced();
         if (this.deployNode) this.loadRemovedServers();
+        this.loadFoundServers();
     },
 
     // --- New server's Advanced options (1.17.2): everything optional, checked again by the panel ---
@@ -4508,6 +4510,37 @@ const ServerApp = {
         if (!res.ok) return this.renderStorageSettings(await this.apiError(res), false);
         this.storage = await res.json();
         this.renderStorageSettings('Host key forgotten. Use Test to connect and record the new one.', true);
+    },
+
+    // --- Found servers: Minecraft servers running on this machine that the panel doesn't manage ---
+    foundServers: [],
+
+    async loadFoundServers() {
+        try {
+            const res = this.isAdmin() ? await fetch('/api/found-servers') : { ok: false };
+            this.foundServers = res.ok ? ((await res.json()).servers || []) : [];
+        } catch (e) {
+            this.foundServers = [];
+        }
+        const box = document.getElementById('found-servers');
+        if (box) box.innerHTML = this.foundServersHtml();
+        return this.foundServers;
+    },
+
+    foundServersHtml() {
+        if (this.deployNode || !this.foundServers.length) return '';
+        const esc = t => this.escapeHtml(t == null ? '' : String(t));
+        const rows = this.foundServers.map(f => `
+                <div class="p-2 mb-2 rounded border border-gray-200 dark:border-gray-700">
+                    <div class="text-sm text-gray-900 dark:text-white"><b>${esc(f.edition)}${f.version ? ' ' + esc(f.version) : ''}</b> on port ${esc(f.port)}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 font-mono break-all">${esc(f.folder)}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">Started by ${esc(f.started_by)}${f.user ? ', as ' + esc(f.user) : ''}${f.heap ? ', memory ' + esc(f.heap) : ''}</div>
+                </div>`).join('');
+        return `
+            <hr class="border-gray-200 dark:border-gray-700 my-4" />
+            <label class="block text-sm text-gray-400 mb-1">Found on this computer</label>
+            <p class="text-xs text-gray-500 mb-2">Minecraft servers running here that RedstonePanel doesn't manage. They were set up outside the panel; nothing about them has been changed.</p>
+            ${rows}`;
     },
 
     // --- Removed servers: uninstalled with "Keep World", files still in /opt ---
