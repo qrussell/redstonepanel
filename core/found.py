@@ -227,6 +227,23 @@ def _stop_old(info):
     return {"service": service, "was_enabled": was_enabled}
 
 
+def _java_for(info):
+    """The Java the panel's service runs the server with: the one the panel would pick for its
+    version, or, when the version doesn't say or that Java isn't on this machine, the very Java
+    the server was running with."""
+    import re
+    java = manager.java_for_folder(info["folder"])
+    if java and os.path.isfile(java):
+        return java
+    own = info.get("java") or ""
+    if os.path.isfile(own) and re.fullmatch(r"[A-Za-z0-9_.:+\\/-]+", own) \
+            and os.path.basename(own.replace("\\", "/")).lower() in JAVA_PROGRAMS:
+        return own
+    raise FoundError("The panel has no Java to run this server with, and can't use the one it was started with"
+                     + (f" ({own})" if own else "") + ". Install a Java version on the Maintenance tab of any Java "
+                     "server, or under New server, then choose Manage again.")
+
+
 def manage(folder, actor="?"):
     """Hands a found server to the panel, in place: its own service is stopped and turned off
     (not deleted), and the panel runs the server from the same folder under a service of its
@@ -250,7 +267,7 @@ def manage(folder, actor="?"):
                     os.rename(os.path.join(folder, jar), os.path.join(folder, "server.jar"))
                     rec["jar_was"] = jar
                     _save(name, rec)
-                java = manager.java_for_folder(folder)
+                java = _java_for(info)
             else:
                 java = None
                 system.make_executable(os.path.join(folder, "bedrock_server"))
