@@ -39,9 +39,14 @@ TOOL_PACKAGES = {"java": "openjdk-25-jre-headless", "screen": "screen", "unzip":
 BEDROCK_MACHINES = ("x86_64", "amd64")
 
 def bedrock_supported(machine=None):
+    if machine is None and paths.WINDOWS:
+        return False                               # the Windows preview (1.22) runs Java servers only
     return (machine or platform.machine()).lower() in BEDROCK_MACHINES
 
 def bedrock_unsupported_message():
+    if paths.WINDOWS:
+        return ("Bedrock servers aren't in the Windows preview yet; they come in a later release. Java "
+                "servers work here, and Bedrock players can join one through Geyser.")
     return (f"Bedrock servers can't run on this machine ({platform.machine()}): Mojang only makes Bedrock "
             f"Dedicated Server for 64-bit Intel and AMD (x86-64) machines. Java servers work here, and "
             f"Bedrock players can join one through Geyser.")

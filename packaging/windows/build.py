@@ -100,12 +100,19 @@ def msi(out, dist):
     sh([os.path.join(bin_, "heat.exe"), "dir", out, "-nologo", "-cg", "PanelFiles", "-dr", "INSTALLDIR", "-gg", "-g1",
         "-sfrag", "-srd", "-sreg", "-var", "var.Stage", "-out", os.path.join(work, "files.wxs")])
     common = ["-nologo", f"-dStage={out}", f"-dVersion={msi_version}", f"-dUpgradeCode={UPGRADE_CODE}",
-              f"-dSource={HERE}", "-arch", "x64", "-ext", "WixUtilExtension", "-ext", "WixUIExtension"]
+              f"-dRoot={ROOT}", "-arch", "x64", "-ext", "WixUtilExtension", "-ext", "WixUIExtension"]
+    # The licence page wants RTF
+    with open(os.path.join(ROOT, "LICENSE"), encoding="utf-8") as f:
+        text = f.read().replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\par\n")
+    licence = os.path.join(work, "license.rtf")
+    with open(licence, "w", encoding="ascii", errors="replace") as f:
+        f.write("{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Segoe UI;}}\\fs18 " + text + "}")
     sh([os.path.join(bin_, "candle.exe"), *common, "-out", work + os.sep, os.path.join(HERE, "redstonepanel.wxs"),
         os.path.join(work, "files.wxs")])
     target = os.path.join(dist, f"RedstonePanel-{v}-x64.msi")
     sh([os.path.join(bin_, "light.exe"), "-nologo", "-ext", "WixUtilExtension", "-ext", "WixUIExtension",
-        "-cultures:en-us", "-sice:ICE61", "-sice:ICE91", "-out", target,
+        "-cultures:en-us", "-loc", os.path.join(HERE, "redstonepanel.wxl"), f"-dWixUILicenseRtf={licence}",
+        "-sice:ICE61", "-sice:ICE91", "-out", target,
         os.path.join(work, "redstonepanel.wixobj"), os.path.join(work, "files.wixobj")])
     with open(target, "rb") as f:
         digest = hashlib.sha256(f.read()).hexdigest()

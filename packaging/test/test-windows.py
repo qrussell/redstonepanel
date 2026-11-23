@@ -132,9 +132,13 @@ def main():
     ap.add_argument("--home", default=os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "RedstonePanel"))
     ap.add_argument("--keep", action="store_true", help="leave the test server in place")
     ap.add_argument("--loader", default="vanilla")
+    ap.add_argument("--after-upgrade", action="store_true",
+                    help="after installing again over a run with --keep: the account and the server are still there")
     args = ap.parse_args()
     home = args.home
     p = Panel(f"http://127.0.0.1:{args.port}")
+    if args.after_upgrade:
+        return after_upgrade(p, args)
 
     # ------------------------------------------------------------------ the install itself
     section("Install")
@@ -380,6 +384,47 @@ def main():
     code, out = run(["cmd", "/c", "redstonepanel", "status"])
     check("`redstonepanel status` runs from a prompt", code == 0 and "admin" in out, out[-400:])
 
+    return finish(p, args, name, port)
+
+
+def read_password(home):
+    try:
+        with open(os.path.join(home, "first-sign-in.txt"), encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("Password:"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def after_upgrade(p, args):
+    section("After installing again")
+    check("the redstonepanel service is running", wait("service", lambda: service_state("redstonepanel") == "RUNNING", 90),
+          str(service_state("redstonepanel")))
+    check("the panel answers", wait("health", lambda: p.get("/api/health", timeout=5)[0] == 200, 90))
+    code, who = p.post("/api/auth/login", {"username": "admin", "password": read_password(args.home)})
+    check("the same admin account signs in (no new one was made)", code == 200 and p.cookie, f"{code} {who}")
+    code, lst = p.get("/api/servers")
+    servers = lst if isinstance(lst, list) else (lst or {}).get("servers", [])
+    check("the server from before is still listed", len(servers) == 1, str(servers)[:300])
+    if not servers:
+        return finish(p, args, None)
+    name, port = servers[0]["name"], int(servers[0].get("port") or 25565)
+    check("its service was started again", wait("svc", lambda: service_state(name) == "RUNNING", 120), str(service_state(name)))
+    code, out = run(["sc", "qc", name])
+    check("it still starts with Windows", "AUTO_START" in out, out[-300:])
+
+    def listening():
+        try:
+            socket.create_connection(("127.0.0.1", port), 2).close()
+            return True
+        except OSError:
+            return False
+    check(f"Minecraft is listening on port {port} again", wait("listen", listening, 300, every=5))
+    code, ov = p.get(f"/api/servers/{name}/backups")
+    check("its backups are still there", code == 200 and len(ov.get("backups", [])) >= 1, f"{code} {str(ov)[:200]}")
+    args.keep = False
     return finish(p, args, name, port)
 
 

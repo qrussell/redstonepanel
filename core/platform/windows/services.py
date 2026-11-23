@@ -257,11 +257,11 @@ def working_dir(server):
     return units.get(units.load(unit(server)), "Service", "WorkingDirectory", "")
 
 
-def show_many(unit_names, props, timeout=10):
+def show_many(units, props, timeout=10):
     """Several units and properties at once, in `systemctl show`'s form: blocks of KEY=VALUE
     separated by blank lines. Times are in UTC."""
     blocks = []
-    for u in unit_names:
+    for u in units:
         p = _properties(u)
         blocks.append("\n".join(f"{k}={p.get(k, '')}" for k in props))
     return "\n\n".join(blocks) + "\n"
@@ -292,9 +292,9 @@ def failed(*patterns, timeout=10):
     return out
 
 
-def reset_failed(*unit_names, timeout=None):
+def reset_failed(*units, timeout=None):
     """Forgets that these units failed."""
-    for u in unit_names:
+    for u in units:
         path = os.path.join(paths.journal_dir(u), "status.json")
         data = _json(u, "status.json")
         if data.get("state") in ("failed", "active", "activating", "deactivating") \

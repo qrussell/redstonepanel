@@ -3,6 +3,7 @@ system, elevated); can be run by hand from an administrator prompt.
 
     python setup.py install [--home FOLDER] [--port 8080] [--no-start] [--no-firewall]
     python setup.py uninstall [--purge]
+    python setup.py stop
     python setup.py check
 
 install is safe to run again (an upgrade, a repair). It:
@@ -15,6 +16,10 @@ install is safe to run again (an upgrade, a repair). It:
   * on a first install, makes the panel account `admin` with a random password and writes it
     to first-sign-in.txt in the home folder (administrators only);
   * starts the panel.
+
+stop stops the panel and the game servers and changes nothing else: the installer runs it
+before it replaces the program's files (an upgrade), and the install that follows starts the
+panel and the servers that start with Windows again.
 
 uninstall stops and removes the panel's service, the game servers' services, the scheduled
 tasks and the firewall rules. Worlds, backups and settings stay in the home folder unless
@@ -246,6 +251,22 @@ def uninstall(args):
     return 0
 
 
+def stop(args):
+    home = saved_home() or default_home()
+    load_panel(home)
+    from core.platform.windows import _win
+    names = _win.list_services(("minecraft", "phantom-", "redstonepanel"))
+    for name in sorted(names, key=lambda n: n != _win.PANEL_SERVICE):          # the panel first: it would start servers again
+        try:
+            cfg = _win.service_config(name)
+            if cfg and "runner.py" in (cfg["command"] or "") and _win.service_status(name)[0] not in (None, "stopped"):
+                say(f"Stopping {name}")
+                _win.stop_service(name, wait=120)
+        except OSError as e:
+            say(f"  {e}")
+    return 0
+
+
 def check(args):
     home = saved_home() or default_home()
     load_panel(home)
@@ -265,12 +286,13 @@ def main():
     i.add_argument("--no-firewall", action="store_true")
     u = sub.add_parser("uninstall")
     u.add_argument("--purge", action="store_true")
+    sub.add_parser("stop")
     sub.add_parser("check")
     args = p.parse_args()
     if os.name != "nt":
         raise SystemExit("This is the Windows setup; on Linux install the redstonepanel package.")
     started = time.time()
-    code = {"install": install, "uninstall": uninstall, "check": check}[args.cmd](args)
+    code = {"install": install, "uninstall": uninstall, "stop": stop, "check": check}[args.cmd](args)
     say(f"({args.cmd} took {time.time() - started:.0f} s)")
     return code
 

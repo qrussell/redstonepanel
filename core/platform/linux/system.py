@@ -305,4 +305,12 @@ def hint(what, *args):
         return f"sudo ufw allow {args[0]}/{args[1]}"
     if what == "service-manager":
         return "systemd starts it again"
+    if what == "firewall-name":
+        return "ufw"
+    if what == "allow-ports":                       # args: "25565/tcp", ...
+        return " && ".join(f"sudo ufw allow {a}" for a in args)
+    if what == "close-ports":
+        return " && ".join(f"sudo ufw delete allow {a}" for a in args)
+    if what == "install-package":                   # "" where there is nothing to type
+        return f"sudo apt install {' '.join(args)}"
     return ""

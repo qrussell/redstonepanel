@@ -164,4 +164,12 @@ def fs():
 
 
 def hint(what, *args):
+    if what == "firewall-name":
+        return "ufw"
+    if what == "allow-ports":
+        return " && ".join(f"sudo ufw allow {a}" for a in args)
+    if what == "close-ports":
+        return " && ".join(f"sudo ufw delete allow {a}" for a in args)
+    if what == "install-package":
+        return f"sudo apt install {' '.join(args)}"
     return f"({what} {' '.join(str(a) for a in args)})".replace(" )", ")")

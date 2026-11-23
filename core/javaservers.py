@@ -100,7 +100,8 @@ class MissingJavaError(RuntimeError):
             super().__init__(what + f"This system's package sources have no Java {required} or newer "
                                     f"(they have: {have}).")
         else:
-            super().__init__(what + f"Install it with: sudo apt install {self.package}")
+            cmd = system.hint("install-package", self.package)
+            super().__init__(what + (f"Install it with: {cmd}" if cmd else "Install it under Supporting services → Java."))
 
 
 # The OpenJDK versions Ubuntu 24.04 packages (there is no openjdk-16, which 1.17 asks for). Other
@@ -280,8 +281,18 @@ def mojang_version(minecraft):
             "released": entry.get("releaseTime") or ""}
 
 
+def require_installer_support(loader):
+    """Quilt, Forge and NeoForge are set up by their own installer, which is other people's code
+    and so runs as the game account. Where that can't be done (the Windows preview), they are
+    refused before anything is made."""
+    if loader in INSTALLER_LOADERS and not system.can_run_as_game_account():
+        raise JavaServerError(f"{LOADERS[loader]} servers aren't in the Windows preview yet. Vanilla, Paper, "
+                              f"Purpur and Fabric work here.")
+
+
 def list_versions(loader):
     """Minecraft releases this loader offers, newest first."""
+    require_installer_support(loader)
     if loader == "vanilla":
         return [v["id"] for v in _mojang_releases()]
     if loader == "paper":
@@ -691,6 +702,7 @@ def _run_installer(d, target, java):
     """Downloads the loader's installer into d, checks it, runs it there as the minecraft user
     and clears up after it. Returns what the unit starts (see launch_args)."""
     loader, mc = target["loader"], target["minecraft"]
+    require_installer_support(loader)
     build = str(target["build"]).replace("loader ", "")
     jar = os.path.join(d, INSTALLER_JAR)
     _download(target["installer_url"], jar, sha1=target.get("sha1"), sha256=target.get("sha256"))

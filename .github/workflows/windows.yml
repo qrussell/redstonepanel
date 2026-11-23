@@ -54,3 +54,70 @@ jobs:
         run: |
           & "C:\Program Files\RedstonePanel\python\python.exe" "C:\Program Files\RedstonePanel\app\packaging\windows\setup.py" uninstall
           sc.exe query redstonepanel; if ($LASTEXITCODE -eq 0) { "the service is still there"; exit 1 } else { exit 0 }
+
+  # The installer itself: built, installed without questions, tested, installed again over itself
+  # (what an upgrade does) and removed.
+  msi:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, windows-2025]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          python packaging\windows\build.py stage build\stage
+          python packaging\windows\build.py msi build\stage dist
+          Get-ChildItem dist | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RedstonePanel-msi-${{ matrix.runner }}
+          path: dist/*
+          retention-days: 7
+      - name: Install
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\*.msi).FullName
+          $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$PWD\install.log`"" -Wait -PassThru
+          "msiexec exit code $($p.ExitCode)"
+          Select-String -Path install.log -Pattern "WixQuietExec64:|Return value 3|Error 1" | Select-Object -Last 60 | ForEach-Object { $_.Line }
+          if ($p.ExitCode) { Get-Content install.log -Tail 80; exit 1 }
+          "C:\Program Files\RedstonePanel" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Install test (the server is kept for the next step)
+        shell: pwsh
+        run: python packaging\test\test-windows.py --keep
+      - name: Install again over it; the server and the account stay
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\*.msi).FullName
+          $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$PWD\upgrade.log`"" -Wait -PassThru
+          "msiexec exit code $($p.ExitCode)"
+          Select-String -Path upgrade.log -Pattern "WixQuietExec64:|Return value 3|Error 1" | Select-Object -Last 60 | ForEach-Object { $_.Line }
+          if ($p.ExitCode) { Get-Content upgrade.log -Tail 80; exit 1 }
+          python packaging\test\test-windows.py --after-upgrade
+      - name: What the panel and the servers wrote
+        if: always()
+        shell: pwsh
+        run: |
+          $h = "C:\ProgramData\RedstonePanel"
+          foreach ($f in @(Get-ChildItem "$h\journal" -Recurse -Filter output.log -ErrorAction SilentlyContinue) + @(Get-Item "$h\logs\panel.log" -ErrorAction SilentlyContinue)) {
+            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 150; "::endgroup::"
+          }
+      - name: Remove
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\*.msi).FullName
+          $p = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn /norestart /l*v `"$PWD\remove.log`"" -Wait -PassThru
+          "msiexec exit code $($p.ExitCode)"
+          Select-String -Path remove.log -Pattern "WixQuietExec64:" | Select-Object -Last 40 | ForEach-Object { $_.Line }
+          if ($p.ExitCode) { Get-Content remove.log -Tail 80; exit 1 }
+          $left = @()
+          if (Get-Service redstonepanel -ErrorAction SilentlyContinue) { $left += "the panel's service" }
+          if (Get-Service minecraft-* -ErrorAction SilentlyContinue) { $left += "a game server's service" }
+          if (Test-Path "C:\Program Files\RedstonePanel") { $left += "the program folder: " + ((Get-ChildItem "C:\Program Files\RedstonePanel" -Recurse | Select-Object -First 10 -ExpandProperty FullName) -join ", ") }
+          if (Get-NetFirewallRule -Group "RedstonePanel panel" -ErrorAction SilentlyContinue) { $left += "the panel's firewall rule" }
+          if (-not (Test-Path "C:\ProgramData\RedstonePanel\servers")) { $left += "(the servers folder should have been kept)" }
+          if ($left) { "Left behind: " + ($left -join "; "); exit 1 } else { "Removed cleanly; worlds, backups and settings were kept." }

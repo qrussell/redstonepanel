@@ -592,9 +592,10 @@ def _needs_attention(rep, failed, phantoms):
             out.append(_attention("warn", f"The last backup of {s['name']} failed: {lb.get('error') or 'unknown error'}",
                                   server=s["name"], where="backups"))
         if s["edition"] == "Java" and s["java_required"] and (s["java_installed"] or 0) < s["java_required"]:
+            cmd = system.hint("install-package", javaservers.java_package(s["java_required"]))
             out.append(_attention("error", f"{s['name']} needs Java {s['java_required']}, which isn't installed. "
-                                           f"Install it under Supporting services → Java, or with: "
-                                           f"sudo apt install {javaservers.java_package(s['java_required'])}",
+                                           f"Install it under Supporting services → Java"
+                                           + (f", or with: {cmd}" if cmd else "."),
                                   server=s["name"], where="java"))
         if s["firewall_open"] is False:
             miss = s["firewall_missing"]
@@ -602,19 +603,21 @@ def _needs_attention(rep, failed, phantoms):
             why = ("consoles on your network won't find it under LAN Games" if lan and len(miss) == 1
                    else "players outside this machine can't connect"
                    + (", and consoles won't find it under LAN Games" if lan else ""))
-            out.append(_attention("warn", f"The firewall (ufw) doesn't allow {', '.join(miss)} for {s['name']}, so "
+            out.append(_attention("warn", f"The firewall ({system.hint('firewall-name')}) doesn't allow "
+                                          f"{', '.join(miss)} for {s['name']}, so "
                                           f"{why}. Open {'them' if len(miss) > 1 else 'it'} with: "
-                                          + " && ".join(f"sudo ufw allow {m}" for m in miss),
+                                          + system.hint("allow-ports", *miss),
                                   server=s["name"], where="services"))
         if s["problems"]:
             out.append(_attention("warn", f"Players may not be able to connect to {s['name']}: see its Overview.",
                                   server=s["name"]))
     left = rep["services"]["firewall"].get("leftover") or []
     if left:
-        out.append(_attention("info", f"The firewall (ufw) still allows {', '.join(left)}, which no server on this "
+        out.append(_attention("info", f"The firewall ({system.hint('firewall-name')}) still allows "
+                                      f"{', '.join(left)}, which no server on this "
                                       f"panel uses. If nothing else on this machine needs "
                                       f"{'them' if len(left) > 1 else 'it'}, close {'them' if len(left) > 1 else 'it'} with: "
-                                      + " && ".join(f"sudo ufw delete allow {r}" for r in left),
+                                      + system.hint("close-ports", *left),
                               where="services"))
     for p in phantoms:
         if p.get("active") != "active":

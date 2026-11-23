@@ -477,4 +477,12 @@ def hint(what, *args):
                 f"-Direction Inbound -Action Allow -Protocol {str(args[1]).upper()} -LocalPort {args[0]}")
     if what == "service-manager":
         return "Windows restarts it"
+    if what == "firewall-name":
+        return "Windows Defender Firewall"
+    if what == "allow-ports":                       # args: "25565/tcp", "19132:19140/udp", ...
+        return "; ".join(hint("allow-port", *a.split("/", 1)) for a in args).replace(":", "-")
+    if what == "close-ports":
+        return "; ".join(f"Remove-NetFirewallRule -DisplayName 'RedstonePanel {a}'" for a in args)
+    if what == "install-package":                   # Java comes from the panel's Java page; nothing to type
+        return ""
     return ""
