@@ -9,6 +9,21 @@ the dashboard.
 
 ---
 
+## 1.19: change a server's type in place *(November 2026)*
+
+<picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/change-type-preview.png"><img src="../guide/images/change-type-preview.png" alt="Preview of changing a server from Paper to Fabric"></picture>
+
+- **Server type** on the Maintenance tab: move a Java server between **Vanilla, Paper and
+  Fabric** and keep the world, port, settings and players. A preview comes first, a backup
+  always, and the old type comes back by itself if the new one doesn't start.
+- **Undo type change** returns to the old software and the world from before.
+- **Mods and plugins** are set aside, and the same project's build for the new type is offered.
+- **Roll back the last update:** Java updates back up first and can be undone.
+- Backups show **Made by** (type and version), and a newer world isn't restored onto an older
+  server.
+
+[Release notes](../../release-notes/v1.19.0.md)
+
 ## 1.18: helpers with their own access, and SFTP *(November 2026)*
 
 <picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/user-servers.png"><img src="../guide/images/user-servers.png" alt="What a user account may do on each server"></picture>

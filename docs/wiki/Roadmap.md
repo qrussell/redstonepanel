@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.18**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.19**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,21 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.19: change a server's type or version
-
-- **Switch types in place:** Vanilla → Paper or Fabric, and every other way round. The world,
-  settings, players, port and schedules stay; Paper's separate Nether and End folders
-  (worlds from before Minecraft 26.1), or the world settings files it keeps with each
-  dimension (26.1 and later), are moved back when leaving Paper.
-- **Mods and plugins follow where they can:** the same Modrinth project's build for the new type
-  is offered, and the old folder is kept, switched off, for going back.
-- **A clear warning** before dropping mods that add blocks or dimensions, which would vanish
-  from the world.
-- **Always a backup first**, a preview of everything that will happen, and an automatic
-  rollback if the server doesn't start.
-- **Roll back the last update**, together with the server software it ran before. Backups
-  record the type and version that made them, so an older server is never handed a newer world.
 
 ### 1.20: Forge, NeoForge, Quilt, Purpur and modpacks
 
@@ -72,4 +57,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.18** adds per-server permissions for helpers and SFTP for FileZilla or WinSCP; **1.17.2** adds Advanced options to New server (builds, Java, memory, limits, startup flags, world and settings); **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.
+See [What's New](Whats-New.md). The latest: **1.19** changes a Java server's type in place (Vanilla, Paper, Fabric) with a backup and undo, and rolls back updates; **1.18** adds per-server permissions for helpers and SFTP for FileZilla or WinSCP; **1.17.2** adds Advanced options to New server (builds, Java, memory, limits, startup flags, world and settings); **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.

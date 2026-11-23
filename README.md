@@ -102,6 +102,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.19
+
+**Change a server's type in place** *(1.19)*. **Maintenance → Server type** moves a Java server between Vanilla, Paper and Fabric and keeps its world, port, settings and players. You get a preview first, a backup always, the old type back by itself if the new one doesn't start, and **Undo type change** afterwards. Mods and plugins are set aside and the same project's build for the new type is offered. Java updates now back up first and can be rolled back, and backups show what made them. Read the [1.19.0 release notes](release-notes/v1.19.0.md).
+
 ## What's new in 1.18
 
 **Helpers with their own access, and SFTP** *(1.18)*. **Users → Servers** sets what each user account may do on each server (view, console and chat, start/stop/restart, players, files, mods and plugins, settings, backups), with Moderator and Co-owner presets, and users see only their servers. SFTP, off until you turn it on, lets FileZilla or WinSCP reach one server's folder per sign-in with your panel password or an SSH key. Read the [1.18.0 release notes](release-notes/v1.18.0.md).
