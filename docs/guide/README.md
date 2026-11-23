@@ -706,6 +706,48 @@ The chat players see in game. Type in the box and click **Send**:
 
 **Clear** empties the panel's view; it doesn't touch the server.
 
+### Quick commands
+
+You don't have to remember how a command is written. There are three ways to run one:
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/quick-commands.png"><img src="images/quick-commands.png" alt="Live Chat suggesting players for a command"></picture>
+
+- **Type it, with suggestions, as in the game.** Type `/` and a list opens above the box with
+  the commands that match and what each does. After the command, a line shows what it takes,
+  for example `/tp <player> <player or x y z>`, with the part you are on highlighted, and the
+  list changes to what fits there: the players online now (🟢), players seen before, `@a`
+  for everyone, or the fixed choices such as `survival`, `creative`, `clear`, `rain`.
+  **Tab** or a click fills in a suggestion, the arrow keys move through the list, **Esc** closes
+  it, and **Enter** sends as before. In a plain message, type the first two letters of an online
+  player's name and press **Tab** to finish it.
+- **Pick it from Commands.** The **Commands…** list above the box groups the everyday
+  commands under Players, World, Messages and Server. Pick one and a form asks only for what
+  that command needs: a player from a list, a choice, three numbers for a place, a reason.
+  The exact command is shown before you press **Run**. **Edit** puts it in the message box
+  instead, to change by hand. Commands that are hard to take back (stop the server, kill,
+  empty an inventory) ask first.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/quick-commands-form.png"><img src="images/quick-commands-form.png" alt="The Commands form for teleporting a player"></picture>
+
+- **One click.** The buttons next to Commands run a command that needs nothing filled in:
+  **List players**, **Save world**, **Day**, **Night** and **Clear weather**.
+
+Things to know:
+
+- The list holds about 35 everyday commands for each edition; Java and Bedrock servers each
+  get their own (a Java server has `/whitelist` and `/ban`, a Bedrock server `/allowlist`).
+  Anything else can still be typed in full.
+- A running Vanilla, Fabric, Quilt, Forge or NeoForge server also tells the panel which
+  commands and game rules it has, so commands added by mods are suggested too, and game rules
+  are offered as that Minecraft version names them (they were renamed in 1.21.11). Paper and
+  Purpur don't answer that question, so plugin commands aren't suggested.
+- A Bedrock gamertag with a space is put in quotes for you: `/kick "Sam Carter"`.
+- Bedrock servers don't send a reply back to the panel, so **List players** and **Save
+  world** are offered on Java servers only. Who is online on a Bedrock server comes from its
+  log and can be up to 30 seconds behind.
+- Suggestions and the form are for anyone with **Console & chat** on the server, the same
+  permission as the chat itself.
+
 Java servers are reached over **RCON**. The first time you open this tab on a server without
 RCON, the panel turns it on with a random password and restarts the server once; send your
 message again when it's back. The RCON port is shown top right. Bedrock servers have no RCON;

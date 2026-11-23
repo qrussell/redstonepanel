@@ -18,6 +18,7 @@ import core.javaservers as javaservers
 import core.playerlog as playerlog
 import core.whitelist as whitelist
 import core.moderation as moderation
+import core.chatassist as chatassist
 import core.backups as backups
 import core.notify as notify
 import core.setup as setup_guide
@@ -75,7 +76,7 @@ def _page(name):
         with open(path, encoding="utf-8") as f:
             html = f.read()
         v = urllib.parse.quote(panel_version(), safe="")
-        for asset in ("/static/js/app.js", "/static/css/tailwind.css"):
+        for asset in ("/static/js/app.js", "/static/js/chat-commands.js", "/static/css/tailwind.css"):
             html = html.replace(f'"{asset}"', f'"{asset}?v={v}"')
         hit = _page_cache[name] = (mtime, html)
     return hit[1]
@@ -1889,6 +1890,12 @@ def rename_world_api(server_name: str, req: RenameWorldRequest):
     except manager.WorldError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
+
+@app.get("/api/servers/{server_name}/chat/assist")
+def server_chat_assist(server_name: str):
+    """Live Chat's suggestions (1.21.4): who is online or was seen before, and a running Java
+    server's own commands and game rules. Reads only; the command list itself is static/commands.json."""
+    return chatassist.info(server_name)
 
 @app.post("/api/servers/{server_name}/chat/setup")
 def setup_bedrock_chat(server_name: str):

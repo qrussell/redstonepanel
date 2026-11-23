@@ -1862,6 +1862,44 @@ crash of a removed server with the same name. Tested: `packaging/test/test-found
 checks on Ubuntu 24.04 in a systemd container (in the GitHub `cluster` job), and 838 unit
 tests. The Windows side ships with the 1.22 preview. The manual's picture uses sample data.
 
+### 1.21.4: quick commands in Live Chat *(built, not released)*
+
+**Why.** Live Chat ran any command, but only if you knew how to write it. Quentin asked on
+23 Nov 2026 for quick commands: a command builder that asks for the player, place and other
+values a command needs, quick buttons for the common ones, and suggestions as in the game,
+with the players who match what is typed. He liked autocomplete with a list to pick a command
+from. It serves the short visit: "make Steve creative", "set it to day", "who is on".
+
+**How.** Three ways to the same command line, all in the Live Chat tab and all under the
+existing **Console & chat** permission. (1) Suggestions while typing: commands after `/`, then
+a usage line with the current part highlighted and the players, selectors or fixed choices
+that fit; Tab or a click fills one in. (2) A **Commands…** list that opens a form asking only
+for what the picked command needs, with the exact command shown before **Run**. (3) A row of
+one-click buttons for commands that take nothing. The commands are a curated list per edition
+in `static/commands.json`; the logic is plain functions in `static/js/chat-commands.js`. The
+only new route, `GET /api/servers/{name}/chat/assist`, says who is online and who was seen
+before and, for a running Java server that answers `help` over RCON with a usage line per
+command (Vanilla, Fabric, Quilt, Forge, NeoForge), which commands and game rules it really
+has. It sends `list`, `help` and `help gamerule` and nothing else.
+
+**As built.** As planned, in `core/chatassist.py` (no machine-specific code; it uses
+`moderation`, `playerlog` and `backups`, which go through `core.platform`). No change to the
+cluster contract: the route is under the server's own routes, and a node on an older version
+simply gives no player names. Commands that are hard to take back (`stop`, `kill`, `clear`)
+ask first and are never one-click. Bedrock gets no **List players** or **Save world** button
+because it sends no reply to the panel. Paper and Purpur answer `help` with paged text, so
+plugin commands are not suggested; game rules then follow the Minecraft version. Tested:
+every Java command in the list, with and without its optional values, each item, effect and
+game rule, against real vanilla 1.21.10 and 1.21.11 servers over RCON (131 command lines each,
+none refused as wrong), and the same for Bedrock against a real Bedrock Dedicated Server
+1.26.66.1 through its console (113 lines, none refused); `tests/test_chatassist.py` and
+`tests/js/chat-commands.test.js` (13 Node tests, run by the unit tests when Node is
+installed); `packaging/test/test-chat-commands.sh`, 25 checks in a systemd container with
+stand-in servers that answer RCON as a real one does (in the GitHub `cluster` job); and 29
+browser checks at 1280 and 390 pixels wide with sample data. Not tested with a real player
+online: no game client was available, so player names came from the stand-in. The manual's
+pictures use sample data.
+
 ### 2.0: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already

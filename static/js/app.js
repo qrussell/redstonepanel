@@ -668,6 +668,7 @@ const ServerApp = {
         if (tabId === 'chat') {
             this.loadChat();
             this.chatInterval = setInterval(() => this.loadChat(), 3000); // Poll every 3 seconds
+            this.openChatCommands();
         }
     },
 
@@ -744,6 +745,29 @@ const ServerApp = {
 		// Initialize the array for this server if it doesn't exist yet
 		if (!this.chatHistory[serverName]) this.chatHistory[serverName] = [];
 		
+		// Suggestions open: arrows move through them, Tab fills one in, Esc closes them.
+		// Enter still sends, unless a suggestion was picked with the arrows first.
+		const sug = this.chatSuggestion;
+		if (sug && sug.items.length) {
+			if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+				event.preventDefault();
+				const n = sug.items.length, step = event.key === 'ArrowDown' ? 1 : -1;
+				this.chatSuggestIndex = this.chatSuggestIndex < 0 ? (step > 0 ? 0 : n - 1) : (this.chatSuggestIndex + step + n) % n;
+				this.renderChatSuggest();
+				return;
+			}
+			if (event.key === 'Tab' || (event.key === 'Enter' && this.chatSuggestIndex >= 0)) {
+				event.preventDefault();
+				this.pickChatSuggestion(Math.max(this.chatSuggestIndex, 0));
+				return;
+			}
+		}
+		if (event.key === 'Escape' && sug) {
+			this.chatSuggestDismissed = input.value;
+			this.hideChatSuggest(true);
+			return;
+		}
+
 		if (event.key === 'Enter') {
 			this.sendChat();
 		} else if (event.key === 'ArrowUp') {
@@ -751,6 +775,7 @@ const ServerApp = {
 			if (this.chatHistory[serverName].length > 0) {
 				this.chatHistoryIndex = Math.min(this.chatHistoryIndex + 1, this.chatHistory[serverName].length - 1);
 				input.value = this.chatHistory[serverName][this.chatHistoryIndex];
+				this.hideChatSuggest(true);
 			}
 		} else if (event.key === 'ArrowDown') {
 			event.preventDefault();
@@ -761,13 +786,17 @@ const ServerApp = {
 				this.chatHistoryIndex = -1;
 				input.value = '';
 			}
+			this.hideChatSuggest(true);
 		}
 	},
 
-    async sendChat() {
+    // Sends what is in the box, or `text` (a quick command or one built in the Commands form)
+    async sendChat(text) {
 		const input = document.getElementById('chat-input');
-		const msg = input.value.trim();
+		const typed = typeof text !== 'string';
+		const msg = (typed ? input.value : text).trim();
 		if (!msg || !this.activeServer) return;
+		this.hideChatSuggest(true);
 		
 		const serverName = this.activeServer.name;
 		if (!this.chatHistory[serverName]) this.chatHistory[serverName] = [];
@@ -790,7 +819,7 @@ const ServerApp = {
 		const displayMsg = msg.startsWith('/') ? `<span class="text-blue-400">[Console]</span> ${this.escapeHtml(msg)}` : `[Server] ${this.escapeHtml(msg)}`;
 		box.innerHTML += `<div class="text-theme font-bold">${displayMsg}</div>`;
         box.scrollTop = box.scrollHeight;
-        input.value = ''; 
+        if (typed) input.value = '';
 
         // 2. Send the payload to the backend API
         const res = await api(`/api/servers/${this.activeServer.name}/chat`, {
@@ -817,6 +846,259 @@ const ServerApp = {
 		}
 
 		this.loadChat(); // Refresh instantly to paint the output to the screen
+    },
+
+    // --- Live Chat: suggestions, the Commands form and quick commands (1.21.4) ---
+    // The logic is in chat-commands.js (ChatCommands); the command list is static/commands.json.
+    chatCatalog: null,
+    chatAssist: {},            // server key -> { at, data } from GET .../chat/assist
+    chatSuggestion: null,
+    chatSuggestIndex: -1,
+    chatSuggestDismissed: null,
+    chatBuilderCmd: null,
+
+    // What ChatCommands needs to know about the open server
+    chatEnv() {
+        const srv = this.activeServer || {};
+        const assist = (this.chatAssist[this.serverKey(srv)] || {}).data || {};
+        return { catalog: this.chatCatalog || { commands: [], lists: {}, quick: [], groups: [] },
+                 edition: srv.edition === 'Bedrock' ? 'bedrock' : 'java', minecraft: srv.minecraft || null,
+                 online: assist.online || [], known: assist.known || [],
+                 commands: assist.commands || [], gamerules: assist.gamerules || [] };
+    },
+
+    async openChatCommands() {
+        this.closeChatBuilder();
+        this.hideChatSuggest(true);
+        if (!this.chatCatalog) {
+            try {
+                const res = await fetch('/static/commands.json');
+                if (res.ok) this.chatCatalog = await res.json();
+            } catch (e) { /* typing commands by hand still works */ }
+        }
+        this.renderChatQuick();
+        this.loadChatAssist();
+    },
+
+    // Who is online and what this server's own commands are. Asked again after 20 seconds,
+    // when the box is used, so a player who just joined shows up.
+    async loadChatAssist(force) {
+        const srv = this.activeServer;
+        if (!srv) return;
+        const key = this.serverKey(srv);
+        const hit = this.chatAssist[key];
+        if (!force && hit && Date.now() - hit.at < 20000) return;
+        this.chatAssist[key] = { at: Date.now(), data: hit ? hit.data : null };
+        try {
+            const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/chat/assist`);
+            if (!res.ok) return;      // a node on an older version: no player names, the rest works
+            this.chatAssist[key] = { at: Date.now(), data: await res.json() };
+            if (this.activeServer && this.serverKey(this.activeServer) === key && document.activeElement === document.getElementById('chat-input')) this.updateChatSuggest();
+        } catch (e) { /* suggestions without player names */ }
+    },
+
+    renderChatQuick() {
+        const row = document.getElementById('chat-quick');
+        if (!row) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const env = this.chatEnv();
+        const cmds = ChatCommands.forEdition(env);
+        if (!cmds.length) { row.innerHTML = ''; return; }
+        const groups = env.catalog.groups.map(g => {
+            const opts = cmds.map((c, i) => c.group === g ? `<option value="${i}">${esc(c.label)} (/${esc(c.name)})</option>` : '').join('');
+            return opts ? `<optgroup label="${esc(g)}">${opts}</optgroup>` : '';
+        }).join('');
+        const chip = 'shrink-0 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-600 px-3 py-2 rounded text-sm font-medium transition';
+        const quick = (env.catalog.quick || []).filter(q => q.editions.includes(env.edition))
+            .map(q => `<button type="button" title="/${esc(q.command)}" data-command="${esc(q.command)}" onclick="ServerApp.sendChat('/' + this.dataset.command)" class="${chip}">${esc(q.label)}</button>`).join('');
+        row.innerHTML = `<select id="chat-cmd-select" aria-label="Commands" onchange="ServerApp.openChatBuilder(this.value)" class="shrink-0 max-w-[60%] md:max-w-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-2 text-sm font-bold text-gray-900 dark:text-white shadow-sm">
+                <option value="">Commands…</option>${groups}</select>${quick}`;
+    },
+
+    updateChatSuggest() {
+        const input = document.getElementById('chat-input');
+        if (!input || !this.activeServer || document.activeElement !== input) return;
+        if (this.chatSuggestDismissed !== null && this.chatSuggestDismissed === input.value) return;
+        this.chatSuggestDismissed = null;
+        this.loadChatAssist();
+        const sug = ChatCommands.suggest(input.value, input.selectionStart, this.chatEnv());
+        this.chatSuggestion = (sug.items.length || sug.hint) ? sug : null;
+        this.chatSuggestIndex = -1;
+        this.renderChatSuggest();
+    },
+
+    renderChatSuggest() {
+        const box = document.getElementById('chat-suggest');
+        const sug = this.chatSuggestion;
+        if (!box) return;
+        if (!sug) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const hint = sug.hint ? `<div class="px-3 py-2 font-mono text-xs border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 sticky top-0 whitespace-normal break-words">
+                ${sug.hint.parts.map(p => p.active ? `<span class="text-theme font-bold">${esc(p.text)}</span>` : esc(p.text)).join(' ')}
+                ${sug.hint.about ? `<span class="font-sans ml-2">${esc(sug.hint.about)}${sug.hint.done ? '. Press Enter to run.' : ''}</span>` : ''}</div>` : '';
+        const items = sug.items.map((it, i) => {
+            const on = i === this.chatSuggestIndex;
+            return `<div role="option" id="chat-sug-${i}" aria-selected="${on}" onpointerdown="event.preventDefault()" onclick="ServerApp.pickChatSuggestion(${i})"
+                class="flex items-baseline gap-3 px-3 py-2 max-md:py-3 cursor-pointer ${on ? 'bg-gray-200 dark:bg-gray-700' : 'hover:bg-gray-100 dark:hover:bg-gray-700/60'}">
+                <span class="font-mono font-bold shrink-0 ${it.kind === 'player' ? 'text-theme' : 'text-gray-900 dark:text-white'}">${it.kind === 'player' && it.detail === 'online' ? '🟢 ' : ''}${esc(it.label)}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400 truncate">${esc(it.detail)}</span></div>`;
+        }).join('');
+        box.innerHTML = hint + items;
+        box.classList.remove('hidden');
+        const sel = document.getElementById(`chat-sug-${this.chatSuggestIndex}`);
+        if (sel) sel.scrollIntoView({ block: 'nearest' });
+    },
+
+    // now: close at once. Otherwise wait a moment, so a tap on a suggestion still lands.
+    hideChatSuggest(now) {
+        const close = () => {
+            if (!now && document.activeElement === document.getElementById('chat-input')) return;
+            this.chatSuggestion = null;
+            this.chatSuggestIndex = -1;
+            this.renderChatSuggest();
+        };
+        if (now) close(); else setTimeout(close, 200);
+    },
+
+    pickChatSuggestion(i) {
+        const input = document.getElementById('chat-input');
+        const sug = this.chatSuggestion;
+        if (!sug || !sug.items[i]) return;
+        const done = ChatCommands.apply(input.value, sug, sug.items[i]);
+        input.value = done.text;
+        input.focus();
+        input.setSelectionRange(done.caret, done.caret);
+        this.updateChatSuggest();     // straight on to what the command wants next
+    },
+
+    // The Commands list: a form that asks only for what the picked command needs
+    openChatBuilder(index) {
+        const env = this.chatEnv();
+        const cmd = ChatCommands.forEdition(env)[Number(index)];
+        if (index === '' || !cmd) { this.closeChatBuilder(); return; }
+        this.chatBuilderCmd = cmd;
+        this.loadChatAssist();
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const field = 'w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white';
+        const change = 'oninput="ServerApp.chatBuilderChanged()" onchange="ServerApp.chatBuilderChanged()"';
+        const playerSelect = (id, arg, selectors) => {
+            const opt = n => `<option value="${esc(n)}">${esc(n)}</option>`;
+            const online = env.online.map(opt).join('');
+            const known = arg.online ? '' : env.known.map(opt).join('');
+            return `<select id="${id}" ${change} class="${field}">
+                    <option value="">Choose a player…</option>
+                    ${selectors ? ChatCommands.SELECTORS.map(([s, what]) => `<option value="${s}">${esc(what[0].toUpperCase() + what.slice(1))} (${s})</option>`).join('') : ''}
+                    ${online ? `<optgroup label="Online now">${online}</optgroup>` : ''}
+                    ${known ? `<optgroup label="Seen before">${known}</optgroup>` : ''}
+                    <option value="__other">Another name…</option></select>
+                <input type="text" id="${id}-other" placeholder="Player name" autocomplete="off" autocapitalize="off" spellcheck="false" ${change} class="${field} mt-2 hidden">`;
+        };
+        const xyz = id => `<div id="${id}-xyz" class="flex gap-2">${['x', 'y', 'z'].map(p =>
+            `<input type="text" id="${id}-${p}" placeholder="${p}" aria-label="${p}" inputmode="text" autocomplete="off" ${change} class="${field} min-w-0">`).join('')}</div>`;
+        const fields = cmd.args.map((arg, i) => {
+            const id = `cb-arg-${i}`;
+            let html;
+            if (arg.type === 'player') html = playerSelect(id, arg, false);
+            else if (arg.type === 'target') html = playerSelect(id, arg, true);
+            else if (arg.type === 'position') html = xyz(id);
+            else if (arg.type === 'destination') {
+                html = `<select id="${id}-mode" ${change} class="${field} mb-2"><option value="player">To a player</option><option value="xyz">To a place (x y z)</option></select>
+                    <div id="${id}-player">${playerSelect(id, arg, false)}</div><div class="hidden" id="${id}-place">${xyz(id)}</div>`;
+            } else if (arg.type === 'choice') {
+                html = `<select id="${id}" ${change} class="${field}">${arg.optional ? '<option value="">(leave out)</option>' : ''}
+                    ${ChatCommands.listFor(arg, env).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select>`;
+            } else if (arg.type === 'suggest') {
+                html = `<input type="text" id="${id}" list="${id}-list" autocomplete="off" autocapitalize="off" spellcheck="false" ${change} class="${field}">
+                    <datalist id="${id}-list">${ChatCommands.listFor(arg, env).map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist>`;
+            } else if (arg.type === 'number') {
+                html = `<input type="number" id="${id}" ${arg.min !== undefined ? `min="${Number(arg.min)}"` : ''} step="1" inputmode="numeric" ${change} class="${field}">`;
+            } else {
+                html = `<input type="text" id="${id}" autocomplete="off" ${change} class="${field}">`;
+            }
+            return `<label class="block min-w-0"><span class="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-1 capitalize">${esc(arg.name)}${arg.optional ? ' <span class="font-normal normal-case">(optional)</span>' : ''}</span>${html}</label>`;
+        }).join('');
+        const box = document.getElementById('chat-builder');
+        box.innerHTML = `<div class="flex justify-between items-start gap-3 mb-3">
+                <div class="min-w-0"><p class="font-bold text-gray-900 dark:text-white">${esc(cmd.label)}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">${esc(cmd.about)}.</p></div>
+                <button type="button" onclick="ServerApp.closeChatBuilder()" aria-label="Close" class="shrink-0 text-xl leading-none px-2 text-gray-500 hover:text-gray-900 dark:hover:text-white">✕</button></div>
+            ${fields ? `<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">${fields}</div>` : ''}
+            <p id="cb-error" class="hidden text-xs text-yellow-600 dark:text-yellow-500 mb-2"></p>
+            <div class="flex flex-wrap items-center gap-2">
+                <code id="cb-preview" class="flex-1 min-w-0 basis-full md:basis-0 font-mono text-sm bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 text-gray-900 dark:text-white break-words"></code>
+                <button type="button" id="cb-run" onclick="ServerApp.runChatBuilder()" class="bg-theme hover-bg-theme text-white px-5 py-2 rounded font-bold transition shadow-sm disabled:opacity-50">Run</button>
+                <button type="button" id="cb-edit" onclick="ServerApp.editChatBuilder()" title="Put the command in the message box to change it" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded font-bold transition shadow-sm">Edit</button>
+            </div>`;
+        box.classList.remove('hidden');
+        this.chatBuilderChanged();
+        const first = box.querySelector('select, input');
+        if (first && window.matchMedia('(min-width: 768px)').matches) first.focus();
+    },
+
+    // What the form holds now: { argName: text }
+    chatBuilderValues() {
+        const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+        const show = (id, on) => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', !on); };
+        const player = id => {
+            const other = val(id) === '__other';
+            show(`${id}-other`, other);
+            return other ? val(`${id}-other`) : val(id);
+        };
+        const xyz = id => ['x', 'y', 'z'].map(p => val(`${id}-${p}`)).filter(Boolean).join(' ');
+        const values = {};
+        (this.chatBuilderCmd ? this.chatBuilderCmd.args : []).forEach((arg, i) => {
+            const id = `cb-arg-${i}`;
+            if (arg.type === 'player' || arg.type === 'target') values[arg.name] = player(id);
+            else if (arg.type === 'position') values[arg.name] = xyz(id);
+            else if (arg.type === 'destination') {
+                const place = val(`${id}-mode`) === 'xyz';
+                show(`${id}-player`, !place);
+                show(`${id}-place`, place);
+                values[arg.name] = place ? xyz(id) : player(id);
+            } else values[arg.name] = val(id);
+        });
+        return values;
+    },
+
+    chatBuilderChanged() {
+        if (!this.chatBuilderCmd) return null;
+        const built = ChatCommands.build(this.chatBuilderCmd, this.chatBuilderValues());
+        const ready = !built.missing.length && !built.error;
+        document.getElementById('cb-preview').innerText = built.command + built.missing.map(m => ` <${m}>`).join('');
+        document.getElementById('cb-run').disabled = !ready;
+        const err = document.getElementById('cb-error');
+        err.innerText = built.error || '';
+        err.classList.toggle('hidden', !built.error);
+        return ready ? built.command : null;
+    },
+
+    runChatBuilder() {
+        const command = this.chatBuilderChanged();
+        const cmd = this.chatBuilderCmd;
+        if (!command || !cmd) return;
+        if (cmd.confirm && !confirm(`Run ${command} on ${this.activeServer.name}?\n\n${cmd.about}.`)) return;
+        this.closeChatBuilder();
+        this.sendChat(command);
+    },
+
+    // Puts the command, as far as it is filled in, into the message box to finish by hand
+    editChatBuilder() {
+        if (!this.chatBuilderCmd) return;
+        const cmd = this.chatBuilderCmd;
+        const built = ChatCommands.build(cmd, this.chatBuilderValues());
+        this.closeChatBuilder();
+        const input = document.getElementById('chat-input');
+        input.value = built.command + (cmd.args.length ? ' ' : '');
+        input.focus();
+        this.updateChatSuggest();
+    },
+
+    closeChatBuilder() {
+        this.chatBuilderCmd = null;
+        const box = document.getElementById('chat-builder');
+        if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+        const sel = document.getElementById('chat-cmd-select');
+        if (sel) sel.value = '';
     },
 
     switchConfigSubTab(subId) {
