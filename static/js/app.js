@@ -3896,7 +3896,7 @@ const ServerApp = {
             return `<div class="flex flex-wrap items-start justify-between gap-3 p-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0">
                 <div class="min-w-0 flex-1">
                     <p class="font-bold text-gray-900 dark:text-white break-words">${name} <span class="text-xs font-normal px-1.5 py-0.5 rounded ${b[1]}">${b[0]}</span></p>
-                    <p class="${note} break-all">${[m.version ? `v${esc(m.version)}` : '', extra ? 'added for players' : esc(m.file), esc(m.why)].filter(Boolean).join(' · ')}</p>
+                    <p class="${note} break-all">${[m.version ? `v${esc(m.version)}` : '', extra ? '' : esc(m.file), esc(m.why)].filter(Boolean).join(' · ')}</p>
                 </div>
                 <div class="whitespace-nowrap">${pick}</div>
             </div>`;
