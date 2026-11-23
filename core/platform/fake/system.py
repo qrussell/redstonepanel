@@ -114,3 +114,7 @@ def prepare_servers_folder(folder):
     fake.record("system.prepare_servers_folder", folder)
     os.makedirs(folder, exist_ok=True)
     return ""
+
+
+def game_programs(names=("java", "bedrock_server")):
+    return [dict(p) for p in getattr(fake.state, "game_programs", [])]
