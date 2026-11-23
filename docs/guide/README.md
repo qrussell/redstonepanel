@@ -50,6 +50,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.21.2 | Light and dark mode is a **sun/moon switch in the top right corner**, with a colored dot beside it for the accent color. The ⚙️ button in the sidebar is gone. | [The dashboard](#3-the-dashboard) |
 | 1.21.0 | Groundwork for the Windows version. Nothing new on screen. | [Roadmap](../wiki/Roadmap.md) |
 | 1.20.0 | **Purpur, Quilt, NeoForge and Forge** servers; **From a modpack** (Modrinth, `.mrpack`, CurseForge server packs) and pack updates. | [Create or import a server](#4-create-or-import-a-server), [Modpack](#modpack) |
 | 1.19.0 | **Server type**: change a Java server between Vanilla, Paper and Fabric in place, with a preview, a backup and undo; **Roll back the last update**; backups show what made them. | [Changing a server's type](#changing-a-servers-type), [Rolling back an update](#rolling-back-an-update) |
@@ -394,6 +395,8 @@ small buttons, also saved in your browser:
   has it too.
 - The **colored dot** picks the accent color: **Redstone Red** (the default), Diamond Blue,
   Emerald Green or Amethyst Purple.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/accent-color.png"><img src="images/accent-color.png" alt="The accent color choices under the colored dot, beside the sun/moon switch"></picture>
 
 ### Port forwarding
 

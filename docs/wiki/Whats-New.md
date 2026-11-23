@@ -9,6 +9,15 @@ the dashboard.
 
 ---
 
+## 1.21.2: a simple light/dark switch *(November 2026)*
+
+- **A sun/moon switch in the top right corner** of every page changes between light and dark
+  mode with one click. On a phone it is at the right end of the top bar.
+- **A colored dot beside it** picks the accent color.
+- The **⚙️** button in the sidebar, which looked like a second Settings button, is gone.
+
+[Release notes](../../release-notes/v1.21.2.md)
+
 ## 1.21.1: choose where servers are kept *(November 2026)*
 
 - **Panel Settings → Servers folder** takes the full path of a folder on any disk or
