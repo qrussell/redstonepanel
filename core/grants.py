@@ -352,6 +352,7 @@ admin    GET     /api/modpacks/search
 admin    GET     /api/modpacks/versions
 admin    POST    /api/servers/import
 admin    GET     /api/servers/removed
+admin    GET     /api/found-servers
 admin    POST    /api/servers/removed/{{server_name}}/restore
 admin    DELETE  /api/servers/removed/{{server_name}}
 admin    PUT     /api/templates/{{template_id}}
