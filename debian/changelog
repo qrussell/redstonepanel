@@ -1,3 +1,20 @@
+redstonepanel (1.21.1) noble; urgency=medium
+
+  * Choose where servers are kept: Panel Settings > Servers folder takes
+    the full path of a folder on any disk or partition, for example
+    /srv/minecraft or /mnt/disk2/minecraft. The panel makes the folder and
+    shows the free space there. Leave it empty for the usual place, /opt.
+  * New servers go there: created, imported, restored from backup storage,
+    installed from a modpack or moved in from another cluster member.
+    Servers you already have stay where they are and keep working.
+  * Every folder that was used before is remembered, so names and ports
+    stay unique across them and removed servers are still found.
+  * Folders the panel can't safely use are refused with the reason: system
+    folders, the top folder of a disk, names with spaces, a read-only or
+    noexec disk, and a folder the minecraft account can't get into.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Mon, 23 Nov 2026 13:46:16 -0000
+
 redstonepanel (1.21.0) noble; urgency=medium
 
   * Groundwork for the Windows version (roadmap 1.21 to 1.24). Nothing

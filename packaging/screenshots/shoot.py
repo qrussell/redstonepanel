@@ -418,6 +418,8 @@ class Shooter:
             shot("notifications")
             self.scroll_to_text("Backup storage")   # 1.16.11: the demo's SSH storage on Creative Lab
             shot("backup-storage")
+            self.scroll_to_text("Servers folder")   # 1.21.1
+            shot("servers-folder")
             self.scroll_to_text("Connection")    # on a master this also shows Nightly backups
             shot("panel-settings-1")
             self.close_modals()
