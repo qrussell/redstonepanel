@@ -104,6 +104,8 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.21
 
+**Servers you set up yourself** *(1.21.3)*. **New server** lists Minecraft servers on the machine that were set up outside the panel under **Found on this computer**. **Manage with RedstonePanel** takes one over in place, with nothing copied or moved and the old service only turned off, and **Undo** puts it back. Read the [1.21.3 release notes](release-notes/v1.21.3.md).
+
 **A simple light/dark switch** *(1.21.2)*. A sun/moon button in the top right corner of every page changes between light and dark mode with one click, and a colored dot beside it picks the accent color. The ⚙️ button in the sidebar, which looked like a second Settings button, is gone.
 
 **Choose where servers are kept** *(1.21.1)*. **Panel Settings → Servers folder** takes the full path of a folder on any disk or partition, so servers don't have to live on the system disk. New servers go there; the ones you have stay where they are. Read the [1.21.1 release notes](release-notes/v1.21.1.md).

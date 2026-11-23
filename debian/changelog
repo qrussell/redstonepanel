@@ -1,3 +1,20 @@
+redstonepanel (1.21.3) noble; urgency=medium
+
+  * Found on this computer: New server now lists Minecraft servers on
+    the machine that were set up outside the panel (your own systemd
+    service, a script, a screen session), with folder, port, version and
+    what started each one. Looking changes nothing.
+  * Manage with RedstonePanel hands one over: the service that ran it is
+    stopped and turned off (never deleted) and the panel runs the server
+    from the same folder under its own service, with the memory it had.
+    No file is copied or moved. A server that doesn't start under the
+    panel is put back by itself.
+  * Undo puts a handed-over server back as it was.
+  * Fixed: a new server given the name of one you removed no longer
+    opens with the removed server's Last crash card.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Mon, 23 Nov 2026 20:11:12 -0000
+
 redstonepanel (1.21.2) noble; urgency=medium
 
   * Light and dark mode is now a sun/moon switch in the top right corner

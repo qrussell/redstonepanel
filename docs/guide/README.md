@@ -588,6 +588,8 @@ If the machine already runs a Minecraft server that RedstonePanel didn't make, s
 own systemd service, a script or a `screen` session, the dialog lists it under **Found on this
 computer** with its folder, port, version and what started it. Looking changes nothing.
 
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/found-servers.png"><img src="images/found-servers.png" alt="Found on this computer: two servers set up outside the panel, and one already handed over with an Undo button"></picture>
+
 Click **Manage with RedstonePanel** to hand one over:
 
 - The service that ran it is stopped and turned off. It is not deleted.

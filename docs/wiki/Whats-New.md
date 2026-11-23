@@ -9,6 +9,17 @@ the dashboard.
 
 ---
 
+## 1.21.3: servers you set up yourself *(November 2026)*
+
+- **New server → Found on this computer** lists Minecraft servers on the machine that were set
+  up outside the panel, with folder, port, version and what started them.
+- **Manage with RedstonePanel** takes one over in place: the old service is stopped and turned
+  off, never deleted, no file is moved, and **Undo** puts it back. See
+  [A server you set up yourself](../guide/README.md#4-create-or-import-a-server).
+- Fixed: a new server no longer opens with a removed server's **Last crash**.
+
+[Release notes](../../release-notes/v1.21.3.md)
+
 ## 1.21.2: a simple light/dark switch *(November 2026)*
 
 - **A sun/moon switch in the top right corner** of every page changes between light and dark
