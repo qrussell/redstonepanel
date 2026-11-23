@@ -1606,6 +1606,14 @@ def delete_file(request: Request, server_name: str, path: str):
 def list_removed_servers():
     return manager.list_removed_servers()
 
+# Found servers: Minecraft servers running here that the panel doesn't manage (core/found.py).
+# Looking changes nothing; admins only, because it shows folders and accounts of the machine.
+@app.get("/api/found-servers")
+def list_found_servers(request: Request):
+    _require_admin(request, "see the Minecraft servers found on this machine")
+    from core import found
+    return {"servers": found.scan()}
+
 @app.post("/api/servers/removed/{server_name}/restore")
 def restore_server(server_name: str):
     try:
