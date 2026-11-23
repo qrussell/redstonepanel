@@ -76,7 +76,7 @@ def _page(name):
         with open(path, encoding="utf-8") as f:
             html = f.read()
         v = urllib.parse.quote(panel_version(), safe="")
-        for asset in ("/static/js/app.js", "/static/js/chat-commands.js", "/static/css/tailwind.css"):
+        for asset in ("/static/js/app.js", "/static/js/chat-commands.js", "/static/js/propfile.js", "/static/css/tailwind.css"):
             html = html.replace(f'"{asset}"', f'"{asset}?v={v}"')
         hit = _page_cache[name] = (mtime, html)
     return hit[1]

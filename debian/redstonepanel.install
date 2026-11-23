@@ -8,6 +8,6 @@ core/platform/fake/__init__.py core/platform/fake/_result.py core/platform/fake/
 static/index.html static/login.html static/manifest.json static/sw.js static/commands.json usr/share/redstonepanel/static/
 static/img/redstonepanel-icon.svg static/img/redstonepanel-logo.svg static/img/redstonepanel-logo-dark.svg static/img/favicon.ico static/img/apple-touch-icon.png static/img/icon-192.png static/img/icon-512.png usr/share/redstonepanel/static/img/
 static/css/tailwind.css usr/share/redstonepanel/static/css/
-static/js/app.js static/js/chat-commands.js usr/share/redstonepanel/static/js/
+static/js/app.js static/js/chat-commands.js static/js/propfile.js usr/share/redstonepanel/static/js/
 packaging/redstonepanel usr/sbin/
 packaging/minecraft-.service.d/redstonepanel.conf usr/lib/systemd/system/minecraft-.service.d/

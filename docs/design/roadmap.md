@@ -1900,6 +1900,35 @@ browser checks at 1280 and 390 pixels wide with sample data. Not tested with a r
 online: no game client was available, so player names came from the stand-in. The manual's
 pictures use sample data.
 
+### 1.21.7: a Visual Editor for settings files on the Files tab *(built, not released; number to be confirmed)*
+
+**Why.** Configuration has a Visual Editor for `server.properties`, but every other settings
+file (a plugin's `.properties` or `.cfg`, `eula.txt`, a second properties file) opened on the
+Files tab as plain text. Quentin asked on 23 Nov 2026 for a visual editor for any file that
+resembles a property file, like the one used for server properties, with a way to switch
+between it and the current editor.
+
+**How.** Nothing new on the server: the Files tab's editor already reads and saves the text
+under the **Files** permission, and the form is another view of that text. When every line of
+a file is blank, a comment, a `[section]` heading or `name=value`, a **Visual Editor** /
+**Raw Text** switch appears above it. The form uses the same cards as Configuration (now one
+shared function): True/False lists, the choices for `difficulty` and `gamemode`, number boxes,
+text boxes and a filter. A change in the form rewrites that one value in the text, so comments,
+blank lines, order, spacing and Windows line endings are kept and the two views cannot differ.
+
+**As built.** `static/js/propfile.js` (plain functions) and the editor in `app.js`; no route,
+no Python and no change to the cluster contract, so it works on nodes and on Windows as it is.
+`.properties` files are read and written with Java's escapes, as `core/properties.py` does;
+other files are plain `name=value`. A file with one line that does not fit (a value continued
+with a backslash, a name with spaces) is not offered the form, and one that stops fitting while
+you type says which line. `.yml`, `.json`, `.toml` and scripts always open as text. The form
+does not add or remove settings; Raw Text does. Tested: `tests/js/propfile.test.js` (9 Node
+tests) and `tests/test_propfile.py`, which also checks that values written by the form are read
+back the same by `core/properties.py`; 23 browser checks at 1440, 1280 and 390 pixels wide in
+both themes with sample data (form to text, text to form, save, filter, sections, a file that
+stops fitting, Configuration's own editor). Not yet run against an installed panel. The
+manual's picture uses sample data.
+
 ### 2.0: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already

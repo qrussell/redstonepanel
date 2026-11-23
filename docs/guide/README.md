@@ -1261,6 +1261,19 @@ things the other tabs don't cover: plugin and mod settings, `ops.json`, `bukkit.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/file-editor.png"><img src="images/file-editor.png" alt="Editing a plugin&#x27;s config.yml"></picture>
 
+- A file that is a list of `name=value` settings (`server.properties`, `eula.txt`, most `.cfg`,
+  `.conf` and `.ini` files, any `.properties` file) opens in a **Visual Editor** like the one
+  on [Configuration](#7-configuration-player-roles-and-the-whitelist): one card per setting, with **True**/**False** lists,
+  number boxes and a filter. **Visual Editor** and **Raw Text** above it switch between the
+  form and the plain text. They show the same file, so a change made in one is there in the
+  other, and the panel opens the next file in the view you used last.
+- The form changes only the values you change. Comments, blank lines, spacing and the order of
+  the file stay as they were. To add or remove a setting, or edit a comment, use **Raw Text**.
+- The switch appears only when every line of the file fits. `.yml`, `.json` and `.toml` files
+  have their own layout and always open as text.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/file-visual.png"><img src="images/file-visual.png" alt="server.properties in the Files tab&#x27;s Visual Editor"></picture>
+
 Most servers read their files when they start, so **Restart** after changing settings.
 Some plugins have a reload command; check the plugin's documentation.
 
