@@ -11,7 +11,7 @@ the dashboard.
 
 ## 1.19: change a server's type in place *(November 2026)*
 
-<picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/change-type-preview.png"><img src="../guide/images/change-type-preview.png" alt="Preview of changing a server from Vanilla to Paper"></picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/change-type-preview.png"><img src="../guide/images/change-type-preview.png" alt="Preview of changing a server from Paper to Fabric"></picture>
 
 - **Server type** on the Maintenance tab: move a Java server between **Vanilla, Paper and
   Fabric** and keep the world, port, settings and players. A preview comes first, a backup
