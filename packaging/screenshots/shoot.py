@@ -150,6 +150,16 @@ class Shooter:
         step("dashboard", lambda: shot("dashboard", full=True))
         step("hero", lambda: shot("hero"))
 
+        def accent_color():
+            # 1.21.2: the colored dot beside the sun/moon switch, with its four choices open
+            page.locator('#theme-corner button[aria-label="Accent color"]').click()
+            page.wait_for_timeout(300)
+            width = page.viewport_size["width"]
+            page.screenshot(path=f"{self.out}/accent-color.png", clip={"x": width - 720, "y": 0, "width": 720, "height": 150})
+            taken.append(f"{self.theme}/accent-color")
+            page.keyboard.press("Escape")
+        step("accent color", accent_color)
+
         def cluster():
             page.evaluate("ServerApp.openCluster()")
             page.wait_for_timeout(3500)

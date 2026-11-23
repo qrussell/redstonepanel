@@ -280,55 +280,67 @@ const ServerApp = {
     themeMode: localStorage.getItem('rp_themeMode') || 'dark',
     themeColor: localStorage.getItem('rp_themeColor') || 'redstone',
 
+    accents: [['redstone', 'Redstone Red', '#d9261b'], ['diamond', 'Diamond Blue', '#2563eb'],
+              ['emerald', 'Emerald Green', '#059669'], ['amethyst', 'Amethyst Purple', '#7c3aed']],
+
     applyTheme() {
         document.documentElement.classList.toggle('dark', this.themeMode === 'dark');
-        
         document.documentElement.setAttribute('data-theme', this.themeColor);
+        this.renderThemeControls();
     },
 
-    openSettingsModal() {
-        const modal = document.getElementById('modal-overlay');
-        document.getElementById('modal-content').innerHTML = `
-            <h3 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Panel Settings</h3>
-            
-            <div class="mb-4">
-                <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Color Mode</label>
-                <select id="setting-mode" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
-                    <option value="dark" ${this.themeMode === 'dark' ? 'selected' : ''}>Dark Mode</option>
-                    <option value="light" ${this.themeMode === 'light' ? 'selected' : ''}>Light Mode</option>
-                </select>
-            </div>
-
-            <div class="mb-6">
-                <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Accent Palette</label>
-                <select id="setting-color" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
-                    <option value="redstone" ${this.themeColor === 'redstone' ? 'selected' : ''}>Redstone Red (default)</option>
-                    <option value="diamond" ${this.themeColor === 'diamond' ? 'selected' : ''}>Diamond Blue</option>
-                    <option value="emerald" ${this.themeColor === 'emerald' ? 'selected' : ''}>Emerald Green</option>
-                    <option value="amethyst" ${this.themeColor === 'amethyst' ? 'selected' : ''}>Amethyst Purple</option>
-                </select>
-            </div>
-
-            <div class="flex justify-end gap-3">
-                <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="px-4 py-2 bg-gray-300 dark:bg-gray-700 text-gray-900 dark:text-white rounded transition">Cancel</button>
-                <button onclick="ServerApp.saveSettings()" class="px-4 py-2 bg-theme hover-bg-theme text-white rounded transition">Save Settings</button>
-            </div>
-        `;
-        modal.classList.remove('hidden');
+    // The light/dark switch and the accent colour dot: in the page's top right corner on a
+    // desktop, at the right end of the top bar on a phone. One click each, saved in this browser.
+    renderThemeControls() {
+        const dark = this.themeMode === 'dark';
+        const to = dark ? 'light' : 'dark';
+        const btn = 'w-11 h-11 md:w-10 md:h-10 flex items-center justify-center rounded-full text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition';
+        const sun = '<svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+        const moon = '<svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+        const dots = this.accents.map(([id, name, hex]) => `<button onclick="ServerApp.setAccent('${id}')" title="${name}" aria-label="${name}" aria-pressed="${id === this.themeColor}" class="w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><span class="w-5 h-5 rounded-full ${id === this.themeColor ? 'ring-2 ring-offset-2 ring-gray-500 dark:ring-gray-300 ring-offset-white dark:ring-offset-gray-800' : ''}" style="background:${hex}"></span></button>`).join('');
+        document.querySelectorAll('.theme-controls').forEach(el => {
+            const open = !!el.querySelector('.accent-menu:not(.hidden)');
+            el.innerHTML = `
+                <div class="relative">
+                    <button onclick="ServerApp.toggleAccentMenu(this)" title="Accent color" aria-label="Accent color" aria-haspopup="true" aria-expanded="${open}" class="${btn}"><span class="w-4 h-4 rounded-full bg-theme"></span></button>
+                    <div class="accent-menu ${open ? '' : 'hidden'} absolute right-0 top-full mt-1 flex gap-1 p-1.5 rounded-lg shadow-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 z-30">${dots}</div>
+                </div>
+                <button onclick="ServerApp.toggleThemeMode()" title="Switch to ${to} mode" aria-label="Switch to ${to} mode" class="${btn}">${dark ? sun : moon}</button>`;
+        });
     },
 
-    saveSettings() {
-        const mode = document.getElementById('setting-mode').value;
-        const color = document.getElementById('setting-color').value;
-        
-        this.themeMode = mode;
-        this.themeColor = color;
-        
-        localStorage.setItem('rp_themeMode', mode);
-        localStorage.setItem('rp_themeColor', color);
-        
+    toggleThemeMode() {
+        this.themeMode = this.themeMode === 'dark' ? 'light' : 'dark';
+        try { localStorage.setItem('rp_themeMode', this.themeMode); } catch (e) {}
         this.applyTheme();
-        document.getElementById('modal-overlay').classList.add('hidden');
+    },
+
+    toggleAccentMenu(btn) {
+        const menu = btn.nextElementSibling;
+        const show = menu.classList.contains('hidden');
+        this.closeAccentMenus();
+        menu.classList.toggle('hidden', !show);
+        btn.setAttribute('aria-expanded', String(show));
+        if (show && !this._accentCloser) {
+            // A click anywhere else, or Esc, closes it
+            this._accentCloser = true;
+            document.addEventListener('click', e => { if (!e.target.closest('.theme-controls')) this.closeAccentMenus(); });
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') this.closeAccentMenus(); });
+        }
+    },
+
+    closeAccentMenus() {
+        document.querySelectorAll('.theme-controls .accent-menu').forEach(m => {
+            m.classList.add('hidden');
+            m.previousElementSibling.setAttribute('aria-expanded', 'false');
+        });
+    },
+
+    setAccent(color) {
+        this.themeColor = color;
+        try { localStorage.setItem('rp_themeColor', color); } catch (e) {}
+        this.closeAccentMenus();
+        this.applyTheme();
     },
 
     changeSortOrder(order) {

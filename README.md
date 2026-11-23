@@ -104,6 +104,8 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.21
 
+**A simple light/dark switch** *(1.21.2)*. A sun/moon button in the top right corner of every page changes between light and dark mode with one click, and a colored dot beside it picks the accent color. The ⚙️ button in the sidebar, which looked like a second Settings button, is gone.
+
 **Choose where servers are kept** *(1.21.1)*. **Panel Settings → Servers folder** takes the full path of a folder on any disk or partition, so servers don't have to live on the system disk. New servers go there; the ones you have stay where they are. Read the [1.21.1 release notes](release-notes/v1.21.1.md).
 
 **Groundwork for Windows** *(1.21)*. Nothing changes on screen. Everything the panel asks of the operating system now goes through one internal package, so a native Windows version can be built next to the Linux one; 1.22 is planned as the Windows preview. Read the [1.21.0 release notes](release-notes/v1.21.0.md).
