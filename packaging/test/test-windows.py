@@ -641,9 +641,9 @@ def found_servers(p, args):
         code, r = p.post("/api/found-servers/manage", {"folder": d}, timeout=300)
         name = (r or {}).get("name")
         if not check("Manage with RedstonePanel works", code == 200 and bool(name), f"{code} {r}"):
-            print("        " + " ".join(run(["icacls", d])[1].split()), flush=True)
-            print("        " + " ".join(run(["icacls", os.path.join(d, jar)])[1].split()), flush=True)
-            print("        " + str(os.listdir(d)), flush=True)
+            print("  diag  folder: " + " ".join(run(["icacls", d])[1].split()), flush=True)
+            print("  diag  jar: " + " ".join(run(["icacls", os.path.join(d, jar)])[1].split()) + " java=" + java, flush=True)
+            print("  diag  files: " + str(os.listdir(d)) + " temp=" + os.environ.get("TEMP", ""), flush=True)
             return
         check("the panel's service runs it from the same folder", wait("svc", lambda: service_state(name) == "RUNNING", 60)
               and wait("port", listening, 90), str(service_state(name)))
