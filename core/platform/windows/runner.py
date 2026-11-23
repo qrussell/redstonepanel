@@ -644,7 +644,13 @@ def main(argv=None):
         _win.start_service(os.path.splitext(argv[2])[0])
         return 0
     if cmd == "event":
-        return handle_event(argv[1:])
+        code = handle_event(argv[1:])
+        try:                                   # one line per entry handled: why a notification did or didn't go out
+            with open(os.path.join(os.path.dirname(paths.LOG_FILE), "events.log"), "a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {' '.join(argv[1:])[:300]} -> {code}\n")
+        except OSError:
+            pass
+        return code
     print(__doc__)
     return 2
 

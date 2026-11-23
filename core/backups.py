@@ -270,6 +270,8 @@ def _add_tree(tar, d, skip_dirs=(), full=False):
             if _skipped(rel, full):
                 continue
             path = os.path.join(root, name)
+            if name == "session.lock" and paths.WINDOWS:
+                continue      # the running server holds it locked; Windows refuses to read it, and it means nothing in a backup
             try:
                 tar.add(path, arcname=rel, recursive=False)
             except FileNotFoundError:

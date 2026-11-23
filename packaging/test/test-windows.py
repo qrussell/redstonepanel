@@ -439,7 +439,10 @@ def finish(p, args, name, port=None):
             code, r = p.call("DELETE", f"/api/servers/{name}", {"keep_world": False}, timeout=300)
         check("the server is removed", code == 200, f"{code} {r}")
         check("its Windows service is gone", wait("gone", lambda: service_state(name) is None, 60), str(service_state(name)))
-        check("its folder is gone", not os.path.exists(os.path.join(home, "servers", name)))
+        left = []
+        for root, dirs, files in os.walk(os.path.join(home, "servers", name)):
+            left += [os.path.join(root, n) for n in files + dirs]
+        check("its folder is gone", not os.path.exists(os.path.join(home, "servers", name)), f"{r} left: {left[:12]}")
         if port:
             code, out = ps(f"@(Get-NetFirewallRule -DisplayName 'RedstonePanel {port}/tcp' -ErrorAction SilentlyContinue).Count")
             check("its firewall rule is gone", out.strip().endswith("0"), out[-200:])

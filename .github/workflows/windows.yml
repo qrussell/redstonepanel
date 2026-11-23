@@ -56,17 +56,25 @@ jobs:
           Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='RedstonePanel'} -MaxEvents 30 -ErrorAction SilentlyContinue | ForEach-Object { "$($_.TimeCreated) $($_.Id) $($_.Message)" }
           Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; Level=2,3} -MaxEvents 15 -ErrorAction SilentlyContinue | ForEach-Object { "$($_.TimeCreated) $($_.Id) $($_.Message)" }
           "::endgroup::"
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          $h = "C:\ProgramData\RedstonePanel"
+          "--- panel.log"; Get-Content "$h\logs\panel.log" -Tail 45 -ErrorAction SilentlyContinue
+          "--- errors the panel printed"; Get-Content "$h\journal\redstonepanel.service\output.log" -ErrorAction SilentlyContinue | Where-Object { $_ -match "Error|Exception|core\\" } | Select-Object -Last 14 | ForEach-Object { $_.Substring([Math]::Min(48, $_.Length)) }
+          "--- events.log"; Get-Content "$h\logs\events.log" -Tail 8 -ErrorAction SilentlyContinue
+          "--- tasks"; Get-ScheduledTask -TaskPath "\RedstonePanel\" -ErrorAction SilentlyContinue | Get-ScheduledTaskInfo | ForEach-Object { "$($_.TaskName) last=$($_.LastRunTime) result=$($_.LastTaskResult) runs_missed=$($_.NumberOfMissedRuns)" }
+          (schtasks /Query /TN "\RedstonePanel\notifications" /XML 2>$null | Select-String "Subscription|Arguments|Command|Value ") | ForEach-Object { $_.Line.Trim() }
+          "--- task output"; Get-ChildItem "$h\journal" -Directory -Filter "redstonepanel-*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name; Get-Content "$($_.FullName)\output.log" -Tail 6 -ErrorAction SilentlyContinue }
+          "--- test"
+          if (Test-Path test.log) { Get-Content test.log | Where-Object { $_ -notmatch "^\s+ok |^\s{8}|^$" } | Select-Object -Last 60 }
       - name: Uninstall
         if: always()
         shell: pwsh
         run: |
           & "C:\Program Files\RedstonePanel\python\python.exe" -X utf8 "C:\Program Files\RedstonePanel\app\packaging\windows\setup.py" uninstall
           sc.exe query redstonepanel; if ($LASTEXITCODE -eq 0) { "the service is still there"; exit 1 } else { exit 0 }
-      - name: Summary
-        if: always()
-        shell: pwsh
-        run: |
-          if (Test-Path test.log) { Get-Content test.log | Where-Object { $_ -notmatch "^\s+ok " } | Select-Object -Last 150 }
 
   # The installer itself: built, installed without questions, tested, installed again over itself
   # (what an upgrade does) and removed.
@@ -124,6 +132,19 @@ jobs:
           foreach ($f in @(Get-ChildItem "$h\journal" -Recurse -Filter output.log -ErrorAction SilentlyContinue) + @(Get-Item "$h\logs\panel.log" -ErrorAction SilentlyContinue)) {
             "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 40; "::endgroup::"
           }
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          $h = "C:\ProgramData\RedstonePanel"
+          "--- panel.log"; Get-Content "$h\logs\panel.log" -Tail 45 -ErrorAction SilentlyContinue
+          "--- errors the panel printed"; Get-Content "$h\journal\redstonepanel.service\output.log" -ErrorAction SilentlyContinue | Where-Object { $_ -match "Error|Exception|core\\" } | Select-Object -Last 14 | ForEach-Object { $_.Substring([Math]::Min(48, $_.Length)) }
+          "--- events.log"; Get-Content "$h\logs\events.log" -Tail 8 -ErrorAction SilentlyContinue
+          "--- tasks"; Get-ScheduledTask -TaskPath "\RedstonePanel\" -ErrorAction SilentlyContinue | Get-ScheduledTaskInfo | ForEach-Object { "$($_.TaskName) last=$($_.LastRunTime) result=$($_.LastTaskResult) runs_missed=$($_.NumberOfMissedRuns)" }
+          (schtasks /Query /TN "\RedstonePanel\notifications" /XML 2>$null | Select-String "Subscription|Arguments|Command|Value ") | ForEach-Object { $_.Line.Trim() }
+          "--- task output"; Get-ChildItem "$h\journal" -Directory -Filter "redstonepanel-*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name; Get-Content "$($_.FullName)\output.log" -Tail 6 -ErrorAction SilentlyContinue }
+          "--- test"
+          if (Test-Path test.log) { Get-Content test.log | Where-Object { $_ -notmatch "^\s+ok |^\s{8}|^$" } | Select-Object -Last 60 }
       - name: Remove
         shell: pwsh
         run: |
@@ -139,8 +160,3 @@ jobs:
           if (Get-NetFirewallRule -Group "RedstonePanel panel" -ErrorAction SilentlyContinue) { $left += "the panel's firewall rule" }
           if (-not (Test-Path "C:\ProgramData\RedstonePanel\servers")) { $left += "(the servers folder should have been kept)" }
           if ($left) { "Left behind: " + ($left -join "; "); exit 1 } else { "Removed cleanly; worlds, backups and settings were kept." }
-      - name: Summary
-        if: always()
-        shell: pwsh
-        run: |
-          if (Test-Path test.log) { Get-Content test.log | Where-Object { $_ -notmatch "^\s+ok " } | Select-Object -Last 150 }
