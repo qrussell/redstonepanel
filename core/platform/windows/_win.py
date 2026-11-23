@@ -229,6 +229,78 @@ def grant(path, sid, rights="M", inherit=True):
     return quiet(["icacls", path, "/grant", spec, "/C", "/Q"], timeout=300)
 
 
+def _security():
+    a = dll("advapi32")
+    if not getattr(a, "_rp_security", False):
+        a.GetNamedSecurityInfoW.restype = wintypes.DWORD
+        a.GetNamedSecurityInfoW.argtypes = [wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD, ctypes.c_void_p,
+                                            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+                                            ctypes.POINTER(ctypes.c_void_p)]
+        a.GetSecurityDescriptorControl.restype = wintypes.BOOL
+        a.GetSecurityDescriptorControl.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.WORD),
+                                                   ctypes.POINTER(wintypes.DWORD)]
+        a.InitializeAcl.restype = wintypes.BOOL
+        a.InitializeAcl.argtypes = [ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD]
+        a.SetNamedSecurityInfoW.restype = wintypes.DWORD
+        a.SetNamedSecurityInfoW.argtypes = [wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD, ctypes.c_void_p,
+                                            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        k = dll("kernel32")
+        k.LocalFree.restype = ctypes.c_void_p
+        k.LocalFree.argtypes = [ctypes.c_void_p]
+        a._rp_security = True
+    return a
+
+
+def keeps_own_rights(path):
+    """True when a file or folder takes no rights from the folder it is in ("inheritance off")."""
+    a = _security()
+    sd = ctypes.c_void_p()
+    if a.GetNamedSecurityInfoW(path, 1, 4, None, None, None, None, ctypes.byref(sd)) != 0:   # a file, its DACL
+        return False
+    try:
+        control, revision = wintypes.WORD(), wintypes.DWORD()
+        if not a.GetSecurityDescriptorControl(sd, ctypes.byref(control), ctypes.byref(revision)):
+            return False
+        return bool(control.value & 0x1000)                                    # SE_DACL_PROTECTED
+    finally:
+        dll("kernel32").LocalFree(sd)
+
+
+def inherit_rights(path):
+    """Gives a file or folder the rights of the folder it is in and nothing else (what
+    `icacls /reset` does), and Windows passes them on to what is inside."""
+    a = _security()
+    acl = ctypes.create_string_buffer(8)
+    if not a.InitializeAcl(acl, 8, 2):                                         # an empty list, ACL_REVISION
+        return False
+    return a.SetNamedSecurityInfoW(path, 1, 4 | 0x20000000, None, None, acl, None) == 0     # ... and inheritance on
+
+
+def inherit_rights_below(folder):
+    """Turns inheritance back on for every folder under this one that has it off. Python makes
+    such folders when it unpacks an archive or makes a temporary folder (mode 0700), and moving
+    them into a server's folder would leave the server unable to open its own world. Links are
+    left alone and never entered. Returns how many folders were changed."""
+    changed = 0
+    junction = getattr(os.path, "isjunction", lambda p: False)
+    stack = [folder]
+    while stack:
+        try:
+            entries = list(os.scandir(stack.pop()))
+        except OSError:
+            continue
+        for e in entries:
+            try:
+                if e.is_symlink() or junction(e.path) or not e.is_dir(follow_symlinks=False):
+                    continue
+            except OSError:
+                continue
+            if keeps_own_rights(e.path) and inherit_rights(e.path):
+                changed += 1
+            stack.append(e.path)
+    return changed
+
+
 def lock_down(path):
     """Leaves a folder to administrators and the system only (what `chmod 700` as root does)."""
     return quiet(["icacls", path, "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F",

@@ -13,7 +13,7 @@ text file systemd reads on Linux, and does what the file says:
                                    Scheduler starts for a .timer
     runner.py exec NAME -- CMD...  CMD with its output kept as NAME (work that outlives the panel)
     runner.py later SECONDS UNIT   start a service in a while
-    runner.py event ...            run for an entry the service wrote to the event log; sends the
+    runner.py event                run when a service writes to the event log; sends the
                                    panel's started/stopped/crashed notifications as the system
 
 The game runs inside a Job Object, so everything it started ends with it. Output goes to
@@ -488,6 +488,8 @@ class Service:
         if units.get(self.spec, "Service", "X-RedstonePanel-Events", "no") != "yes":
             return
         kind = "start" if event_id == EVENT_STARTED else "stop"
+        note_event(self.unit, {"kind": kind, "requested": "1" if requested else "0", "result": result, "code": code,
+                               "status": str(status), "invocation": self.journal.invocation})
         report_event(event_id, [self.unit, kind, "1" if requested else "0", result, code, str(status),
                                 self.journal.invocation], error=result != "success")
 
@@ -601,32 +603,136 @@ def run_once(unit, argv=None, cwd=None, env=None, timeout=None, low_priority=Fal
 
 
 # ---------------------------------------------------------------------------
-# runner.py event UNIT KIND REQUESTED RESULT CODE STATUS INVOCATION
+# runner.py event
 # ---------------------------------------------------------------------------
-def handle_event(args):
-    """Started by Task Scheduler (as the system) for an entry a game server's service wrote to
-    the event log. Anyone signed in to the machine can write such an entry, so nothing in it is
-    trusted: the unit must be one of the panel's, and the run it names must be the one the
-    service itself recorded. Then the panel's own `notify-unit` does the rest."""
-    if len(args) != 7:
-        return 2
-    unit, kind, requested, result, code, status, invocation = args
-    if not UNIT_RE.fullmatch(unit) or not unit.startswith("minecraft") or kind not in ("start", "stop") \
-            or not re.fullmatch(r"[0-9a-f]{32}", invocation) or not re.fullmatch(r"-?[0-9]{0,12}", status) \
-            or result not in ("success", "exit-code") or code not in ("", "exited") or requested not in ("0", "1"):
-        return 2
-    if not os.path.isfile(paths.unit_file(unit)):
-        return 2
+EVENT_NAME_RE = re.compile(r"[0-9]{20}\.json")
+EVENTS_KEPT = 20
+EVENT_MAX_AGE = 900            # an entry older than this is history, not news
+
+
+def events_dir(unit):
+    return os.path.join(paths.journal_dir(unit), "events")
+
+
+def note_event(unit, record):
+    """Leaves what happened to a unit where the notification task finds it: one small file in the
+    unit's own journal folder, which only that server's account (and the system) can write."""
     try:
-        with open(os.path.join(paths.journal_dir(unit), "status.json"), encoding="utf-8") as f:
-            if json.load(f).get("invocation") != invocation:
-                return 2
-    except (OSError, ValueError, AttributeError):
-        return 2
-    env = dict(os.environ, SERVICE_RESULT=result, EXIT_CODE=code, EXIT_STATUS=status, INVOCATION_ID=invocation,
-               RP_STOP_REQUESTED=requested)
-    argv = _win.resolve_program(["redstonepanel", "notify-unit", kind, os.path.splitext(unit)[0]])
-    return subprocess.run(argv, env=env, creationflags=_win.CREATE_NO_WINDOW).returncode
+        folder = events_dir(unit)
+        os.makedirs(folder, exist_ok=True)
+        name = f"{time.time_ns():020d}.json"
+        tmp = os.path.join(folder, name + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(record, f)
+        os.replace(tmp, os.path.join(folder, name))
+        for old in sorted(n for n in os.listdir(folder) if EVENT_NAME_RE.fullmatch(n))[:-EVENTS_KEPT]:
+            os.remove(os.path.join(folder, old))
+    except OSError:
+        pass
+
+
+def _valid_event(record):
+    return (isinstance(record, dict) and record.get("kind") in ("start", "stop")
+            and record.get("requested") in ("0", "1") and record.get("result") in ("success", "exit-code")
+            and record.get("code") in ("", "exited")
+            and isinstance(record.get("status"), str) and re.fullmatch(r"-?[0-9]{0,12}", record["status"])
+            and isinstance(record.get("invocation"), str) and re.fullmatch(r"[0-9a-f]{32}", record["invocation"]))
+
+
+def new_events(seen, now=None):
+    """[(unit, file name, record or None)] not handled yet, oldest first for each unit. A record is
+    None when it is too old or isn't what a runner writes. Nothing here is trusted beyond that:
+    a server's account can write its own folder, so the most it can do is announce itself."""
+    now = time.time() if now is None else now
+    junction = getattr(os.path, "isjunction", lambda p: False)
+    try:
+        unit_names = sorted(os.listdir(paths.UNIT_DIR))
+    except OSError:
+        unit_names = []
+    found = []
+    for unit in unit_names:
+        if not unit.startswith("minecraft") or not UNIT_RE.fullmatch(unit):
+            continue
+        folder = events_dir(unit)
+        if os.path.islink(folder) or junction(folder):
+            continue
+        try:
+            names = sorted(n for n in os.listdir(folder) if EVENT_NAME_RE.fullmatch(n) and n > seen.get(unit, ""))
+        except OSError:
+            continue
+        for name in names:
+            record = None
+            path = os.path.join(folder, name)
+            try:
+                if now - int(name[:20]) / 1e9 <= EVENT_MAX_AGE and not os.path.islink(path) \
+                        and os.path.getsize(path) <= 4096:
+                    with open(path, encoding="utf-8") as f:
+                        record = json.load(f)
+            except (OSError, ValueError):
+                record = None
+            found.append((unit, name, record if _valid_event(record) else None))
+    return found
+
+
+def handle_event(args=()):
+    """Started by Task Scheduler (as the system) when a game server's service writes its
+    "started" or "stopped" entry to the event log. The entry only rings the bell: what happened
+    is read from the files the services left (note_event), and the panel's own `notify-unit`
+    does the rest. Returns what it did, one line per file."""
+    os.makedirs(paths.RUN_DIR, exist_ok=True)
+    state = os.path.join(paths.RUN_DIR, "events-seen.json")
+    lines = []
+    with open(os.path.join(paths.RUN_DIR, "events.lock"), "a+b") as lock:
+        _lock_file(lock)
+        try:
+            with open(state, encoding="utf-8") as f:
+                seen = json.load(f)
+            if not isinstance(seen, dict):
+                seen = {}
+        except (OSError, ValueError):
+            seen = {}
+        for unit, name, record in new_events(seen):
+            seen[unit] = name
+            if record is None:
+                lines.append(f"{unit} {name} skipped")
+                continue
+            env = dict(os.environ, SERVICE_RESULT=record["result"], EXIT_CODE=record["code"],
+                       EXIT_STATUS=record["status"], INVOCATION_ID=record["invocation"],
+                       RP_STOP_REQUESTED=record["requested"])
+            argv = _win.resolve_program(["redstonepanel", "notify-unit", record["kind"], os.path.splitext(unit)[0]])
+            try:
+                code = subprocess.run(argv, env=env, creationflags=_win.CREATE_NO_WINDOW, timeout=300).returncode
+            except (OSError, subprocess.SubprocessError) as e:
+                code = f"{type(e).__name__}: {e}"
+            lines.append(f"{unit} {record['kind']} requested={record['requested']} result={record['result']} "
+                         f"status={record['status']} -> {code}")
+            _save_seen(state, seen)
+        _save_seen(state, seen)
+    return lines
+
+
+def _save_seen(path, seen):
+    try:
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(seen, f)
+        os.replace(path + ".tmp", path)
+    except OSError:
+        pass
+
+
+def _lock_file(f):
+    """One notification task at a time (the lock goes when the file is closed)."""
+    try:
+        import msvcrt
+    except ImportError:
+        return
+    for _ in range(12):                      # LK_LOCK itself waits ten seconds
+        try:
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+            return
+        except OSError:
+            continue
 
 
 def main(argv=None):
@@ -644,13 +750,14 @@ def main(argv=None):
         _win.start_service(os.path.splitext(argv[2])[0])
         return 0
     if cmd == "event":
-        code = handle_event(argv[1:])
+        lines = handle_event()
         try:                                   # one line per entry handled: why a notification did or didn't go out
             with open(os.path.join(os.path.dirname(paths.LOG_FILE), "events.log"), "a", encoding="utf-8") as f:
-                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {' '.join(argv[1:])[:300]} -> {code}\n")
+                for line in lines or ["nothing new"]:
+                    f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {line}\n")
         except OSError:
             pass
-        return code
+        return 0
     print(__doc__)
     return 2
 

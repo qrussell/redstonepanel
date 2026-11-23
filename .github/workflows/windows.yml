@@ -30,7 +30,9 @@ jobs:
           persist-credentials: false
       - name: Stage (bundled Python, libraries, the panel)
         shell: pwsh
-        run: python packaging\windows\build.py stage "C:\Program Files\RedstonePanel"
+        run: |
+          wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
+          python packaging\windows\build.py stage "C:\Program Files\RedstonePanel"
       - name: Set up
         shell: pwsh
         run: |
@@ -66,6 +68,10 @@ jobs:
           "--- events.log"; Get-Content "$h\logs\events.log" -Tail 8 -ErrorAction SilentlyContinue
           "--- tasks"; Get-ScheduledTask -TaskPath "\RedstonePanel\" -ErrorAction SilentlyContinue | Get-ScheduledTaskInfo | ForEach-Object { "$($_.TaskName) last=$($_.LastRunTime) result=$($_.LastTaskResult) runs_missed=$($_.NumberOfMissedRuns)" }
           (schtasks /Query /TN "\RedstonePanel\notifications" /XML 2>$null | Select-String "Subscription|Arguments|Command|Value ") | ForEach-Object { $_.Line.Trim() }
+          "--- task scheduler on the notification task"
+          Get-WinEvent -LogName "Microsoft-Windows-TaskScheduler/Operational" -MaxEvents 600 -ErrorAction SilentlyContinue | Where-Object { $_.Message -match "notifications" } | Select-Object -First 8 | ForEach-Object { "$($_.TimeCreated) $($_.Id) $($_.Message)".Substring(0, [Math]::Min(230, "$($_.TimeCreated) $($_.Id) $($_.Message)".Length)) }
+          "--- one entry as the task sees it"
+          Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='RedstonePanel'} -MaxEvents 1 -ErrorAction SilentlyContinue | ForEach-Object { $_.ToXml() }
           "--- task output"; Get-ChildItem "$h\journal" -Directory -Filter "redstonepanel-*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name; Get-Content "$($_.FullName)\output.log" -Tail 6 -ErrorAction SilentlyContinue }
           "--- test"
           if (Test-Path test.log) { Get-Content test.log | Where-Object { $_ -notmatch "^\s+ok |^\s{8}|^$" } | Select-Object -Last 60 }
@@ -92,6 +98,7 @@ jobs:
       - name: Build the installer
         shell: pwsh
         run: |
+          wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
           python packaging\windows\build.py stage build\stage
           python packaging\windows\build.py msi build\stage dist
           Get-ChildItem dist | Format-Table Name, Length
@@ -142,6 +149,10 @@ jobs:
           "--- events.log"; Get-Content "$h\logs\events.log" -Tail 8 -ErrorAction SilentlyContinue
           "--- tasks"; Get-ScheduledTask -TaskPath "\RedstonePanel\" -ErrorAction SilentlyContinue | Get-ScheduledTaskInfo | ForEach-Object { "$($_.TaskName) last=$($_.LastRunTime) result=$($_.LastTaskResult) runs_missed=$($_.NumberOfMissedRuns)" }
           (schtasks /Query /TN "\RedstonePanel\notifications" /XML 2>$null | Select-String "Subscription|Arguments|Command|Value ") | ForEach-Object { $_.Line.Trim() }
+          "--- task scheduler on the notification task"
+          Get-WinEvent -LogName "Microsoft-Windows-TaskScheduler/Operational" -MaxEvents 600 -ErrorAction SilentlyContinue | Where-Object { $_.Message -match "notifications" } | Select-Object -First 8 | ForEach-Object { "$($_.TimeCreated) $($_.Id) $($_.Message)".Substring(0, [Math]::Min(230, "$($_.TimeCreated) $($_.Id) $($_.Message)".Length)) }
+          "--- one entry as the task sees it"
+          Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='RedstonePanel'} -MaxEvents 1 -ErrorAction SilentlyContinue | ForEach-Object { $_.ToXml() }
           "--- task output"; Get-ChildItem "$h\journal" -Directory -Filter "redstonepanel-*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name; Get-Content "$($_.FullName)\output.log" -Tail 6 -ErrorAction SilentlyContinue }
           "--- test"
           if (Test-Path test.log) { Get-Content test.log | Where-Object { $_ -notmatch "^\s+ok |^\s{8}|^$" } | Select-Object -Last 60 }

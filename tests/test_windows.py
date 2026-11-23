@@ -139,6 +139,53 @@ class Names(unittest.TestCase):
         self.assertEqual(_win.service_account("minecraft-java"), "NT SERVICE\\minecraft-java")
 
 
+class Notifications(unittest.TestCase):
+    """What a server's service leaves for the notification task, and what the task takes from it."""
+
+    def setUp(self):
+        from core.platform.windows import runner
+        self.runner = runner
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        units_dir = os.path.join(self.tmp.name, "services")
+        os.makedirs(units_dir)
+        for unit in ("minecraft-java.service", "redstonepanel.service"):
+            open(os.path.join(units_dir, unit), "w").close()
+        p = mock.patch.multiple(paths, UNIT_DIR=units_dir, JOURNAL_DIR=os.path.join(self.tmp.name, "journal"))
+        p.start()
+        self.addCleanup(p.stop)
+        self.record = {"kind": "stop", "requested": "0", "result": "exit-code", "code": "exited", "status": "1",
+                       "invocation": "0" * 32}
+
+    def test_a_record_is_found_once(self):
+        r = self.runner
+        r.note_event("minecraft-java.service", self.record)
+        found = r.new_events({})
+        self.assertEqual([(u, rec) for u, _, rec in found], [("minecraft-java.service", self.record)])
+        self.assertEqual(r.new_events({"minecraft-java.service": found[0][1]}), [])
+
+    def test_only_game_servers_and_only_what_a_runner_writes(self):
+        r = self.runner
+        r.note_event("redstonepanel.service", self.record)
+        r.note_event("minecraft-java.service", dict(self.record, kind="rm -rf"))
+        r.note_event("minecraft-java.service", dict(self.record, status="1; calc"))
+        self.assertEqual([rec for _, _, rec in r.new_events({})], [None, None])
+
+    def test_old_news_is_skipped_and_few_files_are_kept(self):
+        r = self.runner
+        for _ in range(r.EVENTS_KEPT + 5):
+            r.note_event("minecraft-java.service", self.record)
+        self.assertEqual(len(os.listdir(r.events_dir("minecraft-java.service"))), r.EVENTS_KEPT)
+        late = r.new_events({}, now=__import__("time").time() + r.EVENT_MAX_AGE + 60)
+        self.assertTrue(late and all(rec is None for _, _, rec in late))
+
+    def test_the_task_carries_nothing_from_the_entry(self):
+        xml = units.event_task_xml("python.exe", "runner.py event", "RedstonePanel", (10, 11), "x")
+        self.assertIn("EventID=10 or EventID=11", xml)
+        self.assertNotIn("$(", xml)
+        self.assertNotIn("ValueQueries", xml)
+
+
 class Preview(unittest.TestCase):
     """What the Windows preview doesn't do yet is refused in one sentence; reading still works."""
 

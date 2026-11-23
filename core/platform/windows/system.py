@@ -125,7 +125,13 @@ def _grant(path):
         return _done(0)
     if _win.service_status(server)[0] is None:
         return _done(0)       # no service yet, so no account: services gives it its folder when it makes the service
-    return _win.grant(path, _win.service_sid(server), inherit=os.path.isdir(path))
+    r = _win.grant(path, _win.service_sid(server), inherit=os.path.isdir(path))
+    if os.path.isdir(path) and not os.path.islink(path):
+        try:
+            _win.inherit_rights_below(path)      # a restored world, an unpacked archive: see _win
+        except (OSError, AttributeError):
+            pass
+    return r
 
 
 def give_to_game_account(path):

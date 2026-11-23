@@ -572,11 +572,8 @@ def _ensure_event_task():
     """The task that sends started/stopped/crashed notifications for what game servers write to
     the event log, as the system (so it works while the panel is stopped)."""
     run = _win.runner_command("event")
-    args = subprocess.list2cmdline(run[1:]) + " $(unit) $(kind) $(requested) $(result) $(code) $(status) $(run)"
-    values = {name: f"Event/EventData/Data[{i}]" for i, name in
-              enumerate(("unit", "kind", "requested", "result", "code", "status", "run"), 1)}
-    xml = units.event_task_xml(run[0], args, _win.GROUP, (10, 11),
-                               "RedstonePanel: notifications when a game server starts, stops or crashes", values)
+    xml = units.event_task_xml(run[0], subprocess.list2cmdline(run[1:]), _win.GROUP, (10, 11),
+                               "RedstonePanel: notifications when a game server starts, stops or crashes")
     return _create_task(TASK_FOLDER + "notifications", xml)
 
 

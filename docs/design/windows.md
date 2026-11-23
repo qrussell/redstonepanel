@@ -33,7 +33,7 @@ C:\ProgramData\RedstonePanel\          the home folder (kept by an uninstall), o
     data\  logs\  backups\             as on Linux: /var/lib, /var/log, /var/backups
     servers\minecraft-<name>\          /opt/minecraft-<name>
     services\                          unit files, timers, drop-ins (/etc/systemd/system)
-    journal\<unit>\                    output.log, status.json, usage.json (the journal)
+    journal\<unit>\                    output.log, status.json, usage.json, events\ (the journal)
     java\java-21-openjdk-amd64\        Java (/usr/lib/jvm)
     first-sign-in.txt                  the first account's password, until it is deleted
 ```
@@ -57,10 +57,12 @@ The home folder can't have a space in its name: unit files split command lines o
 - stops a server by typing its stop command (`X-RedstonePanel-StopCommand=stop`) and waiting
   `TimeoutStopSec` before ending the job; Windows shutting down does the same;
 - starts it again after a crash as `Restart=` and `RestartSec=` say;
-- writes "started" and "stopped" entries to the Application event log (source RedstonePanel).
-  The task `\RedstonePanel\notifications` is triggered by those entries and runs
+- leaves a small file in `journal\<unit>\events\` saying what happened, and writes a "started"
+  or "stopped" entry to the Application event log (source RedstonePanel). The entry starts
+  the task `\RedstonePanel\notifications`, which reads the new files and runs
   `redstonepanel notify-unit`, which is what `ExecStopPost` does on Linux. Webhooks and crash
-  explanations work while the panel is stopped.
+  explanations work while the panel is stopped. The entry carries nothing the task trusts:
+  anyone signed in can write one, but only a server's own account can write its folder.
 
 The panel itself is the service `redstonepanel`, run by the same runner from
 `redstonepanel.service` (`Restart=always`).

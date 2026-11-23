@@ -307,6 +307,7 @@ def main():
 
     # ------------------------------------------------------------------ backups
     section("Backups, restore and schedules")
+    p.put(f"/api/servers/{name}/files/text", {"path": "world/restore-test.txt", "content": "hello from the test\n"})
     code, b = p.post(f"/api/servers/{name}/backups", timeout=240)
     check("Back up now works while the server runs", code == 200 and b.get("file"), f"{code} {str(b)[:300]}")
     code, ov = p.get(f"/api/servers/{name}/backups")
@@ -325,13 +326,15 @@ def main():
         return any("scheduled" in str(x.get("file") or x.get("name")) for x in o.get("backups", []))
     check("running the task makes a scheduled backup (the panel isn't involved)", wait("task", scheduled, 180, every=5),
           out[-200:])
-    code, w = p.put(f"/api/servers/{name}/files/text", {"path": "notes.txt", "content": "changed after the backup\n",
-                                                           "modified": None})
+    code, w = p.put(f"/api/servers/{name}/files/text", {"path": "world/restore-test.txt",
+                                                           "content": "changed after the backup\n", "modified": None})
     first_backup = b.get("file") if isinstance(b, dict) else None
     code, r = p.post(f"/api/servers/{name}/backups/{first_backup}/restore", timeout=300)
     check("a backup restores", code == 200, f"{code} {str(r)[:300]}")
-    code, t = p.get(f"/api/servers/{name}/files/text?path=notes.txt")
-    check("... and the files are the ones from the backup", "hello from the test" in str(t.get("content")), str(t)[:200])
+    code, t = p.get(f"/api/servers/{name}/files/text?path=world/restore-test.txt")
+    check("... and the world is the one from the backup", "hello from the test" in str(t.get("content")), f"{code} {str(t)[:200]}")
+    code, out = run(["icacls", os.path.join(d, "world", "region")])
+    check("... and the server's own account can change it", f"NT SERVICE\\{name}".lower() in out.lower(), out[-400:])
     check("the server is running again after the restore", wait("svc", lambda: service_state(name) == "RUNNING", 120)
           and wait("listen", listening, 300, every=5))
     code, s = p.put(f"/api/servers/{name}/restarts", {"enabled": True, "frequency": "weekly", "time": "05:00", "warn": 5})
