@@ -376,6 +376,12 @@ def servers_drives():
     return []
 
 
+def adopt_folder(path):
+    """Hands a folder that somebody else filled to the server that now runs from it, down to
+    the last file. Here that is what give_to_game_account() does."""
+    return give_to_game_account(path)
+
+
 def found_folder_problem(folder):
     """"" when the panel can run a server somebody else set up from the folder it is in, else
     why not. Changes nothing."""

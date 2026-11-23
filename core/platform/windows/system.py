@@ -612,6 +612,22 @@ def prepare_servers_folder(folder):
     return ""
 
 
+def adopt_folder(path):
+    """Hands a folder that somebody else filled to the server that now runs from it, down to
+    the last file. give_to_game_account() lets the server's account into the folder and what
+    inherits from it; a file that was MOVED in from elsewhere (a download, a build) kept the
+    rights of where it came from and inherits nothing, so each file is named here too."""
+    r = _grant(path)
+    server = _server_for(path)
+    if r.returncode != 0 or not server or not os.path.isdir(path) or _win.service_status(server)[0] is None:
+        return r.returncode
+    r = _win.quiet(["icacls", os.path.join(path, "*"), "/grant", f"*{_win.service_sid(server)}:M", "/T", "/C", "/Q", "/L"],
+                   timeout=900)
+    if r.returncode != 0:
+        _log(f"[WARNING] Couldn't give every file in {path} to its server's account: {(r.stderr or r.stdout).strip()[:300]}")
+    return r.returncode
+
+
 def found_folder_problem(folder):
     """"" when the panel can run a server somebody else set up from the folder it is in, else
     why not. Changes nothing. (Unlike a servers folder, it may be anywhere, a user's folder
