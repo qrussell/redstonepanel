@@ -158,3 +158,95 @@ def prepare_servers_folder(folder):
         return (f"The {GAME_ACCOUNT} account, which runs the game servers, can't get into {folder}. "
                 f"A folder above it is closed to other accounts: run  sudo chmod o+x  on it, or choose another folder.")
     return ""
+
+
+def adopt_folder(path):
+    """Hands a folder that somebody else filled to the server that now runs from it, down to
+    the last file. Here that is what give_to_game_account() does."""
+    return give_to_game_account(path)
+
+
+def found_folder_problem(folder):
+    """"" when the panel can run a server somebody else set up from the folder it is in, else
+    why not. Changes nothing."""
+    import os
+    import re
+    if not re.fullmatch(r"/[A-Za-z0-9._/-]+", folder or ""):
+        return (f"The folder's path, {folder}, has a space or another character the panel can't put in a "
+                f"service. Rename the folder (with the server stopped), start it again, and it can be managed.")
+    above = os.path.dirname(os.path.realpath(folder))
+    r = quiet(as_game_account(["test", "-x", above]), timeout=20)
+    if r.returncode != 0:
+        return (f"The {GAME_ACCOUNT} account, which runs the game servers, can't get into {above}. "
+                f"A folder above it is closed to other accounts: run  sudo chmod o+x  on it, or move the server.")
+    return ""
+
+
+def game_programs(names=("java", "bedrock_server")):
+    """Running programs that could be game servers: [{"pid", "exe", "argv", "cwd", "user",
+    "service", "started"}] for every process whose program is called one of `names`.
+    "service" is the systemd unit that started it ("" when none did: a terminal, screen, cron).
+    Read from /proc; a process that ends meanwhile, or can't be read, is left out."""
+    import os
+    import pwd
+    found = []
+    try:
+        pids = [n for n in os.listdir(paths.PROC) if n.isdigit()]
+    except OSError:
+        return found
+    try:
+        with open(os.path.join(paths.PROC, "uptime")) as f:
+            boot = __import__("time").time() - float(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        boot = None
+    for pid in pids:
+        base = os.path.join(paths.PROC, pid)
+        try:
+            with open(os.path.join(base, "cmdline"), "rb") as f:
+                argv = [a.decode("utf-8", "replace") for a in f.read().split(b"\0") if a]
+            if not argv:
+                continue
+            try:
+                exe = os.readlink(os.path.join(base, "exe"))
+            except OSError:
+                exe = argv[0]
+            if os.path.basename(exe.replace(" (deleted)", "")) not in names and os.path.basename(argv[0]) not in names:
+                continue
+            cwd = os.readlink(os.path.join(base, "cwd"))
+            st = os.stat(base)
+            try:
+                user = pwd.getpwuid(st.st_uid).pw_name
+            except KeyError:
+                user = str(st.st_uid)
+            service = ""
+            with open(os.path.join(base, "cgroup")) as f:
+                for line in f:
+                    last = line.strip().rsplit("/", 1)[-1]
+                    if last.endswith(".service"):
+                        service = last
+                        break
+            started = None
+            if boot is not None:
+                with open(os.path.join(base, "stat")) as f:
+                    ticks = int(f.read().rsplit(")", 1)[1].split()[19])
+                started = boot + ticks / os.sysconf("SC_CLK_TCK")
+        except (OSError, ValueError, IndexError):
+            continue
+        found.append({"pid": int(pid), "exe": exe, "argv": argv, "cwd": cwd, "user": user,
+                      "service": service, "started": started})
+    return found
+
+
+def owner_of(path):
+    """Who a folder belongs to, as text give_back() understands ("uid:gid")."""
+    import os
+    st = os.stat(path)
+    return f"{st.st_uid}:{st.st_gid}"
+
+
+def give_back(path, owner):
+    """Hands a folder and everything in it back to the owner owner_of() named."""
+    import re
+    if not re.fullmatch(r"[0-9]+:[0-9]+", owner or ""):
+        raise ValueError("not an owner this system gave")
+    return logged(["chown", "-R", owner, path])

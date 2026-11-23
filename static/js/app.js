@@ -1517,6 +1517,7 @@ const ServerApp = {
                 <div id="storage-import"><button onclick="ServerApp.openStorageImport()" class="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 py-2 rounded text-gray-900 dark:text-white font-bold transition">Choose a backup…</button></div>
             </div>` : ''}
             <div id="removed-servers" class="mb-6">${this.removedServersHtml()}</div>
+            <div id="found-servers" class="mb-6">${this.foundServersHtml()}</div>
             <button onclick="document.getElementById('modal-overlay').classList.add('hidden')" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white transition">Cancel</button>
         `;
         modal.classList.remove('hidden');
@@ -1524,6 +1525,7 @@ const ServerApp = {
         this.loadDeployVersions();
         this.refreshAdvanced();
         if (this.deployNode) this.loadRemovedServers();
+        this.loadFoundServers();
     },
 
     // --- New server's Advanced options (1.17.2): everything optional, checked again by the panel ---
@@ -4520,6 +4522,79 @@ const ServerApp = {
         if (!res.ok) return this.renderStorageSettings(await this.apiError(res), false);
         this.storage = await res.json();
         this.renderStorageSettings('Host key forgotten. Use Test to connect and record the new one.', true);
+    },
+
+    // --- Found servers: Minecraft servers on this machine that the panel doesn't manage ---
+    foundServers: [],
+    takenOver: [],
+
+    async loadFoundServers(message, ok) {
+        try {
+            const res = this.isAdmin() ? await fetch('/api/found-servers') : { ok: false };
+            const d = res.ok ? await res.json() : {};
+            this.foundServers = d.servers || [];
+            this.takenOver = d.taken_over || [];
+        } catch (e) {
+            this.foundServers = [];
+            this.takenOver = [];
+        }
+        const box = document.getElementById('found-servers');
+        if (box) box.innerHTML = this.foundServersHtml(message, ok);
+        return this.foundServers;
+    },
+
+    foundServersHtml(message, ok) {
+        if (this.deployNode || !(this.foundServers.length || this.takenOver.length || message)) return '';
+        const esc = t => this.escapeHtml(t == null ? '' : String(t));
+        const button = 'px-3 py-1 rounded text-sm font-bold whitespace-nowrap disabled:opacity-50';
+        const rows = this.foundServers.map((f, i) => `
+                <div class="p-2 mb-2 rounded border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm text-gray-900 dark:text-white"><b>${esc(f.edition)}${f.version ? ' ' + esc(f.version) : ''}</b> on port ${esc(f.port)}${f.running ? '' : ' <span class="text-xs text-gray-500">(stopped)</span>'}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 font-mono break-all">${esc(f.folder)}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Started by ${esc(f.started_by)}${f.user ? ', as ' + esc(f.user) : ''}${f.heap ? ', memory ' + esc(f.heap) : ''}</div>
+                    </div>
+                    <button onclick="ServerApp.manageFound(${i}, this)" class="${button} bg-theme hover-bg-theme text-white">Manage with RedstonePanel</button>
+                </div>`).join('');
+        const taken = this.takenOver.map(t => `
+                <div class="p-2 mb-2 rounded border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm text-gray-900 dark:text-white"><b>${esc(t.name)}</b> <span class="text-xs text-gray-500">taken over${t.service ? ' from ' + esc(t.service) : ''}</span></div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 font-mono break-all">${esc(t.folder)}</div>
+                    </div>
+                    <button onclick="ServerApp.undoFound(${this.jsArg(t.name)}, this)" class="${button} bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Undo</button>
+                </div>`).join('');
+        return `
+            <hr class="border-gray-200 dark:border-gray-700 my-4" />
+            <label class="block text-sm text-gray-400 mb-1">Found on this computer</label>
+            <p class="text-xs text-gray-500 mb-2">Minecraft servers here that were set up outside RedstonePanel. Nothing about them is changed until you choose Manage. Then the panel stops the service that runs one and turns it off (it isn't deleted), and runs the server from the same folder itself; no files are copied or moved, and Undo puts it back.</p>
+            ${message ? `<p class="text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-2">${esc(message)}</p>` : ''}
+            ${rows}${taken}`;
+    },
+
+    async manageFound(index, button) {
+        const f = this.foundServers[index];
+        if (!f) return;
+        const how = f.service ? `${f.service} will be stopped and turned off (not deleted). Players are disconnected for a moment.`
+                              : 'It must already be stopped where you started it.';
+        if (!confirm(`Hand the ${f.edition} server in ${f.folder} to RedstonePanel?\n\n${how}\nIts files stay where they are and are given to the minecraft account. Undo puts everything back.`)) return;
+        button.disabled = true; button.innerText = 'Taking over…';
+        const res = await fetch('/api/found-servers/manage', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: f.folder })
+        });
+        if (!res.ok) return this.loadFoundServers(await this.apiError(res), false);
+        const d = await res.json();
+        await this.loadFoundServers(`${d.name} now runs the server in ${d.folder}.`, true);
+        if (this.loadServers) this.loadServers();
+    },
+
+    async undoFound(name, button) {
+        if (!confirm(`Hand ${name} back to how it ran before?\n\nThe panel's service for it is removed, with its backup and restart schedules. Its files and world stay, and the service that ran it before is started again.`)) return;
+        button.disabled = true; button.innerText = 'Handing back…';
+        const res = await fetch(`/api/found-servers/${encodeURIComponent(name)}/undo`, { method: 'POST' });
+        if (!res.ok) return this.loadFoundServers(await this.apiError(res), false);
+        await this.loadFoundServers(`${name} was handed back.`, true);
+        if (this.loadServers) this.loadServers();
     },
 
     // --- Removed servers: uninstalled with "Keep World", files still in /opt ---

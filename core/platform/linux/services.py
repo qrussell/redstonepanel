@@ -136,6 +136,19 @@ def control(unit_name, action, elevate=False, quiet=False):
     return _change([action, unit_name], elevate, quiet)
 
 
+def other_enabled(service):
+    """True when a service the panel didn't make ("mc-survival.service") starts with the machine."""
+    return unit_state(service, "is-enabled") == "enabled"
+
+
+def other_control(service, action):
+    """start, stop, enable or disable a service the panel didn't make. Only core/found.py uses
+    this, and only after an admin chose to hand that server to the panel (or back)."""
+    if action not in ("start", "stop", "enable", "disable"):
+        raise ValueError(action)
+    return control(service, action, elevate=True)
+
+
 def start(server, elevate=False, quiet=False):
     return control(unit(server), "start", elevate, quiet)
 
