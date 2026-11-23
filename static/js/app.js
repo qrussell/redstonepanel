@@ -2573,7 +2573,7 @@ const ServerApp = {
         }
         const types = info.types.map(t => `<button onclick="ServerApp.previewConvert(${this.jsArg(t.id)})" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold text-sm">Change to ${esc(t.name)}…</button>`).join('');
         body.innerHTML = `
-            <p class="text-sm text-gray-600 dark:text-gray-300">Runs <b>${esc(info.current.name)}</b>. Change it to another type and keep the world, settings, players and schedules: Paper for plugins, Fabric for mods, Vanilla for neither.</p>
+            <p class="text-sm text-gray-600 dark:text-gray-300">Runs <b>${esc(info.current.name)}</b>. Change it to another type and keep the world, settings, players and schedules: Paper or Purpur for plugins; Fabric, Quilt, NeoForge or Forge for mods; Vanilla for neither.</p>
             ${running ? '' : isAdmin
                 ? `<div class="flex flex-wrap gap-2 mt-3">${types}</div>
                    <p class="${note} mt-2">You see what will happen before anything changes. A backup is always taken first, and the old type comes back by itself if the new one doesn't start.</p>`
@@ -2609,7 +2609,7 @@ const ServerApp = {
     },
 
     typeName(t) {
-        const names = { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' };
+        const names = ServerApp.LOADER_NAMES;
         return t ? `${names[t.loader] || t.loader || ''} ${t.minecraft || ''}`.trim() : '';
     },
 
@@ -2620,7 +2620,7 @@ const ServerApp = {
         const modal = document.getElementById('modal-overlay');
         const content = document.getElementById('modal-content');
         const esc = t => this.escapeHtml(String(t ?? ''));
-        const names = { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' };
+        const names = ServerApp.LOADER_NAMES;
         const cancel = `<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>`;
         content.innerHTML = `<h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Change ${esc(srv.name)} to ${esc(names[to] || to)}</h3>
             <p class="text-sm text-gray-500 dark:text-gray-400">Checking what would change…</p><div class="flex gap-2 mt-4">${cancel}</div>`;
@@ -2644,7 +2644,7 @@ const ServerApp = {
         const java = p.java ? (p.java.installed
             ? `Runs on Java ${esc(p.java.used)}, which is installed.`
             : `Needs Java ${esc(p.java.required)}, which isn't installed yet. You're asked to install it when you press the button.`) : '';
-        const software = text(`${esc(p.from.name)} ${esc(p.from.minecraft)} → <b>${esc(p.to.name)} ${esc(p.to.minecraft)}</b>${p.to.build && to === 'paper' ? ` (build ${esc(p.to.build)})` : ''}. ${java}`)
+        const software = text(`${esc(p.from.name)} ${esc(p.from.minecraft)} → <b>${esc(p.to.name)} ${esc(p.to.minecraft)}</b>${p.to.build && to !== 'fabric' ? ` (build ${esc(p.to.build)})` : ''}. ${java}`)
             + `<label class="flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mt-2">Minecraft version ${versionSelect}</label>
                <p class="${note} mt-1">Only the same version or newer: a world can't go back to an older one.</p>`;
         const moves = p.world.moves.map(m => `<li><code>${esc(m.from)}</code> → <code>${esc(m.to)}</code></li>`).join('');
@@ -2654,12 +2654,15 @@ const ServerApp = {
         if (a.action === 'off') {
             const eq = a.items.filter(i => i.equivalent && i.enabled);
             const n = a.items.length;
-            const cant = to === 'vanilla' ? 'Vanilla loads neither mods nor plugins' : `${esc(p.to.name)} can't load ${esc(a.noun)}s`;
+            const cant = to === 'vanilla' ? 'Vanilla loads neither mods nor plugins' : `${esc(p.to.name)} can't load ${esc(p.from.name)} ${esc(a.noun)}s`;
             addons = text(`${cant}, so the <code>${esc(a.folder)}</code> folder (${n} ${esc(a.noun)}${n === 1 ? '' : 's'}) is renamed <code>${esc(a.folder)}.off</code> and kept for switching back.`)
                 + (eq.length ? `<p class="text-sm text-gray-700 dark:text-gray-300 mt-2">These also have a ${esc(p.to.name)} build. Install it now:</p>
                     <div class="mt-1 space-y-1">${eq.map(i => `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" name="convert-install" value="${esc(i.equivalent.project)}" checked> ${esc(i.equivalent.title || i.name)}</label>`).join('')}</div>
                     <p class="${note} mt-1">Their settings and saved data aren't carried over: a ${esc(a.noun)} and its ${esc(p.to.name)} build keep them differently.${to === 'fabric' ? ' Fabric API, which most mods need, is installed with them.' : ''}</p>` : '')
                 + (to !== 'vanilla' && n > eq.length ? `<p class="${note} mt-1">The others have no ${esc(p.to.name)} build on Modrinth${n - eq.length === n ? '' : ' (or aren\'t from Modrinth)'}.</p>` : '');
+        } else if (a.action === 'keep') {
+            addons = text(esc(a.note));
+            a.note = null;
         } else {
             addons = text(p.from.loader === 'vanilla' ? 'Vanilla has none to carry over.' : `No ${esc(a.noun || 'add-on')}s are installed.`);
         }

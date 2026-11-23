@@ -774,8 +774,8 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
   plugins that have no build for it yet on Modrinth or Hangar (and any it couldn't check),
   so you can wait rather than update into a server that won't start. If the new version
   needs a Java that isn't installed, you're asked to install it first.
-- **Server type** (Java servers): change Vanilla, Paper or Fabric to another type and keep
-  the world. See [Changing a server's type](#changing-a-servers-type) below.
+- **Server type** (Java servers): change Vanilla, Paper, Purpur, Fabric, Quilt, NeoForge or
+  Forge to another type and keep the world. See [Changing a server's type](#changing-a-servers-type) below.
 - **Java** (admins, Java servers): which Java the server runs on and which it needs. Choose
   another installed Java that's new enough and click **Use**; a running server restarts.
 - **Memory and limits**: see below.
@@ -808,12 +808,13 @@ because the pack decides which version it runs on. Which pack a server came from
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/server-type.png"><img src="images/server-type.png" alt="Server type on the Maintenance tab"></picture>
 
-A server that started on Vanilla can become Paper (for plugins) or Fabric (for mods), and any
-type can become any other, without making a new server. The world, port, settings, operators,
+A server that started on Vanilla can become Paper or Purpur (for plugins) or Fabric, Quilt,
+NeoForge or Forge (for mods), and any type can become any other, without making a new server. The world, port, settings, operators,
 whitelist, bans, backups and restart schedules stay as they are. Only admins can do it, and
-only for Java servers: Bedrock has one type.
+only for Java servers: Bedrock has one type. A server made from a modpack keeps the type its
+pack needs.
 
-1. On **Maintenance → Server type**, click **Change to Paper…** (or Fabric, or Vanilla).
+1. On **Maintenance → Server type**, click **Change to Paper…** (or another type).
 2. Read the preview. Nothing has changed yet.
 3. Click **Change to Paper**. The card shows each step; you can leave the page.
 
@@ -833,12 +834,15 @@ only for Java servers: Bedrock has one type.
   those files back to where Vanilla and Fabric look for them. The preview lists every move.
 - **Mods and plugins**: a mod can't run as a plugin, or the other way round. The folder the
   new type can't load is renamed (`mods` to `mods.off`, `plugins` to `plugins.off`) and comes
-  back if you return to that type. Where the same Modrinth project also has a build for the
+  back if you return to that type. The same happens between mod loaders that can't load each
+  other's mods (Fabric and NeoForge, for example). Two pairs keep everything in place: Purpur
+  runs Paper's plugins and keeps the world the way Paper does, and Quilt runs Fabric's mods.
+  Where the same Modrinth project also has a build for the
   new type (LuckPerms, Chunky, Geyser and many others), it's ticked for install. Their
   settings and saved data aren't carried over.
 - **Safety**: how much room the backup needs.
 
-**Mods that add things to the world.** If a Fabric server has mods that add blocks, items,
+**Mods that add things to the world.** If a Fabric, Quilt, NeoForge or Forge server has mods that add blocks, items,
 mobs, dimensions or world generation, those things disappear from the world when a type
 without them opens it. The preview names each such mod, and you have to type the server's
 name to go ahead. Mods that only run on the server (Lithium, FerriteCore, spark) are safe to
@@ -849,7 +853,9 @@ drop.
 1. The new server software is downloaded first. If that fails, nothing has changed.
 2. The server stops and a **Before type change** backup is taken, always.
 3. The software is swapped (the old `server.jar` is kept as `server.jar.previous`), the world
-   and add-on folders move, and the chosen mods or plugins are installed.
+   and add-on folders move, and the chosen mods or plugins are installed. Quilt, NeoForge and
+   Forge are more than one file, so nothing of theirs is kept: putting one of them back runs
+   its installer again for the same build, which needs the internet.
 4. The server starts, and the panel waits up to 5 minutes for it to say it's ready. A server
    that was stopped before is stopped again afterwards.
 5. If it doesn't start, the old type, its add-ons and the world from the backup are put back

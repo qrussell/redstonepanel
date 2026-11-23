@@ -1652,8 +1652,14 @@ refused joins, so those are Java only.
     a backup first, the world, settings and the owner's own mod kept; an uploaded `.mrpack` and
     an uploaded Forge server pack started; a wrong hash, a download from another host, a
     CurseForge client zip and a non-admin all refused with nothing left behind. The new dialogs
-    were checked at 390 x 844. Not tested yet: switching Fabric ↔ Quilt and Paper ↔ Purpur, which
-    waits for 1.19's switching to be merged, and ARM64 (the installers are plain Java).
+    were checked at 390 x 844. Rebased on 1.18 and 1.19 on 22 Nov 2026: 1.19's type changes take the new types (Purpur
+    counts as Paper for the world layout; Paper ↔ Purpur and Fabric ↔ Quilt leave plugins and
+    mods in place; other mod loaders set each other's `mods` aside), Quilt, Forge and NeoForge
+    keep no `server.jar.previous` and are put back by running their installer again for the
+    recorded build, a modpack server keeps its type, and the modpack routes have their rules in
+    `core/grants.py` (admins; the Modpack card is visible with view access). The end-to-end
+    script gained a NeoForge update roll back and Paper → Purpur → undo, Fabric → Quilt → undo,
+    Quilt → Fabric → undo. Not tested: ARM64 (the installers are plain Java).
 
 ### 2.0: an API for scripts and bots
 

@@ -239,6 +239,8 @@ def world_moves(server, level, frm, to):
     """The folder moves this change needs: ([{"from", "to"}], [blockers], note)."""
     layout = world_layout(server, level)
     moves, blockers = [], []
+    to_name = javaservers.LOADERS.get(to, to)
+    frm, to = _layout(frm), _layout(to)
     if layout == "none":
         return moves, blockers, "No world has been made yet."
     if layout == "new":
@@ -257,8 +259,8 @@ def world_moves(server, level, frm, to):
             if moves:
                 return moves, blockers, ("Paper keeps the world's game rules, weather and world generation "
                                          "settings with the Overworld; they move back to where "
-                                         f"{javaservers.LOADERS.get(to, to)} looks for them.")
-        elif to == "paper":
+                                         f"{to_name} looks for them.")
+        elif to == "paper" and frm != "paper":
             return moves, blockers, "Paper moves the world's settings in with each dimension on its first start."
         return moves, blockers, "Every type keeps this world the same way, so nothing moves."
     leaving_paper = frm == "paper" and to != "paper"
@@ -435,8 +437,20 @@ def custom_dimensions(server, level):
 # ---------------------------------------------------------------------------
 # Add-ons
 # ---------------------------------------------------------------------------
+def _layout(loader):
+    """Purpur keeps a world the way Paper does; every other type the way Vanilla does."""
+    return "paper" if loader in javaservers.PLUGIN_LOADERS else loader
+
+def _addon_group(loader):
+    """Types whose mods or plugins the other one loads too (1.20): Purpur runs Paper's plugins,
+    Quilt runs Fabric's mods. A change inside a group leaves the add-ons where they are."""
+    return {"purpur": "paper", "quilt": "fabric"}.get(loader, loader)
+
+def _installer(info):
+    return (info or {}).get("loader") in javaservers.INSTALLER_LOADERS
+
 def _tracking_name(loader):
-    return f".redstonepanel-mods.{loader}.json"
+    return f".redstonepanel-mods.{_addon_group(loader)}.json"
 
 def _projects(ids):
     """Modrinth project id -> full project object (best effort: {} when Modrinth can't be reached)."""
@@ -456,7 +470,8 @@ def addon_plan(server, frm, to, minecraft):
     out = {"folder": mods.FOLDERS.get(frm), "noun": mods.NOUNS.get(frm), "action": "none", "items": [],
            "restore": None, "blockers": [], "note": None, "lookup_failed": False}
     new_folder = mods.FOLDERS.get(to)
-    if new_folder and frm != to and _is_dir(server, new_folder + OFF):
+    same = _addon_group(frm) == _addon_group(to)
+    if new_folder and not same and new_folder != out["folder"] and _is_dir(server, new_folder + OFF):
         if _exists(server, new_folder):
             if _dir_has_files(server, new_folder):
                 out["note"] = (f"{new_folder}{OFF} from an earlier change stays where it is, because a "
@@ -465,7 +480,14 @@ def addon_plan(server, frm, to, minecraft):
                 out["restore"] = new_folder
         else:
             out["restore"] = new_folder
-    if frm == to or not out["folder"] or not _is_dir(server, out["folder"]):
+    if same or not out["folder"] or not _is_dir(server, out["folder"]):
+        if same and frm != to and out["folder"] and _dir_has_files(server, out["folder"]):
+            names = javaservers.LOADERS
+            out["action"] = "keep"
+            out["note"] = (f"The {out['noun']}s stay where they are. Mods made only for Quilt don't load on Fabric."
+                           if (frm, to) == ("quilt", "fabric") else
+                           f"The {out['noun']}s stay where they are: {names.get(to, to)} runs "
+                           f"{names.get(_addon_group(to), frm)} {out['noun']}s.")
         return out
     folder = out["folder"]
     if _exists(server, folder + OFF):
@@ -485,7 +507,7 @@ def addon_plan(server, frm, to, minecraft):
     for i in listing["items"]:
         item = {"file": i["file"], "name": i.get("name") or i["file"], "enabled": bool(i.get("enabled")),
                 "content": [], "namespaces": [], "equivalent": None, "known": False}
-        if frm == "fabric":
+        if frm in javaservers.MOD_LOADERS:
             try:
                 fd, _ = files._open_file(server, f"{folder}/{i['file']}")
                 with os.fdopen(fd, "rb") as f:
@@ -499,7 +521,7 @@ def addon_plan(server, frm, to, minecraft):
             item["known"] = True
             item["name"] = p.get("title") or item["name"]
             cats = set(p.get("categories") or []) & CONTENT_CATEGORIES
-            if frm == "fabric" and not item["content"] and (cats or p.get("client_side") == "required"):
+            if frm in javaservers.MOD_LOADERS and not item["content"] and (cats or p.get("client_side") == "required"):
                 item["content"] = sorted(cats) or ["players' games need it too"]
             if to in modrinth.LOADERS and set(p.get("loaders") or []) & set(modrinth.LOADERS[to]) \
                     and (not minecraft or minecraft in (p.get("game_versions") or [])):
@@ -558,6 +580,11 @@ def plan(server, to, minecraft=None):
     if not frm or not current:
         raise ConvertError("The panel can't tell which type and Minecraft version this server runs "
                            "(its server.jar isn't one it recognises), so it can't change it safely.")
+    from core import modpacks
+    pack = modpacks.read_record(d)
+    if pack:
+        raise ConvertError(f"This server was made from the modpack {pack.get('name') or ''}".rstrip() + ", which decides "
+                           "its type. Update the pack under Maintenance, or make a new server for another type.")
     if to == frm:
         raise ConvertError(f"This server already is {javaservers.LOADERS[to]}. To change only its Minecraft "
                            f"version, use Update Server.")
@@ -586,7 +613,8 @@ def plan(server, to, minecraft=None):
     if target:
         javas = javaservers.installed_javas()
         need = int(target["java_required"] or 8)
-        usable = sorted(m for m in javas if m >= need)
+        most = target.get("java_max")                    # Forge before 1.17 doesn't start on a newer Java
+        usable = sorted(m for m in javas if m >= need and (not most or m <= int(most)))
         java = {"required": need, "installed": bool(usable), "used": usable[0] if usable else None,
                 "major": javaservers.java_major_for(need), "package": javaservers.java_package(need)}
         if not usable and java["major"] is None:
@@ -598,7 +626,7 @@ def plan(server, to, minecraft=None):
     addons = addon_plan(server, frm, to, want)
     blockers += addons.pop("blockers")
     content = {"mods": [], "packs": [], "dimensions": []}
-    if frm == "fabric":
+    if frm in javaservers.MOD_LOADERS and _addon_group(frm) != _addon_group(to):
         content["mods"] = [{"file": i["file"], "name": i["name"], "adds": i["content"]}
                            for i in addons["items"] if i["content"] and i["enabled"]]
         spaces = {ns for i in addons["items"] for ns in i["namespaces"]}
@@ -627,7 +655,9 @@ def plan(server, to, minecraft=None):
         "addons": {k: v for k, v in addons.items() if k != "lookup_failed"},
         "content": content,
         "confirm_name": risky,
-        "suggest": {"paper": "Server essentials", "fabric": "Performance pack"}.get(to),
+        "suggest": {"paper": "Server essentials", "purpur": "Server essentials", "fabric": "Performance pack",
+                    "quilt": "Performance pack", "forge": "Performance pack",
+                    "neoforge": "Performance pack"}.get(to) if _addon_group(frm) != _addon_group(to) else None,
         "backup": disk,
         "running": running,
         "blockers": blockers,
@@ -640,9 +670,16 @@ def plan(server, to, minecraft=None):
 # Putting the old software aside, and back
 # ---------------------------------------------------------------------------
 def keep_previous(d, info):
-    """Keeps the current server.jar and what it is as *.previous (replacing an older pair)."""
+    """Keeps the current server.jar and what it is as *.previous (replacing an older pair).
+    Quilt, Forge and NeoForge (1.20) aren't one jar: only what they are is kept, and putting
+    them back runs their installer again for the same build."""
     jar = os.path.join(d, "server.jar")
-    if os.path.isfile(jar) and not os.path.islink(jar):
+    if _installer(info):
+        try:
+            os.remove(os.path.join(d, PREVIOUS_JAR))
+        except OSError:
+            pass
+    elif os.path.isfile(jar) and not os.path.islink(jar):
         os.replace(jar, os.path.join(d, PREVIOUS_JAR))
     prev = os.path.join(d, PREVIOUS_INFO)
     tmp = prev + ".tmp"
@@ -674,7 +711,7 @@ def undo_info(server, d=None, info=None):
     to = rec.get("to") or {}
     if (info.get("loader"), info.get("minecraft")) != (to.get("loader"), to.get("minecraft")):
         return None                              # something else changed the server since
-    if not os.path.isfile(os.path.join(d, PREVIOUS_JAR)):
+    if not _installer(rec.get("from")) and not os.path.isfile(os.path.join(d, PREVIOUS_JAR)):
         reason = "the previous server.jar is gone"
     elif not rec.get("backup"):
         reason = "no backup was taken before it"
@@ -692,7 +729,8 @@ def _unit_java(server):
 
 def _set_java(server, d, java):
     exec_start = manager._unit_exec_start(server)
-    if os.path.realpath(manager.unit_java(exec_start) or "") != os.path.realpath(java):
+    if os.path.realpath(manager.unit_java(exec_start) or "") != os.path.realpath(java) \
+            or f" {javaservers.launch_args(d)} " not in f"{exec_start} ":
         manager._write_unit(server, d, "java", java=java, **manager.unit_heap(exec_start))
 
 def _write_info(d, info):
@@ -797,8 +835,26 @@ def put_back(server, d, rec, start, sleep=time.sleep):
     """Puts the software, add-on folders and world of an undo record back. Returns True when the
     old server is back (and, if start, running). Raises ConvertError when it can't be done."""
     prev = os.path.join(d, PREVIOUS_JAR)
-    if not os.path.isfile(prev) or os.path.islink(prev):
+    old = rec["from"]
+    staging = None
+    if _installer(old):
+        # Nothing was kept for these: their installer runs again, before anything is touched
+        staging = tempfile.mkdtemp(prefix=".redstonepanel-convert-", dir=d)
+        try:
+            javaservers.install(staging, old["loader"], old.get("minecraft"),
+                                build=str(old.get("build") or "").replace("loader ", "") or None)
+        except (javaservers.JavaServerError, javaservers.MissingJavaError, OSError) as e:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise ConvertError(f"{_label(old)} couldn't be downloaded again, so nothing was put back: {e}")
+    elif not os.path.isfile(prev) or os.path.islink(prev):
         raise ConvertError("The previous server.jar is gone, so the panel can't put the old software back.")
+    try:
+        return _put_back(server, d, rec, start, sleep, prev, staging)
+    finally:
+        if staging:
+            shutil.rmtree(staging, ignore_errors=True)
+
+def _put_back(server, d, rec, start, sleep, prev, staging):
     from core import catalog
     _stop(server)
     level = _level(d)
@@ -811,8 +867,18 @@ def put_back(server, d, rec, start, sleep=time.sleep):
         except backups.BackupError as e:
             raise ConvertError(f"The world couldn't be restored from {rec['backup']}, so the software was left "
                                f"as it is: {e}")
-    os.replace(prev, os.path.join(d, "server.jar"))
-    _write_info(d, rec["from"])
+    if staging:
+        javaservers.adopt(staging, d)
+    else:
+        now = javaservers.read_info(d) or {}
+        launch = javaservers.launch_file(d, now) if _installer(now) else None
+        os.replace(prev, os.path.join(d, "server.jar"))
+        _write_info(d, rec["from"])
+        if launch and os.path.dirname(launch) == d and os.path.basename(launch) != "server.jar":
+            try:
+                os.remove(launch)                        # the undone loader's own jar
+            except OSError:
+                pass
     try:
         os.remove(os.path.join(d, PREVIOUS_INFO))
     except OSError:
@@ -820,7 +886,8 @@ def put_back(server, d, rec, start, sleep=time.sleep):
     renames = [tuple(r) for r in rec.get("renames") or []]
     # What the software being undone installed is tracked in a file of its own; keep it for
     # switching to that type again, out of the old type's way
-    if _exists(server, catalog.TRACK_FILE) and not any(dst == catalog.TRACK_FILE for _src, dst in renames):
+    if _exists(server, catalog.TRACK_FILE) and not any(dst == catalog.TRACK_FILE for _src, dst in renames) \
+            and _addon_group((rec.get("to") or {}).get("loader")) != _addon_group(rec["from"].get("loader")):
         _rename(server, catalog.TRACK_FILE, _tracking_name((rec.get("to") or {}).get("loader") or "other"),
                 overwrite=True)
     for src, dst in reversed(renames):
@@ -967,15 +1034,15 @@ def run_change(server, p, install, actor, job, sleep=time.sleep):
         if p["addons"]["restore"]:
             renames.append((p["addons"]["restore"] + OFF, p["addons"]["restore"]))
         from core import catalog
-        if _exists(server, catalog.TRACK_FILE):
-            renames.append((catalog.TRACK_FILE, _tracking_name(frm["loader"])))
-        if _exists(server, _tracking_name(to["loader"])):
-            renames.append((_tracking_name(to["loader"]), catalog.TRACK_FILE))
+        if _addon_group(frm["loader"]) != _addon_group(to["loader"]):
+            if _exists(server, catalog.TRACK_FILE):
+                renames.append((catalog.TRACK_FILE, _tracking_name(frm["loader"])))
+            if _exists(server, _tracking_name(to["loader"])):
+                renames.append((_tracking_name(to["loader"]), catalog.TRACK_FILE))
         # From here on something has changed: the record lets a failure (or the admin) undo it
         keep_previous(d, old_info)
         rec = remember(server, "convert", old_info, info, pre["file"], old_java, renames, actor, was_running)
-        os.replace(os.path.join(staging, "server.jar"), os.path.join(d, "server.jar"))
-        _write_info(d, info)
+        javaservers.adopt(staging, d)                    # the jar, or everything an installer made
         for src, dst in renames:
             if dst == p["addons"]["restore"] and _exists(server, dst):
                 dfd, name = files._parent(server, dst)           # an empty folder in the way
@@ -1012,7 +1079,7 @@ def run_change(server, p, install, actor, job, sleep=time.sleep):
                                f"{_label(to)} didn't finish starting within {START_WAIT // 60} minutes")
         if not was_running:
             _stop(server)
-        build = f" (build {info['build']})" if info.get("build") and to["loader"] == "paper" else ""
+        build = f" (build {info['build']})" if info.get("build") and to["loader"] != "fabric" else ""
         manager.write_log(f"[UPDATE] {actor} changed {what}{build}. Backup from before: {pre['file']}.")
         notify.send("type_changed", server, f"{server} was changed from {_label(frm)} to {_label(to)}.")
         job.finish()

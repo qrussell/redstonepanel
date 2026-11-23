@@ -15,7 +15,7 @@
 # Run from the repository root on a machine with Docker, after building the .deb:
 #   docker run --rm -v "$PWD:/src:ro" -v "$PWD/dist:/out" ubuntu:24.04 bash /src/packaging/build-deb.sh
 #   bash packaging/test/test-loaders-modpacks.sh     (KEEP=1 leaves the container running;
-#       ONLY="purpur quilt neoforge forge oldforge mods update modpack upload" runs some parts;
+#       ONLY="purpur quilt neoforge forge oldforge mods update modpack upload switch" runs some parts;
 #       RP_TEST_SETUP=script runs "script <container>" once it's up, e.g. to set a proxy)
 set -uo pipefail
 export MSYS_NO_PATHCONV=1
@@ -24,7 +24,7 @@ FAILS=0
 C=rp-loaders
 IMG=rp-systemd:24.04
 PASS_ADMIN='loaders-test-admin-1'      # a throwaway account inside the test container only
-ONLY=${ONLY:-purpur quilt neoforge forge oldforge mods update modpack upload}
+ONLY=${ONLY:-purpur quilt neoforge forge oldforge mods update modpack upload switch}
 ok()   { echo "PASS  $1"; }
 bad()  { echo "FAIL  $1"; FAILS=$((FAILS + 1)); }
 skip() { echo "SKIP  $1"; }
@@ -59,6 +59,36 @@ modrinth_file() {
     [ -n "$url" ] && dx "curl -s -L -o /tmp/$4 '$url'" && dx "test -s /tmp/$4"
 }
 drop() { dx "$CURL -o /tmp/body -w '%{http_code}' -F 'file=@/tmp/$2' 'http://127.0.0.1:8080/api/servers/$1/addons'"; }
+
+# postj PATH JSON: a JSON POST; the HTTP code, the body in /tmp/body
+postj() { dx "$CURL -o /tmp/body -w '%{http_code}' --max-time 1800 -X POST -H 'Content-Type: application/json' -d '${2:-{\}}' 'http://127.0.0.1:8080$1'"; }
+# wait_job SERVER: waits for a type change, undo or roll back (1.19) to end; prints its state
+wait_job() {
+    local st=running
+    for _ in $(seq 1 500); do
+        st=$(api "/api/servers/$1/convert" | jget "d['job']['state'] if d.get('job') else 'none'")
+        [ "$st" != running ] && break
+        sleep 3
+    done
+    echo "$st"
+}
+# change SERVER TO LABEL: previews, changes, waits
+change() {
+    local p c st
+    p=$(api "/api/servers/$1/convert?to=$2")
+    [ "$(echo "$p" | jget "d['ok']")" = True ] || bad "  preview of $3 not ok: $(echo "$p" | jget "d['blockers']") $p"
+    PLAN=$p
+    c=$(postj "/api/servers/$1/convert" "{\"to\":\"$2\"}")
+    [ "$c" = 200 ] || { bad "starting the change to $3 ($c $(body))"; return 1; }
+    st=$(wait_job "$1")
+    [ "$st" = done ] && ok "changed $1 to $3; it started and was checked" || bad "change to $3: $st $(api "/api/servers/$1/convert" | jget "d['job'].get('error')")"
+}
+undo() {       # SERVER LABEL
+    local c st
+    c=$(postj "/api/servers/$1/convert/undo"); [ "$c" = 200 ] || { bad "undo ($c $(body))"; return 1; }
+    st=$(wait_job "$1")
+    [ "$st" = done ] && ok "undone: $1 is $2 again and started" || bad "undo to $2: $st $(api "/api/servers/$1/convert" | jget "d['job'].get('error')")"
+}
 
 cleanup() {
     [ "${KEEP:-}" = 1 ] && { echo "Container kept: $C (docker rm -f $C)"; return; }
@@ -166,6 +196,14 @@ if want update; then
     check "  no update staging folder left" dx "! ls -A /opt/$S | grep -q redstonepanel-update"
     dx "rm -f /opt/$S/logs/latest.log"; dx "systemctl restart $S"
     started_ok $S "NeoForge $NEWB" 450
+    # 1.19's Roll back the last update: nothing of the old NeoForge was kept, its installer runs again
+    U=$(api "/api/servers/$S/convert" | jget "d['undo']['kind'], d['undo']['available']")
+    [ "$U" = "('update', True)" ] && ok "  Roll back the last update is offered" || bad "  undo record: $U"
+    c=$(postj "/api/servers/$S/update/rollback"); [ "$c" = 200 ] || bad "  rollback ($c $(body))"
+    st=$(wait_job $S)
+    [ "$st" = done ] && ok "rolled back to NeoForge $OLDB with the world from before" || bad "rollback: $st $(api "/api/servers/$S/convert" | jget "d['job'].get('error')")"
+    unit $S | grep -q -- "@libraries/net/neoforged/neoforge/$OLDB/unix_args.txt nogui" && ok "  unit starts $OLDB again" || bad "  unit: $(unit $S)"
+    want mods && { check "  the mods are still there" dx "ls /opt/$S/mods | grep -qi spark"; }
 fi
 stop minecraft-neoforge
 
@@ -238,6 +276,43 @@ if want modpack; then
     started_ok $S "the updated modpack server" 450
     c=$(post "/api/servers/$S/modpack/update" source=modrinth "version_id=$NEWV")
     [ "$c" = 400 ] && body | grep -q "already runs" && ok "  updating to the same version again is refused" || bad "  same version ($c $(body))"
+    stop $S
+fi
+
+# --- Changing type (1.19) with the new types: Paper <-> Purpur, Fabric <-> Quilt
+if want switch; then
+    c=$(deploy '{"edition":"java","loader":"paper","version":"1.21.4","advanced":{"name":"swp","port":25730,"heap":"1G"}}')
+    S=minecraft-swp
+    [ "$c" = 200 ] && ok "Paper 1.21.4 deployed for the type changes" || bad "Paper deploy ($c $(body))"
+    started_ok $S Paper
+    modrinth_file luckperms paper 1.21.4 luckperms-paper.jar && [ "$(drop $S luckperms-paper.jar)" = 200 ] || bad "  couldn't add a plugin"
+    change $S purpur Purpur
+    [ "$(echo "$PLAN" | jget "d['addons']['action'], d['world']['moves']")" = "('keep', [])" ] && ok "  preview: plugins stay, nothing in the world moves" || bad "  plan: $PLAN"
+    info $S | grep -q '"loader": "purpur"' && dx "ls /opt/$S/plugins | grep -qi luckperms && ! test -e /opt/$S/plugins.off" \
+        && ok "  it is Purpur, with its plugins in place" || bad "  after Paper -> Purpur: $(info $S)"
+    dx "grep -qi 'purpur' /opt/$S/logs/latest.log" && dx "grep -qi 'LuckPerms' /opt/$S/logs/latest.log" && ok "  Purpur loaded the plugin" || bad "  the log doesn't show Purpur with LuckPerms"
+    undo $S "Paper 1.21.4"
+    info $S | grep -q '"loader": "paper"' && ok "  recorded as Paper again" || bad "  after undo: $(info $S)"
+    stop $S
+
+    c=$(deploy '{"edition":"java","loader":"fabric","version":"1.21.4","advanced":{"name":"swf","port":25731,"heap":"1G"}}')
+    S=minecraft-swf
+    [ "$c" = 200 ] && ok "Fabric 1.21.4 deployed for the type changes" || bad "Fabric deploy ($c $(body))"
+    started_ok $S Fabric
+    modrinth_file lithium fabric 1.21.4 lithium-fabric.jar && [ "$(drop $S lithium-fabric.jar)" = 200 ] || bad "  couldn't add a mod"
+    change $S quilt Quilt
+    [ "$(echo "$PLAN" | jget "d['addons']['action'], d['confirm_name']")" = "('keep', False)" ] && ok "  preview: the mods stay" || bad "  plan: $PLAN"
+    unit $S | grep -q -- "-jar quilt-server-launch.jar nogui" && ok "  unit starts Quilt's own jar" || bad "  unit: $(unit $S)"
+    dx "ls /opt/$S/mods | grep -qi lithium && test -s /opt/$S/server.jar.previous" && ok "  mods in place, Fabric's jar kept for undo" || bad "  after Fabric -> Quilt: $(dx "ls -A /opt/$S")"
+    dx "grep -qi 'lithium' /opt/$S/logs/latest.log" && ok "  Quilt loaded the Fabric mod" || bad "  the log doesn't show Lithium on Quilt"
+    undo $S "Fabric 1.21.4"
+    unit $S | grep -q -- "-jar server.jar nogui" && dx "! test -e /opt/$S/quilt-server-launch.jar" && ok "  unit starts server.jar again; Quilt's jar is gone" || bad "  unit: $(unit $S)"
+    change $S quilt Quilt
+    change $S fabric Fabric
+    dx "! test -e /opt/$S/quilt-server-launch.jar && ! test -e /opt/$S/server.jar.previous" && ok "  Quilt -> Fabric: Quilt's jar gone, nothing kept (its installer runs again for an undo)" || bad "  leftovers: $(dx "ls -A /opt/$S")"
+    undo $S "Quilt 1.21.4"
+    unit $S | grep -q -- "-jar quilt-server-launch.jar nogui" && info $S | grep -q '"loader": "quilt"' && ok "  Quilt reinstalled by the undo" || bad "  unit: $(unit $S) $(info $S)"
+    check "  no staging folder left" dx "! ls -A /opt/$S | grep -q 'redstonepanel-convert\|redstonepanel-update'"
     stop $S
 fi
 
