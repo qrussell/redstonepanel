@@ -107,8 +107,10 @@ class HandOverAndBack(unittest.TestCase):
             p = mock.patch.object(target, name, value)
             p.start()
             self.addCleanup(p.stop)
+        self.java = os.path.join(self.data, "java")
+        open(self.java, "w").close()
         for name in ("java_for_folder", "ensure_minecraft_user", "_used_ports"):
-            p = mock.patch.object(M, name, return_value=set() if name == "_used_ports" else None)
+            p = mock.patch.object(M, name, return_value=set() if name == "_used_ports" else self.java if name == "java_for_folder" else None)
             p.start()
             self.addCleanup(p.stop)
         self.d = tempfile.mkdtemp(dir=TMP, prefix="own-")
@@ -157,6 +159,23 @@ class HandOverAndBack(unittest.TestCase):
         self.assertIn(("25590", "tcp"), fake.state.rules)           # the port its owner had opened is open again
         self.assertIsNone(F.record(name))
         self.assertEqual(F.taken_over(), [])
+
+    def test_the_java_it_ran_with_when_the_panel_has_none_for_it(self):
+        own = os.path.join(self.data, "jdk", "bin", "java")
+        os.makedirs(os.path.dirname(own))
+        open(own, "w").close()
+        info = {"folder": self.d, "java": own}
+        self.assertEqual(F._java_for(info), self.java)                       # the panel's choice first
+        with mock.patch.object(M, "java_for_folder", return_value=os.path.join(self.data, "no", "java")):
+            self.assertEqual(F._java_for(info), own)                         # found on Windows: no default Java there
+            for bad in ("", os.path.join(self.data, "gone", "java"), self.d):
+                with self.assertRaises(F.FoundError):
+                    F._java_for({"folder": self.d, "java": bad})
+            spaced = os.path.join(self.data, "my jdk")
+            os.makedirs(spaced)
+            open(os.path.join(spaced, "java"), "w").close()
+            with self.assertRaises(F.FoundError):                            # nothing with a space goes into a unit
+                F._java_for({"folder": self.d, "java": os.path.join(spaced, "java")})
 
     def test_a_server_that_does_not_start_is_put_back(self):
         fake = self.fake
