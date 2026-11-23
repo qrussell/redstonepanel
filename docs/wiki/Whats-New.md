@@ -9,6 +9,17 @@ the dashboard.
 
 ---
 
+## 1.21.1: choose where servers are kept *(November 2026)*
+
+- **Panel Settings → Servers folder** takes the full path of a folder on any disk or
+  partition. New servers go there; leave it empty for `/opt`.
+- **Servers you already have stay where they are** and keep working.
+- Folders that won't work (system folders, read-only or `noexec` disks, names with spaces)
+  are refused with the reason. See
+  [Keeping servers on another disk](Installation.md#keeping-servers-on-another-disk).
+
+[Release notes](../../release-notes/v1.21.1.md)
+
 ## 1.21: groundwork for Windows *(November 2026)*
 
 - **Nothing changes on screen.** Everything the panel asks of the operating system now goes

@@ -1614,6 +1614,25 @@ If a change locks you out, run `sudo redstonepanel reset-security` on the machin
 Tailscale), or a reverse proxy with a real certificate as described in the
 [README](../../README.md#exposing-the-panel-to-the-internet).
 
+### Servers folder
+
+Where new servers are made. Out of the box that is `/opt`, on the system disk. If your room is
+on a second drive or another partition, type the full path of a folder there, for example
+`/srv/minecraft` or `/mnt/disk2/minecraft`, and click **Save folder**. The panel makes the
+folder if it isn't there and shows how much space is free on that disk. Leave the box empty to
+go back to `/opt`.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/servers-folder.png"><img src="images/servers-folder.png" alt="The Servers folder section of Panel Settings"></picture>
+
+- **New servers go there**: ones you create, import, restore from backup storage, install from
+  a modpack or move in from another cluster member.
+- **Servers you already have stay where they are** and keep working. The section lists any
+  other folder that still has servers in it.
+- The panel says no, with the reason, to a folder it can't use: a system folder, the top
+  folder of a disk such as `/mnt` (give a folder of its own inside it), a name with spaces, a
+  disk mounted read-only or `noexec`, or a folder the `minecraft` account can't get into.
+- In a cluster, each machine has its own servers folder, set in that machine's own panel.
+
 ## 18. Clusters
 
 Running RedstonePanel on several machines? One panel can be the **master** of a cluster and
