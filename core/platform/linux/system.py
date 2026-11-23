@@ -125,7 +125,7 @@ def check_servers_folder(folder):
     for path in {folder, real}:
         if path in _NOT_ALONE:
             return None, f"{path} holds other things. Give a folder of its own inside it, for example {path.rstrip('/')}/minecraft."
-        if any(path == bad or path.startswith(bad + "/") for bad in _NOT_FOR_SERVERS):
+        if any(path == bad or path.startswith(bad + "/") for bad in _NOT_FOR_SERVERS + (paths.BACKUP_ROOT, paths.DATA_DIR)):
             return None, f"{path} belongs to the system or to the panel itself; choose a folder somewhere else."
     if os.path.lexists(real) and not os.path.isdir(real):
         return None, f"{real} is a file, not a folder."
