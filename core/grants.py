@@ -367,6 +367,9 @@ admin    POST    /api/java/runtimes/remove
 admin    GET     /api/panel/update
 admin    POST    /api/panel/update/check
 admin    POST    /api/panel/update
+admin    GET     /api/join-pages
+admin    PUT     /api/join-pages/page
+admin    GET     {_S}/join-info
 admin    GET     /api/port-forwarding
 admin    GET     /api/port-forwarding/local
 admin    PUT     /api/port-forwarding/settings

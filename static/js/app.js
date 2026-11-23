@@ -6369,6 +6369,7 @@ const ServerApp = {
 	portsRouter: (() => { try { return localStorage.getItem('rp_portsRouter') || 'pfsense'; } catch (e) { return 'pfsense'; } })(),
 
 	openPorts() {
+		this.closeJoin();
 		this.hideDashboard();
 		this.closeCluster();
 		this.activeServer = null;
@@ -6382,6 +6383,199 @@ const ServerApp = {
 	closePorts() {
 		const v = document.getElementById('ports-view');
 		if (v) v.classList.add('hidden');
+		this.closeJoin();
+	},
+
+	// --- Join pages (1.21.5, admins): a public page per server that tells players how to join,
+	// served on its own port (core/joinpage.py, core/joinsite.py)
+	joinData: null,
+	joinOpen: {},          // which servers' forms are open: { 'member/server': true }
+	joinNote: null,        // { key, text, ok } shown under the form that was saved
+
+	openJoin() {
+		this.hideDashboard();
+		this.closeCluster();
+		this.activeServer = null;
+		this.renderSidebar();
+		document.getElementById('workspace').classList.add('hidden');
+		document.getElementById('join-view').classList.remove('hidden');
+		this.setMobileTitle('🔗 Join pages', this.panelName);
+		this.loadJoin();
+	},
+
+	closeJoin() {
+		const v = document.getElementById('join-view');
+		if (v) v.classList.add('hidden');
+	},
+
+	async loadJoin() {
+		const body = document.getElementById('join-body');
+		if (!this.joinData) body.innerHTML = '<p class="text-gray-500">Loading...</p>';
+		try {
+			const res = await fetch('/api/join-pages');
+			if (!res.ok) throw new Error(await this.apiError(res));
+			this.joinData = await res.json();
+		} catch (e) {
+			body.innerHTML = `<p class="text-red-500">Couldn't load the join pages: ${this.escapeHtml(e.message)}</p>`;
+			return;
+		}
+		this.renderJoin();
+	},
+
+	async saveJoinListener(button) {
+		button.disabled = true;
+		const res = await fetch('/api/settings/join', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ enabled: document.getElementById('join-on').checked,
+			                       port: parseInt(document.getElementById('join-port').value, 10) || 0,
+			                       index: document.getElementById('join-index').checked }) });
+		if (!res.ok) {
+			this.joinNote = { key: '', text: await this.apiError(res), ok: false };
+			return this.loadJoin();
+		}
+		this.joinData = await res.json();
+		const l = this.joinData.listener;
+		this.joinNote = { key: '', ok: !l.error, text: l.error || (l.enabled ? `Join pages are on, port ${l.port}.` : 'Join pages are off.') };
+		this.renderJoin();
+	},
+
+	toggleJoinForm(key) {
+		this.joinOpen[key] = !this.joinOpen[key];
+		this.renderJoin();
+	},
+
+	async saveJoinPage(member, server, button, newLink) {
+		const key = `${member}/${server}`, id = n => document.getElementById(`join-${n}-${this.joinId(key)}`);
+		button.disabled = true;
+		const res = await fetch('/api/join-pages/page', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ member, server, enabled: id('enabled').checked, slug: id('slug').value.trim(),
+				unlisted: id('unlisted').checked, new_link: !!newLink, address: id('address').value.trim(),
+				note: id('note').value, link_url: id('link-url').value.trim(), link_label: id('link-label').value.trim(),
+				pack_url: id('pack-url') ? id('pack-url').value.trim() : '', show_players: id('players').checked }) });
+		if (!res.ok) {
+			button.disabled = false;
+			const note = id('msg');
+			note.className = 'text-sm text-red-500 mt-2';
+			note.innerText = await this.apiError(res);
+			return;
+		}
+		const d = await res.json();
+		this.joinNote = { key, ok: true, text: d.page.enabled ? 'Saved. The page is public.' : 'Saved. The page is off.' };
+		this.loadJoin();
+	},
+
+	joinId(key) { return key.replace(/[^A-Za-z0-9_-]/g, '_'); },
+
+	copyJoinLink(url, button) {
+		const done = () => { const old = button.innerText; button.innerText = 'Copied'; setTimeout(() => { button.innerText = old; }, 1500); };
+		if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(url).then(done).catch(() => prompt('Copy the link:', url));
+		else prompt('Copy the link:', url);
+	},
+
+	renderJoin() {
+		const d = this.joinData, l = d.listener, esc = t => this.escapeHtml(String(t ?? ''));
+		const card = 'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4';
+		const h = 'text-lg font-bold text-gray-900 dark:text-white mb-2';
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const btn = 'px-3 py-2 rounded text-sm font-bold transition';
+		const grey = `${btn} bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white`;
+		const warn = t => `<p class="text-sm p-3 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700">${t}</p>`;
+		const msg = key => this.joinNote && this.joinNote.key === key
+			? `<p class="text-sm ${this.joinNote.ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mt-2">${esc(this.joinNote.text)}</p>` : '';
+		const base = d.public_url || d.lan_url;
+		const multi = d.members.length > 1;
+
+		const state = !l.enabled ? ''
+			: l.error ? `<p class="text-sm text-red-500 mt-2"><b>Not running.</b> ${esc(l.error)}</p>`
+			: !l.managed ? `<p class="${note} mt-2">The pages start with the panel's own service.</p>`
+			: l.running ? `<p class="${note} mt-2"><span class="text-green-600 dark:text-green-400 font-bold">Running</span> on port ${esc(l.serving_port)} (${l.scheme === 'https' ? 'HTTPS, with the panel\'s certificate' : 'HTTP'}).</p>`
+			: `<p class="text-sm text-red-500 mt-2"><b>Not running.</b> Restart the panel, or pick another port.</p>`;
+		const listenerCard = `<div class="${card}">
+			<h3 class="${h}">The public port</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Join pages have their own port, so you can forward it on your router and keep the panel itself off the internet. That port answers nothing but the join pages: no sign-in page and none of the panel.</p>
+			<label class="flex items-start gap-2 mb-2 text-sm cursor-pointer">
+				<input type="checkbox" id="join-on" ${l.enabled ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Turn join pages on</b><br><span class="${note}">Each server's page still has to be turned on below.</span></span>
+			</label>
+			<label class="flex items-start gap-2 mb-3 text-sm cursor-pointer">
+				<input type="checkbox" id="join-index" ${l.index ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Also list the public pages at /join</b><br><span class="${note}">Off: a page is found only by its own link.</span></span>
+			</label>
+			<div class="flex flex-wrap items-end gap-2">
+				<label class="${note}">Port<br><input id="join-port" type="number" min="1" max="65535" value="${esc(l.port)}" class="${field} w-28 mt-1"></label>
+				<button onclick="ServerApp.saveJoinListener(this)" class="${btn} bg-theme hover-bg-theme text-white">Save</button>
+			</div>
+			${state}${msg('')}
+			<p class="${note} mt-2">The port is opened in this server's firewall. For players outside your home, forward TCP ${esc(l.port)} to this machine on your router as well.</p>
+		</div>`;
+
+		const addressCard = d.public_address ? '' : `<div class="${card}">${warn(`No internet address is set yet, so the pages can't tell players what to type. Set it under <button onclick="ServerApp.openPorts()" class="underline font-bold">🔀 Port forwarding</button>, or type an address for each server below.`)}</div>`;
+
+		const row = (m, s) => {
+			const key = `${m.id}/${s.name}`, id = this.joinId(key), p = s.page, open = !!this.joinOpen[key];
+			const url = `${base}/${encodeURIComponent(s.path)}`;
+			const kind = [s.edition, s.loader && s.loader !== 'Vanilla' ? s.loader : '', s.minecraft].filter(Boolean).join(' · ');
+			const live = p.enabled && l.enabled;
+			const badge = p.enabled
+				? `<span class="text-xs font-bold px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">${p.unlisted ? 'Public, unlisted' : 'Public'}</span>`
+				: `<span class="text-xs font-bold px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Off</span>`;
+			const link = !p.enabled ? '' : `<div class="flex flex-wrap items-center gap-2 mt-2">
+					<a href="${esc(url)}" target="_blank" rel="noopener" class="text-sm font-mono break-all underline text-theme">${esc(url)}</a>
+					<button onclick="ServerApp.copyJoinLink('${esc(url)}', this)" class="${grey}">Copy link</button>
+				</div>${live ? '' : `<p class="${note} mt-1">The link works once join pages are turned on above.</p>`}`;
+			const form = !open ? '' : `<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-3">
+				<label class="flex items-start gap-2 text-sm cursor-pointer">
+					<input type="checkbox" id="join-enabled-${id}" ${p.enabled ? 'checked' : ''} class="mt-1">
+					<span><b class="text-gray-900 dark:text-white">Make this server's join page public</b><br><span class="${note}">Anyone with the link sees the server's name, version, whether it's online, how many are playing and how to join.</span></span>
+				</label>
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+					<label class="${note}">Link name<input id="join-slug-${id}" maxlength="40" value="${esc(p.slug)}" class="${field} w-full mt-1 font-mono">
+						<span class="block mt-1">The end of the link: /join/<b>${esc(p.slug)}</b></span></label>
+					<label class="${note}">Address players type<input id="join-address-${id}" maxlength="260" value="${esc(p.address)}" placeholder="${esc(d.public_address || 'play.example.com')}" class="${field} w-full mt-1 font-mono">
+						<span class="block mt-1">Empty: ${d.public_address ? `<b>${esc(d.public_address)}</b>, from Port forwarding,` : 'the address from Port forwarding'} with this server's port. Add <span class="font-mono">:port</span> if the router shows a different one outside.</span></label>
+				</div>
+				<label class="flex items-start gap-2 text-sm cursor-pointer">
+					<input type="checkbox" id="join-unlisted-${id}" ${p.unlisted ? 'checked' : ''} class="mt-1">
+					<span><b class="text-gray-900 dark:text-white">Unlisted: use a random link instead of the link name</b><br><span class="${note}">For a friends-only server. The page can't be guessed and never appears in the list at /join.${p.unlisted && p.enabled ? ` <button onclick="ServerApp.saveJoinPage('${esc(m.id)}', '${esc(s.name)}', this, true)" class="underline text-theme">Make a new link</button> (the old one stops working).` : ''}</span></span>
+				</label>
+				<label class="flex items-start gap-2 text-sm cursor-pointer">
+					<input type="checkbox" id="join-players-${id}" ${p.show_players ? 'checked' : ''} class="mt-1">
+					<span><b class="text-gray-900 dark:text-white">Show who is playing</b><br><span class="${note}">Off: only the number of players is shown, never their names.</span></span>
+				</label>
+				<label class="${note} block">A note for players (rules, when you play)<textarea id="join-note-${id}" rows="3" maxlength="600" class="${field} w-full mt-1">${esc(p.note)}</textarea></label>
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+					<label class="${note}">A link of your own (Discord, a website)<input id="join-link-url-${id}" maxlength="300" value="${esc(p.link_url)}" placeholder="https://discord.gg/..." class="${field} w-full mt-1"></label>
+					<label class="${note}">What the link's button says<input id="join-link-label-${id}" maxlength="40" value="${esc(p.link_label)}" placeholder="Join our Discord" class="${field} w-full mt-1"></label>
+				</div>
+				${s.mods ? `<label class="${note} block">Where players get the mods<input id="join-pack-url-${id}" maxlength="300" value="${esc(p.pack_url)}" placeholder="https://www.curseforge.com/minecraft/modpacks/..." class="${field} w-full mt-1">
+					<span class="block mt-1">A server made from a Modrinth modpack links to that exact pack by itself. For anything else, paste the pack's page here.</span></label>` : ''}
+				<div class="flex flex-wrap gap-2">
+					<button onclick="ServerApp.saveJoinPage('${esc(m.id)}', '${esc(s.name)}', this)" class="${btn} bg-theme hover-bg-theme text-white">Save page</button>
+					<button onclick="ServerApp.toggleJoinForm('${esc(key)}')" class="${grey}">Close</button>
+				</div>
+				<p id="join-msg-${id}" class="hidden"></p>
+			</div>`;
+			return `<div class="py-3 border-b border-gray-100 dark:border-gray-700/60 last:border-b-0">
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<div class="min-w-0">
+						<p class="font-bold text-gray-900 dark:text-white break-words">${esc(s.name)} ${badge}</p>
+						<p class="${note}">${esc(kind)}${multi ? ` · ${m.local ? esc(m.name) : '🌐 ' + esc(m.name)}` : ''}</p>
+					</div>
+					<button onclick="ServerApp.toggleJoinForm('${esc(key)}')" class="${grey}">${open ? 'Close' : p.enabled ? 'Change' : 'Set up'}</button>
+				</div>
+				${link}${msg(key)}${form}
+			</div>`;
+		};
+		const rows = d.members.flatMap(m => m.servers.map(s => row(m, s))).join('');
+		const down = d.members.filter(m => m.state !== 'ok').map(m => `<li>🌐 ${esc(m.name)}: couldn't be reached (${esc(m.error || m.state)}), so its servers aren't listed. Their pages show as offline meanwhile.</li>`).join('');
+		const serversCard = `<div class="${card}">
+			<h3 class="${h}">Servers</h3>
+			${rows || `<p class="text-sm text-gray-500">No servers yet.</p>`}
+			${down ? `<ul class="${note} list-disc ml-5 mt-3">${down}</ul>` : ''}
+		</div>`;
+
+		document.getElementById('join-body').innerHTML = listenerCard + addressCard + serversCard;
+		this.joinNote = null;
 	},
 
 	async loadPorts() {

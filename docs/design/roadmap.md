@@ -1900,6 +1900,47 @@ browser checks at 1280 and 390 pixels wide with sample data. Not tested with a r
 online: no game client was available, so player names came from the stand-in. The manual's
 two Quick commands pictures use sample data; the Live Chat pictures were retaken.
 
+### 1.21.5: join pages for players *(built, not released)*
+
+**Why.** Getting a friend onto a server means sending the address, the version and, for a
+modded server, which mods to install, and sending it again when any of it changes. Quentin
+asked on 23 Nov 2026 for a web page hosted by the panel for joining its servers, with links
+to the modpack that follow what the server runs. It also delivers the "read-only status page
+for players" idea: players stop asking whether the server is up.
+
+**How.** A public page per server, off by default, that shows the name, whether it's online,
+the player count, the address to type, the Minecraft version and loader, and how to join. A
+server made from a Modrinth modpack links to the exact pack version it runs; other mod
+servers show a link the admin pastes. The pages get their own port (8444) so the panel never
+has to face the internet, and that port answers nothing else. Player packs the panel builds
+itself from a hand-assembled mods folder (`.mrpack`, packwiz) are the next release.
+
+**As built.** `core/joinpage.py` holds each page's settings (`data/join-pages.json`), what
+this machine knows about a server, and `public_view()`, the fixed list of fields that may
+leave it. `core/joinsite.py` is the public side: a second, tiny web server on a thread of the
+panel (so there is no new service to install per operating system; the port is opened
+through `core.platform`). It answers only GET and HEAD under `/join`, sets no cookies, reads
+no request bodies, sends a strict Content-Security-Policy and builds every page on the server
+with every value escaped; its stylesheet and script are its own, with nothing loaded from the
+panel. It uses the panel's certificate when the panel serves HTTPS. Who is online comes from
+the game server's own status ping on this machine, reused for 30 seconds, and requests are
+limited per address. The address is only ever what an admin typed (per page, or the public
+address on the Port forwarding page). Pages can be unlisted (a random link), and a list at
+`/join` is a separate switch. Changed from the plan: no change to the cluster contract. The
+master reads a node's server through `GET /api/servers/{name}/join-info`, which is under the
+server's own routes; a node older than 1.21.5 gives the type, version and whether it runs,
+without player counts. A node's own join pages can't be set from the master. Everything on
+the admin side is admin-only. Tested: `tests/test_joinpage.py` (24 tests: the fields that
+leave, escaping, links that aren't web links, the listener starting, moving and stopping on
+real ports) and `packaging/test/test-join-page.sh`, 87 checks in systemd containers with
+stand-in servers that answer the status ping as a real one does (in the GitHub `cluster`
+job): every route the panel has, 209 of them with its files, is tried on the public port and
+gets Not found; a plugin, a modpack and a Bedrock server's page; unlisted pages; a stopped
+server; a panel restart; and a master serving a node's server over HTTPS, staying up when the
+node is unreachable. Not tested: a real player following a page from outside the home, the
+Modrinth App button on a real desktop, and the Add server button on a real phone. The
+manual's pictures are of the test container's stand-in servers.
+
 ### 2.0: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
@@ -1991,8 +2032,7 @@ until it's agreed.
 
 **For players**
 
-- **A read-only status page** (opt-in, no sign-in): each chosen server's name, address, state,
-  version and players online. Nothing else from the panel is exposed.
+- ~~**A read-only status page**~~ *(built as the join pages, 1.21.5)*.
 - **Discord two-way chat bridge** on top of the 1.8 webhooks, using a bot token stored like the
   webhook URL.
 

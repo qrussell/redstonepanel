@@ -269,6 +269,9 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
 - a port forwarding guide for your internet router: which ports, TCP or UDP, to which
   machine's LAN address, for every server and cluster member, with pfSense steps, a check
   through your internet address, and warnings for shared ports and carrier-grade NAT
+- join pages for players: a public page per server, off until you turn it on, with the
+  address, whether it's online, how many are playing and how to join, and for a modpack server
+  the exact pack to install; on a port of its own, so the panel stays off the internet
 - performance for each server (1.17): tick health (TPS) over RCON, memory against its limits,
   24-hour and 7-day history charts for every server and the machine, and suggestions based on
   what was measured (never applied for you); a **Memory** setting and optional hard memory and
