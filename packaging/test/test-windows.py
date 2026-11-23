@@ -307,7 +307,7 @@ def main():
 
     # ------------------------------------------------------------------ backups
     section("Backups, restore and schedules")
-    code, b = p.post(f"/api/servers/{name}/backups", timeout=600)
+    code, b = p.post(f"/api/servers/{name}/backups", timeout=240)
     check("Back up now works while the server runs", code == 200 and b.get("file"), f"{code} {str(b)[:300]}")
     code, ov = p.get(f"/api/servers/{name}/backups")
     check("the backup is listed", code == 200 and len(ov.get("backups", [])) >= 1, f"{code} {str(ov)[:300]}")
@@ -328,7 +328,7 @@ def main():
     code, w = p.put(f"/api/servers/{name}/files/text", {"path": "notes.txt", "content": "changed after the backup\n",
                                                            "modified": None})
     first_backup = b.get("file") if isinstance(b, dict) else None
-    code, r = p.post(f"/api/servers/{name}/backups/{first_backup}/restore", timeout=900)
+    code, r = p.post(f"/api/servers/{name}/backups/{first_backup}/restore", timeout=300)
     check("a backup restores", code == 200, f"{code} {str(r)[:300]}")
     code, t = p.get(f"/api/servers/{name}/files/text?path=notes.txt")
     check("... and the files are the ones from the backup", "hello from the test" in str(t.get("content")), str(t)[:200])
