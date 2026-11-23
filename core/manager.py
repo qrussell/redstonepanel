@@ -1671,7 +1671,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
                                       "server-udp-ports": port, "query.port": port})
             write_screenrc(mc_dir)
         if prepare:
-            run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+            system.give_to_game_account(mc_dir)
             try:
                 prepare(mc_dir)
             except Exception:

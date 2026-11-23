@@ -58,3 +58,42 @@ def tail(path, lines=3000):
             return "".join(f.readlines()[-int(lines):]), ""
     except OSError as e:
         return "", str(e)
+
+
+def is_admin():
+    return False
+
+
+def as_game_account(cmd):
+    return cmd
+
+
+def take_for_game_account(path):
+    fake.state.owned.append(path)
+    return 0
+
+
+def run_program(cmd, cwd=None, env=None, timeout=None):
+    """Programs handed to the panel are really run (tests bring their own stand-ins)."""
+    import subprocess
+    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, errors="replace", timeout=timeout)
+
+
+def copy_into(source, dest, wrap=None):
+    import shutil
+    from core.platform.fake._result import done
+    fake.record("system.copy_into", source, dest)
+    shutil.copytree(source, dest, symlinks=True, dirs_exist_ok=True)
+    return done()
+
+
+def remove_files(folder, names, wrap=None):
+    import os
+    from core.platform.fake._result import done
+    fake.record("system.remove_files", folder, tuple(names))
+    for name in names:
+        try:
+            os.remove(os.path.join(folder, name))
+        except OSError:
+            pass
+    return done()

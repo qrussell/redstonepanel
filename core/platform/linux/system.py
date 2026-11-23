@@ -66,3 +66,40 @@ def tail(path, lines=3000):
             return r.stdout, ""
         err = (r.stderr or "").strip()
     return "", err
+
+
+def is_admin():
+    """True when the panel runs with full rights (root), as an installed panel does."""
+    import os
+    return os.geteuid() == 0
+
+
+def as_game_account(cmd):
+    """cmd, changed so that it runs as the game account and not as the panel (root)."""
+    if not is_admin():
+        return cmd
+    return ["runuser", "-u", GAME_ACCOUNT, "--"] + list(cmd)
+
+
+def take_for_game_account(path):
+    """give_to_game_account() without the activity log."""
+    return quiet(["chown", "-R", f"{GAME_ACCOUNT}:{GAME_ACCOUNT}", path])
+
+
+def run_program(cmd, cwd=None, env=None, timeout=None):
+    """Runs a program the panel was handed (a mod loader's installer under Java) and returns the
+    CompletedProcess, output as text. Raises TimeoutExpired and OSError."""
+    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, errors="replace", timeout=timeout)
+
+
+def copy_into(source, dest, wrap=None):
+    """Copies everything in folder `source` over folder `dest`, replacing files that are there
+    and never following links. wrap changes the command (as_game_account). CompletedProcess."""
+    cmd = ["cp", "-r", "--remove-destination", "--no-dereference", "--", source + "/.", dest + "/"]
+    return quiet(wrap(cmd) if wrap else cmd)
+
+
+def remove_files(folder, names, wrap=None):
+    """Deletes files (paths relative to folder); ones that aren't there are skipped."""
+    cmd = ["rm", "-f", "--"] + list(names)
+    return quiet(wrap(cmd) if wrap else cmd, cwd=folder)
