@@ -50,6 +50,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.21.0 | Groundwork for the Windows version. Nothing new on screen. | [Roadmap](../wiki/Roadmap.md) |
 | 1.20.0 | **Purpur, Quilt, NeoForge and Forge** servers; **From a modpack** (Modrinth, `.mrpack`, CurseForge server packs) and pack updates. | [Create or import a server](#4-create-or-import-a-server), [Modpack](#modpack) |
 | 1.19.0 | **Server type**: change a Java server between Vanilla, Paper and Fabric in place, with a preview, a backup and undo; **Roll back the last update**; backups show what made them. | [Changing a server's type](#changing-a-servers-type), [Rolling back an update](#rolling-back-an-update) |
 | 1.18.0 | **Per-server permissions** for user accounts, with Moderator and Co-owner presets, and **SFTP** for FileZilla or WinSCP with passwords or SSH keys. | [What a helper may do](#what-a-helper-may-do), [SFTP](#sftp-filezilla-winscp) |

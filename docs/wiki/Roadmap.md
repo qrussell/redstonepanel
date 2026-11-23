@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.20**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.21**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -17,7 +17,7 @@ no Docker and no WSL. Each game server runs as an ordinary Windows service, sche
 Scheduler tasks, and ports are opened in Windows Defender Firewall, so Windows' own tools
 show everything the panel does. It arrives in four releases:
 
-- **1.21: groundwork.** The Linux panel is reorganised so one codebase can serve both systems.
+- **1.21: groundwork** *(released)*. The Linux panel is reorganised so one codebase can serve both systems.
   Nothing changes on screen.
 - **1.22: Windows preview.** An installer for Windows 11 and Windows Server 2022 or 2025, for
   one machine with Java servers: create, console, files, mods and plugins, backups, schedules,
@@ -70,4 +70,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.20** adds Purpur, Quilt, NeoForge and Forge servers and modpacks from Modrinth or a CurseForge server pack; **1.19** changes a Java server's type in place (Vanilla, Paper, Fabric) with a backup and undo, and rolls back updates; **1.18** adds per-server permissions for helpers and SFTP for FileZilla or WinSCP; **1.17.2** adds Advanced options to New server (builds, Java, memory, limits, startup flags, world and settings); **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.
+See [What's New](Whats-New.md). The latest: **1.21** is groundwork for the Windows version, with nothing changed on screen; **1.20** adds Purpur, Quilt, NeoForge and Forge servers and modpacks from Modrinth or a CurseForge server pack; **1.19** changes a Java server's type in place (Vanilla, Paper, Fabric) with a backup and undo, and rolls back updates; **1.18** adds per-server permissions for helpers and SFTP for FileZilla or WinSCP; **1.17.2** adds Advanced options to New server (builds, Java, memory, limits, startup flags, world and settings); **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.

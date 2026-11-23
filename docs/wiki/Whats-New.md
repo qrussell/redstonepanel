@@ -9,6 +9,15 @@ the dashboard.
 
 ---
 
+## 1.21: groundwork for Windows *(November 2026)*
+
+- **Nothing changes on screen.** Everything the panel asks of the operating system now goes
+  through one internal package, so a Windows version can be built next to the Linux one.
+- **Same commands, same behaviour** on Linux, and nothing to do after upgrading.
+- **Next:** 1.22 is planned as the Windows preview. See the [Roadmap](Roadmap.md).
+
+[Release notes](../../release-notes/v1.21.0.md)
+
 ## 1.20: Forge, NeoForge, Quilt, Purpur and modpacks *(November 2026)*
 
 <picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/modpack-search.png"><img src="../guide/images/modpack-search.png" alt="Choosing a modpack from Modrinth"></picture>

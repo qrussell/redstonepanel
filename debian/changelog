@@ -1,3 +1,18 @@
+redstonepanel (1.21.0) noble; urgency=medium
+
+  * Groundwork for the Windows version (roadmap 1.21 to 1.24). Nothing
+    changes on screen and there is nothing to do after upgrading.
+  * Everything the panel asks of the operating system (systemd, ufw,
+    screen, apt and dpkg, openssl, and where files live) now goes through
+    one internal package, core/platform, so a Windows side can be added
+    next to the Linux one. The panel runs the same commands with the same
+    arguments as before.
+  * A test now fails the build when panel code outside that package
+    starts a system program or spells out a system path, and a pretend
+    system lets new tests run without touching the machine.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Mon, 23 Nov 2026 03:05:00 +0000
+
 redstonepanel (1.20.0) noble; urgency=medium
 
   * New Java server types: Purpur (plugins), Quilt, NeoForge and Forge
