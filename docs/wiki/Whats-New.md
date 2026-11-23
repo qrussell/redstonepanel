@@ -9,6 +9,19 @@ the dashboard.
 
 ---
 
+## 1.21.4: quick commands in Live Chat *(November 2026)*
+
+- **Live Chat suggests as you type**, like the game: commands after `/`, then the players
+  online, players seen before or the fixed choices for each part. **Tab** fills one in.
+- **Commands…** opens a form that asks only for what the picked command needs and shows the
+  exact command before **Run**.
+- **One-click buttons** for List players, Save world, Day, Night and Clear weather.
+- A running Vanilla, Fabric, Quilt, Forge or NeoForge server tells the panel its own commands
+  and game rules, so mod commands are suggested too. See
+  [Live Chat](../guide/README.md#6-live-chat).
+
+[Release notes](../../release-notes/v1.21.4.md)
+
 ## 1.21.3: servers you set up yourself *(November 2026)*
 
 - **New server → Found on this computer** lists Minecraft servers on the machine that were set

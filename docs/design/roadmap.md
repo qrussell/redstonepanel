@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.3 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2) and finding servers set up outside the panel (1.21.3) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.4 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3) and quick commands in Live Chat (1.21.4) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1862,7 +1862,7 @@ crash of a removed server with the same name. Tested: `packaging/test/test-found
 checks on Ubuntu 24.04 in a systemd container (in the GitHub `cluster` job), and 838 unit
 tests. The Windows side ships with the 1.22 preview. The manual's picture uses sample data.
 
-### 1.21.4: quick commands in Live Chat *(built, not released)*
+### 1.21.4: quick commands in Live Chat *(released 23 Nov 2026)*
 
 **Why.** Live Chat ran any command, but only if you knew how to write it. Quentin asked on
 23 Nov 2026 for quick commands: a command builder that asks for the player, place and other
@@ -1898,7 +1898,7 @@ installed); `packaging/test/test-chat-commands.sh`, 25 checks in a systemd conta
 stand-in servers that answer RCON as a real one does (in the GitHub `cluster` job); and 29
 browser checks at 1280 and 390 pixels wide with sample data. Not tested with a real player
 online: no game client was available, so player names came from the stand-in. The manual's
-pictures use sample data.
+two Quick commands pictures use sample data; the Live Chat pictures were retaken.
 
 ### 1.21.5: join pages for players *(built, not released)*
 
