@@ -213,3 +213,18 @@ def game_programs(names=("java", "bedrock_server")):
         found.append({"pid": int(pid), "exe": exe, "argv": argv, "cwd": cwd, "user": user,
                       "service": service, "started": started})
     return found
+
+
+def owner_of(path):
+    """Who a folder belongs to, as text give_back() understands ("uid:gid")."""
+    import os
+    st = os.stat(path)
+    return f"{st.st_uid}:{st.st_gid}"
+
+
+def give_back(path, owner):
+    """Hands a folder and everything in it back to the owner owner_of() named."""
+    import re
+    if not re.fullmatch(r"[0-9]+:[0-9]+", owner or ""):
+        raise ValueError("not an owner this system gave")
+    return logged(["chown", "-R", owner, path])

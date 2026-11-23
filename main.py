@@ -1612,7 +1612,31 @@ def list_removed_servers():
 def list_found_servers(request: Request):
     _require_admin(request, "see the Minecraft servers found on this machine")
     from core import found
-    return {"servers": found.scan()}
+    return {"servers": found.listing(), "taken_over": found.taken_over()}
+
+class FoundServer(BaseModel):
+    folder: str
+
+def _found_call(fn, *args, **kw):
+    from core import found
+    try:
+        return fn(*args, **kw)
+    except (found.FoundError, manager.ServerError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/found-servers/manage")
+def manage_found_server(req: FoundServer, request: Request):
+    """Hands a found server to the panel in place (its own service is stopped and turned off)."""
+    _require_admin(request, "hand a server to the panel")
+    from core import found
+    return _found_call(found.manage, req.folder, actor=request.state.user["username"])
+
+@app.post("/api/found-servers/{server_name}/undo")
+def undo_found_server(server_name: str, request: Request):
+    """Hands a taken-over server back to the service that ran it. Its folder is never deleted."""
+    _require_admin(request, "hand a server back")
+    from core import found
+    return _found_call(found.undo, server_name, actor=request.state.user["username"])
 
 @app.post("/api/servers/removed/{server_name}/restore")
 def restore_server(server_name: str):
