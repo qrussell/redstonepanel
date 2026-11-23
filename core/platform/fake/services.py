@@ -110,6 +110,16 @@ def control(unit_name, action, elevate=False, quiet=False):
     return done() if quiet else 0
 
 
+def other_enabled(service):
+    return unit_state(service, "is-enabled") == "enabled"
+
+
+def other_control(service, action):
+    if action not in ("start", "stop", "enable", "disable"):
+        raise ValueError(action)
+    return control(service, action, elevate=True)
+
+
 def start(server, elevate=False, quiet=False):
     return control(unit(server), "start", elevate, quiet)
 

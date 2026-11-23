@@ -425,6 +425,7 @@ def main():
     p.put("/api/settings/notifications", {"clear": True})
 
     servers_folder(p, args, body)
+    found_servers(p, args)
 
     # ------------------------------------------------------------------ the command line
     section("The redstonepanel command")
@@ -536,6 +537,137 @@ def servers_folder(p, args, body):
                   f"{code} {r}")
             check("... and its Windows service", wait("gone", lambda: service_state(name) is None, 60), str(service_state(name)))
         p.put("/api/settings/servers-folder", {"folder": ""})
+        if not args.keep:
+            run(["cmd", "/c", "rmdir", "/s", "/q", top])
+
+
+STAND_IN = r"""
+import java.io.*; import java.net.*; import java.nio.file.*; import java.util.*;
+public class Main {
+    public static void main(String[] a) throws Exception {
+        Properties p = new Properties();
+        try (InputStream in = new FileInputStream("server.properties")) { p.load(in); }
+        int port = Integer.parseInt(p.getProperty("server-port", "25565"));
+        Files.createDirectories(Paths.get("logs"));
+        Files.write(Paths.get("logs/latest.log"), ("Done (0.1s)! on " + port + "\n").getBytes());
+        try (ServerSocket s = new ServerSocket(port)) { while (true) { s.accept().close(); } }
+    }
+}
+"""
+
+
+def _jdk():
+    """(java, javac, jar) from a JDK on this machine, or None."""
+    import glob
+    import shutil
+    homes = [os.environ.get(k) for k in sorted(os.environ, reverse=True) if k.startswith("JAVA_HOME")]
+    found = shutil.which("javac")
+    if found:
+        homes.insert(0, os.path.dirname(os.path.dirname(found)))
+    homes += glob.glob(r"C:\Program Files\Eclipse Adoptium\jdk-*") + glob.glob(r"C:\Program Files\Java\jdk-*")
+    for h in homes:
+        tools = [os.path.join(h or "", "bin", t + ".exe") for t in ("java", "javac", "jar")]
+        if h and all(os.path.isfile(t) for t in tools):
+            return tools
+    return None
+
+
+def found_servers(p, args):
+    """Found on this computer: a server somebody set up outside the panel is found, handed
+    over where it is, and handed back. (Started from a prompt here; one run by somebody's own
+    Windows service takes the same road once its service is stopped.)"""
+    section("Found servers")
+    jdk = _jdk()
+    if not jdk:
+        print("  SKIP  no JDK on this machine to build a stand-in server with", flush=True)
+        return
+    java, javac, jar_tool = jdk
+    drive = os.path.splitdrive(os.path.abspath(args.home))[0]
+    top = drive + "\\rp-test-found"
+    d, port, jar = top + "\\survival", 25655, "paper-1.21.4.jar"
+    run(["cmd", "/c", "rmdir", "/s", "/q", top])
+    os.makedirs(os.path.join(d, "world"))
+    build = os.path.join(top, "build")
+    os.makedirs(build)
+    with open(os.path.join(build, "Main.java"), "w") as f:
+        f.write(STAND_IN)
+    with open(os.path.join(build, "m.txt"), "w") as f:
+        f.write("Main-Class: Main\n")
+    code, out = subprocess.run([javac, "--release", "8", "Main.java"], cwd=build, capture_output=True, text=True).returncode, ""
+    if code != 0:
+        r = subprocess.run([javac, "Main.java"], cwd=build, capture_output=True, text=True)
+        code, out = r.returncode, r.stdout + r.stderr
+    r = subprocess.run([jar_tool, "cfm", os.path.join(d, jar), "m.txt", "Main.class"], cwd=build, capture_output=True, text=True)
+    if not check("a stand-in server is built", code == 0 and r.returncode == 0 and os.path.isfile(os.path.join(d, jar)), out + r.stderr):
+        return
+    with open(os.path.join(d, "server.properties"), "w") as f:
+        f.write(f"server-port={port}\nlevel-name=world\n")
+    with open(os.path.join(d, "eula.txt"), "w") as f:
+        f.write("eula=true\n")
+    with open(os.path.join(d, "world", "level.dat"), "w") as f:
+        f.write("keep")
+
+    def listening():
+        try:
+            socket.create_connection(("127.0.0.1", port), 2).close()
+            return True
+        except OSError:
+            return False
+
+    def entry():
+        code, view = p.get("/api/found-servers")
+        mine = [f for f in (view or {}).get("servers", []) if os.path.normcase(f.get("folder", "")) == os.path.normcase(d)]
+        return (mine[0] if mine else None), view
+
+    proc = subprocess.Popen([java, "-Xmx200M", "-jar", jar, "nogui"], cwd=d, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            creationflags=0x08000000)
+    name = None
+    try:
+        check("it runs, started from a prompt", wait("port", listening, 60), "nothing on its port")
+        e, view = entry()
+        check("the panel finds it, with its folder, port, memory and jar", bool(e) and e.get("port") == port and e.get("edition") == "Java"
+              and e.get("heap") == "200M" and e.get("jar") == jar and e.get("running") is True and e.get("service") == "", str(view))
+        code, lst = p.get("/api/servers")
+        names = [s.get("name") for s in (lst if isinstance(lst, list) else lst.get("servers", []))]
+        code, r = p.post("/api/found-servers/manage", {"folder": d})
+        check("while it runs, Manage asks its owner to stop it", code == 400 and "Stop it where you started it" in str(r.get("detail")), f"{code} {r}")
+        check("... and leaves it running", listening() and proc.poll() is None)
+        code, r = p.post("/api/found-servers/manage", {"folder": top + "\\nowhere"})
+        check("a folder that isn't a found server is refused", code == 400, f"{code} {r}")
+        proc.terminate()
+        proc.wait(30)
+        e, view = entry()
+        check("once stopped it stays listed, as stopped", bool(e) and e.get("running") is False, str(view))
+        code, r = p.post("/api/found-servers/manage", {"folder": d}, timeout=300)
+        name = (r or {}).get("name")
+        if not check("Manage with RedstonePanel works", code == 200 and bool(name), f"{code} {r}"):
+            return
+        check("the panel's service runs it from the same folder", wait("svc", lambda: service_state(name) == "RUNNING", 60)
+              and wait("port", listening, 90), str(service_state(name)))
+        check("the jar has the name the panel uses; nothing was copied", os.path.isfile(os.path.join(d, "server.jar"))
+              and not os.path.exists(os.path.join(d, jar)) and not os.path.exists(os.path.join(args.home, "servers", name)))
+        code, out = run(["icacls", d])
+        check("the server's own account can change the folder", f"NT SERVICE\\{name}".lower() in out.lower(), out[:500])
+        code, lst = p.get("/api/servers")
+        now = {s.get("name"): s for s in (lst if isinstance(lst, list) else lst.get("servers", []))}
+        check("it is on the panel's list with its port", name in now and name not in names and str(now[name].get("port")) == str(port), str(now.get(name)))
+        e, view = entry()
+        check("it is no longer among the found ones, and listed as taken over", e is None
+              and [t.get("name") for t in view.get("taken_over", [])] == [name], str(view))
+        code, r = p.post(f"/api/found-servers/{name}/undo", timeout=300)
+        check("Undo works", code == 200, f"{code} {r}")
+        check("the panel's service is gone and nothing runs in its place", wait("gone", lambda: service_state(name) is None, 60)
+              and wait("closed", lambda: not listening(), 30), str(service_state(name)))
+        check("the jar has its own name again and the world is untouched", os.path.isfile(os.path.join(d, jar))
+              and not os.path.exists(os.path.join(d, "server.jar")) and open(os.path.join(d, "world", "level.dat")).read() == "keep")
+        code, lst = p.get("/api/servers")
+        check("it left the panel's list", name not in [s.get("name") for s in (lst if isinstance(lst, list) else lst.get("servers", []))])
+        name = None
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        if name:
+            p.post(f"/api/found-servers/{name}/undo", timeout=300)
         if not args.keep:
             run(["cmd", "/c", "rmdir", "/s", "/q", top])
 

@@ -612,6 +612,76 @@ def prepare_servers_folder(folder):
     return ""
 
 
+def found_folder_problem(folder):
+    """"" when the panel can run a server somebody else set up from the folder it is in, else
+    why not. Changes nothing. (Unlike a servers folder, it may be anywhere, a user's folder
+    included: only its own path and its drive matter.)"""
+    folder = str(folder or "")
+    if not _FOLDER_RE.fullmatch(folder) or ".." in folder.split("\\"):
+        return (f"The folder's path, {folder}, has a space or another character the panel can't put in a "
+                f"service. Rename the folder (with the server stopped), start it again, and it can be managed.")
+    kind = _drive_type(folder[:2] + "\\")
+    if kind is not None and kind != 3:
+        return (f"Drive {folder[:2]} is a removable, network or optical drive. Servers start with Windows, "
+                f"so they need a disk that is always there.")
+    return ""
+
+
+def _service_above(pid, parents, services, started=0):
+    """The Windows service a program belongs to: its own, or the nearest one above it (a
+    service wrapper such as WinSW or NSSM runs the real program as its child). "" when none
+    does. A "parent" that started after its child is a reused number, not a parent."""
+    seen = set()
+    while pid and pid not in seen and len(seen) < 8:
+        if pid in services:
+            return services[pid]
+        seen.add(pid)
+        parent, _ = parents.get(pid, (0, 0))
+        born = parents.get(parent, (0, 0))[1]
+        if started and born and born > started:
+            return ""
+        pid, started = parent, born or started
+    return ""
+
+
+def game_programs(names=("java", "bedrock_server")):
+    """Running programs that could be game servers: [{"pid", "exe", "argv", "cwd", "user",
+    "service", "started"}] for every program called one of `names` (java.exe and javaw.exe for
+    "java"). "service" is the Windows service it runs under, its own or a wrapper's, "" when
+    none. One whose folder can't be read is left out."""
+    wanted = [f"{n}.exe" for n in names] + (["javaw.exe"] if "java" in names else [])
+    listing = _win.program_list(wanted)
+    found = []
+    for p in listing["programs"]:
+        try:
+            pid = int(p.get("pid") or 0)
+            argv = units.split_command(p.get("command") or "")
+            exe = p.get("exe") or (argv[0] if argv else p.get("name") or "")
+            cwd = _win.process_cwd(pid)
+            if not pid or not cwd:
+                continue
+            service = _service_above(pid, listing["parents"], listing["services"], int(p.get("started") or 0))
+            if service.lower() == _win.PANEL_SERVICE:
+                service = ""
+            found.append({"pid": pid, "exe": exe, "argv": argv, "cwd": cwd, "user": p.get("user") or "",
+                          "service": service, "started": int(p.get("started") or 0) or None})
+        except (TypeError, ValueError):
+            continue
+    return found
+
+
+def owner_of(path):
+    """Nothing to remember: on Windows the panel never changes who owns a folder, it only lets
+    the server's own account in (see give_to_game_account)."""
+    return ""
+
+
+def give_back(path, owner):
+    """Nothing to hand back: the folder still belongs to whoever it belonged to, and the
+    account the panel let in went away with the panel's service."""
+    return _done(0)
+
+
 def fs():
     """The module the file manager uses in place of `os`: the same calls, with the "open
     relative to a folder, never through a link" behaviour Windows doesn't have built in."""

@@ -288,6 +288,73 @@ class OtherPeoplesServices(unittest.TestCase):
         self.assertEqual(name, "minecraft-java-2")
 
 
+class FoundServers(unittest.TestCase):
+    """Servers somebody set up outside the panel (core/found.py), as Windows shows them."""
+
+    def listing(self):
+        # Quentin's own setup on Superman: a WinSW wrapper is the service, the server is its child
+        return {"programs": [{"pid": 500, "name": "java.exe", "exe": "C:\\Java\\bin\\java.exe", "user": "SYSTEM", "started": 1010,
+                              "command": '"C:\\Java\\bin\\java.exe" -Xmx4G -jar server.jar nogui'},
+                             {"pid": 600, "name": "java.exe", "exe": "C:\\Java\\bin\\java.exe", "user": "quent", "started": 2000,
+                              "command": "java -jar paper.jar"},
+                             {"pid": 700, "name": "java.exe", "exe": "", "user": "", "started": 3000, "command": "java -jar x.jar"},
+                             {"pid": 800, "name": "java.exe", "exe": "C:\\Java\\bin\\java.exe", "user": "", "started": 3000,
+                              "command": "java -jar server.jar nogui"}],
+                "parents": {500: (400, 1010), 400: (4, 1000), 600: (650, 2000), 650: (4, 2500), 700: (4, 3000),
+                            800: (780, 3000), 780: (4, 2990)},
+                "services": {400: "minecraft-java", 650: "Spooler", 780: "minecraft-java-2", 900: "phantom-minecraft-bedrock"}}
+
+    def test_a_wrapped_server_is_found_under_its_service(self):
+        from core.platform.windows import system
+        folders = {500: "C:\\Users\\quent\\Projects\\minecraft-java", 600: "D:\\mc", 800: "D:\\minecraft\\servers\\minecraft-java-2"}
+        with mock.patch.object(_win, "program_list", return_value=self.listing()) as asked, \
+             mock.patch.object(_win, "process_cwd", side_effect=lambda pid: folders.get(pid, "")):
+            got = {g["pid"]: g for g in system.game_programs()}
+        self.assertEqual(asked.call_args[0][0], ["java.exe", "bedrock_server.exe", "javaw.exe"])
+        self.assertEqual(sorted(got), [500, 600, 800])                       # 700: its folder can't be read
+        self.assertEqual((got[500]["service"], got[500]["cwd"], got[500]["user"]),
+                         ("minecraft-java", "C:\\Users\\quent\\Projects\\minecraft-java", "SYSTEM"))
+        self.assertEqual(got[500]["argv"], ["C:\\Java\\bin\\java.exe", "-Xmx4G", "-jar", "server.jar", "nogui"])
+        # Its "parent" started after it did: a number Windows used again, not the service that runs it
+        self.assertEqual(got[600]["service"], "")
+        self.assertEqual(got[800]["service"], "minecraft-java-2")
+
+    def test_the_folder_it_is_in(self):
+        from core.platform.windows import system
+        with mock.patch.object(system, "_drive_type", return_value=3):
+            self.assertEqual(system.found_folder_problem("C:\\Users\\quent\\Projects\\minecraft-java"), "")
+            self.assertIn("space", system.found_folder_problem("C:\\My Servers\\survival"))
+            self.assertIn("space", system.found_folder_problem("\\\\nas\\mc"))
+        with mock.patch.object(system, "_drive_type", return_value=2):
+            self.assertIn("removable", system.found_folder_problem("E:\\mc"))
+
+    def test_only_somebody_elses_service_is_stopped_this_way(self):
+        from core.platform.windows import services
+        theirs = {"start": "auto", "command": "C:\\mc\\minecraft-java.exe", "account": "LocalSystem"}
+        ours = {"start": "auto", "command": 'python.exe "C:\\Program Files\\RedstonePanel\\core\\platform\\windows\\runner.py" service minecraft-java-2.service',
+                "account": "x"}
+        with mock.patch.object(services, "_log"), mock.patch.object(_win, "stop_service") as stop, \
+             mock.patch.object(_win, "start_service") as start, mock.patch.object(_win, "set_start") as set_start:
+            with mock.patch.object(_win, "service_config", return_value=theirs):
+                self.assertTrue(services.other_enabled("minecraft-java"))
+                services.other_control("minecraft-java", "stop")
+                services.other_control("minecraft-java", "disable")
+                services.other_control("minecraft-java", "enable")
+                services.other_control("minecraft-java", "start")
+                with self.assertRaises(ValueError):
+                    services.other_control("minecraft-java", "delete")
+            self.assertEqual([c[0] for c in set_start.call_args_list], [("minecraft-java", "manual"), ("minecraft-java", "auto")])
+            stop.assert_called_once_with("minecraft-java")
+            start.assert_called_once_with("minecraft-java")
+            with mock.patch.object(_win, "service_config", return_value=ours):
+                with self.assertRaises(OSError):
+                    services.other_control("minecraft-java-2", "stop")
+            with mock.patch.object(_win, "service_config", return_value=None):
+                self.assertFalse(services.other_enabled("gone"))
+                with self.assertRaises(OSError):
+                    services.other_control("gone", "start")
+
+
 class Preview(unittest.TestCase):
     """What the Windows preview doesn't do yet is refused in one sentence; reading still works."""
 

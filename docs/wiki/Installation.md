@@ -142,6 +142,10 @@ You then install each new version the same way.
    - turn on HTTPS under **🛡️ Settings → Connection**;
    - add a Discord webhook under **🛡️ Settings → Notifications**.
 
+Already running a Minecraft server on this machine? **➕ New Server** lists it under **Found on
+this computer**. **Manage with RedstonePanel** hands it to the panel where it is, with no files
+moved, and **Undo** puts it back.
+
 The [User Manual](../guide/README.md) covers each of these in detail.
 
 ## Updating

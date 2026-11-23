@@ -384,6 +384,36 @@ def _register(unit_name, spec=None):
     return name
 
 
+def other_enabled(service):
+    """True when a Windows service the panel didn't make starts with Windows."""
+    try:
+        cfg = _win.service_config(service)
+    except OSError:
+        cfg = None
+    return bool(cfg) and cfg["start"] == "auto"
+
+
+def other_control(service, action):
+    """start, stop, enable or disable a Windows service the panel didn't make. Only
+    core/found.py uses this, and only after an admin chose to hand that server to the panel (or
+    back). "disable" sets it to start by hand, so it stays as its owner made it otherwise."""
+    if action not in ("start", "stop", "enable", "disable"):
+        raise ValueError(action)
+    cfg = _win.service_config(service)
+    if cfg is None:
+        raise OSError(f"There is no service {service}.")
+    if _win.is_ours(cfg) or service.lower() == _win.PANEL_SERVICE:
+        raise OSError(f"{service} is one of the panel's own services.")
+    _log(f"[SERVICE] {action} {service} (not one of the panel's)")
+    if action == "start":
+        _win.start_service(service)
+    elif action == "stop":
+        _win.stop_service(service)
+    else:
+        _win.set_start(service, "auto" if action == "enable" else "manual")
+    return _done()
+
+
 def _change(args, elevate=False, quiet=False, timeout=None):
     return systemctl(*args, timeout=timeout)
 

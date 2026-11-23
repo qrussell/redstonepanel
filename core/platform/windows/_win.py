@@ -310,6 +310,72 @@ def lock_down(path):
 # ---------------------------------------------------------------------------
 # The service manager
 # ---------------------------------------------------------------------------
+def process_cwd(pid):
+    """The folder a running program works in, or "" when it can't be read (the program ended,
+    or this isn't the system account or an administrator). Windows keeps it in the program's
+    own memory: process -> PEB -> ProcessParameters -> CurrentDirectory (64-bit layout)."""
+    if ctypes.sizeof(ctypes.c_void_p) != 8:
+        return ""
+    k32, nt = dll("kernel32"), dll("ntdll")
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    k32.ReadProcessMemory.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
+                                      ctypes.POINTER(ctypes.c_size_t)]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    nt.NtQueryInformationProcess.argtypes = [wintypes.HANDLE, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong,
+                                             ctypes.POINTER(ctypes.c_ulong)]
+    h = k32.OpenProcess(0x0400 | 0x0010, False, int(pid))      # QUERY_INFORMATION | VM_READ
+    if not h:
+        return ""
+    try:
+        def read(address, size):
+            buf, got = ctypes.create_string_buffer(size), ctypes.c_size_t()
+            if not k32.ReadProcessMemory(h, ctypes.c_void_p(address), buf, size, ctypes.byref(got)) or got.value != size:
+                raise OSError("unreadable")
+            return buf.raw
+        info, need = (ctypes.c_void_p * 6)(), ctypes.c_ulong()  # PROCESS_BASIC_INFORMATION; [1] is the PEB
+        if nt.NtQueryInformationProcess(h, 0, info, ctypes.sizeof(info), ctypes.byref(need)) != 0 or not info[1]:
+            return ""
+        params = struct.unpack("<Q", read(info[1] + 0x20, 8))[0]
+        length, _, buffer = struct.unpack("<HHxxxxQ", read(params + 0x38, 16))
+        if not length or length > 65534 or not buffer:
+            return ""
+        folder = read(buffer, length).decode("utf-16-le", "replace")
+        return folder if len(folder) <= 3 else folder.rstrip("\\")
+    except (OSError, struct.error):
+        return ""
+    finally:
+        k32.CloseHandle(h)
+
+
+def program_list(names):
+    """What is running, for finding game servers: {"programs": [{"pid", "exe", "command",
+    "user", "started"}] for the programs called one of `names` ("java.exe"), "parents": {pid:
+    (parent pid, started)} for every process, "services": {pid: service name}}."""
+    import json
+    wanted = ",".join(ps_quote(n) for n in names)
+    r = powershell(
+        "$p = Get-CimInstance Win32_Process; $w = @(" + wanted + "); "
+        "$t = { param($d) if ($d) { [int64]([DateTimeOffset]$d).ToUnixTimeSeconds() } else { 0 } }; "
+        "$out = @{ "
+        "parents = @($p | ForEach-Object { ,@([int]$_.ProcessId, [int]$_.ParentProcessId, (& $t $_.CreationDate)) }); "
+        "services = @(Get-CimInstance Win32_Service -Filter 'ProcessId <> 0' | ForEach-Object { ,@([int]$_.ProcessId, $_.Name) }); "
+        "programs = @($p | Where-Object { $w -contains $_.Name } | ForEach-Object { "
+        "$u = ''; try { $u = (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User } catch {}; "
+        "@{ pid = [int]$_.ProcessId; exe = [string]$_.ExecutablePath; name = $_.Name; "
+        "command = [string]$_.CommandLine; user = [string]$u; started = (& $t $_.CreationDate) } }) }; "
+        "$out | ConvertTo-Json -Depth 4 -Compress", timeout=60)
+    if r.returncode != 0:
+        return {"programs": [], "parents": {}, "services": {}}
+    try:
+        data = json.loads(r.stdout)
+    except ValueError:
+        return {"programs": [], "parents": {}, "services": {}}
+    return {"programs": list(data.get("programs") or []),
+            "parents": {int(a[0]): (int(a[1]), int(a[2] or 0)) for a in data.get("parents") or []},
+            "services": {int(a[0]): str(a[1]) for a in data.get("services") or []}}
+
+
 class _Handle:
     def __init__(self, h):
         self.h = h

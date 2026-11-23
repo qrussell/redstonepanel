@@ -194,3 +194,31 @@ def prepare_servers_folder(folder):
 
 def servers_drives():
     return list(getattr(fake.state, "servers_drives", []))
+
+
+def found_folder_problem(folder):
+    import re
+    if not re.fullmatch(r"/[A-Za-z0-9._/-]+", folder or ""):
+        return f"The folder's path, {folder}, has a space or another character the panel can't put in a service."
+    return getattr(fake.state, "found_folder_problem", "")
+
+
+def game_programs(names=("java", "bedrock_server")):
+    """What the test put in fake.state.game_programs; one started by a unit runs while that unit is active."""
+    out = []
+    for p in getattr(fake.state, "game_programs", []):
+        unit = p.get("service")
+        if unit and fake.state.units.get(unit, {}).get("state", "active") != "active":
+            continue
+        out.append(dict(p))
+    return out
+
+
+def owner_of(path):
+    return getattr(fake.state, "owners", {}).get(path, "1000:1000")
+
+
+def give_back(path, owner):
+    from core.platform.fake._result import done
+    fake.record("system.give_back", path, owner)
+    return done()
