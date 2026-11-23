@@ -149,6 +149,25 @@ class Causes(unittest.TestCase):
         self.assertEqual(len(out), C.EXCERPT_LINES + 2)
 
 
+class NewServerOldName(unittest.TestCase):
+    def test_a_name_given_to_a_new_server_starts_without_a_last_crash(self):
+        from core import manager as M
+        C._save("minecraft-java", {"server": "minecraft-java", "at": time.time(), "crashed": True})
+        self.assertIsNotNone(C.load("minecraft-java"))
+        with mock.patch.object(M, "find_server_folder", return_value=None), \
+             mock.patch.object(M, "_used_ports", return_value=set()), \
+             mock.patch.object(M.services, "name_free", return_value=True), \
+             mock.patch.object(M.os.path, "exists", return_value=False):
+            name, port = M._reserve_name("java")
+        M._release_name(name)
+        self.assertEqual(name, "minecraft-java")
+        self.assertIsNone(C.load("minecraft-java"))
+
+    def test_forgetting_what_is_not_there_is_fine(self):
+        C.forget("minecraft-never")
+        C.forget("../x")
+
+
 class Records(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp(dir=TMP)
