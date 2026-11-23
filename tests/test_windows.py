@@ -299,19 +299,29 @@ class FoundServers(unittest.TestCase):
                               "command": "java -jar paper.jar"},
                              {"pid": 700, "name": "java.exe", "exe": "", "user": "", "started": 3000, "command": "java -jar x.jar"},
                              {"pid": 800, "name": "java.exe", "exe": "C:\\Java\\bin\\java.exe", "user": "", "started": 3000,
-                              "command": "java -jar server.jar nogui"}],
-                "parents": {500: (400, 1010), 400: (4, 1000), 600: (650, 2000), 650: (4, 2500), 700: (4, 3000),
-                            800: (780, 3000), 780: (4, 2990)},
-                "services": {400: "minecraft-java", 650: "Spooler", 780: "minecraft-java-2", 900: "phantom-minecraft-bedrock"}}
+                              "command": "java -jar server.jar nogui"},
+                             {"pid": 900, "name": "java.exe", "exe": "", "user": "", "started": 4000, "command": "java -jar server.jar"},
+                             {"pid": 950, "name": "java.exe", "exe": "", "user": "", "started": 5000, "command": "java -jar server.jar"}],
+                # 900: started by a script the service runs; 950: started from a scheduled task, a build
+                # agent or an SSH session, whose service is NOT the server's (the panel would stop it)
+                "parents": {500: (400, 1010, "java.exe"), 400: (4, 1000, "minecraft-java.exe"), 600: (650, 2000, "java.exe"),
+                            650: (4, 2500, "nssm.exe"), 700: (4, 3000, "java.exe"), 800: (780, 3000, "java.exe"),
+                            780: (4, 2990, "python.exe"), 900: (890, 4000, "java.exe"), 890: (880, 3990, "cmd.exe"),
+                            880: (4, 3980, "nssm.exe"), 950: (940, 5000, "java.exe"), 940: (930, 4990, "python.exe"),
+                            930: (920, 4980, "pwsh.exe"), 920: (4, 4000, "runner.worker.exe")},
+                "services": {400: "minecraft-java", 650: "other", 780: "minecraft-java-2", 880: "mc-nssm", 920: "actions.runner"}}
 
     def test_a_wrapped_server_is_found_under_its_service(self):
         from core.platform.windows import system
-        folders = {500: "C:\\Users\\quent\\Projects\\minecraft-java", 600: "D:\\mc", 800: "D:\\minecraft\\servers\\minecraft-java-2"}
+        folders = {500: "C:\\Users\\quent\\Projects\\minecraft-java", 600: "D:\\mc", 800: "D:\\minecraft\\servers\\minecraft-java-2",
+                   900: "D:\\nssm-mc", 950: "D:\\ci"}
         with mock.patch.object(_win, "program_list", return_value=self.listing()) as asked, \
              mock.patch.object(_win, "process_cwd", side_effect=lambda pid: folders.get(pid, "")):
             got = {g["pid"]: g for g in system.game_programs()}
         self.assertEqual(asked.call_args[0][0], ["java.exe", "bedrock_server.exe", "javaw.exe"])
-        self.assertEqual(sorted(got), [500, 600, 800])                       # 700: its folder can't be read
+        self.assertEqual(sorted(got), [500, 600, 800, 900, 950])             # 700: its folder can't be read
+        self.assertEqual(got[900]["service"], "mc-nssm")                     # through the service's start script
+        self.assertEqual(got[950]["service"], "")                            # under a build agent: not its server
         self.assertEqual((got[500]["service"], got[500]["cwd"], got[500]["user"]),
                          ("minecraft-java", "C:\\Users\\quent\\Projects\\minecraft-java", "SYSTEM"))
         self.assertEqual(got[500]["argv"], ["C:\\Java\\bin\\java.exe", "-Xmx4G", "-jar", "server.jar", "nogui"])
@@ -349,6 +359,12 @@ class FoundServers(unittest.TestCase):
             with mock.patch.object(_win, "service_config", return_value=ours):
                 with self.assertRaises(OSError):
                     services.other_control("minecraft-java-2", "stop")
+            windows = {"start": "auto", "command": "C:\\Windows\\system32\\svchost.exe -k netsvcs -p", "account": "LocalSystem"}
+            with mock.patch.object(_win, "service_config", return_value=windows), \
+                 mock.patch.dict(os.environ, {"SystemRoot": "C:\\Windows"}):
+                with self.assertRaises(OSError):                             # Task Scheduler and the like: never
+                    services.other_control("Schedule", "stop")
+            stop.assert_called_once_with("minecraft-java")
             with mock.patch.object(_win, "service_config", return_value=None):
                 self.assertFalse(services.other_enabled("gone"))
                 with self.assertRaises(OSError):

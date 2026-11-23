@@ -627,20 +627,31 @@ def found_folder_problem(folder):
     return ""
 
 
+_SHELLS = ("cmd.exe", "powershell.exe", "pwsh.exe")
+
+
 def _service_above(pid, parents, services, started=0):
-    """The Windows service a program belongs to: its own, or the nearest one above it (a
-    service wrapper such as WinSW or NSSM runs the real program as its child). "" when none
-    does. A "parent" that started after its child is a reused number, not a parent."""
-    seen = set()
-    while pid and pid not in seen and len(seen) < 8:
-        if pid in services:
-            return services[pid]
-        seen.add(pid)
-        parent, _ = parents.get(pid, (0, 0))
-        born = parents.get(parent, (0, 0))[1]
-        if started and born and born > started:
+    """The Windows service that runs a program: its own, its parent's (a service wrapper such
+    as WinSW or NSSM runs the real program as its child), or one reached through start scripts
+    only (wrapper -> cmd.exe -> java.exe). "" when none does.
+
+    Deliberately narrow, because the panel stops what this names when an admin hands the
+    server over: a program started some other way under a service (a scheduled task, an SSH
+    session, a build agent) is not that service's server. A "parent" that started after its
+    child is a reused number, not a parent."""
+    if pid in services:
+        return services[pid]
+    for _ in range(4):
+        entry = parents.get(pid) or (0, 0, "")
+        parent = entry[0]
+        above = parents.get(parent) or (0, 0, "")
+        if not parent or (started and above[1] and above[1] > started):
             return ""
-        pid, started = parent, born or started
+        if parent in services:
+            return services[parent]
+        if above[2] not in _SHELLS:
+            return ""
+        pid, started = parent, above[1] or started
     return ""
 
 

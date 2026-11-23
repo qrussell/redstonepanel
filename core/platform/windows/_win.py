@@ -351,15 +351,21 @@ def process_cwd(pid):
 def program_list(names):
     """What is running, for finding game servers: {"programs": [{"pid", "exe", "command",
     "user", "started"}] for the programs called one of `names` ("java.exe"), "parents": {pid:
-    (parent pid, started)} for every process, "services": {pid: service name}}."""
+    (parent pid, started, program name)} for every process, "services": {pid: service name} for
+    services that could be a game server's (see below)}."""
     import json
     wanted = ",".join(ps_quote(n) for n in names)
     r = powershell(
         "$p = Get-CimInstance Win32_Process; $w = @(" + wanted + "); "
         "$t = { param($d) if ($d) { [int64]([DateTimeOffset]$d).ToUnixTimeSeconds() } else { 0 } }; "
+        # Only a service with a program of its own that isn't part of Windows. Windows' shared
+        # hosts (svchost.exe runs Task Scheduler and dozens more) are the parent of many things
+        # and the wrapper of none.
+        "$host_ = @{}; $p | Where-Object { $_.Name -in @('svchost.exe','services.exe','lsass.exe','wininit.exe') } | ForEach-Object { $host_[[int]$_.ProcessId] = 1 }; "
         "$out = @{ "
-        "parents = @($p | ForEach-Object { ,@([int]$_.ProcessId, [int]$_.ParentProcessId, (& $t $_.CreationDate)) }); "
-        "services = @(Get-CimInstance Win32_Service -Filter 'ProcessId <> 0' | ForEach-Object { ,@([int]$_.ProcessId, $_.Name) }); "
+        "parents = @($p | ForEach-Object { ,@([int]$_.ProcessId, [int]$_.ParentProcessId, (& $t $_.CreationDate), [string]$_.Name) }); "
+        "services = @(Get-CimInstance Win32_Service -Filter \"ProcessId <> 0 AND ServiceType = 'Own Process'\" | "
+        "Where-Object { -not $host_.ContainsKey([int]$_.ProcessId) -and ([string]$_.PathName).Trim('\"') -notlike ($env:SystemRoot + '\\*') } | ForEach-Object { ,@([int]$_.ProcessId, $_.Name) }); "
         "programs = @($p | Where-Object { $w -contains $_.Name } | ForEach-Object { "
         "$u = ''; try { $u = (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User } catch {}; "
         "@{ pid = [int]$_.ProcessId; exe = [string]$_.ExecutablePath; name = $_.Name; "
@@ -372,7 +378,7 @@ def program_list(names):
     except ValueError:
         return {"programs": [], "parents": {}, "services": {}}
     return {"programs": list(data.get("programs") or []),
-            "parents": {int(a[0]): (int(a[1]), int(a[2] or 0)) for a in data.get("parents") or []},
+            "parents": {int(a[0]): (int(a[1]), int(a[2] or 0), str(a[3] or "").lower()) for a in data.get("parents") or []},
             "services": {int(a[0]): str(a[1]) for a in data.get("services") or []}}
 
 

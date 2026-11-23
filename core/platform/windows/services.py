@@ -384,6 +384,14 @@ def _register(unit_name, spec=None):
     return name
 
 
+def _is_windows_own(cfg):
+    """True for a service whose program is in the Windows folder (svchost.exe and the rest of
+    Windows itself). No game server's service is; the panel must never stop one of these."""
+    command = ((cfg or {}).get("command") or "").strip().strip('"').lower().replace("/", "\\")
+    root = os.environ.get("SystemRoot", "C:\\Windows").lower().rstrip("\\") + "\\"
+    return command.startswith(root) or command.startswith("\\systemroot\\") or command.startswith("%systemroot%")
+
+
 def other_enabled(service):
     """True when a Windows service the panel didn't make starts with Windows."""
     try:
@@ -404,6 +412,8 @@ def other_control(service, action):
         raise OSError(f"There is no service {service}.")
     if _win.is_ours(cfg) or service.lower() == _win.PANEL_SERVICE:
         raise OSError(f"{service} is one of the panel's own services.")
+    if _is_windows_own(cfg):
+        raise OSError(f"{service} is part of Windows, not a game server's service; it was left alone.")
     _log(f"[SERVICE] {action} {service} (not one of the panel's)")
     if action == "start":
         _win.start_service(service)
