@@ -104,6 +104,8 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.21
 
+**Join pages for players** *(1.21.5)*. **🔗 Join pages** gives each server a public page that tells players how to join: the address, whether it's online, how many are playing, the Minecraft version, and for a modpack server the exact pack to install. Nothing is public until you turn it on, and the pages have a port of their own, so the panel stays off the internet. Read the [1.21.5 release notes](release-notes/v1.21.5.md).
+
 **Quick commands in Live Chat** *(1.21.4)*. Type `/` and Live Chat suggests commands, then the players online or the choices each part takes, as the game does. **Commands…** opens a form that asks only for what a command needs and shows it before **Run**, and one-click buttons cover List players, Save world, Day, Night and Clear weather. Read the [1.21.4 release notes](release-notes/v1.21.4.md).
 
 **Servers you set up yourself** *(1.21.3)*. **New server** lists Minecraft servers on the machine that were set up outside the panel under **Found on this computer**. **Manage with RedstonePanel** takes one over in place, with nothing copied or moved and the old service only turned off, and **Undo** puts it back. Read the [1.21.3 release notes](release-notes/v1.21.3.md).

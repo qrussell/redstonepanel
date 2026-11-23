@@ -10,15 +10,12 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 
 ## Next up
 
-### 1.21.5 and 1.21.6: join pages for players
+### 1.21.6: player packs
 
-- **1.21.5: a join page per server** *(built)*. A public page, off until you turn it on, that
-  tells players how to join: the address, whether the server is online, how many are
-  playing, the Minecraft version, and for a modpack server the exact pack to install. The
-  pages have their own port, so the panel itself stays off the internet.
-- **1.21.6: player packs.** For a server whose mods you picked by hand, the panel builds the
-  pack players need (a Modrinth `.mrpack`, and packwiz for automatic updates), leaving out
-  mods that only run on the server, and rebuilds it when the server's mods change.
+For a server whose mods you picked by hand, the panel builds the pack players need (a
+Modrinth `.mrpack`, and packwiz for automatic updates), leaving out mods that only run on the
+server, and rebuilds it when the server's mods change. The pack is offered on the server's
+join page (1.21.5).
 
 ### 1.21 to 1.24: RedstonePanel on Windows
 
@@ -79,4 +76,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.21.4** adds quick commands to Live Chat: suggestions as you type, a form that builds the command and one-click buttons; **1.21.3** finds Minecraft servers set up outside the panel and can take them over in place, with undo; **1.21.2** makes light/dark mode a one-click switch in the top right corner; **1.21.1** lets you choose the disk and folder servers are kept in; **1.21** is groundwork for the Windows version, with nothing changed on screen; **1.20** adds Purpur, Quilt, NeoForge and Forge servers and modpacks from Modrinth or a CurseForge server pack; **1.19** changes a Java server's type in place (Vanilla, Paper, Fabric) with a backup and undo, and rolls back updates; **1.18** adds per-server permissions for helpers and SFTP for FileZilla or WinSCP; **1.17.2** adds Advanced options to New server (builds, Java, memory, limits, startup flags, world and settings); **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.
+See [What's New](Whats-New.md). The latest: **1.21.5** adds join pages: a public page per server that tells players how to join, on a port of its own; **1.21.4** adds quick commands to Live Chat: suggestions as you type, a form that builds the command and one-click buttons; **1.21.3** finds Minecraft servers set up outside the panel and can take them over in place, with undo; **1.21.2** makes light/dark mode a one-click switch in the top right corner; **1.21.1** lets you choose the disk and folder servers are kept in; **1.21** is groundwork for the Windows version, with nothing changed on screen; **1.20** adds Purpur, Quilt, NeoForge and Forge servers and modpacks from Modrinth or a CurseForge server pack; **1.19** changes a Java server's type in place (Vanilla, Paper, Fabric) with a backup and undo, and rolls back updates; **1.18** adds per-server permissions for helpers and SFTP for FileZilla or WinSCP; **1.17.2** adds Advanced options to New server (builds, Java, memory, limits, startup flags, world and settings); **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.
