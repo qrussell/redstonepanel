@@ -109,6 +109,8 @@ class CodesAndRules(unittest.TestCase):
                    ("DELETE", "/api/servers/minecraft-java-1"),
                    ("GET", "/api/servers/minecraft-java-1/export"),
                    ("POST", "/api/servers/deploy"), ("POST", "/api/servers/import"),
+                ("POST", "/api/servers/modpack"), ("GET", "/api/modpacks/search"),
+                ("GET", "/api/modpacks/versions"),
                    ("GET", "/api/servers/removed"), ("POST", "/api/servers/removed/minecraft-old/restore"),
                    ("POST", "/api/cluster/templates"), ("GET", "/api/java/runtimes"),
                    ("POST", "/api/java/runtimes/install"), ("GET", "/api/java/requirement")]
@@ -488,6 +490,8 @@ class RouteCoverage(unittest.TestCase):
                 ("GET", "/api/servers"), ("GET", "/api/logs"), ("GET", "/api/templates"), ("GET", "/api/host"),
                 ("GET", "/api/host/history"),
                 ("POST", "/api/servers/deploy"), ("POST", "/api/servers/import"),
+                ("POST", "/api/servers/modpack"), ("GET", "/api/modpacks/search"),
+                ("GET", "/api/modpacks/versions"),
                 ("GET", "/api/servers/removed"), ("POST", "/api/servers/removed/{server_name}/restore"),
                 ("POST", "/api/cluster/templates"),
                 ("GET", "/api/java/versions"), ("GET", "/api/java/requirement"), ("GET", "/api/java/runtimes"),

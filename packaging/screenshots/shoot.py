@@ -24,6 +24,9 @@ from playwright.sync_api import sync_playwright
 BASE = os.environ["BASE"]
 OUT = os.environ.get("OUT", "/out")
 THEMES = os.environ.get("THEMES", "dark light").split()
+# ONLY="new server,modpack": take just these steps (the names given to step()), to retake a few
+# pictures on a demo kept with KEEP=1. The sign-in picture and the move are skipped too.
+ONLY = [s.strip() for s in os.environ.get("ONLY", "").split(",") if s.strip()]
 taken, failed, skipped = [], [], []
 
 
@@ -69,6 +72,8 @@ class Shooter:
             page.evaluate("document.getElementById('console-dock').style.visibility = ''")
 
     def step(self, name, fn):
+        if ONLY and name not in ONLY:
+            return
         try:
             fn()
         except Exception as e:  # keep going: one missing picture shouldn't stop the rest
@@ -103,7 +108,7 @@ class Shooter:
         page = self.page
         page.goto(BASE + "/static/login.html")
         page.wait_for_timeout(1500)
-        if picture:
+        if picture and not ONLY:
             self.step("sign-in", lambda: self.shot("sign-in", element="form"))
         r = self.ctx.request.post(BASE + "/api/auth/login",
                                   data={"username": os.environ["RP_USER"], "password": os.environ["RP_PASS"]})
@@ -288,7 +293,7 @@ class Shooter:
             page.wait_for_timeout(2500)
             page.select_option("#deploy-where", index=1)
             page.wait_for_timeout(2500)
-            shot("new-server")
+            self.tall_shot("new-server", "#modal-content")   # taller than the screen since 1.20
             self.close_modals()
         step("new server", new_server)
 
@@ -320,6 +325,37 @@ class Shooter:
             self.tall_shot("new-server-advanced", "#modal-content")
             self.close_modals()
         step("new server advanced", new_server_advanced)
+
+        # 1.20: New server -> From a modpack. The search is Modrinth's real list; the second picture
+        # is the Modpack card on Maintenance, when the demo has a server made from a pack
+        # (MODPACK_SERVER names it; demo.sh doesn't make one, because it would change every
+        # picture with the server list in it).
+        def modpack():
+            page.evaluate("ServerApp.openDeployModal()")
+            page.wait_for_timeout(2500)
+            page.evaluate("ServerApp.openModpackDialog()")
+            page.wait_for_selector("#pack-q")
+            page.wait_for_timeout(5000)
+            for _ in range(5):                           # the packs' icons come from Modrinth's CDN:
+                missing = page.evaluate("""() => {       // ask again for any that didn't arrive
+                    const bad = [...document.querySelectorAll('#modal-content img')].filter(i => !(i.complete && i.naturalWidth));
+                    bad.forEach(i => { i.loading = 'eager'; const u = i.src; i.src = ''; i.src = u; });
+                    return bad.length;
+                }""")
+                if not missing:
+                    break
+                page.wait_for_timeout(4000)
+            shot("modpack-search")
+            self.close_modals()
+            server = os.environ.get("MODPACK_SERVER")
+            if not server:
+                skipped.append(f"{self.theme}/modpack-card (no MODPACK_SERVER)")
+                return
+            self.open_server(server, tab="maintenance")
+            page.wait_for_selector("#modpack-card:not(.hidden)")
+            page.wait_for_timeout(1500)
+            shot("modpack-card", element="#modpack-card")
+        step("modpack", modpack)
 
         def startup_flags():
             self.open_server("minecraft-java", tab="maintenance")   # chosen, not saved: no restart
@@ -486,8 +522,9 @@ with sync_playwright() as p:
         phone.ctx.close()
     # Last: a real move in each theme, to the node and back, so the demo ends as it began
     for s in browser_shooters:
-        s.move("minecraft-bedrock")
-    if len(browser_shooters) % 2:
+        if not ONLY:
+            s.move("minecraft-bedrock")
+    if len(browser_shooters) % 2 and not ONLY:
         failed.append("the Bedrock server was left on the node: run with an even number of themes")
     browser.close()
 

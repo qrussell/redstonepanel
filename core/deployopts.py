@@ -230,8 +230,8 @@ def validate(advanced, edition, loader="vanilla", is_admin=True):
     if "port" in a:
         plan["port"] = _num(a["port"], 1024, 65535 if java else 65534, "The game port")
     if java and "build" in a:
-        if loader not in ("paper", "fabric"):
-            raise OptionError("Only Paper and Fabric servers have builds to choose.")
+        if loader not in ("paper", "purpur", "fabric", "quilt", "forge", "neoforge"):
+            raise OptionError("Vanilla servers have no builds to choose.")
         build = str(a["build"]).strip()
         if build.lower() != "latest":
             if not BUILD_RE.match(build):

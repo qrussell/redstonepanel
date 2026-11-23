@@ -53,6 +53,45 @@ BUNDLES = {
     ],
 }
 
+# 1.20: Quilt loads Fabric mods and Purpur loads Paper plugins, so they share those sets (a
+# card says so when a project has no build for them). Forge and NeoForge have their own.
+GROUPS["quilt"] = GROUPS["fabric"]
+BUNDLES["quilt"] = BUNDLES["fabric"]
+GROUPS["purpur"] = GROUPS["paper"]
+BUNDLES["purpur"] = BUNDLES["paper"]
+GROUPS["forge"] = [
+    ("performance", "Performance", ["ferrite-core", "modernfix", "servercore", "clumps"]),
+    ("admin", "Admin tools", ["spark", "chunky", "luckperms", "worldedit", "open-parties-and-claims"]),
+    ("players", "For players", ["simple-voice-chat", "bluemap", "corpse", "no-chat-reports", "jei"]),
+    ("library", "Libraries", ["architectury-api", "cloth-config"]),
+]
+GROUPS["neoforge"] = [
+    ("performance", "Performance", ["lithium", "ferrite-core", "modernfix", "scalablelux", "servercore", "clumps"]),
+    ("admin", "Admin tools", ["spark", "chunky", "luckperms", "worldedit", "open-parties-and-claims"]),
+    ("players", "For players", ["simple-voice-chat", "bluemap", "geyser", "floodgate", "corpse",
+                                "no-chat-reports", "jei"]),
+    ("library", "Libraries", ["architectury-api", "cloth-config"]),
+]
+BUNDLES["forge"] = [
+    ("performance", "Performance pack",
+     "Less memory and fewer wasted ticks, with no gameplay changes.",
+     ["ferrite-core", "modernfix", "servercore"]),
+    ("essentials", "Server essentials",
+     "Profiling (spark), world pre-generation (Chunky) and permissions (LuckPerms).",
+     ["spark", "chunky", "luckperms"]),
+]
+BUNDLES["neoforge"] = [
+    ("performance", "Performance pack",
+     "Faster ticks, less memory and quicker lighting, with no gameplay changes.",
+     ["lithium", "ferrite-core", "modernfix", "scalablelux"]),
+    ("essentials", "Server essentials",
+     "Profiling (spark), world pre-generation (Chunky) and permissions (LuckPerms).",
+     ["spark", "chunky", "luckperms"]),
+    ("bedrock", "Bedrock players",
+     "Lets Bedrock players (consoles, phones) join this Java server, without a Java account.",
+     ["geyser", "floodgate"]),
+]
+
 # Categories each source can filter by: (id, label)
 CATEGORIES = {
     "modrinth": [("optimization", "Optimization"), ("management", "Management"), ("utility", "Utility"),

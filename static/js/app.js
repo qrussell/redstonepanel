@@ -648,7 +648,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab(this.firstConfigSubTab());
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions(); this.loadAutoUpdate(); this.loadConvert(); this.loadJavaChoice(); this.loadResources(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions().then(() => this.loadModpack()); this.loadAutoUpdate(); this.loadConvert(); this.loadJavaChoice(); this.loadResources(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
@@ -1412,6 +1412,7 @@ const ServerApp = {
     },
 
     async openDeployModal() {
+        this.modalWide(false);
         await this.fetchTemplates(); // Ensure templates are loaded for the dropdown
         this.loadRemovedServers();   // fills the "Removed servers" section when it arrives
         const modal = document.getElementById('modal-overlay');
@@ -1452,8 +1453,16 @@ const ServerApp = {
                             <label class="block text-sm text-gray-400 mb-1">Server Type</label>
                             <select id="deploy-loader" onchange="ServerApp.loadDeployVersions(); ServerApp.refreshAdvanced()" class="w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white mb-2">
                                 <option value="vanilla">Vanilla (Mojang)</option>
-                                <option value="paper">Paper (plugins)</option>
-                                <option value="fabric">Fabric (mods)</option>
+                                <optgroup label="Plugins">
+                                    <option value="paper">Paper (plugins)</option>
+                                    <option value="purpur" class="loader-1-20">Purpur (plugins)</option>
+                                </optgroup>
+                                <optgroup label="Mods">
+                                    <option value="fabric">Fabric (mods)</option>
+                                    <option value="quilt" class="loader-1-20">Quilt (mods)</option>
+                                    <option value="neoforge" class="loader-1-20">NeoForge (mods)</option>
+                                    <option value="forge" class="loader-1-20">Forge (mods)</option>
+                                </optgroup>
                             </select>
                         </div>
                         <div>
@@ -1464,6 +1473,7 @@ const ServerApp = {
                         </div>
                     </div>
                     <p id="deploy-java-note" class="text-xs text-gray-400 mb-2"></p>
+                    <p id="deploy-loader-note" class="text-xs text-gray-500 mb-2 hidden"></p>
                 </div>
                 
                 <label class="block text-sm text-gray-400 mb-1">Base Template (Optional)</label>
@@ -1475,6 +1485,13 @@ const ServerApp = {
 
                 <button onclick="ServerApp.executeDeploy()" class="mt-2 w-full bg-green-600 hover:bg-green-700 py-2 rounded text-white font-bold transition">Deploy Fresh Server</button>
             </div>
+            ${this.isAdmin() ? `<hr class="border-gray-200 dark:border-gray-700 my-4" />
+            <div class="mb-2">
+                <label class="block text-sm text-gray-400 mb-1">From a modpack</label>
+                <p class="text-xs text-gray-500 mb-2">Pick a modpack from Modrinth, or upload a .mrpack or a CurseForge server pack.</p>
+                <button id="deploy-modpack-btn" onclick="ServerApp.openModpackDialog()" class="w-full bg-theme hover-bg-theme py-2 rounded text-white font-bold transition">Choose a modpack…</button>
+                <p id="deploy-modpack-note" class="text-xs text-gray-500 mt-1 hidden"></p>
+            </div>` : ''}
             <hr class="border-gray-200 dark:border-gray-700 my-4" />
             <div class="mb-6">
                 <label class="block text-sm text-gray-400 mb-1">Import Existing (.zip, .tar.gz, .tar)</label>
@@ -1603,7 +1620,8 @@ const ServerApp = {
         if (!java && document.getElementById('adv-memory-limit').value === 'auto') document.getElementById('adv-memory-limit').value = '';
         document.getElementById('adv-snapshot-wrap').classList.toggle('hidden', loader !== 'vanilla');
         if (loader !== 'vanilla') document.getElementById('adv-snapshot').checked = false;
-        document.getElementById('adv-build-wrap').classList.toggle('hidden', !['paper', 'fabric'].includes(loader));
+        document.getElementById('adv-build-wrap').classList.toggle('hidden', !this.isJavaAddonKind(loader));
+        this.refreshLoaderChoices();
         const types = java ? [['default', 'Default'], ['flat', 'Flat'], ['large_biomes', 'Large biomes'], ['amplified', 'Amplified']]
                            : [['default', 'Default'], ['flat', 'Flat']];
         const lt = document.getElementById('adv-level-type');
@@ -1619,6 +1637,32 @@ const ServerApp = {
         document.getElementById('adv-fields').classList.toggle('hidden', !!old);
         this.advancedTemplateHints();
         if (java) { this.loadAdvancedBuilds(); this.loadAdvancedJavas(); }
+    },
+
+    // The 1.20 server types and modpacks need a node that knows them; and a line on what the
+    // chosen type's installer does
+    refreshLoaderChoices() {
+        const select = document.getElementById('deploy-loader');
+        if (!select) return;
+        const node = this.deployNode && this.clusterNodes.find(n => n.id === this.deployNode);
+        const old = !!(node && (node.cluster_api || 1) < 7);
+        select.querySelectorAll('.loader-1-20').forEach(o => { o.disabled = old; });
+        if (old && select.selectedOptions[0] && select.selectedOptions[0].disabled) { select.value = 'vanilla'; this.loadDeployVersions(); }
+        const note = document.getElementById('deploy-loader-note');
+        const loader = select.value;
+        const text = old ? `Update RedstonePanel on ${node.name} to create Purpur, Quilt, Forge and NeoForge servers there.`
+            : ['forge', 'neoforge'].includes(loader) ? `${this.loaderName(loader)}'s installer runs when the server is created, which takes a few minutes.`
+            : loader === 'quilt' ? 'Quilt also loads Fabric mods. Its installer runs when the server is created.'
+            : loader === 'purpur' ? 'Purpur is Paper with more settings; Paper plugins work on it.' : '';
+        note.innerText = text;
+        note.classList.toggle('hidden', !text || document.getElementById('deploy-edition').value !== 'java');
+        const btn = document.getElementById('deploy-modpack-btn'), packNote = document.getElementById('deploy-modpack-note');
+        if (btn) {
+            btn.disabled = old;
+            btn.classList.toggle('opacity-50', old);
+            packNote.classList.toggle('hidden', !old);
+            packNote.innerText = old ? `Update RedstonePanel on ${node.name} to create modpack servers there.` : '';
+        }
     },
 
     // A template's own values show as hints, since the template is applied first and these win
@@ -1639,19 +1683,20 @@ const ServerApp = {
     async loadAdvancedBuilds() {
         const loader = document.getElementById('deploy-loader')?.value;
         const select = document.getElementById('adv-build');
-        if (!select || !['paper', 'fabric'].includes(loader)) return;
+        if (!select || !this.isJavaAddonKind(loader)) return;
         const version = document.getElementById('deploy-version').value || document.getElementById('deploy-version').dataset.newest;
-        const key = `${loader}|${loader === 'paper' ? version : ''}`;
+        const perVersion = !['fabric', 'quilt'].includes(loader);      // their loader versions fit every Minecraft version
+        const key = `${loader}|${perVersion ? version : ''}`;
         if (select.dataset.key === key) return;
         select.dataset.key = key;
-        select.innerHTML = '<option value="">Latest stable</option>';
-        if (!version && loader === 'paper') return;
+        select.innerHTML = `<option value="">${loader === 'forge' ? 'Recommended' : 'Latest stable'}</option>`;
+        if (!version && perVersion) return;
         try {
             const res = await fetch(`/api/java/builds?loader=${encodeURIComponent(loader)}&version=${encodeURIComponent(version || '')}`);
             if (!res.ok || select.dataset.key !== key) return;
             const esc = t => this.escapeHtml(String(t));
             select.innerHTML += (await res.json()).builds.slice(0, 60)
-                .map(b => `<option value="${esc(b.build)}">${esc(loader === 'fabric' ? 'Loader ' + b.label : b.label)}</option>`).join('');
+                .map(b => `<option value="${esc(b.build)}">${esc(['fabric', 'quilt'].includes(loader) ? 'Loader ' + b.label : b.label)}</option>`).join('');
         } catch (e) { /* the latest stable build still works */ }
     },
 
@@ -2436,7 +2481,7 @@ const ServerApp = {
             return;
         }
         const loader = srv.loader || 'vanilla';
-        const kind = { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' }[loader] || loader;
+        const kind = this.loaderName(loader);
         text.innerText = srv.minecraft
             ? `Runs ${kind} ${srv.minecraft}. Download the newest build, or move to a newer Minecraft version (worlds can't go back).`
             : `Download the newest ${kind} server.`;
@@ -2528,7 +2573,7 @@ const ServerApp = {
         }
         const types = info.types.map(t => `<button onclick="ServerApp.previewConvert(${this.jsArg(t.id)})" class="bg-theme hover-bg-theme text-white px-4 py-2 rounded font-bold text-sm">Change to ${esc(t.name)}…</button>`).join('');
         body.innerHTML = `
-            <p class="text-sm text-gray-600 dark:text-gray-300">Runs <b>${esc(info.current.name)}</b>. Change it to another type and keep the world, settings, players and schedules: Paper for plugins, Fabric for mods, Vanilla for neither.</p>
+            <p class="text-sm text-gray-600 dark:text-gray-300">Runs <b>${esc(info.current.name)}</b>. Change it to another type and keep the world, settings, players and schedules: Paper or Purpur for plugins; Fabric, Quilt, NeoForge or Forge for mods; Vanilla for neither.</p>
             ${running ? '' : isAdmin
                 ? `<div class="flex flex-wrap gap-2 mt-3">${types}</div>
                    <p class="${note} mt-2">You see what will happen before anything changes. A backup is always taken first, and the old type comes back by itself if the new one doesn't start.</p>`
@@ -2564,7 +2609,7 @@ const ServerApp = {
     },
 
     typeName(t) {
-        const names = { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' };
+        const names = ServerApp.LOADER_NAMES;
         return t ? `${names[t.loader] || t.loader || ''} ${t.minecraft || ''}`.trim() : '';
     },
 
@@ -2575,7 +2620,7 @@ const ServerApp = {
         const modal = document.getElementById('modal-overlay');
         const content = document.getElementById('modal-content');
         const esc = t => this.escapeHtml(String(t ?? ''));
-        const names = { vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric' };
+        const names = ServerApp.LOADER_NAMES;
         const cancel = `<button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Cancel</button>`;
         content.innerHTML = `<h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Change ${esc(srv.name)} to ${esc(names[to] || to)}</h3>
             <p class="text-sm text-gray-500 dark:text-gray-400">Checking what would change…</p><div class="flex gap-2 mt-4">${cancel}</div>`;
@@ -2599,7 +2644,7 @@ const ServerApp = {
         const java = p.java ? (p.java.installed
             ? `Runs on Java ${esc(p.java.used)}, which is installed.`
             : `Needs Java ${esc(p.java.required)}, which isn't installed yet. You're asked to install it when you press the button.`) : '';
-        const software = text(`${esc(p.from.name)} ${esc(p.from.minecraft)} → <b>${esc(p.to.name)} ${esc(p.to.minecraft)}</b>${p.to.build && to === 'paper' ? ` (build ${esc(p.to.build)})` : ''}. ${java}`)
+        const software = text(`${esc(p.from.name)} ${esc(p.from.minecraft)} → <b>${esc(p.to.name)} ${esc(p.to.minecraft)}</b>${p.to.build && to !== 'fabric' ? ` (build ${esc(p.to.build)})` : ''}. ${java}`)
             + `<label class="flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mt-2">Minecraft version ${versionSelect}</label>
                <p class="${note} mt-1">Only the same version or newer: a world can't go back to an older one.</p>`;
         const moves = p.world.moves.map(m => `<li><code>${esc(m.from)}</code> → <code>${esc(m.to)}</code></li>`).join('');
@@ -2609,12 +2654,15 @@ const ServerApp = {
         if (a.action === 'off') {
             const eq = a.items.filter(i => i.equivalent && i.enabled);
             const n = a.items.length;
-            const cant = to === 'vanilla' ? 'Vanilla loads neither mods nor plugins' : `${esc(p.to.name)} can't load ${esc(a.noun)}s`;
+            const cant = to === 'vanilla' ? 'Vanilla loads neither mods nor plugins' : `${esc(p.to.name)} can't load ${esc(p.from.name)} ${esc(a.noun)}s`;
             addons = text(`${cant}, so the <code>${esc(a.folder)}</code> folder (${n} ${esc(a.noun)}${n === 1 ? '' : 's'}) is renamed <code>${esc(a.folder)}.off</code> and kept for switching back.`)
                 + (eq.length ? `<p class="text-sm text-gray-700 dark:text-gray-300 mt-2">These also have a ${esc(p.to.name)} build. Install it now:</p>
                     <div class="mt-1 space-y-1">${eq.map(i => `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" name="convert-install" value="${esc(i.equivalent.project)}" checked> ${esc(i.equivalent.title || i.name)}</label>`).join('')}</div>
                     <p class="${note} mt-1">Their settings and saved data aren't carried over: a ${esc(a.noun)} and its ${esc(p.to.name)} build keep them differently.${to === 'fabric' ? ' Fabric API, which most mods need, is installed with them.' : ''}</p>` : '')
                 + (to !== 'vanilla' && n > eq.length ? `<p class="${note} mt-1">The others have no ${esc(p.to.name)} build on Modrinth${n - eq.length === n ? '' : ' (or aren\'t from Modrinth)'}.</p>` : '');
+        } else if (a.action === 'keep') {
+            addons = text(esc(a.note));
+            a.note = null;
         } else {
             addons = text(p.from.loader === 'vanilla' ? 'Vanilla has none to carry over.' : `No ${esc(a.noun || 'add-on')}s are installed.`);
         }
@@ -3200,10 +3248,19 @@ const ServerApp = {
     addonsData: null,
     addonsChanged: {},          // server -> true after an install/enable/remove this session
 
+    // Java server types (1.20): plugins in plugins/ (Paper, Purpur) or mods in mods/ (the rest)
+    LOADER_NAMES: { vanilla: 'Vanilla', paper: 'Paper', purpur: 'Purpur', fabric: 'Fabric', quilt: 'Quilt', forge: 'Forge', neoforge: 'NeoForge' },
+    PLUGIN_KINDS: ['paper', 'purpur'],
+    MOD_KINDS: ['fabric', 'quilt', 'forge', 'neoforge'],
+    loaderName(kind) { return this.LOADER_NAMES[kind] || kind || ''; },
+    isPluginKind(kind) { return this.PLUGIN_KINDS.includes(kind); },
+    isJavaAddonKind(kind) { return this.PLUGIN_KINDS.includes(kind) || this.MOD_KINDS.includes(kind); },
+    addonNoun(kind, plural = true) { return (this.isPluginKind(kind) ? 'plugin' : 'mod') + (plural ? 's' : ''); },
+
     addonKind(srv) {
         if (!srv) return null;
         if (srv.edition === 'Bedrock') return 'bedrock';
-        return ['fabric', 'paper'].includes(srv.loader) ? srv.loader : null;
+        return this.isJavaAddonKind(srv.loader) ? srv.loader : null;
     },
 
     addonsUrl(params) {
@@ -3218,7 +3275,7 @@ const ServerApp = {
         const kind = this.addonKind(srv);
         const show = kind && this.can('mods', srv);
         btn.classList.toggle('hidden', !show);
-        btn.innerText = { fabric: 'Mods', paper: 'Plugins', bedrock: 'Add-ons' }[kind] || 'Mods';
+        btn.innerText = kind === 'bedrock' ? 'Add-ons' : this.isPluginKind(kind) ? 'Plugins' : 'Mods';
     },
 
     // Uploads one file with a progress callback; resolves {status, ok, data}
@@ -3295,7 +3352,7 @@ const ServerApp = {
         }
         if (this.addonsView === 'browse') return this.renderAddonBrowser();
         this.renderAddons();
-        if (['fabric', 'paper'].includes(this.addonsData.kind)) this.loadAddonUpdates();
+        if (this.isJavaAddonKind(this.addonsData.kind)) this.loadAddonUpdates();
         if (this.addonsData.kind === 'bedrock') this.loadPhantom();
     },
 
@@ -3402,7 +3459,7 @@ const ServerApp = {
         const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
         const small = 'px-2 py-1 rounded text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
         const note = 'text-xs text-gray-500 dark:text-gray-400';
-        const title = { fabric: 'Mods', paper: 'Plugins', bedrock: 'Add-ons' }[d.kind] || 'Mods';
+        const title = d.kind === 'bedrock' ? 'Add-ons' : this.isPluginKind(d.kind) ? 'Plugins' : 'Mods';
         const accepts = d.accepts.join(', ');
         const where = d.kind === 'bedrock' ? 'behavior_packs/ or resource_packs/, and enabled for the world'
             : `${d.folder}/`;
@@ -3434,14 +3491,14 @@ const ServerApp = {
         const changed = this.addonsChanged[this.activeServer.name];
         document.getElementById('addons-content').innerHTML = `
             <div class="flex flex-wrap items-center justify-between gap-2">
-                <h3 class="text-lg font-bold text-gray-900 dark:text-white">${title}${d.minecraft ? ` <span class="text-sm font-normal text-gray-500">for ${esc(d.kind === 'paper' ? 'Paper' : 'Fabric')} ${esc(d.minecraft)}</span>` : ''}</h3>
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white">${title}${d.minecraft ? ` <span class="text-sm font-normal text-gray-500">for ${esc(this.loaderName(d.kind))} ${esc(d.minecraft)}</span>` : ''}</h3>
                 <span class="${note}">${d.items.length} installed</span>
             </div>
             ${this.addonViewSwitch()}
             ${this.addonUpdatesBar()}
             <div id="addons-drop" class="${card} border-2 border-dashed p-6 text-center cursor-pointer" onclick="document.getElementById('addons-upload').click()">
                 <p class="font-bold text-gray-900 dark:text-white">Drop ${esc(accepts)} files here</p>
-                <p class="${note} mt-1">or click to choose them. They go into ${esc(where)}.${d.kind === 'fabric' ? ' Most Fabric mods also need the Fabric API mod.' : ''}</p>
+                <p class="${note} mt-1">or click to choose them. They go into ${esc(where)}.${d.kind === 'fabric' ? ' Most Fabric mods also need the Fabric API mod.' : d.kind === 'quilt' ? ' Quilt also loads Fabric mods; most need Quilted Fabric API (QFAPI/QSL).' : d.kind === 'neoforge' ? ' NeoForge loads Forge mods only up to Minecraft 1.20.4.' : ''}</p>
                 <input type="file" id="addons-upload" multiple accept="${esc(accepts)}" class="hidden" onchange="ServerApp.dropOnAddons(this.files)">
             </div>
             <div id="upload-progress" class="space-y-2"></div>
@@ -3466,23 +3523,23 @@ const ServerApp = {
 
     addonViewSwitch() {
         const d = this.addonsData;
-        if (!['fabric', 'paper'].includes(d.kind)) return '';
+        if (!this.isJavaAddonKind(d.kind)) return '';
         const b = (v, label) => `<button onclick="ServerApp.addonView('${v}')" class="px-3 py-1.5 rounded text-sm ${this.addonsView === v
             ? 'bg-theme text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'}">${label}</button>`;
-        return `<div class="flex flex-wrap gap-2">${b('installed', 'Installed')}${b('browse', `Find ${d.kind === 'paper' ? 'plugins' : 'mods'}`)}</div>`;
+        return `<div class="flex flex-wrap gap-2">${b('installed', 'Installed')}${b('browse', `Find ${this.addonNoun(d.kind)}`)}</div>`;
     },
 
     addonProjectUrl(u) {
         if (u.source === 'hangar') return `https://hangar.papermc.io/search?query=${encodeURIComponent(u.slug || u.project)}`;
-        const kind = this.addonsData && this.addonsData.kind === 'paper' ? 'plugin' : 'mod';
+        const kind = this.addonsData ? this.addonNoun(this.addonsData.kind, false) : 'mod';
         return `https://modrinth.com/${kind}/${encodeURIComponent(u.slug || u.project)}`;
     },
 
     addonUpdatesBar() {
         const u = this.addonUpdates, esc = t => this.escapeHtml(String(t ?? ''));
         const box = 'p-3 rounded text-sm border flex flex-wrap items-center justify-between gap-2';
-        const paper = this.addonsData.kind === 'paper';
-        if (!['fabric', 'paper'].includes(this.addonsData.kind)) return '';
+        const paper = this.isPluginKind(this.addonsData.kind);
+        if (!this.isJavaAddonKind(this.addonsData.kind)) return '';
         if (!u) return `<p class="text-xs text-gray-500 dark:text-gray-400">Checking Modrinth${paper ? ' and Hangar' : ''} for updates…</p>`;
         if (u.error) return `<p class="text-xs text-yellow-700 dark:text-yellow-300">Couldn't check for updates: ${esc(u.error)}</p>`;
         const n = Object.values(u.items || {}).filter(i => i.update).length;
@@ -3756,9 +3813,9 @@ const ServerApp = {
         const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
         const note = 'text-xs text-gray-500 dark:text-gray-400';
         const field = 'bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white';
-        const noun = d.kind === 'paper' ? 'plugins' : 'mods';
-        const loader = d.kind === 'paper' ? 'Paper' : 'Fabric';
-        const sources = s.sources || (d.kind === 'paper' ? ['modrinth', 'hangar'] : ['modrinth']);
+        const noun = this.addonNoun(d.kind);
+        const loader = this.loaderName(d.kind);
+        const sources = s.sources || (this.isPluginKind(d.kind) ? ['modrinth', 'hangar'] : ['modrinth']);
         const cat = this.addonCatalog && this.addonCatalog.for === this.activeServer.name ? this.addonCatalog : null;
         const categories = s.categories || (s.source === 'modrinth' && cat ? cat.categories : null) || [];
         const sorts = s.sorts || (cat && cat.sorts) || [];
@@ -3899,7 +3956,7 @@ const ServerApp = {
     // (sorted and checked); everything else is uploaded into the folder you're in.
     async dropOnFiles(fileList) {
         const kind = this.addonKind(this.activeServer);
-        const folder = { fabric: 'mods', paper: 'plugins' }[kind];
+        const folder = this.isPluginKind(kind) ? 'plugins' : this.MOD_KINDS.includes(kind) ? 'mods' : undefined;
         const asAddon = f => {
             const n = f.name.toLowerCase();
             if (kind === 'bedrock') return n.endsWith('.mcpack') || n.endsWith('.mcaddon');
@@ -4619,6 +4676,257 @@ const ServerApp = {
         this.loadServers();
     },
     
+    // --- Modpacks (1.20): a server from a Modrinth modpack, a .mrpack or a server pack ---
+    modpack: { view: 'modrinth', q: '', loader: '', hits: null, total: 0, error: null, pick: null, versions: null },
+
+    openModpackDialog() {
+        this.modpack = { view: 'modrinth', q: '', loader: '', hits: null, total: 0, error: null, pick: null, versions: null };
+        this.renderModpackDialog();
+        this.searchModpacks();
+    },
+
+    modpackOptionsHtml() {
+        const input = 'w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white';
+        const label = 'block text-sm text-gray-400 mb-1';
+        return `<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                <div><label class="${label}" for="pack-name">Server name</label>
+                    <input id="pack-name" type="text" maxlength="30" autocapitalize="none" spellcheck="false" placeholder="Automatic" class="${input}"></div>
+                <div><label class="${label}" for="pack-port">Game port</label>
+                    <input id="pack-port" type="number" inputmode="numeric" min="1024" max="65535" placeholder="Automatic" class="${input}"></div>
+                <div><label class="${label}" for="pack-memory">Memory (heap)</label>
+                    <input id="pack-memory" type="text" maxlength="8" autocapitalize="characters" spellcheck="false" placeholder="Automatic (up to 4G)" class="${input}"></div>
+            </div>`;
+    },
+
+    renderModpackDialog() {
+        const m = this.modpack, esc = t => this.escapeHtml(String(t ?? ''));
+        this.modalWide(true);
+        const input = 'w-full bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white';
+        const label = 'block text-sm text-gray-400 mb-1';
+        const tab = (v, text) => `<button onclick="ServerApp.modpackView('${v}')" class="flex-1 px-3 py-2 rounded text-sm font-bold ${m.view === v
+            ? 'bg-theme text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'}">${text}</button>`;
+        const where = this.deployNode ? ` on ${esc(this.nodeName(this.deployNode))}` : '';
+        let body;
+        if (m.view === 'upload') {
+            body = `
+                <label class="${label}" for="pack-file">Pack file (.mrpack or server pack .zip)</label>
+                <input type="file" id="pack-file" accept=".mrpack,.zip,application/zip" class="${input} text-sm mb-2" />
+                <p class="text-xs text-gray-500 mb-3">A <b>.mrpack</b> is a Modrinth modpack. A <b>server pack</b> is the zip most CurseForge packs offer under Files → Additional Files → Server Pack: download it there and upload it here. Its mods and config are used; its start scripts are never run, and the panel installs the loader itself.</p>
+                <details class="mb-3 rounded border border-gray-200 dark:border-gray-700">
+                    <summary class="cursor-pointer select-none px-3 py-2 text-sm font-bold text-gray-900 dark:text-white">If the pack doesn't say what it needs</summary>
+                    <div class="px-3 pb-3">
+                        <p class="text-xs text-gray-500 mb-2">Only for server packs, and only when the panel can't work it out from the pack. Leave empty otherwise.</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div><label class="${label}" for="pack-loader">Loader</label>
+                                <select id="pack-loader" class="${input}"><option value="">From the pack</option><option value="forge">Forge</option><option value="neoforge">NeoForge</option><option value="fabric">Fabric</option><option value="quilt">Quilt</option></select></div>
+                            <div><label class="${label}" for="pack-minecraft">Minecraft version</label>
+                                <input id="pack-minecraft" type="text" maxlength="12" spellcheck="false" placeholder="From the pack" class="${input}"></div>
+                            <div><label class="${label}" for="pack-loader-version">Loader version</label>
+                                <input id="pack-loader-version" type="text" maxlength="40" spellcheck="false" placeholder="Recommended" class="${input}"></div>
+                        </div>
+                    </div>
+                </details>
+                ${this.modpackOptionsHtml()}
+                <button onclick="ServerApp.createModpackServer('upload')" class="w-full bg-green-600 hover:bg-green-700 py-2 rounded text-white font-bold transition">Upload & create server${where}</button>`;
+        } else if (m.pick) {
+            const p = m.pick, vs = m.versions;
+            body = `
+                <button onclick="ServerApp.modpackBack()" class="text-sm text-theme underline mb-3 min-h-[44px] sm:min-h-0">← Back to the list</button>
+                <div class="flex gap-3 items-start mb-3">
+                    ${p.icon ? `<img src="${esc(p.icon)}" alt="" class="w-14 h-14 rounded shrink-0" loading="lazy" referrerpolicy="no-referrer">` : ''}
+                    <div class="min-w-0">
+                        <p class="font-bold text-gray-900 dark:text-white">${esc(p.title)}</p>
+                        <p class="text-sm text-gray-600 dark:text-gray-300">${esc(p.description || '')}</p>
+                        <a href="${esc(p.url)}" target="_blank" rel="noopener" class="text-xs text-theme underline">Open on Modrinth</a>
+                    </div>
+                </div>
+                <label class="${label}" for="pack-version">Version</label>
+                ${vs === null ? `<p class="text-sm text-gray-500 mb-3">Loading versions…</p>`
+                  : !vs.length ? `<p class="text-sm text-yellow-700 dark:text-yellow-300 mb-3">This pack has no version the panel can install.</p>`
+                  : `<select id="pack-version" class="${input} mb-3">${vs.map((v, i) => `<option value="${esc(v.id)}">${esc(v.version || v.name)}: ${esc((v.loaders || []).map(l => this.loaderName(l)).join('/'))} for Minecraft ${esc((v.minecraft || []).slice(-1)[0] || '?')}${v.channel !== 'release' ? ` (${esc(v.channel)})` : ''}</option>`).join('')}</select>`}
+                ${this.modpackOptionsHtml()}
+                <p class="text-xs text-gray-500 mb-3">Only the pack's server-side files are downloaded, each checked against the pack's hash. Big packs take several minutes; the console shows progress.</p>
+                <button onclick="ServerApp.createModpackServer('modrinth')" ${vs && vs.length ? '' : 'disabled'} class="w-full bg-green-600 hover:bg-green-700 py-2 rounded text-white font-bold transition ${vs && vs.length ? '' : 'opacity-50'}">Create server${where}</button>`;
+        } else {
+            const rows = m.error ? `<p class="p-3 text-sm text-red-500">${esc(m.error)}</p>`
+                : m.hits === null ? `<p class="p-3 text-sm text-gray-500">Searching Modrinth…</p>`
+                : !m.hits.length ? `<p class="p-3 text-sm text-gray-500">No modpacks found.</p>`
+                : m.hits.map((h, i) => `
+                    <button onclick="ServerApp.pickModpack(${i})" class="w-full text-left flex gap-3 items-center p-3 min-h-[44px] border-b border-gray-200 dark:border-gray-700 last:border-b-0 hover:bg-gray-100 dark:hover:bg-gray-700">
+                        ${h.icon ? `<img src="${esc(h.icon)}" alt="" class="w-10 h-10 rounded shrink-0" loading="lazy" referrerpolicy="no-referrer">` : '<span class="w-10 h-10 rounded shrink-0 bg-gray-200 dark:bg-gray-700"></span>'}
+                        <span class="min-w-0 flex-1">
+                            <span class="block font-bold text-gray-900 dark:text-white truncate">${esc(h.title)}</span>
+                            <span class="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">${esc(h.description || '')}</span>
+                            <span class="block text-xs text-gray-500">${esc((h.loaders || []).map(l => this.loaderName(l)).join(', '))}${h.latest_minecraft ? ` · up to ${esc(h.latest_minecraft)}` : ''} · ${esc(this.compactCount(h.downloads))} downloads</span>
+                        </span>
+                    </button>`).join('');
+            body = `
+                <div class="flex flex-col sm:flex-row gap-2 mb-3">
+                    <input id="pack-q" type="search" value="${esc(m.q)}" placeholder="Search modpacks on Modrinth" onkeydown="if (event.key === 'Enter') ServerApp.searchModpacks()" class="${input} flex-1">
+                    <select id="pack-filter-loader" onchange="ServerApp.searchModpacks()" class="${input} sm:w-40">
+                        <option value="">Any loader</option>${['neoforge', 'forge', 'fabric', 'quilt'].map(l => `<option value="${l}" ${m.loader === l ? 'selected' : ''}>${this.loaderName(l)}</option>`).join('')}
+                    </select>
+                    <button onclick="ServerApp.searchModpacks()" class="px-4 py-2 rounded bg-theme hover-bg-theme text-white font-bold">Search</button>
+                </div>
+                <div class="rounded border border-gray-200 dark:border-gray-700 mb-2 max-h-[50vh] overflow-y-auto">${rows}</div>
+                <p class="text-xs text-gray-500 mb-3">Modpacks from Modrinth that can run on a server${m.hits && m.total > m.hits.length ? `; showing the first ${m.hits.length} of ${esc(this.compactCount(m.total))}` : ''}. CurseForge packs: download the pack's server pack and use Upload a pack.</p>`;
+        }
+        document.getElementById('modal-content').innerHTML = `
+            <h3 class="text-xl font-bold mb-1">New server from a modpack</h3>
+            <p class="text-xs text-gray-500 mb-3">${this.deployNode ? `It will be created on ${esc(this.nodeName(this.deployNode))}.` : ''}</p>
+            <div class="flex gap-2 mb-4">${tab('modrinth', 'Modrinth')}${tab('upload', 'Upload a pack')}</div>
+            ${body}
+            <div class="flex gap-2 mt-3">
+                <button onclick="ServerApp.openDeployModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white transition">Back</button>
+                <button onclick="ServerApp.closeModal()" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white transition">Cancel</button>
+            </div>`;
+        document.getElementById('modal-overlay').classList.remove('hidden');
+    },
+
+    compactCount(n) {
+        n = Number(n) || 0;
+        return n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n);
+    },
+
+    modpackView(view) { this.modpack.view = view; this.modpack.pick = null; this.renderModpackDialog(); },
+    modpackBack() { this.modpack.pick = null; this.renderModpackDialog(); },
+
+    async searchModpacks() {
+        const m = this.modpack;
+        const q = document.getElementById('pack-q'), l = document.getElementById('pack-filter-loader');
+        if (q) m.q = q.value.trim();
+        if (l) m.loader = l.value;
+        m.hits = null; m.error = null;
+        this.renderModpackDialog();
+        const asked = `${m.q}|${m.loader}`;
+        const res = await api(`/api/modpacks/search?q=${encodeURIComponent(m.q)}&loader=${encodeURIComponent(m.loader)}`, { node: this.deployNode });
+        if (this.modpack !== m || asked !== `${m.q}|${m.loader}`) return;
+        if (!res.ok) { m.error = `Couldn't search Modrinth: ${await this.apiError(res)}`; m.hits = []; }
+        else { const d = await res.json(); m.hits = d.hits; m.total = d.total; }
+        if (m.view === 'modrinth' && !m.pick) this.renderModpackDialog();
+    },
+
+    async pickModpack(i) {
+        const m = this.modpack;
+        m.pick = m.hits[i]; m.versions = null;
+        this.renderModpackDialog();
+        const res = await api(`/api/modpacks/versions?project=${encodeURIComponent(m.pick.project)}`, { node: this.deployNode });
+        if (this.modpack !== m || !m.pick || m.pick.project !== m.hits[i].project) return;
+        m.versions = res.ok ? (await res.json()).versions : [];
+        this.renderModpackDialog();
+    },
+
+    async createModpackServer(how) {
+        const v = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+        const form = new FormData();
+        if (how === 'modrinth') {
+            form.append('source', 'modrinth');
+            form.append('project', this.modpack.pick.project);
+            form.append('version_id', v('pack-version'));
+        } else {
+            const input = document.getElementById('pack-file');
+            if (!input.files.length) return alert('Choose a .mrpack or a server pack .zip first.');
+            const file = input.files[0];
+            form.append('source', /\.mrpack$/i.test(file.name) ? 'mrpack' : 'serverpack');
+            form.append('file', file);
+            for (const [k, id] of [['loader', 'pack-loader'], ['minecraft', 'pack-minecraft'], ['loader_version', 'pack-loader-version']]) form.append(k, v(id));
+        }
+        for (const [k, id] of [['name', 'pack-name'], ['port', 'pack-port'], ['memory', 'pack-memory']]) form.append(k, v(id));
+        const node = this.deployNode;
+        this.closeModal();
+        this.toggleConsole(true, node);
+        const send = () => api('/api/servers/modpack', { node, method: 'POST', body: form });
+        const res = await this.withJava(await send(), send, node);
+        if (!res.ok) alert(`The modpack server wasn't created: ${await this.apiError(res)}`);
+        else {
+            const d = await res.json();
+            alert(`Created ${d.name} from ${d.pack ? d.pack.name : 'the pack'}${d.pack && d.pack.version ? ' ' + d.pack.version : ''}.`
+                + ` Its first start takes a few minutes.${(d.notes || []).length ? '\n\n' + d.notes.join('\n') : ''}`);
+        }
+        this.loadServers();
+    },
+
+    // Maintenance → Modpack: what this server was made from, and moving it to a newer version
+    async loadModpack() {
+        const card = document.getElementById('modpack-card'), body = document.getElementById('modpack-body');
+        const srv = this.activeServer;
+        if (!card || !srv) return;
+        this.activePack = null;
+        if (srv.edition !== 'Java') { card.classList.add('hidden'); return; }
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/modpack`);
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        const pack = res.ok ? (await res.json()).pack : null;
+        this.activePack = pack;
+        card.classList.toggle('hidden', !pack);
+        if (!pack) return;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        const admin = this.isAdmin();
+        const btn = 'px-3 py-2 rounded font-bold text-sm min-h-[44px] sm:min-h-0';
+        body.innerHTML = `
+            <p class="text-sm text-gray-900 dark:text-white"><b>${esc(pack.name)}</b>${pack.version ? ` ${esc(pack.version)}` : ''}</p>
+            <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">${esc(this.loaderName(pack.loader))} for Minecraft ${esc(pack.minecraft)} · ${pack.files} mod file${pack.files === 1 ? '' : 's'} from the pack · ${pack.kind === 'serverpack' ? 'an uploaded server pack' : pack.can_check ? `from <a href="${esc(pack.url || '#')}" target="_blank" rel="noopener" class="text-theme underline">Modrinth</a>` : 'an uploaded .mrpack'}</p>
+            ${admin ? `
+            <p class="text-xs text-gray-600 dark:text-gray-400 mt-3">Updating swaps the pack's mods for the new version's and installs the loader it needs. The world, player data, your settings and mods you added yourself are kept.</p>
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mt-2"><input type="checkbox" id="modpack-backup" checked> Back up the server first</label>
+            <div id="modpack-check" class="mt-3">${pack.can_check ? `<button onclick="ServerApp.checkModpackUpdate()" class="${btn} bg-theme hover-bg-theme text-white">Check for a newer version</button>` : ''}</div>
+            <div class="mt-3 flex flex-col sm:flex-row gap-2 sm:items-center">
+                <input type="file" id="modpack-file" accept=".mrpack,.zip,application/zip" class="flex-1 min-w-0 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white">
+                <button onclick="ServerApp.updateModpack('upload')" class="${btn} bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white shrink-0">Upload a newer version</button>
+            </div>` : `<p class="text-xs text-gray-500 mt-2">An admin can update the pack.</p>`}`;
+        const text = document.getElementById('update-text');
+        if (text) text.innerText = `Runs ${this.loaderName(pack.loader)} ${pack.minecraft} for the ${pack.name} modpack. Update the pack under Modpack instead: a different Minecraft version here would break its mods. This only downloads the newest ${this.loaderName(pack.loader)} build.`;
+    },
+
+    async checkModpackUpdate() {
+        const box = document.getElementById('modpack-check'), srv = this.activeServer;
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        box.innerHTML = '<p class="text-sm text-gray-500">Asking Modrinth…</p>';
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/modpack/check`, { method: 'POST' });
+        if (!this.activeServer || this.activeServer.name !== srv.name) return;
+        if (!res.ok) { box.innerHTML = `<p class="text-sm text-yellow-700 dark:text-yellow-300">Couldn't check: ${esc(await this.apiError(res))}</p>`; return; }
+        const d = await res.json();
+        if (!d.available) { box.innerHTML = `<p class="text-sm text-green-700 dark:text-green-400">✓ ${esc(d.current || 'This version')} is the newest version of the pack.</p>`; return; }
+        const options = d.versions.map(v => `<option value="${esc(v.id)}" ${v.id === d.latest.id ? 'selected' : ''}>${esc(v.version || v.name)} for Minecraft ${esc((v.minecraft || []).slice(-1)[0] || '?')}${v.channel !== 'release' ? ` (${esc(v.channel)})` : ''}</option>`).join('');
+        box.innerHTML = `
+            <p class="text-sm text-gray-900 dark:text-white">⬆ <b>${esc(d.latest.version || d.latest.name)}</b> is available${d.current ? ` (this server has ${esc(d.current)})` : ''}.</p>
+            <div class="mt-2 flex flex-col sm:flex-row gap-2">
+                <select id="modpack-version" class="flex-1 min-w-0 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-2 text-sm text-gray-900 dark:text-white">${options}</select>
+                <button onclick="ServerApp.updateModpack('modrinth')" class="px-3 py-2 rounded font-bold text-sm bg-theme hover-bg-theme text-white min-h-[44px] sm:min-h-0 shrink-0">Update the pack</button>
+            </div>`;
+    },
+
+    async updateModpack(how) {
+        const srv = this.activeServer, pack = this.activePack;
+        if (!srv || !pack) return;
+        const form = new FormData();
+        const backup = document.getElementById('modpack-backup').checked;
+        form.append('backup', backup ? 'true' : 'false');
+        let what = 'the uploaded version';
+        if (how === 'modrinth') {
+            const sel = document.getElementById('modpack-version');
+            form.append('source', 'modrinth');
+            form.append('version_id', sel.value);
+            what = sel.selectedOptions[0].text;
+        } else {
+            const input = document.getElementById('modpack-file');
+            if (!input.files.length) return alert("Choose the newer version's .mrpack or server pack .zip first.");
+            form.append('source', /\.mrpack$/i.test(input.files[0].name) ? 'mrpack' : 'serverpack');
+            form.append('file', input.files[0]);
+        }
+        if (!confirm(`Update ${srv.name} to ${what}?\n\n${backup ? 'A backup is taken first. ' : 'No backup will be taken. '}The server stops while the pack's mods are swapped${srv.status === 'online' ? ' and starts again afterwards' : ''}. Players need the same version of the pack to join.`)) return;
+        this.toggleConsole(true);
+        const send = () => api(`/api/servers/${encodeURIComponent(srv.name)}/modpack/update`, { method: 'POST', body: form });
+        const res = await this.withJava(await send(), send);
+        if (!res.ok) alert(`The pack wasn't updated: ${await this.apiError(res)}`);
+        else {
+            const d = await res.json();
+            alert(`${srv.name} now has ${d.pack.name}${d.pack.version ? ' ' + d.pack.version : ''}.`
+                + (d.backup ? `\nThe backup from before is ${d.backup}.` : '') + ((d.notes || []).length ? '\n\n' + d.notes.join('\n') : ''));
+        }
+        await this.loadServers();
+        this.loadModpack();
+    },
+
     logInterval: null,
 
     // node: whose panel log to show (undefined = where the open server lives, null = this panel)
@@ -4735,11 +5043,11 @@ const ServerApp = {
         const backupBox = document.getElementById('update-backup');
         const backupFirst = !backupBox || backupBox.checked;
         const kind = this.addonKind(this.activeServer);
-        if (version && version !== this.activeServer.minecraft && ['fabric', 'paper'].includes(kind) && this.currentUser && this.currentUser.role === 'admin') {
+        if (version && version !== this.activeServer.minecraft && this.isJavaAddonKind(kind) && this.currentUser && this.currentUser.role === 'admin') {
             const r = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/addons/compatibility?minecraft=${encodeURIComponent(version)}`);
             if (r.ok) {
                 const c = await r.json();
-                const noun = kind === 'paper' ? 'plugins' : 'mods';
+                const noun = this.addonNoun(kind);
                 if (c.missing.length) warn += `\n\nThese ${noun} have no build for ${version} yet, so the server may not start:\n- ` + c.missing.map(m => m.title).join('\n- ');
                 if (c.unknown.length) warn += `\n\nThese ${noun} couldn't be checked (not found on Modrinth or Hangar):\n- ` + c.unknown.map(m => m.title).join('\n- ');
             }
@@ -5539,7 +5847,7 @@ const ServerApp = {
 			{ s: step.server, title: 'Create your first server',
 			  body: step.server.done
 				? (step.server.servers ? `${step.server.servers} server${plural(step.server.servers)} on this panel.` : `${nodeServers} server${plural(nodeServers)} on the cluster's nodes.`)
-				: `Java (Vanilla, Paper or Fabric) or Bedrock, on the version you pick. The panel installs the Java it needs.`
+				: `Java (Vanilla, Paper, Purpur, Fabric, Quilt, Forge or NeoForge, or a modpack) or Bedrock, on the version you pick. The panel installs the Java it needs.`
 				  + (fw === 'missing' ? `<br><span class="text-yellow-700 dark:text-yellow-300">⚠️ The firewall ufw isn't installed, so the panel can't open game ports for you. If this machine has another firewall, open each server's port in it.</span>`
 				   : fw === 'off' ? `<br><span class="text-yellow-700 dark:text-yellow-300">ℹ️ The firewall ufw is installed but off. The panel adds a rule for each server's ports, which takes effect when you turn ufw on.</span>` : ''),
 			  action: step.server.done ? '' : `<button onclick="ServerApp.openDeployModal()" class="${btn}">➕ New Server</button>` },
@@ -6482,6 +6790,14 @@ const ServerApp = {
 
 	closeModal() {
 		document.getElementById('modal-overlay').classList.add('hidden');
+		this.modalWide(false);
+	},
+
+	// The modpack dialog is a list to read, so it gets a wider box than the other dialogs
+	modalWide(on) {
+		const c = document.getElementById('modal-content');
+		c.classList.toggle('max-w-2xl', on);
+		c.classList.toggle('max-w-md', !on);
 	},
 
 	openChangePasswordModal() {

@@ -353,7 +353,7 @@ class Plan(Base):
             C.plan(S, "vanilla")
         self.assertIn("Update Server", str(e.exception))
         with self.assertRaises(C.ConvertError):
-            C.plan(S, "forge")
+            C.plan(S, "sponge")
         with self.assertRaises(C.ConvertError) as e:
             C.plan(S, "paper", "1.20.1")
         self.assertIn("can't go back", str(e.exception))
@@ -419,7 +419,7 @@ class Change(Base):
         st = C.status(S)
         self.assertEqual((st["current"]["name"], st["undo"]["kind"], st["undo"]["available"]),
                          ("Paper 1.21.4", "convert", True))
-        self.assertEqual([t["id"] for t in st["types"]], ["vanilla", "fabric"])
+        self.assertEqual([t["id"] for t in st["types"]], ["vanilla", "purpur", "fabric", "quilt", "forge", "neoforge"])
         # built on Paper, then undone: the world from before is back, the Paper folders are gone
         write(os.path.join(self.d, "world", "region", "r.9.9.mca"), "built on paper")
         with self.assertRaises(C.ConvertError):
@@ -559,6 +559,84 @@ class Change(Base):
         with open(os.path.join(self.d, J.INFO_FILE), "w") as f:      # changed by something else since
             json.dump({"loader": "paper", "minecraft": "1.21.11"}, f)
         self.assertIsNone(C.status(S)["undo"])
+
+
+class NewTypes(Base):
+    """1.20: Purpur, Quilt, Forge and NeoForge in type changes."""
+    loader = "fabric"
+
+    def _install(self, d, loader, minecraft=None, current=None, **kw):
+        if loader not in J.INSTALLER_LOADERS:
+            return super()._install(d, loader, minecraft, current, **kw)
+        launch = {"quilt": "-jar quilt-server-launch.jar"}.get(loader, f"@libraries/{loader}/unix_args.txt")
+        write(os.path.join(d, "libraries", loader, "unix_args.txt"), f"args of {loader} {minecraft}")
+        if loader == "quilt":
+            write(os.path.join(d, "quilt-server-launch.jar"), f"quilt {minecraft}")
+            write(os.path.join(d, "server.jar"), f"vanilla jar for quilt {minecraft}")
+        info = {"loader": loader, "minecraft": minecraft, "build": kw.get("build") or "0.29.1", "java_required": 21,
+                "launch": launch}
+        write(os.path.join(d, J.INFO_FILE), json.dumps(info))
+        return info, "/usr/lib/jvm/java-21/bin/java"
+
+    def test_fabric_to_quilt_keeps_the_mods_and_undo_brings_the_jar_back(self):
+        write(os.path.join(self.d, "mods", "lithium.jar"), make_jar({"fabric.mod.json": '{"id": "lithium"}'}))
+        write(os.path.join(self.d, K.TRACK_FILE), '{"files": {"lithium.jar": {}}}')
+        p = C.plan(S, "quilt")
+        self.assertTrue(p["ok"], p["blockers"])
+        self.assertEqual((p["addons"]["action"], p["confirm_name"], p["world"]["moves"]), ("keep", False, []))
+        self.assertIn("stay where they are", p["addons"]["note"])
+        job = self.change("quilt")
+        self.assertEqual(job["state"], "done", job["error"])
+        self.assertEqual(self.info()["launch"], "-jar quilt-server-launch.jar")
+        self.assertTrue(self.has("mods/lithium.jar") and self.has(K.TRACK_FILE) and self.has("quilt-server-launch.jar"))
+        self.assertFalse(self.has("mods.off"))
+        self.assertEqual(read(os.path.join(self.d, C.PREVIOUS_JAR)), "jar of fabric 1.21.4")
+        self.assertTrue(self.units_written, "the unit must start Quilt's own jar")
+        job = C.start_undo(S, "convert", actor="alex", wait=True, sleep=lambda s: None)
+        self.assertEqual(job["state"], "done", job["error"])
+        self.assertEqual(self.info()["loader"], "fabric")
+        self.assertEqual(read(os.path.join(self.d, "server.jar")), "jar of fabric 1.21.4")
+        self.assertFalse(self.has("quilt-server-launch.jar"))
+        self.assertTrue(self.has("mods/lithium.jar") and self.has(K.TRACK_FILE))
+
+    def test_quilt_to_fabric_and_undo_runs_the_installer_again(self):
+        self.change("quilt")
+        job = self.change("fabric")
+        self.assertEqual(job["state"], "done", job["error"])
+        self.assertFalse(self.has("quilt-server-launch.jar") or self.has(C.PREVIOUS_JAR))
+        u = C.status(S)["undo"]
+        self.assertEqual((u["from"]["name"], u["available"]), ("Quilt 1.21.4", True))
+        job = C.start_undo(S, "convert", actor="alex", wait=True, sleep=lambda s: None)
+        self.assertEqual(job["state"], "done", job["error"])
+        self.assertEqual((self.info()["loader"], self.info()["build"]), ("quilt", "0.29.1"))
+        self.assertTrue(self.has("quilt-server-launch.jar"))
+
+    def test_fabric_to_neoforge_sets_the_mods_aside(self):
+        write(os.path.join(self.d, "mods", "lithium.jar"), make_jar({"fabric.mod.json": '{"id": "lithium"}'}))
+        p = C.plan(S, "neoforge")
+        self.assertEqual((p["addons"]["action"], p["addons"]["restore"]), ("off", None))
+        job = self.change("neoforge")
+        self.assertEqual(job["state"], "done", job["error"])
+        self.assertTrue(self.has("mods.off/lithium.jar") and self.has("libraries/neoforge/unix_args.txt"))
+        self.assertFalse(self.has("mods/lithium.jar"))
+
+    def test_paper_to_purpur_keeps_plugins_and_the_world_where_they_are(self):
+        with open(os.path.join(self.d, J.INFO_FILE), "w") as f:
+            json.dump({"loader": "paper", "minecraft": "1.21.4", "build": "200", "java_required": 21}, f)
+        write(os.path.join(self.d, "world_nether", "DIM-1", "region", "r.0.0.mca"), "nether")
+        write(os.path.join(self.d, "plugins", "LuckPerms.jar"), make_jar({"plugin.yml": "name: LuckPerms\n"}))
+        p = C.plan(S, "purpur")
+        self.assertEqual((p["addons"]["action"], p["world"]["moves"], p["blockers"]), ("keep", [], []))
+        job = self.change("purpur")
+        self.assertEqual(job["state"], "done", job["error"])
+        self.assertTrue(self.has("plugins/LuckPerms.jar") and self.has("world_nether/DIM-1/region/r.0.0.mca"))
+        self.assertEqual(self.info()["loader"], "purpur")
+
+    def test_a_modpack_server_keeps_its_type(self):
+        write(os.path.join(self.d, ".redstonepanel-modpack.json"), '{"kind": "mrpack", "name": "Adrenaserver", "version": "1"}')
+        with self.assertRaises(C.ConvertError) as e:
+            C.plan(S, "quilt")
+        self.assertIn("modpack", str(e.exception))
 
 
 class UpdateRollback(Base):

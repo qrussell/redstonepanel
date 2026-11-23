@@ -290,6 +290,7 @@ settings PUT     {_S}/restarts
 settings PUT     {_S}/updates
 settings POST    {_S}/updates/check
 view     GET     {_S}/convert
+view     GET     {_S}/modpack
 settings POST    {_S}/update
 settings POST    {_S}/template/save
 settings POST    {_S}/template/apply
@@ -329,6 +330,8 @@ admin    PUT     {_S}/resources
 admin    POST    {_S}/crash/turn-off
 admin    POST    {_S}/crash/undo
 admin    POST    {_S}/convert
+admin    POST    {_S}/modpack/check
+admin    POST    {_S}/modpack/update
 admin    POST    {_S}/convert/undo
 admin    POST    {_S}/update/rollback
 admin    POST    {_S}/java
@@ -344,6 +347,9 @@ admin    POST    {_S}/offsite/{{target_id}}/fetch
 admin    DELETE  {_S}/offsite/{{target_id}}/{{filename}}
 
 admin    POST    /api/servers/deploy
+admin    POST    /api/servers/modpack
+admin    GET     /api/modpacks/search
+admin    GET     /api/modpacks/versions
 admin    POST    /api/servers/import
 admin    GET     /api/servers/removed
 admin    POST    /api/servers/removed/{{server_name}}/restore

@@ -12,6 +12,8 @@
 #   KEEP=1 bash packaging/screenshots/demo.sh     leave the containers running afterwards
 #   SHOOT=0 bash packaging/screenshots/demo.sh    build the demo only (implies KEEP=1)
 #   SETUP=0 bash packaging/screenshots/demo.sh    retake the screenshots on a demo kept earlier
+#   SETUP=0 ONLY="new server,modpack" bash packaging/screenshots/demo.sh
+#                                                 retake only those steps (shoot.py's step names)
 #
 # If taking the screenshots fails, the containers are kept so SETUP=0 can try again.
 # Screenshots are written to docs/guide/images/ in the dark theme and docs/guide/images/light/
@@ -59,6 +61,9 @@ docker run -d --privileged --cgroupns=private --name $M --hostname survival-box 
 docker run -d --privileged --cgroupns=private --name $N --hostname creative-lab --network "$NET" \
     -v "$HOST_PWD/dist:/dist:ro" "$IMG" >/dev/null
 sleep 3
+# RP_TEST_SETUP=<script>: run with each container's name before anything is installed, for
+# machines where containers need a proxy to reach the internet (as in the test scripts)
+if [ -n "${RP_TEST_SETUP:-}" ]; then for c in $M $N; do bash "$RP_TEST_SETUP" "$c" || exit 1; done; fi
 for c in $M $N; do
     dx $c "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq /dist/$(basename "$DEB") openjdk-21-jre-headless ufw >/tmp/install.log 2>&1 && ufw allow 8080/tcp >/dev/null && ufw allow 8443/tcp >/dev/null && ufw --force enable >/dev/null" \
         || { echo "install failed on $c"; dx $c "tail -20 /tmp/install.log"; exit 1; } &
@@ -147,7 +152,7 @@ fi
 if [ "$SHOOT" = 1 ]; then
     say "screenshots"
     BASE="https://$(ip_of $M):8443"
-    docker run --rm --network "$NET" -e BASE="$BASE" -e RP_USER=admin -e RP_PASS="$PASS" \
+    docker run --rm --network "$NET" -e BASE="$BASE" -e RP_USER=admin -e RP_PASS="$PASS" -e ONLY="${ONLY:-}" -e MODPACK_SERVER="${MODPACK_SERVER:-}" \
         -v "$HOST_PWD/packaging/screenshots:/shots:ro" -v "$HOST_PWD/docs/guide/images:/out" \
         "$PLAYWRIGHT" bash -c "pip install -q playwright==1.49.0 2>/dev/null || pip install -q --break-system-packages playwright==1.49.0; python3 /shots/shoot.py" \
         || { KEEP=1; echo "Taking the screenshots failed; retry with SETUP=0."; exit 1; }

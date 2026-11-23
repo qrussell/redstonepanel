@@ -85,13 +85,15 @@ jobs:
   # clusters (join, node allowlist, certificate renewal, promotion), moving and copying servers,
   # 1.16.8's backup copies on another member, 1.16.11's off-site copies and Bedrock firewall rules,
   # and 1.16.12's Bedrock updates. Stand-in game servers; nothing big downloaded.
+  # test-loaders-modpacks (1.20) is the exception: it downloads and starts real Purpur, Quilt,
+  # NeoForge and Forge servers and a real Modrinth modpack.
   cluster:
     needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies, test-offsite, test-bedrock-firewall, test-bedrock-update, test-bedrock-stop, test-port-forwarding, test-crashes, test-permissions-sftp, test-convert]
+        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies, test-offsite, test-bedrock-firewall, test-bedrock-update, test-bedrock-stop, test-port-forwarding, test-crashes, test-permissions-sftp, test-convert, test-loaders-modpacks]
     name: ${{ matrix.script }}
     steps:
       - uses: actions/checkout@v7

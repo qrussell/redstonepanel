@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Request, Response
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.concurrency import run_in_threadpool
@@ -42,6 +42,7 @@ import core.grants as grants
 import core.sshkeys as sshkeys
 import core.sftp as sftp
 from starlette.routing import Match
+import core.modpacks as modpacks
 from starlette.background import BackgroundTask
 import json
 import re
@@ -1602,6 +1603,110 @@ def deploy_server(request: Request, req: ServerDeployRequest):
     except (manager.TemplateError, manager.DependencyError, manager.ServerError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success", "name": name}
+
+# --- Modpacks (1.20): a server from a Modrinth modpack or an uploaded pack, and updating it.
+# Admins only, like the file manager: a pack puts files into a server folder.
+def _modpack_call(request: Request, fn, *args, **kw):
+    _require_admin(request, "install or update modpacks")
+    try:
+        return fn(*args, **kw)
+    except manager.JavaMissing:
+        raise                                    # 409, see java_missing()
+    except files.FileError as e:                 # PackError, SourceError
+        manager.write_log(f"[MODPACK] Refused: {e}")
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except backups.BackupError as e:
+        raise HTTPException(status_code=400, detail=f"The backup before updating failed, so nothing was "
+                                                    f"changed: {e}")
+    except (manager.TemplateError, manager.DependencyError, manager.ServerError) as e:
+        manager.write_log(f"[MODPACK] Refused: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+def _pack_upload(file: Optional[UploadFile]):
+    """Saves an uploaded pack to a temp file (never named after the upload). Returns (path, name)."""
+    if file is None:
+        return None, None
+    fd, tmp_path = tempfile.mkstemp(prefix="redstonepanel-pack-", suffix=".upload")
+    size = 0
+    try:
+        with os.fdopen(fd, "wb") as out:
+            while True:
+                chunk = file.file.read(1 << 20)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > 4 * files.MAX_UPLOAD:
+                    raise HTTPException(status_code=413, detail="That pack is over 2 GB.")
+                out.write(chunk)
+    except BaseException:
+        os.remove(tmp_path)
+        raise
+    return tmp_path, os.path.basename(file.filename or "")
+
+@app.get("/api/modpacks/search")
+def search_modpacks(request: Request, q: str = "", offset: int = 0, loader: str = "", minecraft: str = "",
+                    sort: str = ""):
+    if minecraft and not javaservers.RELEASE_RE.match(minecraft):
+        raise HTTPException(status_code=400, detail="Choose a Minecraft release such as 1.21.4.")
+    return _modpack_call(request, modpacks.modrinth.search_modpacks, q[:100], offset, 20, loader or None,
+                         minecraft or None, sort or None)
+
+@app.get("/api/modpacks/versions")
+def modpack_versions(request: Request, project: str):
+    if not project or len(project) > 100:
+        raise HTTPException(status_code=400, detail="Choose a modpack.")
+    return _modpack_call(request, modpacks.modrinth.modpack_versions, project)
+
+@app.post("/api/servers/modpack")
+def create_modpack_server(request: Request, source: str = Form(...), file: Optional[UploadFile] = File(None),
+                          project: str = Form(""), version_id: str = Form(""), name: str = Form(""),
+                          port: str = Form(""), memory: str = Form(""), loader: str = Form(""),
+                          minecraft: str = Form(""), loader_version: str = Form("")):
+    """A new server from a modpack. source: modrinth (project, version_id), mrpack or serverpack
+    (file). loader, minecraft and loader_version fill in what a server pack doesn't say."""
+    _require_admin(request, "install or update modpacks")
+    if source in ("mrpack", "serverpack") and file is None:
+        raise HTTPException(status_code=400, detail="Choose the pack's file to upload.")
+    path, filename = _pack_upload(file if source != "modrinth" else None)
+    options = {"project": project.strip()[:100], "version_id": version_id.strip()[:40], "name": name.strip(),
+               "port": port.strip(), "memory": memory.strip(), "loader": loader.strip().lower(),
+               "minecraft": minecraft.strip(), "loader_version": loader_version.strip()}
+    try:
+        return {"status": "success", **_modpack_call(request, modpacks.create, source, path, filename, options,
+                                                      actor=request.state.user["username"])}
+    finally:
+        if path and os.path.exists(path):
+            os.remove(path)
+
+@app.get("/api/servers/{server_name}/modpack")
+def server_modpack(request: Request, server_name: str):
+    try:
+        return modpacks.status(server_name)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.post("/api/servers/{server_name}/modpack/check")
+def check_modpack_update(request: Request, server_name: str):
+    return _modpack_call(request, modpacks.check_update, server_name)
+
+@app.post("/api/servers/{server_name}/modpack/update")
+def update_modpack(request: Request, server_name: str, source: str = Form(...),
+                   file: Optional[UploadFile] = File(None), version_id: str = Form(""),
+                   backup: str = Form("true"), minecraft: str = Form(""), loader_version: str = Form("")):
+    """Moves a modpack server to another version of its pack, after a backup (on unless backup=false)."""
+    _require_admin(request, "install or update modpacks")
+    if source in ("mrpack", "serverpack") and file is None:
+        raise HTTPException(status_code=400, detail="Choose the pack's file to upload.")
+    path, filename = _pack_upload(file if source != "modrinth" else None)
+    options = {"version_id": version_id.strip()[:40], "minecraft": minecraft.strip(),
+               "loader_version": loader_version.strip()}
+    try:
+        return {"status": "success", **_modpack_call(request, modpacks.update, server_name, source, path, filename,
+                                                      options, backup=backup.lower() != "false",
+                                                      actor=request.state.user["username"])}
+    finally:
+        if path and os.path.exists(path):
+            os.remove(path)
 
 def _send_and_clean(zip_path, filename):
     """Sends a temp zip and deletes its temp folder once the download is done."""

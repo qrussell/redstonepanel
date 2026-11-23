@@ -66,6 +66,9 @@ SKIP_TOP = {"server.jar", "server.jar.previous", "bedrock_server", "bedrock_serv
             "libraries", "versions", "logs", "crash-reports", "debug", "server.log",
             manager.REMOVED_INFO}
 SKIP_TOP_PREFIXES = (".redstonepanel-",)
+# What a Quilt or (older) Forge install leaves next to libraries/: installed again with it (1.20)
+LOADER_JAR_RE = re.compile(r"^(quilt-server-launch\.jar|minecraft_server\.[0-9.]+\.jar|"
+                           r"forge-[0-9.]+-[0-9.]+(-universal|-shim)?\.jar)$")
 # ...except the Java server's loader and version (1.16.11): a server made from an off-site copy on
 # a fresh machine downloads the same Minecraft version and loader again.
 KEEP_TOP = {".redstonepanel-server.json"}
@@ -224,7 +227,8 @@ def _is_active(server):
 def _edition(server, d):
     if os.path.isfile(os.path.join(d, "bedrock_server")):
         return "bedrock"
-    return "java" if manager._is_java(server) or os.path.isfile(os.path.join(d, "server.jar")) else "bedrock"
+    from core import javaservers
+    return "java" if manager._is_java(server) or javaservers.is_java_folder(d) else "bedrock"
 
 def _skipped(rel, full=False):
     """rel: path inside the server folder, '/'-separated. full=True (moving a server to another
@@ -235,6 +239,8 @@ def _skipped(rel, full=False):
     if rel in KEEP_TOP:
         return False
     if top in SKIP_TOP or top.startswith(SKIP_TOP_PREFIXES):
+        return True
+    if rel == top and LOADER_JAR_RE.match(top):
         return True
     return any(rel == p or rel.startswith(p) for p in SKIP_PACK_PREFIXES)
 

@@ -80,7 +80,7 @@ class Versions(Base):
         self.assertEqual(J.list_versions("paper"), ["26.3", "1.21.10", "1.21.4", "1.16.5"])
         self.assertEqual(J.list_versions("fabric"), ["26.3", "1.21.4"])
         with self.assertRaises(J.JavaServerError):
-            J.list_versions("forge")
+            J.list_versions("sponge")
 
     def test_version_order(self):
         self.assertLess(J.version_key("1.21.4"), J.version_key("1.21.10"))

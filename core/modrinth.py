@@ -1,4 +1,5 @@
-"""Modrinth (api.modrinth.com, no key): Fabric mods and Paper/Spigot/Bukkit plugins.
+"""Modrinth (api.modrinth.com, no key): Fabric, Quilt, Forge and NeoForge mods and
+Paper/Purpur/Spigot/Bukkit plugins.
 
 A "pick" is the build to install for a server, normalised for both sources:
 
@@ -15,8 +16,13 @@ from core.sources import SourceError, get_json
 API = "https://api.modrinth.com/v2"
 SITE = "https://modrinth.com"
 HOSTS = {"cdn.modrinth.com"}
-LOADERS = {"fabric": ["fabric"], "paper": ["paper", "spigot", "bukkit"]}
-PROJECT_TYPE = {"fabric": "mod", "paper": "plugin"}
+# What each kind of server loads (Quilt also loads Fabric mods; Purpur is Paper with extras)
+LOADERS = {"fabric": ["fabric"], "quilt": ["quilt", "fabric"], "forge": ["forge"], "neoforge": ["neoforge"],
+           "paper": ["paper", "spigot", "bukkit"], "purpur": ["purpur", "paper", "spigot", "bukkit"]}
+PROJECT_TYPE = {"fabric": "mod", "quilt": "mod", "forge": "mod", "neoforge": "mod",
+                "paper": "plugin", "purpur": "plugin"}
+NAMES = {"fabric": "Fabric", "quilt": "Quilt", "forge": "Forge", "neoforge": "NeoForge", "paper": "Paper",
+         "purpur": "Purpur"}
 CHANNELS = ("release", "beta")          # never alpha
 SORTS = {"downloads": "downloads", "follows": "follows", "updated": "updated", "newest": "newest"}
 CATALOG_TTL = 3600                      # project details for the catalog change slowly
@@ -58,7 +64,7 @@ def search(kind, minecraft, query="", offset=0, limit=20, category=None, sort=No
 
 
 def project_url(kind, slug):
-    return f"{SITE}/{'plugin' if kind == 'paper' else 'mod'}/{slug}"
+    return f"{SITE}/{PROJECT_TYPE.get(kind, 'mod')}/{slug}"
 
 
 def catalog_projects(slugs):
@@ -83,7 +89,7 @@ def card(p, kind, minecraft):
     has_version = not minecraft or minecraft in (p.get("game_versions") or [])
     reason = None
     if not has_loader:
-        reason = f"No {'Paper' if kind == 'paper' else 'Fabric'} build"
+        reason = f"No {NAMES[kind]} build"
     elif not has_version:
         reason = f"Not for {minecraft} yet"
     return {"source": "modrinth", "project": p.get("id"), "slug": p.get("slug"), "title": p.get("title"),
@@ -168,7 +174,7 @@ def resolve(project, kind, minecraft):
                         f"{urllib.parse.urlencode(params)}") or []
     v = _choose(versions)
     if not v:
-        what = {"fabric": "Fabric", "paper": "Paper"}[kind]
+        what = NAMES[kind]
         raise SourceError(f"{p.get('title') or project} has no release or beta build for {what}"
                           f"{' ' + minecraft if minecraft else ''}.", 404)
     return normalise(v, {"slug": p.get("slug"), "title": p.get("title")})
@@ -192,3 +198,58 @@ def latest_for(hashes, kind, minecraft):
     if minecraft:
         body["game_versions"] = [minecraft]
     return get_json(f"{API}/version_files/update", body=body) or {}
+
+
+# ---------------------------------------------------------------------------
+# Modpacks (1.20)
+# ---------------------------------------------------------------------------
+PACK_LOADERS = ("fabric", "quilt", "forge", "neoforge")
+
+
+def search_modpacks(query="", offset=0, limit=20, loader=None, minecraft=None, sort=None):
+    """Modpacks that can run on a server, for New server > From a modpack."""
+    facets = [["project_type:modpack"], ["server_side:required", "server_side:optional"],
+              [f"categories:{l}" for l in ([loader] if loader in PACK_LOADERS else PACK_LOADERS)]]
+    if minecraft:
+        facets.append([f"versions:{minecraft}"])
+    index = SORTS.get(sort) or ("relevance" if query else "downloads")
+    params = {"query": query or "", "limit": max(1, min(int(limit), 50)), "offset": max(0, int(offset)),
+              "index": index}
+    d = get_json(f"{API}/search?{urllib.parse.urlencode(params)}&facets={_q(facets)}") or {}
+    hits = []
+    for h in d.get("hits") or []:
+        cats = h.get("categories") or []
+        hits.append({"project": h.get("project_id"), "slug": h.get("slug"), "title": h.get("title"),
+                     "author": h.get("author"), "description": h.get("description"),
+                     "downloads": h.get("downloads"), "follows": h.get("follows"),
+                     "updated": h.get("date_modified"), "icon": h.get("icon_url"),
+                     "loaders": [l for l in PACK_LOADERS if l in cats],
+                     "latest_minecraft": (h.get("versions") or [None])[-1],
+                     "url": f"{SITE}/modpack/{h.get('slug')}"})
+    return {"total": d.get("total_hits", len(hits)), "hits": hits}
+
+
+def modpack_versions(project, limit=40):
+    """A modpack's versions, newest first: [{id, name, version, channel, minecraft, loaders,
+    published, file}] where file is its .mrpack (None when it has none)."""
+    p = _project(project)
+    if p.get("project_type") != "modpack":
+        raise SourceError(f"{p.get('title') or project} isn't a modpack.", 400)
+    versions = get_json(f"{API}/project/{urllib.parse.quote(p['id'], safe='')}/version") or []
+    out = []
+    for v in versions:
+        fs = [f for f in v.get("files") or [] if str(f.get("filename", "")).lower().endswith(".mrpack")]
+        f = next((f for f in fs if f.get("primary")), fs[0] if fs else None)
+        if not f:
+            continue
+        out.append({"id": v.get("id"), "name": v.get("name"), "version": v.get("version_number"),
+                    "channel": v.get("version_type"), "minecraft": v.get("game_versions") or [],
+                    "loaders": [l for l in v.get("loaders") or [] if l in PACK_LOADERS],
+                    "published": v.get("date_published"),
+                    "file": {"url": f.get("url"), "filename": f.get("filename"), "size": f.get("size"),
+                             "hash": (f.get("hashes") or {}).get("sha512"), "algorithm": "sha512"}})
+        if len(out) >= limit:
+            break
+    return {"project": p["id"], "slug": p.get("slug"), "title": p.get("title"), "icon": p.get("icon_url"),
+            "description": p.get("description"), "server_side": p.get("server_side"),
+            "url": f"{SITE}/modpack/{p.get('slug')}", "versions": out}

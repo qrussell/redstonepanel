@@ -638,7 +638,7 @@ def _bedrock_journal_version(svc):
 def _java_server_info(jar):
     """Loader, Minecraft version and needed Java of a Java server folder (cached on its jar)."""
     info = javaservers.read_info(os.path.dirname(jar))
-    jar_info = _java_jar_info(jar) or {}
+    jar_info = (_java_jar_info(jar) if jar.endswith(".jar") else None) or {}
     if not info.get("minecraft") and jar_info.get("version"):
         info = {"loader": "vanilla", "minecraft": jar_info["version"]}
     return {"version": javaservers.describe(info) or jar_info.get("version"),
@@ -649,7 +649,11 @@ def _java_server_info(jar):
 def server_version(d, is_java, svc=None):
     empty = {"version": None, "java_required": None, "loader": None, "minecraft": None}
     if is_java:
-        return _cached(os.path.join(d, "server.jar"), _java_server_info) or empty
+        jar = os.path.join(d, "server.jar")
+        if not os.path.isfile(jar):
+            # Forge and NeoForge have no server.jar: what the panel recorded at install
+            return _cached(os.path.join(d, javaservers.INFO_FILE), _java_server_info) or empty
+        return _cached(jar, _java_server_info) or empty
     return (_cached(os.path.join(d, "server.log"), _bedrock_log_version)
             or (svc and _bedrock_journal_version(svc)) or empty)
 
@@ -874,17 +878,15 @@ def update_server_binary(server_name, version=None, backup=True, actor="Update b
     if is_java:
         current = javaservers.read_info(d)
         loader = current.get("loader") or "vanilla"
-        staging = tempfile.mkdtemp(prefix=".redstonepanel-update-", dir=d)
-        try:
-            # Download next to the server first, so a failed download leaves it untouched
-            info, java = _install_java(staging, loader, version, current)
-            from core import backups, convert, updates
+        from core import backups, convert, updates
+        state = {"pre": None}
+
+        def before_swap(info):
             was_running = backups._is_active(server_name)
             run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
-            pre = None
             if backup:
                 try:
-                    pre = backups.run_backup(server_name, "pre-update")["file"]
+                    state["pre"] = backups.run_backup(server_name, "pre-update")["file"]
                     updates._prune_pre_update(server_name)
                 except Exception as e:
                     if was_running:
@@ -892,21 +894,42 @@ def update_server_binary(server_name, version=None, backup=True, actor="Update b
                     raise ServerError(f"The backup before updating failed, so nothing was changed: {e}")
             old_java = unit_java(exec_start) or "/usr/bin/java"
             convert.keep_previous(d, current)
-            os.replace(os.path.join(staging, "server.jar"), os.path.join(d, "server.jar"))
-            os.replace(os.path.join(staging, javaservers.INFO_FILE), os.path.join(d, javaservers.INFO_FILE))
             if current.get("loader") and current.get("minecraft"):
-                convert.remember(server_name, "update", current, info, pre, old_java, actor=actor,
+                convert.remember(server_name, "update", current, info, state["pre"], old_java, actor=actor,
                                  was_running=was_running)
-        finally:
-            shutil.rmtree(staging, ignore_errors=True)
-        if os.path.realpath(unit_java(exec_start) or "") != os.path.realpath(java):
-            _write_unit(server_name, d, "java", java=java, **unit_heap(exec_start))
+
+        info, java = reinstall_java(server_name, loader, version, None, current, before_swap=before_swap)
+        pre = state["pre"]
         write_log(f"[UPDATE] {server_name} now runs {javaservers.describe(info)} with {java}"
                   + (f" (was {javaservers.describe(current)}; backup from before: {pre})." if pre else "."))
     from core import updates
     updates.forget(server_name)
     run_and_log(["chown", "-R", "minecraft:minecraft", d])
     run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
+
+def reinstall_java(server_name, loader, version=None, build=None, current=None, before_swap=None):
+    """Downloads a Java server's software again (a chosen Minecraft version and build, default
+    the newest) and swaps it in, rewriting the unit when the Java or what it starts changed.
+    Doesn't stop or start the server: before_swap(info) runs once the download is ready.
+    Returns (info, java path)."""
+    d = get_server_dir(server_name)
+    exec_start = _unit_exec_start(server_name)
+    current = javaservers.read_info(d) if current is None else current
+    staging = tempfile.mkdtemp(prefix=".redstonepanel-update-", dir=d)
+    try:
+        # Download next to the server first, so a failed download leaves it untouched
+        # (Quilt, Forge and NeoForge run their installer there, as the minecraft user)
+        info, java = _install_java(staging, loader, version, current, build=build)
+        if before_swap:
+            before_swap(info)
+        before = javaservers.launch_args(d, current)
+        javaservers.adopt(staging, d)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    if os.path.realpath(unit_java(exec_start) or "") != os.path.realpath(java) \
+            or javaservers.launch_args(d, info) != before:
+        _write_unit(server_name, d, "java", java=java, **unit_heap(exec_start))
+    return info, java
 
 def _install_java(d, loader="vanilla", version=None, current=None, build=None, snapshot=False, java_major=None):
     """Downloads a Java server's jar into d. Returns (info, java path)."""
@@ -930,6 +953,8 @@ def java_for_folder(d):
     """The java to run an existing Java server folder with (import, restore)."""
     info = javaservers.read_info(d)
     need = info.get("java_required") or (_java_jar_info(os.path.join(d, "server.jar")) or {}).get("java_required")
+    java_max = javaservers.forge_java_max(info["minecraft"]) if info.get("loader") == "forge" \
+        and javaservers.is_release(info.get("minecraft")) else None
     if not need and info.get("minecraft"):
         try:
             need = javaservers.mojang_version(info["minecraft"])["java_required"]
@@ -938,7 +963,7 @@ def java_for_folder(d):
     if not need:
         return "/usr/bin/java"
     try:
-        return javaservers.choose_java(need, info.get("minecraft"))
+        return javaservers.choose_java(need, info.get("minecraft"), java_max)
     except javaservers.MissingJavaError as e:
         raise JavaMissing(e)
 
@@ -981,7 +1006,9 @@ def _write_unit(svc_name, mc_dir, edition, xms=None, xmx=None, java="/usr/bin/ja
         if flags and flags.get("preset") == "aikar":
             xms = xmx                                  # Aikar's flags: the whole heap up front
         extra = " ".join(deployopts.unit_flags(flags, xmx))
-        exec_start = f"{java} -Xms{xms} -Xmx{xmx} {extra + ' ' if extra else ''}-jar server.jar nogui"
+        # "-jar server.jar", or what a Quilt, Forge or NeoForge install starts with (1.20)
+        launch = javaservers.launch_args(mc_dir)
+        exec_start = f"{java} -Xms{xms} -Xmx{xmx} {extra + ' ' if extra else ''}{launch} nogui"
         env_vars = ""
     svc_content = f"""[Unit]
 Description=Minecraft Server ({svc_name})
@@ -1156,7 +1183,7 @@ def _removed_edition(d, name, info):
     """'java', 'bedrock' or None, from the files first and the folder's name last."""
     if os.path.isfile(os.path.join(d, "bedrock_server")):
         return "bedrock"
-    if os.path.isfile(os.path.join(d, "server.jar")):
+    if javaservers.is_java_folder(d):
         return "java"
     if info.get("edition") in ("java", "bedrock"):
         return info["edition"]
@@ -1198,7 +1225,8 @@ def list_removed_servers():
             "port": props.get("server-port", ""),
             "motd": props.get("motd", props.get("server-name", "")),
             "world": props.get("level-name", ""),
-            "has_binary": bool(edition) and os.path.isfile(os.path.join(d, binary)),
+            "has_binary": bool(edition) and (javaservers.runnable(d) if edition == "java"
+                                             else os.path.isfile(os.path.join(d, binary))),
             "removed_at": removed_at if isinstance(removed_at, int) else None,
             "can_restore": edition is not None,
             # Left behind by a move to another cluster member (1.16): its name there
@@ -1268,8 +1296,13 @@ def restore_server(name, same_version=False):
             write_log(f"[RESTORE] {name} has no server binary; downloading the latest {edition.capitalize()} release.")
             if edition == "java":
                 current = javaservers.read_info(d)
-                _install_java(d, current.get("loader") or "vanilla",
-                              current.get("minecraft") if same_version else None, current)
+                loader = current.get("loader") or "vanilla"
+                if loader in javaservers.INSTALLER_LOADERS:
+                    # Mods are built for one loader version: the same one is installed again
+                    _install_java(d, loader, current.get("minecraft"), current,
+                                  build=str(current.get("build") or "").replace("loader ", "") or None)
+                else:
+                    _install_java(d, loader, current.get("minecraft") if same_version else None, current)
             else:
                 _fetch_bedrock(d)
             downloaded = True
@@ -1347,14 +1380,14 @@ def _import_unpacked(staging, root):
     # Detect Edition from the files themselves
     if os.path.isfile(os.path.join(root, "bedrock_server")):
         edition = "bedrock"
-    elif os.path.isfile(os.path.join(root, "server.jar")) or os.path.isfile(os.path.join(root, "server.properties")):
+    elif javaservers.is_java_folder(root) or os.path.isfile(os.path.join(root, "server.properties")):
         edition = "java"
     else:
         raise archive.ArchiveError("This doesn't look like a Minecraft server backup: no bedrock_server, "
                                    "server.jar or server.properties at its top level.")
     if edition == "bedrock" and not bedrock_supported():
         raise archive.ArchiveError(bedrock_unsupported_message())
-    if edition == "java" and not os.path.isfile(os.path.join(root, "server.jar")):
+    if edition == "java" and not javaservers.runnable(root):
         write_log("[WARNING] The backup has no server.jar; use Update on the new server to download one.")
 
     svc_name, port = _reserve_name(edition)       # auto-allocated name and port
@@ -1565,10 +1598,12 @@ def set_server_flags(server_name, flags, actor="admin"):
     return {"restarted": active, "flags": deployopts.get_flags(server_name)}
 
 def deploy_server(edition, template_id=None, loader="vanilla", version=None, advanced=None,
-                  is_admin=True, actor=None):
-    """A new server. Java: loader is vanilla, paper or fabric and version a Minecraft release
+                  is_admin=True, actor=None, prepare=None):
+    """A new server. Java: loader is one of javaservers.LOADERS and version a Minecraft release
     (default: the newest the loader offers). advanced: New server's Advanced options (1.17.2),
-    checked by core/deployopts.py before anything is downloaded. Returns the server's name."""
+    checked by core/deployopts.py before anything is downloaded. prepare(mc_dir): called once
+    the server software is in place and before the first start, to add files (a modpack's
+    mods and config, 1.20); if it fails the folder is removed. Returns the server's name."""
     from core import deployopts
     edition = edition.lower()
     if edition not in ("java", "bedrock"):
@@ -1582,8 +1617,8 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
         plan = deployopts.validate(advanced, edition, loader, is_admin=is_admin)
     except deployopts.OptionError as e:
         raise ServerError(str(e))
-    if plan.get("build") and loader == "paper" and not version:
-        raise ServerError("Choose the Minecraft version a Paper build belongs to.")
+    if plan.get("build") and loader in ("paper", "purpur", "forge", "neoforge") and not version:
+        raise ServerError(f"Choose the Minecraft version a {javaservers.LOADERS[loader]} build belongs to.")
     if version and not plan.get("snapshot") and not javaservers.is_release(version):
         raise ServerError("Choose a Minecraft release such as 1.21.4, or allow snapshots.")
     if plan.get("heap"):
@@ -1639,6 +1674,13 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
             write_properties(mc_dir, {"server-port": port, "server-portv6": port + 1,
                                       "server-udp-ports": port, "query.port": port})
             write_screenrc(mc_dir)
+        if prepare:
+            run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+            try:
+                prepare(mc_dir)
+            except Exception:
+                shutil.rmtree(mc_dir, ignore_errors=True)
+                raise
 
         run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
         heap = {}
