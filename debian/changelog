@@ -1,3 +1,31 @@
+redstonepanel (1.19.0) noble; urgency=medium
+
+  * Change a Java server's type in place: Maintenance, Server type moves a
+    server between Vanilla, Paper and Fabric (and to a newer Minecraft
+    version at the same time) and keeps its world, port, settings, players
+    and schedules. A preview lists everything that will happen first.
+  * Always a backup first ("Before type change"), and the old type is put
+    back by itself if the new one doesn't finish starting. Undo type
+    change returns to the old software and the world from before.
+  * The world's layout follows the type: Paper's separate Nether and End
+    folders (before Minecraft 26.1), and the world settings files Paper
+    keeps with each dimension (26.1 and later), are moved when leaving or
+    joining Paper.
+  * Mods and plugins are set aside (mods.off, plugins.off) and come back
+    when you return. The same Modrinth project's build for the new type
+    is offered; Fabric API is added when a Fabric mod is installed that
+    way. Leaving Fabric with mods that add blocks, items or dimensions
+    asks for the server's name first, and lists them.
+  * Update Server (Java) now takes a backup first, and Roll back the last
+    update returns to the server software and world from before it.
+  * Backups record the type and version that made them (the Made by
+    column), and a world from a newer Minecraft version is not restored
+    onto an older server.
+  * Changing the type, undoing it and rolling back an update are for
+    admins; seeing a server's type needs View.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Mon, 23 Nov 2026 00:40:00 +0000
+
 redstonepanel (1.18.0) noble; urgency=medium
 
   * Per-server permissions for user accounts: Users, Servers sets what a

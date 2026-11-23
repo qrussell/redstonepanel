@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.18.0 (22 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2) and per-server permissions and SFTP (1.18) shipped; changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.19.0 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2) and per-server permissions and SFTP (1.18) shipped; changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1422,7 +1422,7 @@ refused joins, so those are Java only.
       `python3-paramiko`. `test-install.sh` still passes. Not tested on a real
       cluster end to end; the node side is covered by unit tests.
 
-### 1.19: change a server's type or version
+### 1.19: change a server's type or version *(released 23 Nov 2026)*
 
 24. **Turn a Vanilla server into Paper or Fabric (and any other way round), and roll back an
     update, without making a new server.** Today a server keeps the type it was created with
@@ -1528,7 +1528,7 @@ refused joins, so those are Java only.
     **Size:** one to two weeks. The world moves are simple; the rollback on a failed start and
     the content-mod checks are the careful parts.
 
-    **As built (22 Nov 2026, MR on `feature/change-server-type`):** as planned, with these
+    **As built (22 Nov 2026, MR !105):** as planned, with these
     differences.
 
     - **Minecraft 26.1 changed the world layout** after this was written: every type, Paper

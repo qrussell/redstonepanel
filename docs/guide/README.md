@@ -50,6 +50,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.19.0 | **Server type**: change a Java server between Vanilla, Paper and Fabric in place, with a preview, a backup and undo; **Roll back the last update**; backups show what made them. | [Changing a server's type](#changing-a-servers-type), [Rolling back an update](#rolling-back-an-update) |
 | 1.18.0 | **Per-server permissions** for user accounts, with Moderator and Co-owner presets, and **SFTP** for FileZilla or WinSCP with passwords or SSH keys. | [What a helper may do](#what-a-helper-may-do), [SFTP](#sftp-filezilla-winscp) |
 | 1.17.0 | **Performance**: tick health, memory, history charts and suggestions for every server and the machine; **Memory and limits** for the heap and hard memory and CPU limits; low TPS and full disk alerts. | [Performance](#performance), [Memory and limits](#memory-and-limits) |
 | 1.16.14 | **🔀 Port forwarding**: what to forward on your internet router (pfSense and others) for every server and node; the phone menu shows every server. | [Port forwarding](#port-forwarding), [On a phone](#on-a-phone) |
