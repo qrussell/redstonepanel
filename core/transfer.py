@@ -100,7 +100,7 @@ def list_path(tid):
 
 def _staging_ok(path):
     """A staged pre-copy folder this module made (never anything else gets removed)."""
-    return (isinstance(path, str) and os.path.dirname(path) == manager.SERVERS_ROOT.rstrip("/")
+    return (isinstance(path, str) and manager.in_servers_folder(path)
             and os.path.basename(path).startswith(".redstonepanel-import-"))
 
 
@@ -451,9 +451,9 @@ def begin_import(size, sha256, meta, base=None):
         raise TransferError("Bad archive checksum.")
     meta = _clean_meta(meta)
     free_here = shutil.disk_usage(_dir()).free
-    free_opt = shutil.disk_usage(manager.SERVERS_ROOT).free
+    free_opt = shutil.disk_usage(manager._made_servers_root()).free
     # The archive, then the folder it unpacks to (at least as big; unpacking checks again)
-    if os.stat(_dir()).st_dev == os.stat(manager.SERVERS_ROOT).st_dev:
+    if os.stat(_dir()).st_dev == os.stat(manager._made_servers_root()).st_dev:
         enough = size * 2.1 <= free_here
     else:
         enough = size * 1.05 <= free_here and size * 1.05 <= free_opt
@@ -588,7 +588,7 @@ def stage(tid):
     if rec.get("state") != "received":
         raise TransferError("The archive hasn't arrived yet.", 409)
     try:
-        staging, root = archive.unpack(archive_path(tid), manager.SERVERS_ROOT)
+        staging, root = archive.unpack(archive_path(tid), manager._made_servers_root())
     except archive.ArchiveError as e:
         raise TransferError(str(e))
     rec.update(state="staged", staging=staging, root=root)
@@ -682,7 +682,7 @@ def install(tid, keep_name=True, start=True, carry=True, actor="master"):
             manager.write_log(f"[MOVE] Applied the changes since the pre-copy: {changed} changed, {deleted} deleted.")
         else:
             try:
-                staging, root = archive.unpack(archive_path(tid), manager.SERVERS_ROOT)
+                staging, root = archive.unpack(archive_path(tid), manager._made_servers_root())
             except archive.ArchiveError as e:
                 raise TransferError(str(e))
         java = _java_for(root, actor) if meta["edition"] == "java" else None

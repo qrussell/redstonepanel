@@ -439,7 +439,7 @@ rules that no server uses any more.
 | Panel code | `/usr/share/redstonepanel` |
 | Panel state (accounts, settings, TLS, templates) | `/var/lib/redstonepanel` |
 | Activity log | `/var/log/redstonepanel/panel.log` |
-| Game servers | `/opt/minecraft-*` |
+| Game servers | `/opt/minecraft-*`, or the folder set under **Panel Settings → Servers folder** |
 | Backups | `/var/backups/redstonepanel/<server>/` |
 | Service | `systemctl status redstonepanel` |
 

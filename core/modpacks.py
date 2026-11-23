@@ -591,8 +591,7 @@ def _loader_build(plan):
 
 
 def _staging_root():
-    os.makedirs(manager.SERVERS_ROOT, exist_ok=True)
-    return tempfile.mkdtemp(prefix=".redstonepanel-pack-", dir=manager.SERVERS_ROOT)
+    return tempfile.mkdtemp(prefix=".redstonepanel-pack-", dir=manager._made_servers_root())
 
 
 def _prepare(source, upload_path, upload_name, choices, staging):
@@ -619,7 +618,7 @@ def _prepare(source, upload_path, upload_name, choices, staging):
         unpacked = None
         try:
             try:
-                unpacked, root = archive.unpack(upload_path, manager.SERVERS_ROOT)
+                unpacked, root = archive.unpack(upload_path, manager._made_servers_root())
             except archive.ArchiveError as e:
                 raise PackError(str(e))
             label = re.sub(r"\.(zip|tar\.gz|tgz|tar)$", "", os.path.basename(upload_name or ""), flags=re.I)

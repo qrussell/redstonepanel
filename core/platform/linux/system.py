@@ -103,3 +103,58 @@ def remove_files(folder, names, wrap=None):
     """Deletes files (paths relative to folder); ones that aren't there are skipped."""
     cmd = ["rm", "-f", "--"] + list(names)
     return quiet(wrap(cmd) if wrap else cmd, cwd=folder)
+
+
+# Folders the panel won't keep game servers in: the system's own, and its own data
+_NOT_FOR_SERVERS = ("/etc", "/proc", "/sys", "/dev", "/boot", "/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64",
+                    "/run", "/root", "/tmp", "/var/lib", "/var/log", "/var/run", "/var/tmp", "/var/cache", "/var/backups", "/snap")
+_NOT_ALONE = ("/", "/home", "/var", "/mnt", "/media", "/srv")      # fine above a servers folder, not as one
+
+
+def check_servers_folder(folder):
+    """(the folder as it will be stored, "") when game servers can be kept there, else
+    (None, why not). Nothing is created: prepare_servers_folder() does that."""
+    import os
+    import re
+    folder = os.path.normpath(folder)
+    if not folder.startswith("/"):
+        return None, "Give the full path of a folder, for example /srv/minecraft."
+    if not re.fullmatch(r"/[A-Za-z0-9._/-]+", folder) and folder != "/":
+        return None, "The folder's name can only have letters, digits, dots, dashes and underscores (no spaces)."
+    real = os.path.realpath(folder)
+    for path in {folder, real}:
+        if path in _NOT_ALONE:
+            return None, f"{path} holds other things. Give a folder of its own inside it, for example {path.rstrip('/')}/minecraft."
+        if any(path == bad or path.startswith(bad + "/") for bad in _NOT_FOR_SERVERS):
+            return None, f"{path} belongs to the system or to the panel itself; choose a folder somewhere else."
+    if os.path.lexists(real) and not os.path.isdir(real):
+        return None, f"{real} is a file, not a folder."
+    # The nearest folder that exists says what disk this is
+    there = real
+    while not os.path.isdir(there):
+        there = os.path.dirname(there)
+    try:
+        flags = os.statvfs(there).f_flag
+    except OSError as e:
+        return None, f"Can't look at {there}: {e.strerror or e}."
+    if flags & os.ST_RDONLY:
+        return None, f"{there} is on a read-only disk."
+    if flags & getattr(os, "ST_NOEXEC", 8):
+        return None, (f"{there} is on a disk mounted with noexec, and a Bedrock server is a program that has to "
+                      f"run from its own folder. Mount it without noexec, or choose another folder.")
+    return real, ""
+
+
+def prepare_servers_folder(folder):
+    """Makes the folder (and those above it) and checks the game servers' account can get in.
+    Returns "" or why it couldn't."""
+    import os
+    try:
+        os.makedirs(folder, mode=0o755, exist_ok=True)
+    except OSError as e:
+        return f"Couldn't make {folder}: {e.strerror or e}."
+    r = quiet(as_game_account(["test", "-x", folder]), timeout=20)
+    if r.returncode != 0:
+        return (f"The {GAME_ACCOUNT} account, which runs the game servers, can't get into {folder}. "
+                f"A folder above it is closed to other accounts: run  sudo chmod o+x  on it, or choose another folder.")
+    return ""
