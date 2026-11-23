@@ -4,6 +4,15 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.21.3 (2026-11-23)
+
+Release notes: release-notes/v1.21.3.md
+
+- Found on this computer: New server now lists Minecraft servers on the machine that were set up outside the panel (your own systemd service, a script, a screen session), with folder, port, version and what started each one. Looking changes nothing.
+- Manage with RedstonePanel hands one over: the service that ran it is stopped and turned off (never deleted) and the panel runs the server from the same folder under its own service, with the memory it had. No file is copied or moved. A server that doesn't start under the panel is put back by itself.
+- Undo puts a handed-over server back as it was.
+- Fixed: a new server given the name of one you removed no longer opens with the removed server's Last crash card.
+
 ## 1.21.2 (2026-11-23)
 
 Release notes: release-notes/v1.21.2.md

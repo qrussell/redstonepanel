@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.2 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) and a servers folder you choose (1.21.1) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.3 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2) and finding servers set up outside the panel (1.21.3) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1833,6 +1833,34 @@ choices carry over. No API or package change.
 `md` up. Tested: Chromium at 1280 x 800 and 390 x 844 (toggle and accent saved, swatches close
 on a pick, Esc and a click elsewhere, no sideways scroll, 44 px buttons on the phone); 819 unit
 tests. Every manual screenshot was retaken, since they all show the sidebar or a page header.
+
+### 1.21.3: servers you set up yourself *(released 23 Nov 2026)*
+
+**Why.** People who install RedstonePanel often already run a Minecraft server on the machine,
+from their own service or a `screen` session. The panel ignored it, apart from avoiding its
+port and name, so that server could only be brought in by importing a copy. Quentin asked on
+23 Nov 2026 for the panel to find such servers, treat them as custom installations and allow
+managing them.
+
+**How.** Look at the running Java and Bedrock programs, keep the ones whose working folder has
+a `server.properties` and isn't a panel server, and work out what started each (a systemd
+service, or a terminal). List them read-only under **Found on this computer** in New server.
+**Manage with RedstonePanel** stops and disables the old service, never deletes it, and writes
+the panel's own unit pointing at the same folder; **Undo** reverses it from a record kept in
+the panel's data folder. Never automatic. Admins only, and not through a node token.
+
+**As built.** As planned, in `core/found.py` with the machine-specific parts behind
+`core.platform` (`system.game_programs`, `services.other_control`). The first run on a real
+system found three bugs, fixed before release: a foreign unit file in `/etc/systemd/system`
+was taken for one of the panel's, the panel's default starting memory could be larger than the
+server's own maximum, and a server that failed to start was reported as handed over. It now
+keeps the server's own memory settings, waits to see the server running, and puts everything
+back with the server's last output if it isn't. A server whose version the panel can't tell
+runs with the Java it already used. A server started from a terminal has to be stopped by
+hand and stays listed for an hour. Also in this release: a new server no longer shows the Last
+crash of a removed server with the same name. Tested: `packaging/test/test-found.sh`, 43
+checks on Ubuntu 24.04 in a systemd container (in the GitHub `cluster` job), and 838 unit
+tests. The Windows side ships with the 1.22 preview. The manual's picture uses sample data.
 
 ### 2.0: an API for scripts and bots
 
