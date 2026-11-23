@@ -27,18 +27,19 @@ import json
 import os
 import re
 import shutil
-import subprocess
+import subprocess    # noqa: F401  (unused here since 1.21; tests replace subprocess.run through this module)
 import tarfile
 import tempfile
 import time
 
 from core import manager, notify, properties, rcon
 from core.settings import DATA_DIR
+from core.platform import console, paths, services, system
 
-BACKUP_ROOT = os.environ.get("RP_BACKUP_DIR") or "/var/backups/redstonepanel"
+BACKUP_ROOT = paths.BACKUP_ROOT
 SCHEDULE_FILE = os.path.join(DATA_DIR, "backups.json")
 STATUS_DIR = os.path.join(DATA_DIR, "backup-status")
-UNIT_DIR = "/etc/systemd/system"
+UNIT_DIR = paths.UNIT_DIR
 SERVICE_TEMPLATE = "redstonepanel-backup@.service"
 
 # A server name is also a systemd instance name here, so no '@'
@@ -221,8 +222,7 @@ def check_not_newer(server, d, path):
 # Taking a backup
 # ---------------------------------------------------------------------------
 def _is_active(server):
-    return subprocess.run(["systemctl", "is-active", f"{server}.service"],
-                          capture_output=True, text=True).stdout.strip() == "active"
+    return services.is_active(server)
 
 def _edition(server, d):
     if os.path.isfile(os.path.join(d, "bedrock_server")):
@@ -280,12 +280,8 @@ def _java_rcon(d):
     return lambda cmd, timeout=10: rcon.command("127.0.0.1", int(port), password, cmd, timeout=timeout)
 
 def _screen(server, cmd):
-    screen = shutil.which("screen")
-    if not screen:
-        return False
-    r = subprocess.run(["sudo", "-u", "minecraft", screen, "-S", server, "-p", "0", "-X", "stuff", cmd + "\r"],
-                       capture_output=True, text=True)
-    return r.returncode == 0
+    r = console.send(server, cmd)
+    return r is not None and r.returncode == 0
 
 def parse_bedrock_file_list(text):
     """The file list Bedrock prints after BEDROCK_READY, as [(path under worlds/, bytes)].
@@ -542,7 +538,7 @@ def restore_backup(server, filename):
     was_running = _is_active(server)
     manager.write_log(f"[BACKUP] Restoring {server}'s world from {filename}.")
     if was_running:
-        manager.run_and_log(["systemctl", "stop", f"{server}.service"])
+        services.stop(server)
     try:
         pre = run_backup(server, "pre-restore")
         staging = tempfile.mkdtemp(prefix=".redstonepanel-restore-", dir=d)
@@ -563,13 +559,13 @@ def restore_backup(server, filename):
             shutil.rmtree(staging, ignore_errors=True)
         if manager.read_properties(d).get("level-name") != level:
             manager.write_properties(d, {"level-name": level})
-        manager.run_and_log(["chown", "-R", "minecraft:minecraft", d])
+        system.give_to_game_account(d)
         manager.write_log(f"[BACKUP] Restored {', '.join(worlds)} from {filename}. "
                           f"The world it replaced is in {pre['file']}.")
         return {"restored": worlds, "pre_restore": pre["file"]}
     finally:
         if was_running:
-            manager.run_and_log(["systemctl", "start", f"{server}.service"])
+            services.start(server)
 
 
 # ---------------------------------------------------------------------------
@@ -608,14 +604,14 @@ def _timer_name(server):
     return f"redstonepanel-backup@{server}.timer"
 
 def _service_unit():
-    return """[Unit]
+    return f"""[Unit]
 Description=RedstonePanel backup of %i
 After=network.target
 
 [Service]
 Type=oneshot
 Environment=RP_BACKUP_KIND=scheduled
-ExecStart=/usr/sbin/redstonepanel backup %i
+ExecStart={paths.PANEL_CMD} backup %i
 Nice=10
 IOSchedulingClass=idle
 """
@@ -650,9 +646,8 @@ def _apply_schedule(server, schedule):
     if schedule["enabled"]:
         _write_if_changed(os.path.join(UNIT_DIR, SERVICE_TEMPLATE), _service_unit())
         _write_if_changed(timer_path, _timer_unit(server, on_calendar(schedule["frequency"], schedule["time"])))
-        manager.run_and_log(["systemctl", "daemon-reload"])
-        manager.run_and_log(["systemctl", "enable", timer])
-        manager.run_and_log(["systemctl", "restart", timer])
+        services.reload()
+        services.enable_schedule(timer)
     else:
         _remove_timer(server)
 
@@ -660,9 +655,9 @@ def _remove_timer(server):
     timer = _timer_name(server)
     timer_path = os.path.join(UNIT_DIR, timer)
     if os.path.exists(timer_path):
-        subprocess.run(["systemctl", "disable", "--now", timer], capture_output=True)
+        services.disable_schedule(timer)
         os.remove(timer_path)
-        manager.run_and_log(["systemctl", "daemon-reload"])
+        services.reload()
 
 def set_schedule(server, enabled, frequency, time_str, keep, keep_days=0):
     _check_name(server)
@@ -695,9 +690,7 @@ def set_schedule(server, enabled, frequency, time_str, keep, keep_days=0):
 def next_run(server):
     if not os.path.exists(os.path.join(UNIT_DIR, _timer_name(server))):
         return None
-    out = subprocess.run(["systemctl", "show", "-p", "NextElapseUSecRealtime", "--value", _timer_name(server)],
-                         capture_output=True, text=True).stdout.strip()
-    return out if out and out != "n/a" else None
+    return services.next_run(_timer_name(server))
 
 def overview(server):
     """Everything the Backups tab shows."""

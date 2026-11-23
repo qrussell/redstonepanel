@@ -15,9 +15,8 @@ allowlist) and shows summary() of each.
 import calendar
 import os
 import re
-import shutil
 import socket
-import subprocess
+import subprocess    # noqa: F401  (unused here since 1.21; tests replace subprocess.run through this module)
 import threading
 import time
 
@@ -25,10 +24,12 @@ from core import backups, javaservers, manager, notify, proxies, restarts, runti
 from core import cluster
 from core import settings as panel_settings
 from core.version import panel_version
+from core.platform import console, packages, paths, services, system, CommandError
+from core.platform import firewall as platform_firewall
 
-PROC = "/proc"
-OS_RELEASE = "/etc/os-release"
-LOCALTIME = "/etc/localtime"
+PROC = paths.PROC
+OS_RELEASE = paths.OS_RELEASE
+LOCALTIME = paths.LOCALTIME
 SIZE_EVERY = 600              # folder sizes are re-walked after this many seconds
 SIZER_PAUSE = 15
 REPORT_TTL = 3
@@ -150,9 +151,8 @@ def _uptime():
 
 def _ips():
     try:
-        r = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=3)
-        return r.stdout.split()
-    except (OSError, subprocess.SubprocessError):
+        return system.addresses(timeout=3)
+    except CommandError:
         return []
 
 
@@ -197,31 +197,25 @@ def systemctl_show(units, props=UNIT_PROPS):
     if not units:
         return {}
     try:
-        r = subprocess.run(["systemctl", "show", "-p", ",".join(props), *units], capture_output=True,
-                           text=True, timeout=10, env={**os.environ, "TZ": "UTC"})
-    except (OSError, subprocess.SubprocessError):
+        return parse_show(services.show_many(units, props, timeout=10))
+    except CommandError:
         return {}
-    return parse_show(r.stdout)
 
 
 def failed_units():
     """Failed panel and game server units. A unit whose file is gone (a removed server that
     had failed before) is only systemd's memory of the failure: it's cleared, not reported."""
     try:
-        r = subprocess.run(["systemctl", "list-units", "--failed", "--all", "--plain", "--no-legend",
-                            "minecraft*", "redstonepanel*"], capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
+        listed = services.failed("minecraft*", "redstonepanel*", timeout=10)
+    except CommandError:
         return []
     failed, gone = [], []
-    for line in r.stdout.splitlines():
-        parts = line.split()
-        if not parts:
-            continue
-        (gone if len(parts) > 1 and parts[1] == "not-found" else failed).append(parts[0])
+    for unit, load in listed:
+        (gone if load == "not-found" else failed).append(unit)
     if gone:
         try:
-            subprocess.run(["systemctl", "reset-failed", *gone], capture_output=True, timeout=10)
-        except (OSError, subprocess.SubprocessError):
+            services.reset_failed(*gone, timeout=10)
+        except CommandError:
             pass
     return failed
 
@@ -383,16 +377,14 @@ def parse_apt_policy(text):
 def panel_update():
     """A newer redstonepanel apt knows about (from the last `apt update`), or None."""
     def compute():
-        if not panel_settings.PACKAGED or not shutil.which("apt-cache"):
+        if not panel_settings.PACKAGED or not packages.has_catalog():
             return None
         try:
-            r = subprocess.run(["apt-cache", "policy", "redstonepanel"], capture_output=True, text=True, timeout=20)
-            inst, cand = parse_apt_policy(r.stdout)
+            inst, cand = parse_apt_policy(packages.policy(packages.PANEL_PACKAGE, timeout=20))
             if not inst or not cand or "none" in inst or "none" in cand or inst == cand:
                 return None
-            newer = subprocess.run(["dpkg", "--compare-versions", inst, "lt", cand], timeout=10).returncode == 0
-            return cand if newer else None
-        except (OSError, subprocess.SubprocessError):
+            return cand if packages.is_older(inst, cand, timeout=10) else None
+        except CommandError:
             return None
     return _cached("apt", 600, compute)
 
@@ -474,13 +466,13 @@ def leftover_rules(status_text, in_use):
 
 def firewall():
     def compute():
-        if not shutil.which("ufw"):
+        if not platform_firewall.installed():
             return {"installed": False, "active": False, "rules": ""}
         try:
-            out = subprocess.run(["ufw", "status"], capture_output=True, text=True, timeout=10).stdout
-        except (OSError, subprocess.SubprocessError):
+            out = platform_firewall.status_text(timeout=10)
+        except CommandError:
             out = ""
-        return {"installed": True, "active": "Status: active" in out, "rules": out}
+        return {"installed": True, "active": platform_firewall.is_active(out), "rules": out}
     return _cached("ufw", 60, compute)
 
 
@@ -737,7 +729,7 @@ def _build():
             "java_needed": java["needed"],
             "java_installable": java["installable"],
             "java_job": java["job"],
-            "screen": bool(shutil.which("screen")),
+            "screen": console.available(),
             "https": https(),
             "notifications": {k: v for k, v in notify.public().items() if k in ("configured", "kind")},
             "cluster": {"role": role, "name": st.get("name") or st.get("cluster_name"),

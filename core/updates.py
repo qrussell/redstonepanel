@@ -26,7 +26,7 @@ import os
 import re
 import shutil
 import stat
-import subprocess
+import subprocess    # noqa: F401  (unused here since 1.21; tests replace subprocess.run through this module)
 import tempfile
 import time
 import urllib.error
@@ -36,10 +36,11 @@ import zipfile
 from core import javaservers, manager, notify
 from core.settings import DATA_DIR
 from core.version import panel_version
+from core.platform import paths, services, system
 
 STATE_FILE = os.path.join(DATA_DIR, "updates.json")
 AUTO_FILE = os.path.join(DATA_DIR, "auto-updates.json")
-UNIT_DIR = "/etc/systemd/system"
+UNIT_DIR = paths.UNIT_DIR
 TIMER = "redstonepanel-updates.timer"
 SERVICE = "redstonepanel-updates.service"
 CHECK_CALENDAR = "*-*-* 00/6:15:00"           # every 6 hours: Bedrock players can't join an older server
@@ -262,7 +263,7 @@ def _servers():
         if "Description=Minecraft Server (" not in unit:
             continue
         m = re.search(r"^WorkingDirectory=(.+)$", unit, re.M)
-        d = m.group(1).strip() if m else f"/opt/{name}"
+        d = m.group(1).strip() if m else paths.server_dir(name)
         is_java = "bedrock_server" not in unit
         out.append((name, d, is_java))
     return out
@@ -350,7 +351,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/sbin/redstonepanel check-updates
+ExecStart={paths.PANEL_CMD} check-updates
 TimeoutStartSec={WARN_MINUTES * 60 + START_WAIT * 2 + 3600}
 """
 
@@ -381,26 +382,20 @@ def _write_if_changed(path, content):
 def ensure_timer():
     """Writes and enables the check timer (the panel calls this at start). Never raises."""
     try:
-        if not os.path.isdir(UNIT_DIR) or not os.path.isdir("/run/systemd/system"):
+        if not os.path.isdir(UNIT_DIR) or not services.available():
             return False
         changed = _write_if_changed(os.path.join(UNIT_DIR, SERVICE), _service_unit())
         changed = _write_if_changed(os.path.join(UNIT_DIR, TIMER), _timer_unit()) or changed
         if changed:
-            subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
-        enabled = subprocess.run(["systemctl", "is-enabled", TIMER], capture_output=True, text=True).stdout.strip()
-        if changed or enabled != "enabled":
-            subprocess.run(["systemctl", "enable", "--now", TIMER], capture_output=True)
+            services.reload(quiet=True)
+        if changed or not services.schedule_enabled(TIMER):
+            services.enable_schedule_now(TIMER)
         return True
     except OSError:
         return False
 
 def next_check():
-    out = subprocess.run(["systemctl", "show", "-p", "NextElapseUSecRealtime", "--value", TIMER],
-                         capture_output=True, text=True).stdout.strip()
-    if not out or out == "n/a":
-        return None
-    r = subprocess.run(["date", "-d", out, "+%s"], capture_output=True, text=True)
-    return int(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip().isdigit() else None
+    return services.next_run_epoch(TIMER)
 
 
 # ---------------------------------------------------------------------------
@@ -666,8 +661,7 @@ def _started_since(d, offset):
     return None
 
 def _active(server):
-    return subprocess.run(["systemctl", "is-active", f"{server}.service"],
-                          capture_output=True, text=True).stdout.strip()
+    return services.state(server)
 
 def wait_started(server, d, offset, timeout=START_WAIT, sleep=time.sleep):
     """True once the server says it started; "stopped" if the unit stops, "timeout" if it takes
@@ -694,7 +688,7 @@ def stop_gracefully(server, timeout=STOP_WAIT, sleep=time.sleep):
             if _active(server) != "active":
                 break
             sleep(1)
-    manager.run_and_log(["systemctl", "stop", f"{server}.service"])
+    services.stop(server)
 
 def _say(server, msg):
     from core import backups
@@ -772,9 +766,9 @@ def run_update(server, warn=0, actor="?", sleep=time.sleep, force=False):
         except (UpdateError, OSError, zipfile.BadZipFile) as e:
             result["error"] = f"installing the new files failed: {e}"
             raise UpdateError(result["error"])
-        manager.run_and_log(["chown", "-R", "minecraft:minecraft", d])
+        system.give_to_game_account(d)
         if was_running:
-            manager.run_and_log(["systemctl", "start", f"{server}.service"])
+            services.start(server)
             how = wait_started(server, d, offset, sleep=sleep)
             if how is not True:
                 result["error"] = (f"Bedrock {latest['version']} stopped while starting" if how == "stopped" else
@@ -791,7 +785,7 @@ def run_update(server, warn=0, actor="?", sleep=time.sleep, force=False):
         if created is not None:
             result["rolled_back"] = _roll_back(server, d, stash, created, before, pre, was_running)
         elif was_running and _active(server) != "active":
-            manager.run_and_log(["systemctl", "start", f"{server}.service"])
+            services.start(server)
         manager.write_log(f"[UPDATE] Updating {server} failed: {result.get('error')}")
         notify.send("update_failed", server, f"Updating {server} to Bedrock {latest['version']} failed: "
                     f"{result['error'].rstrip('.')}." + (f" It's back on {before}." if result.get("rolled_back") else ""))
@@ -805,7 +799,7 @@ def _roll_back(server, d, stash, created, before, pre, was_running):
     old version is back (and running, if it was)."""
     from core import backups
     manager.write_log(f"[UPDATE] Putting {server} back on Bedrock {before or 'the previous version'}.")
-    subprocess.run(["systemctl", "stop", f"{server}.service"], capture_output=True)
+    services.stop(server, quiet=True)
     try:
         put_back(d, stash, created)
         if before:
@@ -818,13 +812,13 @@ def _roll_back(server, d, stash, created, before, pre, was_running):
         if pre:
             # The new version may have converted the world before it failed; the old one can't read that
             backups.restore_backup(server, pre["file"])
-        manager.run_and_log(["chown", "-R", "minecraft:minecraft", d])
+        system.give_to_game_account(d)
     except Exception as e:
         manager.write_log(f"[UPDATE] Putting {server} back failed: {e}. Its \"Before update\" backup is "
                           f"{pre['file'] if pre else 'missing'}.")
         return False
     if was_running:
         offset = _log_size(d)
-        manager.run_and_log(["systemctl", "start", f"{server}.service"])
+        services.start(server)
         return wait_started(server, d, offset) is True
     return True

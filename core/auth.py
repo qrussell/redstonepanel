@@ -33,6 +33,7 @@ import time
 from core import settings as panel_settings
 from core import twofactor
 from core.settings import DATA_DIR   # <app>/data (RP_DATA_DIR overrides it for test instances)
+from core.platform import paths
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 SECRET_FILE = os.path.join(DATA_DIR, "secret.key")
 
@@ -276,7 +277,7 @@ def linux_user_allowed(username):
 # panel they are kept in a small file under /run, so guessing over SFTP and in the browser counts
 # towards one limit. Elsewhere (tests, a copy run by hand) they stay in memory. Starting the panel
 # clears them, as it always did.
-FAILS_FILE = os.environ.get("RP_FAILS_FILE") or ("/run/redstonepanel/signin-fails.json"
+FAILS_FILE = os.environ.get("RP_FAILS_FILE") or (os.path.join(paths.RUN_DIR, "signin-fails.json")
                                                  if panel_settings.PACKAGED else None)
 
 def _with_fails(fn):

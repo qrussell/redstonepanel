@@ -24,7 +24,6 @@ import re
 import secrets
 import shutil
 import ssl
-import subprocess
 import tarfile
 import tempfile
 import threading
@@ -35,6 +34,7 @@ from core import auth, tls
 from core import settings as panel_settings
 from core.settings import DATA_DIR
 from core.version import panel_version
+from core.platform import certs
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
@@ -308,7 +308,7 @@ def read_ca():
 # openssl helpers
 # ---------------------------------------------------------------------------
 def _openssl(args, data=None, env=None):
-    r = subprocess.run(["openssl"] + args, capture_output=True, input=data, env=env)
+    r = certs.openssl(args, input=data, env=env)
     if r.returncode != 0:
         lines = (r.stderr + r.stdout).decode(errors="replace").strip().splitlines()
         detail = [x for x in lines if "error" in x.lower()][:2] or lines[-1:]

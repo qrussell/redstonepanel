@@ -8,7 +8,7 @@ import json
 import os
 import socket
 import ssl
-import subprocess
+from core.platform import certs, system
 import tempfile
 
 from core.settings import TLS_DIR
@@ -24,7 +24,7 @@ class TLSError(RuntimeError):
 
 
 def _run(args, stdin=None):
-    r = subprocess.run(["openssl"] + args, capture_output=True, text=True, input=stdin)
+    r = certs.openssl(args, input=stdin, text=True)
     if r.returncode != 0:
         raise TLSError((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout) else "openssl failed")
     return r.stdout
@@ -35,10 +35,10 @@ def identity():
     host = socket.gethostname().split(".")[0].lower()
     names = sorted({host, f"{host}.local", "localhost"})
     try:
-        out = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=3).stdout
+        found = system.addresses(timeout=3)
     except Exception:
-        out = ""
-    ips = sorted({ip for ip in out.split() if ip.count(".") == 3} | {"127.0.0.1"})
+        found = []
+    ips = sorted({ip for ip in found if ip.count(".") == 3} | {"127.0.0.1"})
     return {"names": names, "ips": ips}
 
 

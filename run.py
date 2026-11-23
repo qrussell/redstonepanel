@@ -50,6 +50,7 @@ os.chdir(APP_DIR)
 sys.path.insert(0, APP_DIR)
 
 from core import settings  # noqa: E402
+from core.platform import services, system  # noqa: E402
 
 
 def reset_security():
@@ -57,10 +58,9 @@ def reset_security():
     s.update(https_mode="off", http_port=settings.DEFAULTS["http_port"], login_mode="required")
     settings.save(s)
     print(f"Security settings reset: HTTP on port {s['http_port']}, sign-in required.")
-    if os.geteuid() == 0 and os.path.exists("/run/systemd/system"):
-        import subprocess
-        r = subprocess.run(["systemctl", "restart", "redstonepanel.service"])
-        print("Restarted redstonepanel." if r.returncode == 0 else "Restart it with: sudo systemctl restart redstonepanel")
+    if os.geteuid() == 0 and services.available():
+        print("Restarted redstonepanel." if services.restart_panel() == 0
+              else "Restart it with: sudo systemctl restart redstonepanel")
 
 
 def reset_2fa(name):
@@ -176,12 +176,10 @@ def main():
 
 
 def status():
-    import subprocess
     from core import auth
     s = settings.load()
-    active = subprocess.run(["systemctl", "is-active", "redstonepanel.service"],
-                            capture_output=True, text=True).stdout.strip() or "unknown"
-    ip = (subprocess.run(["hostname", "-I"], capture_output=True, text=True).stdout.split() or ["localhost"])[0]
+    active = services.panel_state() or "unknown"
+    ip = (system.addresses() or ["localhost"])[0]
     print(f"Name:      {settings.display_name(s)}" + ("" if s["panel_name"] else " (host name)"))
     print(f"Service:   {active}")
     print(f"Address:   {settings.panel_url(s, ip)}/")
@@ -241,10 +239,8 @@ def add_user(args):
 
 def _restart_service(what):
     """The panel only picks up HTTPS changes when it restarts."""
-    if os.geteuid() == 0 and os.path.exists("/run/systemd/system"):
-        import subprocess
-        r = subprocess.run(["systemctl", "restart", "redstonepanel.service"])
-        if r.returncode == 0:
+    if os.geteuid() == 0 and services.available():
+        if services.restart_panel() == 0:
             print(f"Restarted redstonepanel {what}.")
             return
     print("Restart the panel to apply it: sudo systemctl restart redstonepanel")

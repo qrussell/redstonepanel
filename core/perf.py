@@ -16,19 +16,20 @@ import math
 import os
 import re
 import struct
-import subprocess
+import subprocess    # noqa: F401  (unused here since 1.21; tests replace subprocess.run through this module)
 import threading
 import time
 
 from core import backups, host, javaservers, manager, notify
 from core.settings import DATA_DIR
+from core.platform import paths, services
 
 METRICS_DIR = os.path.join(DATA_DIR, "metrics")
 LIMITS_FILE = os.path.join(DATA_DIR, "limits.json")
-UNIT_DIR = "/etc/systemd/system"
-CGROUP_ROOT = "/sys/fs/cgroup/system.slice"
+UNIT_DIR = paths.UNIT_DIR
+CGROUP_ROOT = paths.CGROUP_ROOT
 DROPIN_NAME = "redstonepanel-limits.conf"
-RUNTIME_CONTROL = "/run/systemd/system.control"   # where `systemctl set-property --runtime` writes
+RUNTIME_CONTROL = paths.RUNTIME_CONTROL   # where `systemctl set-property --runtime` writes
 RUNTIME_FILES = ("50-MemoryMax.conf", "50-CPUQuota.conf")
 NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.-]*$")
 
@@ -370,7 +371,7 @@ def rotational(path):
         st = os.stat(path)
     except OSError:
         return None
-    base = f"/sys/dev/block/{os.major(st.st_dev)}:{os.minor(st.st_dev)}"
+    base = f"{paths.BLOCK_DEVICES}/{os.major(st.st_dev)}:{os.minor(st.st_dev)}"
     for p in (os.path.join(base, "queue/rotational"), os.path.join(base, "../queue/rotational")):
         v = host._read(p).strip()
         if v in ("0", "1"):
@@ -450,14 +451,11 @@ def _apply_limits(server, limits, xmx, running):
         except OSError:
             pass
     if running:
-        subprocess.run(["systemctl", "set-property", "--runtime", f"{server}.service",
-                        f"MemoryMax={memory_max or 'infinity'}",
-                        f"CPUQuota={int(round(limits['cpu'] * 100)) if limits['cpu'] else ''}{'%' if limits['cpu'] else ''}"],
-                       capture_output=True)
+        services.set_runtime_limits(server, memory_max, limits["cpu"])
     # set-property's runtime files outrank the drop-in until the next boot; the cgroup already
     # has the values, so take them away and let the drop-in be the only place limits live
     _clear_runtime(server)
-    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
+    services.reload(quiet=True)
     return memory_max
 
 
@@ -481,8 +479,7 @@ def _unit_props(server):
 
 
 def _exec_start(server):
-    return subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server}.service"],
-                          capture_output=True, text=True).stdout.strip()
+    return services.exec_start(server)
 
 
 def _host_total():
@@ -555,7 +552,7 @@ def set_resources(server, xms=None, xmx=None, memory=None, cpu=None, restart=Fal
             raise PerfError(f"With the other running servers ({_gb(view['others_running'])} together) that leaves "
                             f"under {_reserve_text(total)} of this machine's {_gb(total)} for the system. Lower this or another server, "
                             "or move one to another cluster member.")
-        java = manager.unit_java(_exec_start(server)) or "/usr/bin/java"
+        java = manager.unit_java(_exec_start(server)) or paths.DEFAULT_JAVA
         manager._write_unit(server, srv["directory"], "java", xms=xms, xmx=xmx, java=java)
         new_xmx = xmx_b
         changed.append(f"memory {xms}-{xmx}")

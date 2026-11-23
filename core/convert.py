@@ -37,7 +37,6 @@ import os
 import re
 import shutil
 import struct
-import subprocess
 import tempfile
 import threading
 import time
@@ -45,6 +44,7 @@ import zipfile
 
 from core import backups, files, javaservers, manager, mods, notify
 from core.settings import DATA_DIR
+from core.platform import paths, services, system
 
 STATE_DIR = os.path.join(DATA_DIR, "convert")
 PREVIOUS_JAR = "server.jar.previous"
@@ -725,7 +725,7 @@ def undo_info(server, d=None, info=None):
             "to": dict(to, name=_label(to)), "available": reason is None, "reason": reason}
 
 def _unit_java(server):
-    return manager.unit_java(manager._unit_exec_start(server)) or "/usr/bin/java"
+    return manager.unit_java(manager._unit_exec_start(server)) or paths.DEFAULT_JAVA
 
 def _set_java(server, d, java):
     exec_start = manager._unit_exec_start(server)
@@ -742,14 +742,13 @@ def _write_info(d, info):
     os.replace(tmp, path)
 
 def _chown(d):
-    manager.run_and_log(["chown", "-R", "minecraft:minecraft", d])
+    system.give_to_game_account(d)
 
 def _stop(server):
-    manager.run_and_log(["systemctl", "stop", f"{server}.service"])
+    services.stop(server)
 
 def _state(server):
-    return subprocess.run(["systemctl", "is-active", f"{server}.service"],
-                          capture_output=True, text=True).stdout.strip()
+    return services.state(server)
 
 def _log_tail(fd, size, n=64):
     return os.pread(fd, min(n, size), max(0, size - n))
@@ -909,7 +908,7 @@ def _put_back(server, d, rec, start, sleep, prev, staging):
     if not start:
         return True
     offset = _log_mark(server)
-    manager.run_and_log(["systemctl", "start", f"{server}.service"])
+    services.start(server)
     return wait_done(server, offset, sleep=sleep) is True
 
 
@@ -1072,7 +1071,7 @@ def run_change(server, p, install, actor, job, sleep=time.sleep):
                 job.data["notes"].append(f"Couldn't install {project}: {e}")
         job.step("start")
         offset, starting = _log_mark(server), True
-        manager.run_and_log(["systemctl", "start", f"{server}.service"])
+        services.start(server)
         how = wait_done(server, offset, sleep=sleep)
         if how is not True:
             raise ConvertError(f"{_label(to)} stopped while starting" if how == "stopped" else
@@ -1098,7 +1097,7 @@ def run_change(server, p, install, actor, job, sleep=time.sleep):
             if back:
                 error += f". {server} is back on {_label(frm)} with its world from before the change"
         elif was_running and not backups._is_active(server):
-            manager.run_and_log(["systemctl", "start", f"{server}.service"])
+            services.start(server)
         manager.write_log(f"[UPDATE] Changing {what} failed: {error}.")
         notify.send("update_failed", server, f"Changing {server} to {_label(to)} failed: {error.rstrip('.')}.")
         job.finish(error=error.rstrip(".") + ".", **more)
@@ -1140,7 +1139,7 @@ def run_undo(server, d, rec, actor, job, sleep=time.sleep):
         job.step("start")
         if was_running:
             offset = _log_mark(server)
-            manager.run_and_log(["systemctl", "start", f"{server}.service"])
+            services.start(server)
             ok = wait_done(server, offset, sleep=sleep)
             if ok is not True:
                 job.data["why"] = explain(server, offset)

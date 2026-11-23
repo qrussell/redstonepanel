@@ -12,20 +12,21 @@ are kept (--force-confold), because nothing may stop to ask a question.
 """
 import json
 import os
-import shutil
-import subprocess
+import shutil    # noqa: F401  (tests replace shutil.which through this module)
+import subprocess    # noqa: F401  (unused here since 1.21; tests replace subprocess.run through this module)
 import sys
 import time
 
 from core import manager
 from core.settings import DATA_DIR, PACKAGED
+from core.platform import packages, paths, services, CommandError
 
 UNIT = "redstonepanel-upgrade"
 PACKAGE = "redstonepanel"
 STATE_FILE = os.path.join(DATA_DIR, "upgrade.json")
 LOG_FILE = os.path.join(DATA_DIR, "upgrade.log")
-CLI = "/usr/sbin/redstonepanel"
-APT_ENV = dict(os.environ, DEBIAN_FRONTEND="noninteractive", LC_ALL="C", LANG="C")
+CLI = paths.PANEL_CMD
+APT_ENV = packages.ENV
 APT_OPTS = ["-q", "-o", "DPkg::Lock::Timeout=300", "-o", "Dpkg::Use-Pty=0",
             "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"]
 STALE = 3600           # a "running" upgrade whose unit is gone and that is this old failed
@@ -66,19 +67,17 @@ def _log_tail(n=25):
 
 def _unit_active():
     try:
-        out = subprocess.run(["systemctl", "is-active", f"{UNIT}.service"], capture_output=True, text=True,
-                             timeout=10).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+        out = services.state(UNIT, timeout=10)
+    except CommandError:
         return False
     return out in ("active", "activating", "deactivating")
 
 
 def _installed_version():
     try:
-        r = subprocess.run(["dpkg-query", "-W", "-f=${Version}", PACKAGE], capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
+        return packages.installed_version(PACKAGE, timeout=10)
+    except CommandError:
         return None
-    return r.stdout.strip() or None if r.returncode == 0 else None
 
 
 def last_upgrade():
@@ -105,7 +104,7 @@ def status():
 def _require_package():
     if not PACKAGED:
         raise UpdateError("This panel runs from a source checkout, not the redstonepanel package; update it with git.")
-    if not shutil.which("apt-get") or not shutil.which("systemd-run"):
+    if not packages.available() or not services.can_detach():
         raise UpdateError("apt-get and systemd-run are needed to update from the panel.")
 
 
@@ -115,9 +114,8 @@ def check():
     if _unit_active():
         raise UpdateError("An update is running.", 409)
     try:
-        r = subprocess.run(["apt-get", *APT_OPTS[:3], "update"], capture_output=True, text=True, timeout=300,
-                           env=APT_ENV)
-    except (OSError, subprocess.SubprocessError) as e:
+        r = packages.run(packages.manager_command(APT_OPTS[:3], ["update"]), timeout=300, env=APT_ENV)
+    except CommandError as e:
         raise UpdateError(f"Couldn't check for updates: {e}", 502)
     if r.returncode != 0:
         err = next((l[3:] for l in (r.stdout + r.stderr).splitlines()[::-1] if l.startswith("E: ")), None)
@@ -145,11 +143,9 @@ def start(actor="admin"):
                   "started": int(time.time()), "finished": None, "error": None})
     with open(LOG_FILE, "w", encoding="utf-8"):
         pass
-    cmd = ["systemd-run", f"--unit={UNIT}", "--collect", "--quiet", "--description=RedstonePanel update",
-           CLI, "upgrade"]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.SubprocessError) as e:
+        r = services.run_detached(UNIT, [CLI, "upgrade"], description="RedstonePanel update", timeout=30)
+    except CommandError as e:
         r = None
         err = str(e)
     if r is None or r.returncode != 0:
@@ -172,10 +168,10 @@ def run(echo=False):
     code, error = 0, None
     with open(LOG_FILE, "a", encoding="utf-8") as log:
         def step(args):
-            cmd = ["apt-get", *APT_OPTS, *args]
+            cmd = packages.manager_command(APT_OPTS, args)
             log.write("$ " + " ".join(cmd) + "\n")
             log.flush()
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=APT_ENV)
+            p = packages.start(cmd, env=APT_ENV)
             last_err = None
             for line in p.stdout:
                 log.write(line)

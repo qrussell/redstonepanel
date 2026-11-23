@@ -12,9 +12,9 @@ Bans are by name and UUID only, never by IP address (the player log keeps no add
 import datetime as dt
 import os
 import re
-import subprocess
 
 from core import backups, manager, playerlog, rcon, whitelist
+from core.platform import services, CommandError
 
 BAN_FILE = "banned-players.json"
 REASON_MAX = 100
@@ -52,11 +52,9 @@ def _rcon(d):
 def _started_at(server):
     """When the server's unit last started (Unix time), or None."""
     try:
-        out = subprocess.run(["systemctl", "show", "-p", "ActiveEnterTimestamp", "--value", "--timestamp=unix",
-                              f"{server}.service"], capture_output=True, text=True, timeout=10).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+        return services.started_at(server, timeout=10)
+    except CommandError:
         return None
-    return int(out[1:]) if out.startswith("@") and out[1:].isdigit() else None
 
 
 def online_from_log(server, since=None):

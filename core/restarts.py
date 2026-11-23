@@ -10,11 +10,12 @@ import fcntl
 import json
 import os
 import re
-import subprocess
+import subprocess    # noqa: F401  (unused here since 1.21; tests replace subprocess.run through this module)
 import time
 
 from core import backups, manager, notify, rcon
 from core.settings import DATA_DIR
+from core.platform import paths, services
 
 SCHEDULE_FILE = os.path.join(DATA_DIR, "restarts.json")
 UNIT_DIR = backups.UNIT_DIR
@@ -89,7 +90,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/sbin/redstonepanel restart-server %i
+ExecStart={paths.PANEL_CMD} restart-server %i
 TimeoutStartSec={max(WARN_CHOICES) * 60 + BACKUP_WAIT + 600}
 """
 
@@ -112,9 +113,8 @@ def _apply(server, schedule):
         backups._write_if_changed(os.path.join(UNIT_DIR, timer),
                                   _timer_unit(server, on_calendar(schedule["frequency"], schedule["time"],
                                                                   schedule["warn"])))
-        manager.run_and_log(["systemctl", "daemon-reload"])
-        manager.run_and_log(["systemctl", "enable", timer])
-        manager.run_and_log(["systemctl", "restart", timer])
+        services.reload()
+        services.enable_schedule(timer)
     else:
         _remove_timer(server)
 
@@ -122,9 +122,9 @@ def _remove_timer(server):
     timer = _timer_name(server)
     path = os.path.join(UNIT_DIR, timer)
     if os.path.exists(path):
-        subprocess.run(["systemctl", "disable", "--now", timer], capture_output=True)
+        services.disable_schedule(timer)
         os.remove(path)
-        manager.run_and_log(["systemctl", "daemon-reload"])
+        services.reload()
 
 def set_schedule(server, enabled, frequency, time_str, warn):
     _check_name(server)
@@ -148,14 +148,10 @@ def next_restart(server):
     path = os.path.join(UNIT_DIR, _timer_name(server))
     if not os.path.exists(path):
         return None
-    out = subprocess.run(["systemctl", "show", "-p", "NextElapseUSecRealtime", "--value", _timer_name(server)],
-                         capture_output=True, text=True).stdout.strip()
-    if not out or out == "n/a":
+    at = services.next_run_epoch(_timer_name(server))
+    if at is None:
         return None
-    r = subprocess.run(["date", "-d", out, "+%s"], capture_output=True, text=True)
-    if r.returncode != 0 or not r.stdout.strip().isdigit():
-        return None
-    return int(r.stdout.strip()) + get_schedule(server)["warn"] * 60
+    return at + get_schedule(server)["warn"] * 60
 
 def overview(server):
     return {"schedule": get_schedule(server), "frequencies": FREQUENCIES, "warn_choices": list(WARN_CHOICES),
@@ -251,7 +247,7 @@ def run_restart(server, sleep=time.sleep):
     fd = _wait_for_backup(server)
     try:
         manager.write_log(f"[RESTART] Restarting {server} (scheduled).")
-        r = subprocess.run(["systemctl", "restart", f"{server}.service"], capture_output=True, text=True)
+        r = services.restart(server, quiet=True)
     finally:
         if fd is not None:
             os.close(fd)

@@ -33,6 +33,7 @@ from urllib.parse import urlsplit, urljoin
 from core import bedrock_net
 from core import manager
 from core import settings as panel_settings
+from core.platform import paths
 
 DATA_FILE = "port-forwarding.json"
 NETHERNET_LAN_PORT = manager.NETHERNET_LAN_PORT
@@ -291,7 +292,7 @@ def _from_firewall_rules(s):
 def default_gateway():
     """The IPv4 default gateway from /proc/net/route, or None."""
     try:
-        with open("/proc/net/route") as f:
+        with open(os.path.join(paths.PROC, "net/route")) as f:
             for line in f.readlines()[1:]:
                 p = line.split()
                 if len(p) > 3 and p[1] == "00000000" and int(p[3], 16) & 2:

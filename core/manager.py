@@ -14,6 +14,7 @@ import threading
 import tempfile
 from core.settings import DATA_DIR, LOG_FILE
 from core import properties, rcon, proxies, bedrock_net, javaservers
+from core.platform import console, firewall, paths, services, system
 
 TEMPLATE_FILE = os.path.join(DATA_DIR, "templates.json")
 
@@ -57,16 +58,12 @@ def require_tools(*tools):
 
 def ensure_minecraft_user(home):
     """The .deb creates the 'minecraft' system user; older/manual installs create it on first deploy."""
-    import pwd
-    try:
-        pwd.getpwnam("minecraft")
-    except KeyError:
-        run_and_log(["useradd", "-r", "-m", "-U", "-d", home, "-s", "/bin/bash", "minecraft"])
+    system.ensure_game_account(home)
 
 def open_firewall(port, proto):
     """Opens the game port in ufw when ufw is installed (it's optional)."""
-    if shutil.which("ufw"):
-        run_and_log(["ufw", "allow", f"{port}/{proto}"])
+    if firewall.installed():
+        firewall.allow(port, proto)
         _firewall_changed()
 
 
@@ -177,7 +174,7 @@ def upgrade_bedrock_firewall():
                 write_log(f"[FIREWALL] {s['name']} had no server-udp-ports; set it to {s['port']} "
                           f"(used from its next restart).")
             rules = server_firewall_rules(s["name"])
-            if shutil.which("ufw"):
+            if firewall.installed():
                 open_firewall_rules(rules)
                 firewall_record(s["name"], rules)
                 write_log(f"[FIREWALL] {s['name']}: allowed " + ", ".join(f"{p}/{q}" for p, q in sorted(rules)) + ".")
@@ -224,10 +221,10 @@ def rules_in_use(servers=None):
 def close_firewall_rules(rules):
     """Removes rules no server on the panel needs any more (another server may share one, as
     every NetherNet server shares 7551)."""
-    if not rules or not shutil.which("ufw"):
+    if not rules or not firewall.installed():
         return
     for port, proto in sorted(set(rules) - rules_in_use()):
-        run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
+        firewall.remove(port, proto)
     _firewall_changed()
 
 
@@ -281,7 +278,7 @@ def sync_firewall():
     ports or transport were edited by hand gets its new rules and loses the old ones; a server
     whose unit is gone loses its rules. Rules another server or a Phantom still needs stay.
     A server seen for the first time is only noted (the dashboard names rules it lacks)."""
-    if not shutil.which("ufw"):
+    if not firewall.installed():
         return []
     done = []
     with _fw_lock:
@@ -303,7 +300,7 @@ def sync_firewall():
                 opened, closed = need - had, had - need - in_use
                 open_firewall_rules(opened)
                 for port, proto in sorted(closed):
-                    run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
+                    firewall.remove(port, proto)
                 rec[name] = need
                 changed = True
                 done.append(name)
@@ -316,7 +313,7 @@ def sync_firewall():
             closed = rec.pop(name) - in_use
             changed = True
             for port, proto in sorted(closed):
-                run_and_log(["ufw", "delete", "allow", f"{port}/{proto}"])
+                firewall.remove(port, proto)
             if closed:
                 done.append(name)
                 write_log(f"[FIREWALL] {name} is no longer on the panel: removed "
@@ -377,7 +374,7 @@ def save_server_as_template(server_name, template_name):
     props = template_properties(read_properties(get_server_dir(server_name)))
     perms = read_permissions(server_name)
     
-    exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"], capture_output=True, text=True).stdout.strip()
+    exec_start = services.exec_start(server_name)
     edition = "Java" if "java" in exec_start else "Bedrock"
     
     temp_id = str(uuid.uuid4())
@@ -473,12 +470,8 @@ def get_panel_logs(lines=100):
         return "".join(f.readlines()[-lines:])
 
 def get_server_dir(svc_name):
-    res = subprocess.run(["systemctl", "show", "-p", "WorkingDirectory", "--value", f"{svc_name}.service"], capture_output=True, text=True)
-    d = res.stdout.strip()
-    if not d:
-        res = subprocess.run(f"systemctl show -p WorkingDirectory {svc_name}.service | cut -d'=' -f2", shell=True, capture_output=True, text=True)
-        d = res.stdout.strip()
-    return d if d else f"/opt/{svc_name}"
+    d = services.working_dir(svc_name)
+    return d if d else paths.server_dir(svc_name)
 
 def _java_properties(dir_path):
     """Java Edition escapes server.properties like java.util.Properties; Bedrock doesn't."""
@@ -514,7 +507,7 @@ def write_raw_properties(dir_path, content):
     with open(os.path.join(dir_path, "server.properties"), "w") as f:
         f.write(content)
 
-SERVERS_ROOT = "/opt"
+SERVERS_ROOT = paths.SERVERS_ROOT
 PORT_KEYS = ("server-port", "server-portv6", "query.port", "rcon.port")
 
 def _used_ports(exclude_dir=None):
@@ -571,6 +564,17 @@ def _free_rcon_port(server_dir, start=25575):
 _version_cache = {}          # path -> ((mtime, size), result)
 _java_cache = {"at": 0.0, "major": None}
 BEDROCK_VERSION_RE = re.compile(r"Version:? ([0-9]+(?:\.[0-9]+)+)")
+_VERSION_LINE_RE = re.compile(rb"Version:? [0-9]+(\.[0-9]+)+")
+_START_LINE_RE = re.compile(bedrock_net.GREP_PATTERN.encode())
+
+
+def _matching_lines(path, pattern):
+    """The lines of a (possibly big, possibly not quite text) log that match a bytes pattern."""
+    try:
+        with open(path, "rb") as f:
+            return [line.decode("utf-8", "replace").rstrip("\r\n") for line in f if pattern.search(line)]
+    except OSError:
+        return []
 
 def _cached(path, compute):
     """compute(path) re-run only when the file changes."""
@@ -599,9 +603,7 @@ def _java_jar_info(jar):
 
 def _bedrock_log_version(log):
     """BDS prints 'Version: 1.26.63.1' at every start; the last one is the running build."""
-    # grep (POSIX ERE, no Python-only syntax) finds the lines fast in a big log; Python extracts the number
-    r = subprocess.run(["grep", "-a", "-o", "-E", r"Version:? [0-9]+(\.[0-9]+)+", log], capture_output=True, text=True)
-    found = BEDROCK_VERSION_RE.findall(r.stdout)
+    found = BEDROCK_VERSION_RE.findall("\n".join(_matching_lines(log, _VERSION_LINE_RE)))
     return {"version": found[-1], "java_required": None} if found else None
 
 _start_cache = {}            # server.log path -> ((mtime, size), status)
@@ -617,8 +619,7 @@ def bedrock_start_status(d):
     hit = _start_cache.get(log)
     if hit and hit[0] == key:
         return hit[1]
-    r = subprocess.run(["grep", "-a", "-E", bedrock_net.GREP_PATTERN, log], capture_output=True, text=True)
-    status = bedrock_net.last_start_status(r.stdout.splitlines())
+    status = bedrock_net.last_start_status(_matching_lines(log, _START_LINE_RE))
     _start_cache[log] = (key, status)
     return status
 
@@ -629,8 +630,7 @@ def _bedrock_journal_version(svc):
     hit = _journal_cache.get(svc)
     if hit and time.time() - hit[0] < 60:
         return hit[1]
-    r = subprocess.run(["journalctl", "-u", f"{svc}.service", "--no-pager", "-o", "cat"], capture_output=True, text=True)
-    found = BEDROCK_VERSION_RE.findall(r.stdout)
+    found = BEDROCK_VERSION_RE.findall(services.log(services.unit(svc)))
     result = {"version": found[-1], "java_required": None} if found else None
     _journal_cache[svc] = (time.time(), result)
     return result
@@ -663,7 +663,7 @@ def java_major():
     if now - _java_cache["at"] > 60:
         major = None
         if shutil.which("java"):
-            out = subprocess.run(["java", "-version"], capture_output=True, text=True).stderr
+            out = system.java_version_text()
             m = re.search(r'version "(\d+)(?:\.(\d+))?', out)
             if m:
                 major = int(m.group(2)) if m.group(1) == "1" else int(m.group(1))   # "1.8" -> 8
@@ -672,15 +672,14 @@ def java_major():
 
 def list_servers():
     servers = []
-    res = subprocess.run(["find", "/etc/systemd/system/", "-maxdepth", "1", "-name", "minecraft*.service", "-printf", "%f\n"], capture_output=True, text=True)
-    services = [s.replace(".service", "") for s in res.stdout.splitlines() if s]
+    names = [u.replace(services.SUFFIX, "") for u in services.unit_files("minecraft")]
     phantoms = None              # looked up once, only if there's a Bedrock server
 
-    for svc in services:
-        st = subprocess.run(["systemctl", "is-active", svc], capture_output=True, text=True).stdout.strip()
+    for svc in names:
+        st = services.unit_state(svc)
         d = get_server_dir(svc)
         props = read_properties(d)
-        exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{svc}.service"], capture_output=True, text=True).stdout.strip()
+        exec_start = services.exec_start(svc)
         ver = server_version(d, "java" in exec_start, svc)
         is_bedrock = "java" not in exec_start and "bedrock" in exec_start
         proxy_list = []
@@ -762,8 +761,7 @@ def _load_json_list(path):
 
 def _player_log_text(server_name, d, is_java):
     """Journal plus the server's own log file (Bedrock writes its console to server.log via screen)."""
-    parts = [subprocess.run(["journalctl", "-u", f"{server_name}.service", "-n", "5000", "--no-pager"],
-                            capture_output=True, text=True).stdout]
+    parts = [services.log(services.unit(server_name), lines=5000, output=None)]
     log_file = os.path.join(d, "logs", "latest.log") if is_java else os.path.join(d, "server.log")
     if os.path.exists(log_file):
         parts.append(_read_tail(log_file, 20000)[0])
@@ -831,8 +829,7 @@ def get_recent_players(server_name):
     return {"players": result, "roles": JAVA_ROLES if is_java else BEDROCK_ROLES, "file": perm_file}
 
 def _unit_exec_start(server_name):
-    return subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
-                          capture_output=True, text=True).stdout.strip()
+    return services.exec_start(server_name)
 
 def unit_java(exec_start):
     """The java binary a Java unit runs (from systemctl's ExecStart, or the unit line)."""
@@ -841,7 +838,8 @@ def unit_java(exec_start):
 
 def unit_java_major(exec_start):
     path = unit_java(exec_start)
-    if path and os.path.realpath(path).startswith(javaservers.JVM_ROOT + "/") and not path.startswith("/usr/bin/"):
+    if path and os.path.realpath(path).startswith(javaservers.JVM_ROOT + "/") and \
+            os.path.dirname(path) != os.path.dirname(paths.DEFAULT_JAVA):
         return javaservers.java_major_of(path)
     return java_major()                      # /usr/bin/java: the system default
 
@@ -883,16 +881,16 @@ def update_server_binary(server_name, version=None, backup=True, actor="Update b
 
         def before_swap(info):
             was_running = backups._is_active(server_name)
-            run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
+            services.stop(server_name, elevate=True)
             if backup:
                 try:
                     state["pre"] = backups.run_backup(server_name, "pre-update")["file"]
                     updates._prune_pre_update(server_name)
                 except Exception as e:
                     if was_running:
-                        run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
+                        services.start(server_name, elevate=True)
                     raise ServerError(f"The backup before updating failed, so nothing was changed: {e}")
-            old_java = unit_java(exec_start) or "/usr/bin/java"
+            old_java = unit_java(exec_start) or paths.DEFAULT_JAVA
             convert.keep_previous(d, current)
             if current.get("loader") and current.get("minecraft"):
                 convert.remember(server_name, "update", current, info, state["pre"], old_java, actor=actor,
@@ -904,8 +902,8 @@ def update_server_binary(server_name, version=None, backup=True, actor="Update b
                   + (f" (was {javaservers.describe(current)}; backup from before: {pre})." if pre else "."))
     from core import updates
     updates.forget(server_name)
-    run_and_log(["chown", "-R", "minecraft:minecraft", d])
-    run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
+    system.give_to_game_account(d)
+    services.start(server_name, elevate=True)
 
 def reinstall_java(server_name, loader, version=None, build=None, current=None, before_swap=None):
     """Downloads a Java server's software again (a chosen Minecraft version and build, default
@@ -961,7 +959,7 @@ def java_for_folder(d):
         except javaservers.JavaServerError:
             need = None
     if not need:
-        return "/usr/bin/java"
+        return paths.DEFAULT_JAVA
     try:
         return javaservers.choose_java(need, info.get("minecraft"), java_max)
     except javaservers.MissingJavaError as e:
@@ -977,7 +975,7 @@ def _fetch_bedrock(d):
         write_log(f"[WARNING] {e}")
         raise ServerError(str(e))
 
-def default_heap(meminfo="/proc/meminfo"):
+def default_heap(meminfo=os.path.join(paths.PROC, "meminfo")):
     """A new Java server's heap: 1-2 GB, or 512 MB-1 GB on a machine with 3 GB of memory or less
     (a 2 GB Raspberry Pi), where 2 GB would leave nothing for the system."""
     try:
@@ -987,7 +985,7 @@ def default_heap(meminfo="/proc/meminfo"):
         kb = 0
     return {"xms": "512M", "xmx": "1G"} if 0 < kb <= 3 * 1024 * 1024 else {"xms": "1G", "xmx": "2G"}
 
-def _write_unit(svc_name, mc_dir, edition, xms=None, xmx=None, java="/usr/bin/java", jvm=None):
+def _write_unit(svc_name, mc_dir, edition, xms=None, xmx=None, java=paths.DEFAULT_JAVA, jvm=None):
     """Writes the game server's systemd unit and reloads systemd (doesn't enable or start it).
     A Java server without a heap given gets default_heap().
     jvm: startup flags ({"preset", "extra"}, see core/deployopts.py) to store and use; None keeps
@@ -997,7 +995,7 @@ def _write_unit(svc_name, mc_dir, edition, xms=None, xmx=None, java="/usr/bin/ja
         heap = default_heap()
         xms, xmx = xms or heap["xms"], xmx or heap["xmx"]
     if edition == "bedrock":
-        exec_start = f"/usr/bin/screen -c {mc_dir}/screenrc -L -Logfile {mc_dir}/server.log -DmS {svc_name} ./bedrock_server"
+        exec_start = console.start_command(svc_name, mc_dir, "./bedrock_server", paths.SCREEN)
         env_vars = "Environment=\"LD_LIBRARY_PATH=.\""
     else:
         if jvm is not None:
@@ -1028,7 +1026,7 @@ WantedBy=multi-user.target
 """
     with open(_unit_path(svc_name), "w") as f:
         f.write(svc_content)
-    run_and_log(["systemctl", "daemon-reload"])
+    services.reload()
 
 class ServerError(ValueError):
     """A request about a server that can't be done (message is safe to show)."""
@@ -1041,16 +1039,16 @@ def control_server(server_name, action):
     if action not in POWER_ACTIONS:
         raise ServerError(f"Unknown action '{action}'.")
     if not SERVICE_NAME_RE.match(server_name or "") or \
-            not os.path.isfile(f"/etc/systemd/system/{server_name}.service"):
+            not os.path.isfile(_unit_path(server_name)):
         raise ServerError(f"No Minecraft server called '{server_name}' on this panel.")
     if action != "stop":
         from core import transfer
         if transfer.is_moving(server_name):
             raise ServerError(f"{server_name} is being moved to another cluster member; it can't be started here.")
-    run_and_log(["sudo", "systemctl", action, f"{server_name}.service"])
+    services.control(services.unit(server_name), action, elevate=True)
 
 def _unit_path(server_name):
-    return f"/etc/systemd/system/{server_name}.service"
+    return paths.unit_file(services.unit(server_name))
 
 def _check_server(server_name):
     if not SERVICE_NAME_RE.match(server_name or "") or not os.path.isfile(_unit_path(server_name)):
@@ -1104,17 +1102,16 @@ def remove_server(server_name, keep_world, note=None):
     note (a move adds moved_to)."""
     _check_server(server_name)
     d = get_server_dir(server_name)
-    exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
-                                capture_output=True, text=True).stdout.strip()
+    exec_start = services.exec_start(server_name)
     rules = firewall_rules("java" if "java" in exec_start else "bedrock", read_properties(d))
-    run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
-    run_and_log(["sudo", "systemctl", "disable", f"{server_name}.service"])
+    services.stop(server_name, elevate=True)
+    services.disable(server_name, elevate=True)
 
     if os.path.exists(_unit_path(server_name)):
         os.remove(_unit_path(server_name))
-    run_and_log(["sudo", "systemctl", "daemon-reload"])
+    services.reload(elevate=True)
     # If it had failed, systemd would keep listing it as a failed unit with no unit file
-    subprocess.run(["systemctl", "reset-failed", f"{server_name}.service"], capture_output=True)
+    services.reset_failed(services.unit(server_name))
     # Its ports are closed again unless another server uses them (restoring opens them again)
     close_firewall_rules(rules)
     firewall_record(server_name, None)
@@ -1149,8 +1146,8 @@ def remove_server(server_name, keep_world, note=None):
                 pass          # only a hint for restoring; the folder alone is enough
         write_log(f"[REMOVE] Removed {server_name} from the panel. Its files stay in {d}; "
                   f"restore it from New Server > Removed servers.")
-    elif os.path.exists(d) and d.startswith("/opt/"):
-        run_and_log(["rm", "-rf", d])
+    elif os.path.exists(d) and d.startswith(paths.SERVERS_ROOT + "/"):
+        system.delete_tree(d)
         write_log(f"[REMOVE] Removed {server_name} and deleted {d}.")
 
 def _read_removed_info(d):
@@ -1164,7 +1161,7 @@ def _read_removed_info(d):
 def _unit_dirs():
     """The folder of every minecraft*.service unit, including ones written by hand."""
     dirs = set()
-    unit_dir = "/etc/systemd/system"
+    unit_dir = paths.UNIT_DIR
     if not os.path.isdir(unit_dir):
         return dirs
     for f in os.listdir(unit_dir):
@@ -1325,10 +1322,10 @@ def restore_server(name, same_version=False):
 
         open_server_firewall(name, edition, d)
         ensure_minecraft_user(d)
-        run_and_log(["chown", "-R", "minecraft:minecraft", d])
+        system.give_to_game_account(d)
         _write_unit(name, d, edition, **heap, **({"java": java} if java else {}))
-        run_and_log(["systemctl", "enable", f"{name}.service"])
-        run_and_log(["systemctl", "start", f"{name}.service"])
+        services.enable(name)
+        services.start(name)
         try:
             os.remove(os.path.join(d, REMOVED_INFO))
         except OSError:
@@ -1351,7 +1348,7 @@ def delete_removed_server(name):
     d = os.path.realpath(match["directory"])
     if os.path.dirname(d) != os.path.realpath(SERVERS_ROOT):
         raise ServerError(f"{name} isn't a folder in {SERVERS_ROOT}.")
-    run_and_log(["rm", "-rf", d])
+    system.delete_tree(d)
     from core import deployopts
     deployopts.set_flags(name, None)
     write_log(f"[REMOVE] Deleted the files of removed server {name} ({d}).")
@@ -1414,21 +1411,21 @@ def _import_unpacked(staging, root):
 
         java = None
         if edition == "bedrock":
-            run_and_log(["chmod", "+x", f"{mc_dir}/bedrock_server"])
+            system.make_executable(f"{mc_dir}/bedrock_server")
             write_screenrc(mc_dir)
         else:
             try:
                 java = java_for_folder(mc_dir)
             except DependencyError as e:
                 write_log(f"[WARNING] {e} The server was imported, but won't start until it is.")
-                java = "/usr/bin/java"
+                java = paths.DEFAULT_JAVA
 
         open_server_firewall(svc_name, edition, mc_dir)
         ensure_minecraft_user(mc_dir)
-        run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+        system.give_to_game_account(mc_dir)
         _write_unit(svc_name, mc_dir, edition, **({"java": java} if java else {}), jvm={})
-        run_and_log(["systemctl", "enable", f"{svc_name}.service"])
-        run_and_log(["systemctl", "start", f"{svc_name}.service"])
+        services.enable(svc_name)
+        services.start(svc_name)
         return svc_name
     finally:
         _release_name(svc_name)
@@ -1462,7 +1459,7 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
             os.remove(os.path.join(mc_dir, REMOVED_INFO))
         port, old_port = _restore_ports(mc_dir, edition)
         if edition == "bedrock":
-            run_and_log(["chmod", "+x", f"{mc_dir}/bedrock_server"])
+            system.make_executable(f"{mc_dir}/bedrock_server")
             write_screenrc(mc_dir)
         else:
             java = java or java_for_folder(mc_dir)
@@ -1473,11 +1470,11 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
         heap = {k: v for k, v in (heap or {}).items() if k in ("xms", "xmx") and HEAP_RE.match(str(v))}
         open_server_firewall(name, edition, mc_dir)
         ensure_minecraft_user(mc_dir)
-        run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+        system.give_to_game_account(mc_dir)
         _write_unit(name, mc_dir, edition, **heap, **({"java": java} if java else {}), jvm=jvm or {})
-        run_and_log(["systemctl", "enable", f"{name}.service"])
+        services.enable(name)
         if start:
-            run_and_log(["systemctl", "start", f"{name}.service"])
+            services.start(name)
         write_log(f"[MOVE] Installed {name} here (port {port}"
                   + (f", was {old_port}" if old_port else "") + ").")
         return {"name": name, "port": port, "old_port": old_port, "renamed": bool(prefer_name) and name != prefer_name}
@@ -1491,7 +1488,7 @@ def discard_server(name):
         return
     d = os.path.realpath(os.path.join(SERVERS_ROOT, name))
     if SERVICE_NAME_RE.match(name or "") and os.path.dirname(d) == os.path.realpath(SERVERS_ROOT) and os.path.isdir(d):
-        run_and_log(["rm", "-rf", d])
+        system.delete_tree(d)
 
 def _reserve_chosen(edition, name=None, port=None):
     """Advanced options (1.17.2): hold the chosen name and/or game port, picking the other as
@@ -1528,7 +1525,7 @@ def _heap_fits(xmx):
     3 GB or less (as 1.17's Memory does)."""
     from core import deployopts
     try:
-        with open("/proc/meminfo") as f:
+        with open(os.path.join(paths.PROC, "meminfo")) as f:
             total = int(re.search(r"^MemTotal:\s+([0-9]+) kB", f.read(), re.M).group(1)) * 1024
     except (OSError, AttributeError, ValueError):
         return
@@ -1588,13 +1585,12 @@ def set_server_flags(server_name, flags, actor="admin"):
     except deployopts.OptionError as e:
         raise ServerError(str(e))
     exec_start = _unit_exec_start(server_name)
-    _write_unit(server_name, get_server_dir(server_name), "java", java=unit_java(exec_start) or "/usr/bin/java",
+    _write_unit(server_name, get_server_dir(server_name), "java", java=unit_java(exec_start) or paths.DEFAULT_JAVA,
                 **unit_heap(exec_start), jvm=flags)
     write_log(f"[JAVA] {actor} set {server_name}'s startup flags: {deployopts.describe_flags(flags) or 'none'}.")
-    active = subprocess.run(["systemctl", "is-active", f"{server_name}.service"], capture_output=True,
-                            text=True).stdout.strip() == "active"
+    active = services.state(server_name) == "active"
     if active:
-        run_and_log(["systemctl", "restart", f"{server_name}.service"])
+        services.restart(server_name)
     return {"restarted": active, "flags": deployopts.get_flags(server_name)}
 
 def deploy_server(edition, template_id=None, loader="vanilla", version=None, advanced=None,
@@ -1682,7 +1678,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
                 shutil.rmtree(mc_dir, ignore_errors=True)
                 raise
 
-        run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+        system.give_to_game_account(mc_dir)
         heap = {}
         if plan.get("heap"):
             # Java starts with half the heap (at least 512 MB) and grows to it; Aikar's flags
@@ -1697,7 +1693,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
         if plan:
             # After the template: what was chosen here wins over the template's values
             _apply_advanced_settings(svc_name, mc_dir, edition, plan, (info or {}).get("minecraft"))
-            run_and_log(["chown", "-R", "minecraft:minecraft", mc_dir])
+            system.give_to_game_account(mc_dir)
             write_log(f"[DEPLOY] {actor + ' created ' if actor else 'Created '}{svc_name} with advanced options: "
                       f"{deployopts.summary(plan) or 'name only'}.")
         if plan.get("memory_limit") or plan.get("cpu"):
@@ -1710,15 +1706,15 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
                 write_log(f"[WARNING] {svc_name}: hard limits not set: {e}")
         # The ports it needs, from what server.properties says now (a template may set the transport)
         open_server_firewall(svc_name, edition, mc_dir)
-        run_and_log(["systemctl", "enable", f"{svc_name}.service"])
-        run_and_log(["systemctl", "start", f"{svc_name}.service"])
+        services.enable(svc_name)
+        services.start(svc_name)
         return svc_name
     finally:
         _release_name(svc_name)
 
 def read_permissions(server_name):
     d = get_server_dir(server_name)
-    exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"], capture_output=True, text=True).stdout.strip()
+    exec_start = services.exec_start(server_name)
     is_java = "java" in exec_start
     
     target_file = "ops.json" if is_java else "permissions.json"
@@ -1731,7 +1727,7 @@ def read_permissions(server_name):
 
 def write_permissions(server_name, content):
     d = get_server_dir(server_name)
-    exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"], capture_output=True, text=True).stdout.strip()
+    exec_start = services.exec_start(server_name)
     is_java = "java" in exec_start
     
     target_file = "ops.json" if is_java else "permissions.json"
@@ -1746,7 +1742,7 @@ def fallback_allowlist_xuid(server_name, gamertag):
     allowlist_path = os.path.join(d, "allowlist.json")
     
     # 1. Stop the background service to free the port
-    run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
+    services.stop(server_name, elevate=True)
     
     # 2. Backup the current allowlist so we don't permanently alter it
     existing_allowlist = "[]"
@@ -1783,7 +1779,7 @@ def fallback_allowlist_xuid(server_name, gamertag):
     with open(allowlist_path, "w") as f:
         f.write(existing_allowlist)
         
-    run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
+    services.start(server_name, elevate=True)
     return xuid
 
 def get_xuid(server_name, gamertag):
@@ -1887,8 +1883,7 @@ ANSI_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 CHAT_DIR = DATA_DIR
 
 def _is_java(server_name):
-    exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"],
-                                capture_output=True, text=True).stdout.strip()
+    exec_start = services.exec_start(server_name)
     return "java" in exec_start.lower()
 
 def _sent_file(server_name):
@@ -1952,12 +1947,7 @@ JAVA_FILE_RE = re.compile(r'^\[(\d{2}:\d{2}:\d{2})\]\s+\[[^\]]*\]:\s(.*)$')
 
 def _read_tail(path, lines=3000):
     """Reads the tail of a file the minecraft user owns. Returns (text, error)."""
-    for cmd in (["sudo", "-n", "tail", "-n", str(lines), path], ["tail", "-n", str(lines), path]):
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        if r.returncode == 0:
-            return r.stdout, ""
-        err = (r.stderr or "").strip()
-    return "", err
+    return system.tail(path, lines)
 
 def _hms_to_epoch(hms):
     now = time.time()
@@ -2022,8 +2012,7 @@ def _collect_chat(server_name):
 
         if not entries:   # fall back to the journal
             dbg["source"] = "journalctl"
-            r = subprocess.run(["journalctl", "-u", f"{server_name}.service", "-n", "3000", "-o", "short-unix", "--no-pager"],
-                               capture_output=True, text=True)
+            r = services.log_result(services.unit(server_name), lines=3000, output="short-unix")
             dbg["journal_error"] = (r.stderr or "").strip()[:300]
             for raw_line in ANSI_RE.sub('', r.stdout).splitlines():
                 jm = JOURNAL_RE.match(raw_line.strip())
@@ -2068,7 +2057,7 @@ def get_chat_history(server_name, limit=50):
 def get_chat_debug(server_name):
     entries, dbg = _collect_chat(server_name)
     dbg["last_entries"] = [t for _, t in entries][-5:]
-    dbg["whoami"] = subprocess.run(["id"], capture_output=True, text=True).stdout.strip()
+    dbg["whoami"] = system.whoami()
     return dbg
 
 class ChatError(RuntimeError):
@@ -2107,7 +2096,7 @@ def send_chat_message(server_name, message):
             write_properties(d, props)
             reason = f"RCON port {rcon_port} was shared with another server" if port_clash else "RCON was not configured"
             write_log(f"[SYSTEM] {reason}; set rcon.port={props['rcon.port']} for {server_name}. Restarting...")
-            run_and_log(["sudo", "systemctl", "restart", f"{server_name}.service"])
+            services.restart(server_name, elevate=True)
             return "restarting"
 
         try:
@@ -2127,14 +2116,11 @@ def send_chat_message(server_name, message):
         return ANSI_RE.sub('', output).strip()
 
     # ---- Bedrock ----
-    screen_path = shutil.which("screen")
-    if not screen_path:
+    # The text and a real carriage return go to the console as one item: nothing parses quotes or escapes.
+    result = console.send(server_name, command)
+    if result is None:
         write_log("[ERROR] screen executable not found. Please install it.")
         return "error"
-
-    # Pass the text and a real carriage return as ONE argv item: no screen-side quote/escape parsing.
-    result = subprocess.run(["sudo", "-u", "minecraft", screen_path, "-S", server_name, "-p", "0",
-                             "-X", "stuff", command + "\r"], capture_output=True, text=True)
     if result.returncode != 0:
         write_log(f"[ERROR] screen session '{server_name}' not reachable: {(result.stdout + result.stderr).strip()}")
         return "error"
@@ -2197,7 +2183,7 @@ def install_bedrock_chat_pack(server_name):
     with open(wbp, "w") as f:
         json.dump(packs, f, indent=2)
 
-    run_and_log(["chown", "-R", "minecraft:minecraft", d])
+    system.give_to_game_account(d)
     write_log(f"[SYSTEM] Chat relay pack installed for {server_name}. Restart the server to activate it.")
 
 
@@ -2212,7 +2198,7 @@ def export_world(server_name):
     world_name = get_active_world_name(server_name)
     
     # Bedrock stores its active world inside a 'worlds' subdirectory
-    exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"], capture_output=True, text=True).stdout.strip()
+    exec_start = services.exec_start(server_name)
     if "bedrock" in exec_start:
         world_path = os.path.join(d, "worlds", world_name)
     else:
@@ -2233,7 +2219,7 @@ def rename_world(server_name, new_name):
     d = get_server_dir(server_name)
     old_name = get_active_world_name(server_name)
     
-    exec_start = subprocess.run(["systemctl", "show", "-p", "ExecStart", "--value", f"{server_name}.service"], capture_output=True, text=True).stdout.strip()
+    exec_start = services.exec_start(server_name)
     is_bedrock = "bedrock" in exec_start
     
     base_dir = os.path.join(d, "worlds") if is_bedrock else d
@@ -2252,7 +2238,7 @@ def rename_world(server_name, new_name):
         raise WorldError(f"A folder named '{new_name}' already exists; choose another name.")
 
     # 1. Stop the server safely before modifying world files
-    run_and_log(["sudo", "systemctl", "stop", f"{server_name}.service"])
+    services.stop(server_name, elevate=True)
 
     # 2. Rename the directory
     os.rename(old_path, new_path)
@@ -2263,4 +2249,4 @@ def rename_world(server_name, new_name):
     write_properties(d, props)
     
     # 4. Restart the server with the new configuration
-    run_and_log(["sudo", "systemctl", "start", f"{server_name}.service"])
+    services.start(server_name, elevate=True)
