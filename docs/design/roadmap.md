@@ -1924,9 +1924,13 @@ with a backslash, a name with spaces) is not offered the form, and one that stop
 you type says which line. `.yml`, `.json`, `.toml` and scripts always open as text. The form
 does not add or remove settings; Raw Text does. Tested: `tests/js/propfile.test.js` (9 Node
 tests) and `tests/test_propfile.py`, which also checks that values written by the form are read
-back the same by `core/properties.py`; 23 browser checks at 1440, 1280 and 390 pixels wide in
+back the same by `core/properties.py`; 24 browser checks at 1440, 1280 and 390 pixels wide in
 both themes with sample data (form to text, text to form, save, filter, sections, a file that
-stops fitting, Configuration's own editor). Not yet run against an installed panel. The
+stops fitting, Configuration's own editor); and the .deb installed in a systemd container with
+a stand-in Java server, edited in a browser: `server.properties` saved with Java's escapes and
+read back by Configuration, a `.cfg` with sections, `eula.txt`, each save logged as `[FILES]`.
+That run found that a text box turns Windows line endings (CRLF) into LF, which the old text
+editor did too; the editor now remembers a file's line endings and saves them back. The
 manual's picture uses sample data.
 
 ### 2.0: an API for scripts and bots

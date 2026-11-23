@@ -3431,7 +3431,10 @@ const ServerApp = {
             if (!res.ok) return alert(`Can't open ${path}: ${await this.apiError(res)}`);
             data = await res.json();
         }
-        this.fileEditor = { path, modified: data.modified, dirty: false, mode: 'raw' };
+        // A text box turns Windows line endings (CRLF) into LF; remember them so Save writes them back
+        // (Bedrock's server.properties and many plugin files use them).
+        const lf = (data.content.match(/\n/g) || []).length, crlf = (data.content.match(/\r\n/g) || []).length;
+        this.fileEditor = { path, modified: data.modified, dirty: false, mode: 'raw', crlf: crlf > 0 && crlf * 2 >= lf };
         const esc = t => this.escapeHtml(String(t ?? ''));
         const tab = 'px-3 py-1 text-sm rounded text-gray-600 dark:text-gray-400';
         document.getElementById('files-content').innerHTML = `
@@ -3485,6 +3488,12 @@ const ServerApp = {
         try { last = localStorage.getItem('rp_fileEditorMode') || 'visual'; } catch (e) {}
         if (this.offerFileVisual() && last === 'visual') this.setFileEditorMode('visual', true);
         else ta.focus();
+    },
+
+    // The text to save, with the file's own line endings.
+    fileEditorText() {
+        const text = document.getElementById('file-editor').value;
+        return this.fileEditor.crlf ? text.replace(/\r?\n/g, '\r\n') : text;
     },
 
     fileEditorChanged() {
@@ -3565,7 +3574,7 @@ const ServerApp = {
         if (!ed) return;
         const res = await api(this.filesUrl('/text'), {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: ed.path, content: document.getElementById('file-editor').value, modified: ed.modified })
+            body: JSON.stringify({ path: ed.path, content: this.fileEditorText(), modified: ed.modified })
         });
         if (!res.ok) return alert(`Couldn't save: ${await this.apiError(res)}`);
         const r = await res.json();
