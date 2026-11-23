@@ -160,6 +160,22 @@ def prepare_servers_folder(folder):
     return ""
 
 
+def found_folder_problem(folder):
+    """"" when the panel can run a server somebody else set up from the folder it is in, else
+    why not. Changes nothing."""
+    import os
+    import re
+    if not re.fullmatch(r"/[A-Za-z0-9._/-]+", folder or ""):
+        return (f"The folder's path, {folder}, has a space or another character the panel can't put in a "
+                f"service. Rename the folder (with the server stopped), start it again, and it can be managed.")
+    above = os.path.dirname(os.path.realpath(folder))
+    r = quiet(as_game_account(["test", "-x", above]), timeout=20)
+    if r.returncode != 0:
+        return (f"The {GAME_ACCOUNT} account, which runs the game servers, can't get into {above}. "
+                f"A folder above it is closed to other accounts: run  sudo chmod o+x  on it, or move the server.")
+    return ""
+
+
 def game_programs(names=("java", "bedrock_server")):
     """Running programs that could be game servers: [{"pid", "exe", "argv", "cwd", "user",
     "service", "started"}] for every process whose program is called one of `names`.

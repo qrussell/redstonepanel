@@ -8,7 +8,6 @@ server.properties; servers the panel manages (by folder or by service name) are 
 """
 import json
 import os
-import re
 import time
 
 from core import manager
@@ -16,7 +15,6 @@ from core.platform import services, system
 from core.settings import DATA_DIR
 
 RECORD_DIR = os.path.join(DATA_DIR, "found")          # one NAME.json per server taken over: how to undo it
-FOLDER_RE = re.compile(r"/[A-Za-z0-9._/-]+")          # what a unit file's WorkingDirectory takes safely
 STOP_WAIT = 120
 START_WAIT = 5                                        # a server that can't start fails within seconds
 
@@ -94,7 +92,7 @@ def describe(program, managed=(), panel_units=None):
     """What the panel can tell about one running program, or None when it isn't a Minecraft
     server or is one of the panel's own."""
     cwd, argv = program.get("cwd") or "", program.get("argv") or []
-    base = os.path.basename((program.get("exe") or (argv[0] if argv else "")).replace("\\", "/"))
+    base = os.path.basename((program.get("exe") or (argv[0] if argv else "")).replace("\\", "/")).lower()
     if base in BEDROCK_PROGRAMS:
         edition = "Bedrock"
     elif base in JAVA_PROGRAMS:
@@ -172,9 +170,9 @@ def check(info):
     """Raises FoundError with the reason when the panel can't run this found server as it is.
     Changes nothing."""
     folder, edition = info["folder"], info["edition"]
-    if not FOLDER_RE.fullmatch(folder):
-        raise FoundError(f"The folder's path, {folder}, has a space or another character the panel can't put in a "
-                         f"service. Rename the folder (with the server stopped), start it again, and it can be managed.")
+    error = system.found_folder_problem(folder)
+    if error:
+        raise FoundError(error)
     if edition == "Bedrock":
         manager.require_bedrock_machine()
         if "java" in folder.lower():
@@ -199,9 +197,6 @@ def check(info):
     if not info.get("service") and _running_in(folder):
         raise FoundError("This server wasn't started by a service, so the panel can't stop it safely. Stop it where you "
                          "started it (type stop in its console), then choose Manage again within the hour.")
-    error = system.prepare_servers_folder(os.path.dirname(os.path.realpath(folder)))
-    if error:
-        raise FoundError(error)
 
 
 def _rules_already_open(edition, folder):
@@ -220,15 +215,15 @@ def _stop_old(info):
     service = info.get("service") or ""
     if not service:
         return {"service": "", "was_enabled": False}
-    was_enabled = services.unit_state(service, "is-enabled") == "enabled"
-    services.control(service, "stop", elevate=True)
+    was_enabled = services.other_enabled(service)
+    services.other_control(service, "stop")
     deadline = time.time() + STOP_WAIT
     while _running_in(info["folder"]) and time.time() < deadline:
         time.sleep(1)
     if _running_in(info["folder"]):
-        services.control(service, "start", elevate=True)
+        services.other_control(service, "start")
         raise FoundError(f"{service} didn't stop within {STOP_WAIT} seconds, so nothing was changed.")
-    services.control(service, "disable", elevate=True)
+    services.other_control(service, "disable")
     return {"service": service, "was_enabled": was_enabled}
 
 
@@ -311,8 +306,8 @@ def undo(name, actor="?"):
         system.give_back(folder, rec["owner"])
     if rec.get("service"):
         if rec.get("was_enabled"):
-            services.control(rec["service"], "enable", elevate=True)
-        services.control(rec["service"], "start", elevate=True)
+            services.other_control(rec["service"], "enable")
+        services.other_control(rec["service"], "start")
     try:
         os.remove(_record_path(name))
     except OSError:

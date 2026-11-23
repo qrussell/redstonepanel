@@ -116,6 +116,13 @@ def prepare_servers_folder(folder):
     return ""
 
 
+def found_folder_problem(folder):
+    import re
+    if not re.fullmatch(r"/[A-Za-z0-9._/-]+", folder or ""):
+        return f"The folder's path, {folder}, has a space or another character the panel can't put in a service."
+    return getattr(fake.state, "found_folder_problem", "")
+
+
 def game_programs(names=("java", "bedrock_server")):
     """What the test put in fake.state.game_programs; one started by a unit runs while that unit is active."""
     out = []
