@@ -381,6 +381,7 @@ The sidebar on the left holds everything that isn't about one server:
 | **📊 Dashboard** | This machine's resources, services and what needs attention (above). |
 | **🌐 Cluster** | On a cluster master: every panel's servers (see [Clusters](#18-clusters)). |
 | **🔀 Port forwarding** | Admins: what to set up on your internet router so players outside your home can join (see [Port forwarding](#port-forwarding)). |
+| **🔗 Join pages** | Admins: a public page per server that tells players how to join (see [Join pages](#join-pages)). |
 | **🖥️ Console** | The panel's live activity log. |
 | **📋 Templates** | Saved server settings to reuse. |
 | **Sort by** | Name A–Z, Z–A, or online servers first. |
@@ -440,6 +441,67 @@ looks after the firewall (`ufw`) on each machine.
   If you do forward it, use HTTPS and two-factor sign-in for every admin.
 
 Nodes older than 1.16.14 show only their game ports, with the address the master knows them by.
+
+### Join pages
+
+Telling a new player how to join usually means a message with the address, the version and,
+for a modded server, which mods to get. **🔗 Join pages** (admins) gives each server a public
+page that says all of it and keeps itself up to date: whether the server is online, how many
+are playing, the address to type, the Minecraft version, and for a modpack server the exact
+pack to install.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-page.png"><img src="images/join-page.png" alt="A modpack server's join page, as a player sees it"></picture>
+
+Nothing is public until you turn it on, twice: the port, and then each server's page.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-pages.png"><img src="images/join-pages.png" alt="The Join pages page in the panel"></picture>
+
+- **The public port** (8444 unless you change it). Join pages have a port of their own, so you
+  can forward that one port on your router and keep the panel off the internet. The port
+  answers nothing but the join pages: there is no sign-in page on it and none of the panel.
+  It uses HTTPS with the panel's certificate when the panel does. The panel opens the port in
+  this machine's firewall; for players outside your home, forward TCP 8444 on your router too
+  (see [Port forwarding](#port-forwarding)).
+- **Also list the public pages at /join** adds a page that lists them. Off, a page is found
+  only by its own link.
+- **Servers**: press **Set up** next to a server, tick **Make this server's join page
+  public** and **Save page**. The link appears under the server, with **Copy link** to send
+  to your players.
+  - **Link name** is the end of the link, for example `/join/survival`.
+  - **Address players type**. Leave it empty to use your internet address from **🔀 Port
+    forwarding** with the server's own port. Type one here for a server with its own name, and
+    add `:port` when your router shows a different port outside. The panel never publishes an
+    address it worked out by itself: with no address anywhere, the page asks players to get it
+    from you.
+  - **Unlisted** gives the page a long random link instead of the link name, for a
+    friends-only server. It can't be guessed and never appears in the list. **Make a new
+    link** replaces it; the old link stops working.
+  - **Show who is playing** adds the players' names. Off, only the number is shown.
+  - **A note for players** and **a link of your own** (a Discord invite, a website) appear at
+    the top of the page. Only `https://` links are accepted.
+  - **Where players get the mods** (mod servers). A server made **From a modpack** on Modrinth
+    links to that exact pack version by itself, with an **Open in Modrinth App** button and
+    steps for Modrinth App and Prism Launcher. For anything else, paste the pack's page here.
+
+What a page shows depends on the server:
+
+| Server | The page says |
+| --- | --- |
+| Vanilla, Paper, Purpur | The address, the Minecraft version, "No mods are needed", and how to add the server in the game. |
+| Paper or Purpur with Geyser | The same, and the address and port for Bedrock players. |
+| Fabric, Quilt, Forge, NeoForge | The loader and version, the modpack to install (see above), and how to join with a launcher that handles mods. |
+| Bedrock | The address and port, an **Add this server to Minecraft** button for phones, tablets and Windows, and the steps by hand. |
+
+<img src="images/phone-join-page.png" width="280" alt="A join page on a phone">
+
+A page never shows a LAN address, the machine's or a node's name, a folder, the panel's
+version, account names or the list of plugins. It sets no cookies and has no forms. The
+server is asked for its player count at most once every 30 seconds, however many people look.
+
+On a cluster master the list includes the servers on every node, and the master serves their
+pages; nodes open nothing. A node's own join pages belong to that node's admin and can't be
+turned on from the master. If a node can't be reached, its servers' pages stay up and say
+offline.
 
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
 (**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,

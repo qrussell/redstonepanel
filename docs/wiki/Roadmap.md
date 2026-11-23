@@ -10,6 +10,16 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 
 ## Next up
 
+### 1.21.5 and 1.21.6: join pages for players
+
+- **1.21.5: a join page per server** *(built)*. A public page, off until you turn it on, that
+  tells players how to join: the address, whether the server is online, how many are
+  playing, the Minecraft version, and for a modpack server the exact pack to install. The
+  pages have their own port, so the panel itself stays off the internet.
+- **1.21.6: player packs.** For a server whose mods you picked by hand, the panel builds the
+  pack players need (a Modrinth `.mrpack`, and packwiz for automatic updates), leaving out
+  mods that only run on the server, and rebuilds it when the server's mods change.
+
 ### 1.21 to 1.24: RedstonePanel on Windows
 
 A native Windows version with every feature of the Linux one: the same panel in your browser,
@@ -48,7 +58,6 @@ close the gaps people most often notice when choosing a panel.
 | **Whitelist kept in step across servers** from the cluster master. | Today each server's whitelist is changed on its own. |
 | **Scheduled commands and announcements** (for example a daily message or `/save-all`). | Common on other panels, and a natural use of the same systemd timers as restarts. |
 | **World tools:** upload a world, start a fresh world with a seed, pre-generate with Chunky from a button. | World downloads already exist; the other direction is missing. |
-| **A read-only status page** for players: online or not, address, version, players online. | Players stop asking "is the server up?". Opt-in, and shows nothing private. |
 | **Discord two-way bridge:** game chat to a channel and back. | Builds on the existing webhooks. |
 
 ## Later, when someone asks for it
