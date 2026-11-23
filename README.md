@@ -102,6 +102,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.20
+
+**More server types and modpacks** *(1.20)*. Java servers can now be **Purpur**, **Quilt**, **NeoForge** or **Forge** as well as Vanilla, Paper and Fabric, each with the Java it needs. **New server → From a modpack** makes a server from a Modrinth modpack you search for, an uploaded `.mrpack` or an uploaded CurseForge server pack: the panel installs what the pack needs and only its server-side files, and never runs anything from a pack. Pack updates take a backup first and keep the world. Read the [1.20.0 release notes](release-notes/v1.20.0.md).
+
 ## What's new in 1.19
 
 **Change a server's type in place** *(1.19)*. **Maintenance → Server type** moves a Java server between Vanilla, Paper and Fabric and keeps its world, port, settings and players. You get a preview first, a backup always, the old type back by itself if the new one doesn't start, and **Undo type change** afterwards. Mods and plugins are set aside and the same project's build for the new type is offered. Java updates now back up first and can be rolled back, and backups show what made them. Read the [1.19.0 release notes](release-notes/v1.19.0.md).

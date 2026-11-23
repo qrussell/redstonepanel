@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.19**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.20**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -9,16 +9,6 @@ reinventing it, and add no dependencies that aren't in Ubuntu's archive. The ful
 with the reasoning behind each item, is in [docs/design/roadmap.md](../design/roadmap.md).
 
 ## Next up
-
-### 1.20: Forge, NeoForge, Quilt, Purpur and modpacks
-
-- **New server types:** NeoForge, Forge and Quilt for mods, Purpur for plugins, and the catalog
-  filtered for each.
-- **Modrinth modpacks:** pick one from Modrinth or upload a `.mrpack`; only server-side files
-  are installed, and pack updates keep the world.
-- **CurseForge server packs:** download the pack's server files from CurseForge and upload
-  them. A CurseForge browser in the panel isn't planned yet, because CurseForge's API needs a
-  key and some authors block third-party downloads.
 
 ### 2.0: an API for scripts and bots
 
@@ -57,4 +47,4 @@ close the gaps people most often notice when choosing a panel.
 
 ## Recently shipped
 
-See [What's New](Whats-New.md). The latest: **1.19** changes a Java server's type in place (Vanilla, Paper, Fabric) with a backup and undo, and rolls back updates; **1.18** adds per-server permissions for helpers and SFTP for FileZilla or WinSCP; **1.17.2** adds Advanced options to New server (builds, Java, memory, limits, startup flags, world and settings); **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.
+See [What's New](Whats-New.md). The latest: **1.20** adds Purpur, Quilt, NeoForge and Forge servers and modpacks from Modrinth or a CurseForge server pack; **1.19** changes a Java server's type in place (Vanilla, Paper, Fabric) with a backup and undo, and rolls back updates; **1.18** adds per-server permissions for helpers and SFTP for FileZilla or WinSCP; **1.17.2** adds Advanced options to New server (builds, Java, memory, limits, startup flags, world and settings); **1.17.1** explains why a server crashed and offers the fix; **1.17** adds performance charts, suggestions and memory and CPU limits; **1.16.14** adds the Port forwarding page, and **1.16.13** moves big worlds with seconds of downtime.
