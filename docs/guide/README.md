@@ -451,7 +451,7 @@ page that says all of it and keeps itself up to date: whether the server is onli
 are playing, the address to type, the Minecraft version, and for a modpack server the exact
 pack to install.
 
-<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-page.png"><img src="images/join-page.png" alt="A modpack server's join page, as a player sees it"></picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-page.png"><img src="images/join-page.png" alt="A server's join page, as a player sees it"></picture>
 
 Nothing is public until you turn it on, twice: the port, and then each server's page.
 
