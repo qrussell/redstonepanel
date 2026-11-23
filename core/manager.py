@@ -1159,7 +1159,7 @@ def remove_server(server_name, keep_world, note=None):
                 pass          # only a hint for restoring; the folder alone is enough
         write_log(f"[REMOVE] Removed {server_name} from the panel. Its files stay in {d}; "
                   f"restore it from New Server > Removed servers.")
-    elif os.path.exists(d) and d.startswith(paths.SERVERS_ROOT + "/"):
+    elif os.path.exists(d) and d.startswith(os.path.join(paths.SERVERS_ROOT, "")):
         system.delete_tree(d)
         write_log(f"[REMOVE] Removed {server_name} and deleted {d}.")
 

@@ -333,7 +333,7 @@ def main():
     check("a backup restores", code == 200, f"{code} {str(r)[:300]}")
     code, t = p.get(f"/api/servers/{name}/files/text?path=world/restore-test.txt")
     check("... and the world is the one from the backup", "hello from the test" in str(t.get("content")), f"{code} {str(t)[:200]}")
-    code, out = run(["icacls", os.path.join(d, "world", "region")])
+    code, out = run(["icacls", os.path.join(d, "world")])
     check("... and the server's own account can change it", f"NT SERVICE\\{name}".lower() in out.lower(), out[-400:])
     check("the server is running again after the restore", wait("svc", lambda: service_state(name) == "RUNNING", 120)
           and wait("listen", listening, 300, every=5))
