@@ -523,8 +523,10 @@ def _folder_view(folder, current):
 
 def _servers_folder_view():
     current = manager.servers_root()
+    from core.platform import system
     return {"folder": current, "default": manager.SERVERS_ROOT, "is_default": current == manager.SERVERS_ROOT,
-            "folders": [_folder_view(r, current) for r in manager.server_roots()]}
+            "folders": [_folder_view(r, current) for r in manager.server_roots()],
+            "drives": system.servers_drives()}        # Windows: drives to choose from; [] where paths are typed
 
 @app.get("/api/settings/servers-folder")
 def get_servers_folder_api():

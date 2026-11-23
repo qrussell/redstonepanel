@@ -5236,14 +5236,28 @@ const ServerApp = {
 		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
 		const note = 'text-xs text-gray-500 dark:text-gray-400';
 		const others = d.folders.filter(f => !f.current && f.servers);
+		// Windows: a list of this computer's drives; picking one fills in the folder the panel suggests there
+		const drives = d.drives || [], shown = typed != null ? typed : (d.is_default ? '' : d.folder);
+		const onDrive = ((shown || d.default).match(/^[A-Za-z]:/) || [''])[0].toUpperCase();
+		this.serversDrives = drives;
+		const driveList = drives.length ? `
+				<select id="set-servers-folder-drive" aria-label="Drive" onchange="ServerApp.pickServersDrive(this.value)" class="${field}" style="flex:0 0 auto;width:auto;max-width:100%">
+					${drives.some(v => v.drive === onDrive) ? '' : `<option value="" selected>${esc(onDrive || 'Drive')}</option>`}
+					${drives.map(v => `<option value="${esc(v.drive)}" ${v.drive === onDrive ? 'selected' : ''}>${esc(v.drive)}${v.label ? ' ' + esc(v.label) : ''} (${gb(v.free)} free)</option>`).join('')}
+				</select>` : '';
 		box.innerHTML = `
-			<div class="flex flex-col sm:flex-row gap-2 mb-1">
-				<input id="set-servers-folder-path" value="${esc(typed != null ? typed : (d.is_default ? '' : d.folder))}" placeholder="${esc(d.default)}" spellcheck="false" autocomplete="off" class="${field} font-mono">
+			<div class="flex flex-col sm:flex-row gap-2 mb-1">${driveList}
+				<input id="set-servers-folder-path" value="${esc(shown)}" placeholder="${esc(d.default)}" spellcheck="false" autocomplete="off" class="${field} font-mono">
 				<button onclick="ServerApp.saveServersFolder(this)" class="px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold text-sm disabled:opacity-50 whitespace-nowrap">Save folder</button>
 			</div>
 			<p id="set-servers-folder-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-1">${esc(message || '')}</p>
-			<p class="${note} mb-1">New servers are made in <b class="font-mono">${esc(d.folder)}</b>${d.folders[0] && d.folders[0].free != null ? ` (${gb(d.folders[0].free)} free of ${gb(d.folders[0].total)})` : ''}. Give the full path of a folder on the disk you want them on; leave it empty for the usual place, <span class="font-mono">${esc(d.default)}</span>. The folder is made if it isn't there.</p>
+			<p class="${note} mb-1">New servers are made in <b class="font-mono">${esc(d.folder)}</b>${d.folders[0] && d.folders[0].free != null ? ` (${gb(d.folders[0].free)} free of ${gb(d.folders[0].total)})` : ''}. ${drives.length ? `Choose a drive and the panel fills in <span class="font-mono">\\Minecraft\\servers</span> on it, the same path whatever the drive letter. You can change the path, or` : 'Give the full path of a folder on the disk you want them on;'} leave it empty for the usual place, <span class="font-mono">${esc(d.default)}</span>. The folder is made if it isn't there.</p>
 			<p class="${note}">Servers you already have stay where they are and keep working.${others.length ? ' Still in use: ' + others.map(f => `<span class="font-mono">${esc(f.folder)}</span> (${f.servers} server${f.servers === 1 ? '' : 's'})`).join(', ') + '.' : ''}</p>`;
+	},
+
+	pickServersDrive(drive) {
+		const chosen = (this.serversDrives || []).find(v => v.drive === drive);
+		if (chosen) document.getElementById('set-servers-folder-path').value = chosen.suggested;
 	},
 
 	async saveServersFolder(button) {

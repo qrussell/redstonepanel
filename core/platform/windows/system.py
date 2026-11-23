@@ -548,6 +548,50 @@ def check_servers_folder(folder):
     return folder, ""
 
 
+SERVERS_ON_A_DRIVE = "Minecraft\\servers"        # what the panel suggests on a drive other than its own
+
+
+def _volume(mount):
+    """(label, file system) of a drive."""
+    label, fstype = ctypes.create_unicode_buffer(261), ctypes.create_unicode_buffer(64)
+    try:
+        _win.dll("kernel32").GetVolumeInformationW(mount, label, 261, None, None, None, fstype, 64)
+    except (OSError, AttributeError):
+        pass
+    return label.value, fstype.value
+
+
+def _drive_letters():
+    try:
+        bits = _win.dll("kernel32").GetLogicalDrives()
+    except (OSError, AttributeError):
+        return []
+    return [chr(65 + i) for i in range(26) if bits & (1 << i)]
+
+
+def servers_drives():
+    """The drives a servers folder can be on (fixed disks formatted as NTFS or ReFS), for a list
+    to choose from: [{"drive": "D:", "label", "free", "total", "suggested"}]. "suggested" is the
+    folder the panel proposes there: "" (the usual place) on the panel's own drive, and
+    <drive>\\Minecraft\\servers on any other, so the path is the same whatever the letter."""
+    own = os.path.splitdrive(os.path.abspath(paths.SERVERS_ROOT))[0].upper()
+    found = []
+    for letter in _drive_letters():
+        drive, mount = letter + ":", letter + ":\\"
+        if _drive_type(mount) != 3:
+            continue
+        label, fstype = _volume(mount)
+        if fstype.upper() not in ("NTFS", "REFS"):
+            continue
+        try:
+            usage = shutil.disk_usage(mount)
+        except OSError:
+            continue
+        found.append({"drive": drive, "label": label, "free": usage.free, "total": usage.total,
+                      "suggested": "" if drive == own else f"{drive}\\{SERVERS_ON_A_DRIVE}"})
+    return found
+
+
 def prepare_servers_folder(folder):
     """Makes the folder (and those above it). A folder the panel makes, or finds empty, is left
     to administrators and the system, as the usual one is; each server's account is given its

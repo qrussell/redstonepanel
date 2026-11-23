@@ -368,3 +368,9 @@ def prepare_servers_folder(folder):
         return (f"The {GAME_ACCOUNT} account, which runs the game servers, can't get into {folder}. "
                 f"A folder above it is closed to other accounts: run  sudo chmod o+x  on it, or choose another folder.")
     return ""
+
+
+def servers_drives():
+    """The drives a servers folder can be on, for a list to choose from: none here, where a
+    disk is a folder like any other and the owner types its path."""
+    return []

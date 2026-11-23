@@ -484,6 +484,11 @@ def servers_folder(p, args, body):
     check("the usual place is the servers folder in the panel's home", code == 200 and view.get("is_default")
           and os.path.normcase(view.get("folder", "")) == os.path.normcase(usual), f"{code} {view}")
     drive = os.path.splitdrive(os.path.abspath(home))[0]
+    drives = {v.get("drive"): v for v in view.get("drives") or []}
+    check("the drives to choose from include the panel's own, which suggests the usual place",
+          drive.upper() in drives and drives[drive.upper()].get("suggested") == "" and drives[drive.upper()].get("total", 0) > 0, str(view.get("drives")))
+    check("every other drive suggests \\Minecraft\\servers on it",
+          all(v.get("suggested") == f"{k}\\Minecraft\\servers" for k, v in drives.items() if k != drive.upper()), str(view.get("drives")))
     for bad, why in ((drive + "\\rp test\\servers", "a space"), (drive, "a whole drive"), ("servers", "no drive letter"),
                      ("\\\\nas\\share\\servers", "a network share"),
                      (os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "rp-servers"), "inside Windows"),

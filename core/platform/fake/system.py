@@ -190,3 +190,7 @@ def prepare_servers_folder(folder):
     fake.record("system.prepare_servers_folder", folder)
     os.makedirs(folder, exist_ok=True)
     return ""
+
+
+def servers_drives():
+    return list(getattr(fake.state, "servers_drives", []))

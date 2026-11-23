@@ -227,6 +227,29 @@ class ServersFolder(unittest.TestCase):
                 self.assertIn("NTFS", self.system.check_servers_folder("E:\\servers")[1])
 
 
+class ServersDrives(unittest.TestCase):
+    def test_fixed_ntfs_drives_with_the_same_folder_on_each(self):
+        from core.platform.windows import system
+        kinds = {"C:\\": 3, "D:\\": 3, "E:\\": 2, "F:\\": 3, "Z:\\": 4}
+        volumes = {"C:\\": ("Windows", "NTFS"), "D:\\": ("Disk01", "NTFS"), "F:\\": ("Stick", "exFAT")}
+        usage = mock.Mock(free=5 << 30, total=10 << 30)
+        with mock.patch.object(system, "_drive_letters", return_value=["C", "D", "E", "F", "Z"]), \
+             mock.patch.object(system, "_drive_type", side_effect=lambda m: kinds[m]), \
+             mock.patch.object(system, "_volume", side_effect=lambda m: volumes[m]), \
+             mock.patch.object(system.shutil, "disk_usage", return_value=usage), \
+             mock.patch.object(system.os.path, "splitdrive", return_value=("C:", "\\ProgramData\\RedstonePanel\\servers")):
+            drives = system.servers_drives()
+        self.assertEqual([d["drive"] for d in drives], ["C:", "D:"])          # not removable, network or exFAT
+        self.assertEqual(drives[0]["suggested"], "")                           # the panel's own drive: the usual place
+        self.assertEqual(drives[1]["suggested"], "D:\\Minecraft\\servers")
+        self.assertEqual(drives[1]["label"], "Disk01")
+        self.assertEqual(drives[1]["free"], 5 << 30)
+
+    def test_linux_has_no_list(self):
+        from core.platform.linux import system
+        self.assertEqual(system.servers_drives(), [])
+
+
 class OtherPeoplesServices(unittest.TestCase):
     """A PC may already have services called minecraft-java that something else made."""
 

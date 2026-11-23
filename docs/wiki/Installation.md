@@ -199,7 +199,9 @@ In a cluster, each machine has its own servers folder, set in that machine's own
 
 **On Windows (preview)** the same setting takes a folder with its drive letter, for example
 `D:\Minecraft\servers`, so servers can live on a second disk while the panel stays on `C:`.
-Leave it empty for the usual place, `C:\ProgramData\RedstonePanel\servers`. The panel refuses
+A list next to the box shows this computer's drives with their free space; choosing one fills in
+`\Minecraft\servers` on that drive, so the path is the same whatever the drive letter (you can
+still change it). Leave it empty for the usual place, `C:\ProgramData\RedstonePanel\servers`. The panel refuses
 a whole drive (`D:`), paths with spaces, network shares, removable drives, drives not formatted
 as NTFS, and folders inside `C:\Windows`, `C:\Program Files` or `C:\Users`. A folder the panel
 makes is open to administrators only; each server's own account is given just its own folder

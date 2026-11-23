@@ -101,7 +101,10 @@ The **Servers folder** setting (1.21.1) works here too: `system.check_servers_fo
 path with a drive letter on a fixed NTFS or ReFS disk (no spaces, no whole drive, no share, not
 Windows' or the panel's own folders) and `system.prepare_servers_folder` makes it and leaves a
 new or empty folder to administrators and the system, as the installer does for the usual one.
-Each server's account still gets only its own folder, when its service is made. The install
+Each server's account still gets only its own folder, when its service is made. `system.servers_drives()` lists the
+fixed NTFS and ReFS drives for the dropdown beside the box; picking one fills in
+`<drive>\Minecraft\servers` (the usual place on the panel's own drive). Linux returns no list
+and keeps the plain box. The install
 test sets another folder, makes a server there, checks its rights and removes it.
 
 ## Not in the preview
