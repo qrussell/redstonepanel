@@ -128,11 +128,32 @@ Neither touches your game servers in `/opt/minecraft-*` or your backups in
 
 | What | Where |
 | --- | --- |
-| Game servers | `/opt/minecraft-*` |
+| Game servers | `/opt/minecraft-*`, or the folder you chose (below) |
 | Backups | `/var/backups/redstonepanel/<server>/` |
 | Panel settings, accounts, templates | `/var/lib/redstonepanel` |
 | Activity log | `/var/log/redstonepanel/panel.log` |
 | Panel service | `systemctl status redstonepanel` |
+
+### Keeping servers on another disk
+
+If `/opt` is on a small system disk and your room is somewhere else (a second drive, a bigger
+partition), open **Panel Settings → Servers folder**, type the full path of a folder there,
+for example `/srv/minecraft` or `/mnt/disk2/minecraft`, and choose **Save folder**. The panel
+makes the folder if it isn't there and shows the free space on that disk.
+
+- **New servers go there**: ones you create, import, restore from off-site storage, install
+  from a modpack or move in from another cluster member.
+- **Servers you already have stay where they are** and keep working. The panel remembers every
+  folder it has used, so their names and ports still count and removed servers are still found.
+- Leave the box empty to go back to `/opt`.
+
+The panel refuses folders it can't safely use, and says why: system folders (`/etc`, `/usr`,
+`/var/lib` and the like), a whole disk's top folder such as `/mnt` or `/home` (give a folder of
+its own inside it), names with spaces, a disk mounted read-only or `noexec`, and a folder the
+`minecraft` account can't get into because a folder above it is closed (`sudo chmod o+x` on
+that folder fixes it). The path also can't contain the words "java" or "bedrock".
+
+In a cluster, each machine has its own servers folder, set in that machine's own panel.
 
 ## Reaching the panel from outside your network
 

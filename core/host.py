@@ -290,7 +290,7 @@ def _existing(path):
 
 def disks():
     """The file systems holding the servers, backups and panel data (each listed once)."""
-    places = (("Game servers", manager.SERVERS_ROOT), ("Backups", backups.BACKUP_ROOT),
+    places = (("Game servers", manager.servers_root()), ("Backups", backups.BACKUP_ROOT),
               ("Panel data", panel_settings.DATA_DIR), ("System", "/"))
     mounts = _mounts()
     found = {}

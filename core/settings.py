@@ -51,6 +51,10 @@ DEFAULTS = {
     # admin turns it on under Panel Settings > SFTP.
     "sftp_enabled": False,
     "sftp_port": 2022,
+    # 1.21.1: where new game servers are kept. "" = this system's usual place. Servers made
+    # earlier stay where they are, so every folder that was ever used is remembered.
+    "servers_folder": "",
+    "servers_folders_used": [],
 }
 PANEL_NAME_MAX = 40
 CONNECTION_KEYS = ("https_mode", "http_port", "https_port", "cert_file", "key_file")
@@ -161,7 +165,31 @@ def validate(new):
         raise SettingsError("The SFTP port must be between 1 and 65535.")
     if s["sftp_port"] in (s["http_port"], s["https_port"]) or s["sftp_port"] == 22:
         raise SettingsError("Choose an SFTP port that isn't the panel's own port or 22 (this machine's SSH).")
+
+    s["servers_folder"] = clean_servers_folder(s["servers_folder"])
+    used = []
+    for raw in s["servers_folders_used"] if isinstance(s["servers_folders_used"], list) else []:
+        if isinstance(raw, str) and raw and raw not in used and raw != s["servers_folder"]:
+            used.append(raw)
+    s["servers_folders_used"] = used
     return s
+
+
+def clean_servers_folder(folder):
+    """The folder as it is stored ("" = the usual place). Raises SettingsError when the panel
+    can't keep servers there; what is and isn't a fit place is the operating system's business."""
+    folder = str(folder or "").strip()
+    if not folder:
+        return ""
+    from core.platform import paths, system
+    # The panel tells a Java server from a Bedrock one by those words in how the server is started
+    if "java" in folder.lower() or "bedrock" in folder.lower():
+        raise SettingsError('The folder\'s path can\'t contain "java" or "bedrock": the panel uses those words to '
+                            'tell the two kinds of server apart. "minecraft" or "servers" is fine.')
+    clean, error = system.check_servers_folder(folder)
+    if error:
+        raise SettingsError(error)
+    return "" if clean == paths.SERVERS_ROOT else clean
 
 
 def clean_panel_name(name):
