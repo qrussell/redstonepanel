@@ -267,6 +267,7 @@ power    POST    {_S}/action
 power    DELETE  {_S}/crash
 console  GET     {_S}/chat
 console  POST    {_S}/chat
+console  GET     {_S}/chat/assist
 console  POST    {_S}/chat/setup
 console  POST    {_S}/chat/clear
 console  GET     {_S}/chat/debug

@@ -1,0 +1,671 @@
+{
+ "version": 1,
+ "groups": ["Players", "World", "Messages", "Server"],
+ "quick": [
+  {
+   "label": "List players",
+   "command": "list",
+   "editions": ["java"]
+  },
+  {
+   "label": "Save world",
+   "command": "save-all",
+   "editions": ["java"]
+  },
+  {
+   "label": "Day",
+   "command": "time set day",
+   "editions": ["java", "bedrock"]
+  },
+  {
+   "label": "Night",
+   "command": "time set night",
+   "editions": ["java", "bedrock"]
+  },
+  {
+   "label": "Clear weather",
+   "command": "weather clear",
+   "editions": ["java", "bedrock"]
+  }
+ ],
+ "lists": {
+  "gamemodes": ["survival", "creative", "adventure", "spectator"],
+  "items": ["diamond", "iron_ingot", "gold_ingot", "netherite_ingot", "emerald", "golden_apple", "cooked_beef", "bread", "torch", "oak_log", "cobblestone", "diamond_sword", "diamond_pickaxe", "diamond_axe", "bow", "arrow", "shield", "elytra", "firework_rocket", "ender_pearl", "totem_of_undying", "experience_bottle", "shulker_box", "saddle", "name_tag"],
+  "effects": ["speed", "haste", "strength", "regeneration", "resistance", "fire_resistance", "water_breathing", "night_vision", "invisibility", "jump_boost", "slow_falling", "saturation", "instant_health"],
+  "effects_bedrock": ["clear", "speed", "haste", "strength", "regeneration", "resistance", "fire_resistance", "water_breathing", "night_vision", "invisibility", "jump_boost", "slow_falling", "saturation", "instant_health"],
+  "gamerules_java": ["keep_inventory", "advance_time", "advance_weather", "mob_griefing", "pvp", "spawn_mobs", "spawn_monsters", "spawn_phantoms", "players_sleeping_percentage", "immediate_respawn", "fall_damage", "fire_damage", "drowning_damage", "natural_health_regeneration", "show_death_messages", "show_advancement_messages", "tnt_explodes", "random_tick_speed", "respawn_radius", "locator_bar"],
+  "gamerules_java_old": ["keepInventory", "doDaylightCycle", "doWeatherCycle", "mobGriefing", "pvp", "doMobSpawning", "doInsomnia", "playersSleepingPercentage", "doImmediateRespawn", "fallDamage", "fireDamage", "drowningDamage", "naturalRegeneration", "showDeathMessages", "announceAdvancements", "tntExplodes", "doFireTick", "randomTickSpeed", "spawnRadius", "locatorBar"],
+  "gamerules_bedrock": ["keepinventory", "dodaylightcycle", "doweathercycle", "mobgriefing", "pvp", "domobspawning", "doinsomnia", "playerssleepingpercentage", "doimmediaterespawn", "falldamage", "firedamage", "drowningdamage", "naturalregeneration", "showdeathmessages", "showcoordinates", "tntexplodes", "dofiretick", "randomtickspeed", "spawnradius"]
+ },
+ "commands": [
+  {
+   "name": "gamemode",
+   "label": "Change game mode",
+   "group": "Players",
+   "about": "Change a player's game mode",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "mode",
+     "type": "choice",
+     "list": "gamemodes"
+    },
+    {
+     "name": "player",
+     "type": "target"
+    }
+   ]
+  },
+  {
+   "name": "tp",
+   "label": "Teleport a player",
+   "group": "Players",
+   "about": "Move a player to another player or to a place",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    },
+    {
+     "name": "destination",
+     "type": "destination"
+    }
+   ]
+  },
+  {
+   "name": "give",
+   "label": "Give an item",
+   "group": "Players",
+   "about": "Give a player an item",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    },
+    {
+     "name": "item",
+     "type": "suggest",
+     "list": "items"
+    },
+    {
+     "name": "count",
+     "type": "number",
+     "optional": true,
+     "min": 1
+    }
+   ]
+  },
+  {
+   "name": "kick",
+   "label": "Kick a player",
+   "group": "Players",
+   "about": "Disconnect a player; they can join again",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "player",
+     "online": true
+    },
+    {
+     "name": "reason",
+     "type": "text",
+     "optional": true
+    }
+   ]
+  },
+  {
+   "name": "ban",
+   "label": "Ban a player",
+   "group": "Players",
+   "about": "Keep a player out until they are pardoned",
+   "editions": ["java"],
+   "args": [
+    {
+     "name": "player",
+     "type": "player"
+    },
+    {
+     "name": "reason",
+     "type": "text",
+     "optional": true
+    }
+   ]
+  },
+  {
+   "name": "pardon",
+   "label": "Unban a player",
+   "group": "Players",
+   "about": "Let a banned player join again",
+   "editions": ["java"],
+   "args": [
+    {
+     "name": "player",
+     "type": "player"
+    }
+   ]
+  },
+  {
+   "name": "op",
+   "label": "Make a player an operator",
+   "group": "Players",
+   "about": "Let a player use operator commands in the game",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "player"
+    }
+   ]
+  },
+  {
+   "name": "deop",
+   "label": "Remove operator",
+   "group": "Players",
+   "about": "Take operator commands away from a player",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "player"
+    }
+   ]
+  },
+  {
+   "name": "whitelist add",
+   "label": "Whitelist: add a player",
+   "group": "Players",
+   "about": "Allow a player to join when the whitelist is on",
+   "editions": ["java"],
+   "args": [
+    {
+     "name": "player",
+     "type": "player"
+    }
+   ]
+  },
+  {
+   "name": "whitelist remove",
+   "label": "Whitelist: remove a player",
+   "group": "Players",
+   "about": "Take a player off the whitelist",
+   "editions": ["java"],
+   "args": [
+    {
+     "name": "player",
+     "type": "player"
+    }
+   ]
+  },
+  {
+   "name": "whitelist on",
+   "label": "Whitelist: turn on",
+   "group": "Players",
+   "about": "Only whitelisted players may join",
+   "editions": ["java"],
+   "args": []
+  },
+  {
+   "name": "whitelist off",
+   "label": "Whitelist: turn off",
+   "group": "Players",
+   "about": "Anyone may join",
+   "editions": ["java"],
+   "args": []
+  },
+  {
+   "name": "whitelist list",
+   "label": "Whitelist: show",
+   "group": "Players",
+   "about": "Show who is on the whitelist",
+   "editions": ["java"],
+   "args": []
+  },
+  {
+   "name": "allowlist add",
+   "label": "Allowlist: add a player",
+   "group": "Players",
+   "about": "Allow a player to join when the allowlist is on",
+   "editions": ["bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "player"
+    }
+   ]
+  },
+  {
+   "name": "allowlist remove",
+   "label": "Allowlist: remove a player",
+   "group": "Players",
+   "about": "Take a player off the allowlist",
+   "editions": ["bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "player"
+    }
+   ]
+  },
+  {
+   "name": "allowlist on",
+   "label": "Allowlist: turn on",
+   "group": "Players",
+   "about": "Only allowlisted players may join",
+   "editions": ["bedrock"],
+   "args": []
+  },
+  {
+   "name": "allowlist off",
+   "label": "Allowlist: turn off",
+   "group": "Players",
+   "about": "Anyone may join",
+   "editions": ["bedrock"],
+   "args": []
+  },
+  {
+   "name": "effect give",
+   "label": "Give an effect",
+   "group": "Players",
+   "about": "Give a player a status effect",
+   "editions": ["java"],
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    },
+    {
+     "name": "effect",
+     "type": "suggest",
+     "list": "effects"
+    },
+    {
+     "name": "seconds",
+     "type": "number",
+     "optional": true,
+     "min": 1
+    },
+    {
+     "name": "level",
+     "type": "number",
+     "optional": true,
+     "min": 0
+    }
+   ]
+  },
+  {
+   "name": "effect clear",
+   "label": "Clear effects",
+   "group": "Players",
+   "about": "Remove a player's status effects",
+   "editions": ["java"],
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    }
+   ]
+  },
+  {
+   "name": "effect",
+   "label": "Give or clear an effect",
+   "group": "Players",
+   "about": "Give a player a status effect, or clear to remove them all",
+   "editions": ["bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    },
+    {
+     "name": "effect",
+     "type": "suggest",
+     "list": "effects_bedrock"
+    },
+    {
+     "name": "seconds",
+     "type": "number",
+     "optional": true,
+     "min": 1
+    },
+    {
+     "name": "level",
+     "type": "number",
+     "optional": true,
+     "min": 0
+    }
+   ]
+  },
+  {
+   "name": "xp add",
+   "label": "Give experience",
+   "group": "Players",
+   "about": "Give a player experience points or levels",
+   "editions": ["java"],
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    },
+    {
+     "name": "amount",
+     "type": "number"
+    },
+    {
+     "name": "unit",
+     "type": "choice",
+     "optional": true,
+     "choices": ["points", "levels"]
+    }
+   ]
+  },
+  {
+   "name": "xp",
+   "label": "Give experience",
+   "group": "Players",
+   "about": "Give a player experience points, or levels with an L after the number (5L)",
+   "editions": ["bedrock"],
+   "args": [
+    {
+     "name": "amount",
+     "type": "text1"
+    },
+    {
+     "name": "player",
+     "type": "target"
+    }
+   ]
+  },
+  {
+   "name": "clear",
+   "label": "Empty an inventory",
+   "group": "Players",
+   "about": "Remove everything, or one kind of item, from a player's inventory",
+   "editions": ["java", "bedrock"],
+   "confirm": true,
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    },
+    {
+     "name": "item",
+     "type": "suggest",
+     "optional": true,
+     "list": "items"
+    }
+   ]
+  },
+  {
+   "name": "kill",
+   "label": "Kill a player",
+   "group": "Players",
+   "about": "Kill a player (they respawn)",
+   "editions": ["java", "bedrock"],
+   "confirm": true,
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    }
+   ]
+  },
+  {
+   "name": "spawnpoint",
+   "label": "Set a player's spawn point",
+   "group": "Players",
+   "about": "Where a player comes back after dying",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    },
+    {
+     "name": "position",
+     "type": "position"
+    }
+   ]
+  },
+  {
+   "name": "time set",
+   "label": "Set the time",
+   "group": "World",
+   "about": "Set the time of day",
+   "editions": ["java"],
+   "args": [
+    {
+     "name": "time",
+     "type": "suggest",
+     "choices": ["day", "noon", "night", "midnight"]
+    }
+   ]
+  },
+  {
+   "name": "time set",
+   "label": "Set the time",
+   "group": "World",
+   "about": "Set the time of day",
+   "editions": ["bedrock"],
+   "args": [
+    {
+     "name": "time",
+     "type": "suggest",
+     "choices": ["day", "noon", "night", "midnight", "sunrise", "sunset"]
+    }
+   ]
+  },
+  {
+   "name": "time add",
+   "label": "Move the time forward",
+   "group": "World",
+   "about": "Add game ticks to the time (24000 is one day)",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "ticks",
+     "type": "number",
+     "min": 0
+    }
+   ]
+  },
+  {
+   "name": "weather",
+   "label": "Set the weather",
+   "group": "World",
+   "about": "Change the weather",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "weather",
+     "type": "choice",
+     "choices": ["clear", "rain", "thunder"]
+    },
+    {
+     "name": "duration",
+     "type": "number",
+     "optional": true,
+     "min": 1
+    }
+   ]
+  },
+  {
+   "name": "difficulty",
+   "label": "Set the difficulty",
+   "group": "World",
+   "about": "Change the world's difficulty",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "difficulty",
+     "type": "choice",
+     "choices": ["peaceful", "easy", "normal", "hard"]
+    }
+   ]
+  },
+  {
+   "name": "gamerule",
+   "label": "Change a game rule",
+   "group": "World",
+   "about": "Show a game rule, or change it by adding a value",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "rule",
+     "type": "suggest",
+     "list": "gamerules"
+    },
+    {
+     "name": "value",
+     "type": "suggest",
+     "optional": true,
+     "choices": ["true", "false"]
+    }
+   ]
+  },
+  {
+   "name": "defaultgamemode",
+   "label": "Set the default game mode",
+   "group": "World",
+   "about": "The game mode new players start in",
+   "editions": ["java"],
+   "args": [
+    {
+     "name": "mode",
+     "type": "choice",
+     "list": "gamemodes"
+    }
+   ]
+  },
+  {
+   "name": "setworldspawn",
+   "label": "Set the world spawn",
+   "group": "World",
+   "about": "Where new players appear",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "position",
+     "type": "position"
+    }
+   ]
+  },
+  {
+   "name": "worldborder set",
+   "label": "Set the world border",
+   "group": "World",
+   "about": "How wide the world border is, in blocks",
+   "editions": ["java"],
+   "args": [
+    {
+     "name": "width",
+     "type": "number",
+     "min": 1
+    }
+   ]
+  },
+  {
+   "name": "worldborder get",
+   "label": "Show the world border",
+   "group": "World",
+   "about": "Show how wide the world border is",
+   "editions": ["java"],
+   "args": []
+  },
+  {
+   "name": "seed",
+   "label": "Show the seed",
+   "group": "World",
+   "about": "Show the world's seed",
+   "editions": ["java"],
+   "args": []
+  },
+  {
+   "name": "say",
+   "label": "Announce to everyone",
+   "group": "Messages",
+   "about": "Send a message to every player",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "message",
+     "type": "text"
+    }
+   ]
+  },
+  {
+   "name": "tell",
+   "label": "Message one player",
+   "group": "Messages",
+   "about": "Send a private message to a player",
+   "editions": ["java", "bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    },
+    {
+     "name": "message",
+     "type": "text"
+    }
+   ]
+  },
+  {
+   "name": "title",
+   "label": "Show a title on screen",
+   "group": "Messages",
+   "about": "Show big text in the middle of the screen",
+   "editions": ["bedrock"],
+   "args": [
+    {
+     "name": "player",
+     "type": "target"
+    },
+    {
+     "name": "where",
+     "type": "choice",
+     "choices": ["title", "subtitle", "actionbar"]
+    },
+    {
+     "name": "text",
+     "type": "text"
+    }
+   ]
+  },
+  {
+   "name": "list",
+   "label": "List players",
+   "group": "Server",
+   "about": "Show who is online",
+   "editions": ["java", "bedrock"],
+   "args": []
+  },
+  {
+   "name": "save-all",
+   "label": "Save the world",
+   "group": "Server",
+   "about": "Write the world to disk now",
+   "editions": ["java"],
+   "args": []
+  },
+  {
+   "name": "banlist",
+   "label": "Show the ban list",
+   "group": "Server",
+   "about": "Show who is banned",
+   "editions": ["java"],
+   "args": []
+  },
+  {
+   "name": "stop",
+   "label": "Stop the server",
+   "group": "Server",
+   "about": "Save and stop the server; players are disconnected",
+   "editions": ["java", "bedrock"],
+   "confirm": true,
+   "args": []
+  }
+ ]
+}
