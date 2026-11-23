@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.19.0 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2) and per-server permissions and SFTP (1.18) shipped; changing a server's type or version (1.19), Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.20.0 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) and Forge, NeoForge, Quilt, Purpur and modpacks (1.20) shipped; API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1579,7 +1579,7 @@ refused joins, so those are Java only.
     undo (the add-on tracking file, and the "Before restore" backup's label), fixed before
     this MR. The default (1.21.11) run is in the GitHub `cluster` job.
 
-### 1.20: Forge, NeoForge, Quilt, Purpur and modpacks
+### 1.20: Forge, NeoForge, Quilt, Purpur and modpacks *(released 23 Nov 2026)*
 
 25. **Run the server types and modpacks people actually ask for.** Forge, NeoForge and
     modpacks are the commonest reason a Java owner can't use the panel at all. 1.19 sorted
@@ -1623,7 +1623,7 @@ refused joins, so those are Java only.
     **Size:** two to three weeks; Forge's installer and the modpack update path are the slow
     parts.
 
-    **As built (22 Nov 2026, MR on `feature/loaders-modpacks`):** as planned, with these
+    **As built (22 Nov 2026, MR !104):** as planned, with these
     differences. Quilt is not a `server.jar`: like Forge and NeoForge it has an installer, which
     the panel runs as `minecraft` in the new server's folder (or, for an update, in a staging
     folder that is swapped in only when it worked). What the unit starts is recorded as `launch`

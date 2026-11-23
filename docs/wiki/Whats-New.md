@@ -9,6 +9,22 @@ the dashboard.
 
 ---
 
+## 1.20: Forge, NeoForge, Quilt, Purpur and modpacks *(November 2026)*
+
+<picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/modpack-search.png"><img src="../guide/images/modpack-search.png" alt="Choosing a modpack from Modrinth"></picture>
+
+- **Four more server types:** **Purpur** for plugins, **Quilt**, **NeoForge** and **Forge** for
+  mods, each with the Java it needs (Forge 1.12.2 runs on Java 8).
+- **New server → From a modpack:** search Modrinth's modpacks, or upload a `.mrpack` or a
+  CurseForge server pack. The panel installs what the pack needs and only its server-side
+  files, and never runs anything from a pack.
+- **Modpack** on the Maintenance tab updates the pack, with a backup first. The world, settings
+  and your own mods stay.
+- **Mods and the catalog** follow the server's type, and **Server type** changes to and from
+  the new types.
+
+[Release notes](../../release-notes/v1.20.0.md)
+
 ## 1.19: change a server's type in place *(November 2026)*
 
 <picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/change-type-preview.png"><img src="../guide/images/change-type-preview.png" alt="Preview of changing a server from Paper to Fabric"></picture>
