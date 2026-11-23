@@ -225,7 +225,8 @@ def main():
     check("its unit file is written (the same file as on Linux)", os.path.isfile(unit))
     if os.path.isfile(unit):
         print("        " + open(unit).read().replace("\n", "\n        "))
-    check("Windows has a service for it", wait("svc", lambda: service_state(name) == "RUNNING", 60), str(service_state(name)))
+    if not check("Windows has a service for it", wait("svc", lambda: service_state(name) == "RUNNING", 60), str(service_state(name))):
+        return finish(p, args, name)
     code, out = run(["sc", "qc", name])
     check("the service runs as the server's own account", f"NT SERVICE\\{name}".lower() in out.lower(), out[-400:])
     check("the service starts with Windows", "AUTO_START" in out, out[-400:])
@@ -252,7 +253,8 @@ def main():
             return True
         except OSError:
             return False
-    check(f"Minecraft is listening on port {port}", wait("listen", listening, 300, every=5))
+    if not check(f"Minecraft is listening on port {port}", wait("listen", listening, 300, every=5)):
+        return finish(p, args, name, port)          # nothing below can pass without a running server
     journal = os.path.join(home, "journal", f"{name}.service", "output.log")
     check("the console output is kept", os.path.isfile(journal) and "Done" in open(journal, encoding="utf-8", errors="replace").read(),
           journal)
