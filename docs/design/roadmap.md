@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.1 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) and a servers folder you choose (1.21.1) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.4 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3) and quick commands in Live Chat (1.21.4) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1815,6 +1815,90 @@ existing server to the new folder, and choosing where backups go. Tested: 15 uni
 new: refusals, a folder on `/srv`, import there under a name `/opt` doesn't use, ownership,
 unit file, file manager, backup, uninstall keeping the world, Removed servers, going back to
 `/opt`, deleting for good).
+
+### 1.21.2: a simple light/dark switch *(released 23 Nov 2026)*
+
+**Why.** Light/dark mode and the accent color sat behind a ⚙️ button in the sidebar that opened
+a dialog titled "Panel Settings". It looked like a second Settings button, next to the real
+**🛡️ Settings** at the bottom of the sidebar, and changing the mode took four clicks. Quentin
+asked on 23 Nov 2026 for a simple switch in the top right corner.
+
+**How.** A sun/moon button fixed in the top right corner of the page (in the top bar on a
+phone) toggles the mode with one click; a colored dot beside it opens four swatches for the
+accent color. The ⚙️ button and its dialog are removed. The sign-in page gets the switch too.
+Still browser-only preferences (`rp_themeMode`, `rp_themeColor` in localStorage), so saved
+choices carry over. No API or package change.
+
+**As built.** As planned. Page headers keep clear of the corner with extra right padding from
+`md` up. Tested: Chromium at 1280 x 800 and 390 x 844 (toggle and accent saved, swatches close
+on a pick, Esc and a click elsewhere, no sideways scroll, 44 px buttons on the phone); 819 unit
+tests. Every manual screenshot was retaken, since they all show the sidebar or a page header.
+
+### 1.21.3: servers you set up yourself *(released 23 Nov 2026)*
+
+**Why.** People who install RedstonePanel often already run a Minecraft server on the machine,
+from their own service or a `screen` session. The panel ignored it, apart from avoiding its
+port and name, so that server could only be brought in by importing a copy. Quentin asked on
+23 Nov 2026 for the panel to find such servers, treat them as custom installations and allow
+managing them.
+
+**How.** Look at the running Java and Bedrock programs, keep the ones whose working folder has
+a `server.properties` and isn't a panel server, and work out what started each (a systemd
+service, or a terminal). List them read-only under **Found on this computer** in New server.
+**Manage with RedstonePanel** stops and disables the old service, never deletes it, and writes
+the panel's own unit pointing at the same folder; **Undo** reverses it from a record kept in
+the panel's data folder. Never automatic. Admins only, and not through a node token.
+
+**As built.** As planned, in `core/found.py` with the machine-specific parts behind
+`core.platform` (`system.game_programs`, `services.other_control`). The first run on a real
+system found three bugs, fixed before release: a foreign unit file in `/etc/systemd/system`
+was taken for one of the panel's, the panel's default starting memory could be larger than the
+server's own maximum, and a server that failed to start was reported as handed over. It now
+keeps the server's own memory settings, waits to see the server running, and puts everything
+back with the server's last output if it isn't. A server whose version the panel can't tell
+runs with the Java it already used. A server started from a terminal has to be stopped by
+hand and stays listed for an hour. Also in this release: a new server no longer shows the Last
+crash of a removed server with the same name. Tested: `packaging/test/test-found.sh`, 43
+checks on Ubuntu 24.04 in a systemd container (in the GitHub `cluster` job), and 838 unit
+tests. The Windows side ships with the 1.22 preview. The manual's picture uses sample data.
+
+### 1.21.4: quick commands in Live Chat *(released 23 Nov 2026)*
+
+**Why.** Live Chat ran any command, but only if you knew how to write it. Quentin asked on
+23 Nov 2026 for quick commands: a command builder that asks for the player, place and other
+values a command needs, quick buttons for the common ones, and suggestions as in the game,
+with the players who match what is typed. He liked autocomplete with a list to pick a command
+from. It serves the short visit: "make Steve creative", "set it to day", "who is on".
+
+**How.** Three ways to the same command line, all in the Live Chat tab and all under the
+existing **Console & chat** permission. (1) Suggestions while typing: commands after `/`, then
+a usage line with the current part highlighted and the players, selectors or fixed choices
+that fit; Tab or a click fills one in. (2) A **Commands…** list that opens a form asking only
+for what the picked command needs, with the exact command shown before **Run**. (3) A row of
+one-click buttons for commands that take nothing. The commands are a curated list per edition
+in `static/commands.json`; the logic is plain functions in `static/js/chat-commands.js`. The
+only new route, `GET /api/servers/{name}/chat/assist`, says who is online and who was seen
+before and, for a running Java server that answers `help` over RCON with a usage line per
+command (Vanilla, Fabric, Quilt, Forge, NeoForge), which commands and game rules it really
+has. It sends `list`, `help` and `help gamerule` and nothing else.
+
+**As built.** As planned, in `core/chatassist.py` (no machine-specific code; it uses
+`moderation`, `playerlog` and `backups`, which go through `core.platform`). No change to the
+cluster contract: the route is under the server's own routes, and a node on an older version
+simply gives no player names. Commands that are hard to take back (`stop`, `kill`, `clear`)
+ask first and are never one-click. Bedrock gets no **List players** or **Save world** button
+because it sends no reply to the panel. Paper and Purpur answer `help` with paged text, so
+plugin commands are not suggested; game rules then follow the Minecraft version. Tested:
+every Java command in the list, with and without its optional values, each item, effect and
+game rule, against real vanilla 1.21.10 and 1.21.11 servers over RCON (131 command lines each,
+none refused as wrong), and the same for Bedrock against a real Bedrock Dedicated Server
+1.26.66.1 through its console (113 lines, none refused); `tests/test_chatassist.py` and
+`tests/js/chat-commands.test.js` (13 Node tests, run by the unit tests when Node is
+installed); `packaging/test/test-chat-commands.sh`, 25 checks in a systemd container with
+stand-in servers that answer RCON as a real one does (in the GitHub `cluster` job); and 29
+browser checks at 1280 and 390 pixels wide with sample data. Not tested with a real player
+online: no game client was available, so player names came from the stand-in. The manual's
+two Quick commands pictures use sample data; the Live Chat pictures were retaken.
 
 ### 2.0: an API for scripts and bots
 

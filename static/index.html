@@ -41,7 +41,10 @@
             <p id="mobile-title" class="font-bold text-gray-900 dark:text-white truncate">RedstonePanel</p>
             <p id="mobile-subtitle" class="text-xs text-gray-500 dark:text-gray-400 truncate"></p>
         </div>
+        <!-- Light/dark switch and accent colour (on desktop they sit in the page's top right corner) -->
+        <div class="theme-controls relative flex items-center shrink-0"></div>
     </div>
+    <div id="theme-corner" class="theme-controls max-md:hidden fixed top-8 right-6 z-20 flex items-center gap-1"></div>
     <div id="nav-backdrop" onclick="ServerApp.closeNav()" class="md:hidden fixed inset-0 bg-black/50 z-30 hidden"></div>
 
     <aside id="sidebar" class="rp-sidebar w-72 max-w-[85vw] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full shadow-xl z-40 md:z-10">
@@ -71,7 +74,6 @@
             <div class="flex gap-2 mb-4">
                 <button onclick="ServerApp.toggleConsole(true)" class="flex-1 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition">🖥️ Console</button>
                 <button onclick="ServerApp.openTemplateManager()" class="admin-only flex-1 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition">📋 Templates</button>
-                <button onclick="ServerApp.openSettingsModal()" title="Appearance" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white px-3 py-2 rounded text-sm transition">⚙️</button>
             </div>
             
             <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
@@ -106,7 +108,7 @@
 
     <!-- Workspace background darkened in dark mode for better card contrast -->
     <main class="flex-1 flex flex-col min-h-0 min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="workspace">
-        <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <header class="p-4 md:p-6 md:pr-32 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
             <div class="min-w-0">
                 <h2 class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3 min-w-0">
                     <span id="ws-status" class="text-sm">⚫</span> <span id="ws-title" class="truncate">Select a server</span>
@@ -153,10 +155,15 @@
 				<div id="chat-history" class="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded p-4 overflow-y-auto mb-4 font-mono text-sm space-y-1 shadow-inner">
 					<p class="text-gray-500 dark:text-gray-400 italic">Loading chat history...</p>
 				</div>
-				<div class="flex gap-2 pb-2 md:pb-10">
-					<input type="text" id="chat-input" placeholder="Broadcast a message to the server..." onfocus="ServerApp.keepInView(this)" class="flex-1 min-w-0 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded p-3 text-gray-900 dark:text-white shadow-sm" onkeydown="ServerApp.handleChatKey(event)">
+				<!-- 1.21.4: a form for the command picked from the Commands list (ServerApp.openChatBuilder) -->
+				<div id="chat-builder" class="hidden shrink-0 mb-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded p-3 shadow-sm max-h-[50vh] overflow-y-auto"></div>
+				<!-- 1.21.4: the Commands list and one-click commands; scrolls sideways on a phone -->
+				<div id="chat-quick" class="rp-tabs flex gap-2 items-center overflow-x-auto whitespace-nowrap mb-2 shrink-0"></div>
+				<div class="relative flex gap-2 pb-2 md:pb-10">
+					<!-- 1.21.4: commands, players and values that match what is being typed -->
+					<div id="chat-suggest" role="listbox" aria-label="Suggestions" class="hidden absolute bottom-full left-0 right-0 mb-1 z-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded shadow-lg max-h-64 overflow-y-auto text-sm"></div>
+					<input type="text" id="chat-input" placeholder="Message, or / for commands" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" aria-controls="chat-suggest" onfocus="ServerApp.keepInView(this); ServerApp.updateChatSuggest()" onblur="ServerApp.hideChatSuggest()" oninput="ServerApp.updateChatSuggest()" onclick="ServerApp.updateChatSuggest()" class="flex-1 min-w-0 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded p-3 text-gray-900 dark:text-white shadow-sm" onkeydown="ServerApp.handleChatKey(event)">
 					<button onclick="ServerApp.sendChat()" class="bg-theme hover-bg-theme text-white px-4 md:px-8 py-3 rounded font-bold transition shadow-sm">Send</button>
-					<!-- New Clear Button -->
 					<button onclick="ServerApp.clearChat()" class="bg-gray-500 hover:bg-gray-600 text-white px-3 md:px-6 py-3 rounded font-bold transition shadow-sm">Clear</button>
 				</div>
 			</div>
@@ -401,7 +408,7 @@
 
     <!-- Dashboard: shown when no server is selected -->
     <main class="flex-1 flex flex-col min-h-0 min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="dashboard">
-        <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+        <header class="p-4 md:p-6 md:pr-32 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
             <div class="min-w-0">
                 <h2 id="dash-title" class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white truncate">Dashboard</h2>
                 <p id="dash-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate">Loading...</p>
@@ -413,7 +420,7 @@
 
     <!-- Cluster (master only): the servers of every panel in the cluster -->
     <main class="flex-1 flex flex-col min-h-0 min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="cluster-view">
-        <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+        <header class="p-4 md:p-6 md:pr-32 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
             <div class="min-w-0">
                 <h2 id="cluster-title" class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Cluster</h2>
                 <p id="cluster-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mt-1">Loading...</p>
@@ -425,7 +432,7 @@
 
     <!-- Port forwarding (admins): what to set up on the internet router, per server and cluster member -->
     <main class="flex-1 flex flex-col min-h-0 min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="ports-view">
-        <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+        <header class="p-4 md:p-6 md:pr-32 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
             <div class="min-w-0">
                 <h2 class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Port forwarding</h2>
                 <p id="ports-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mt-1">What to set up on your internet router so players outside your home can join.</p>
@@ -458,6 +465,7 @@
         </div>
     </div>
     
+    <script src="/static/js/chat-commands.js"></script>
     <script src="/static/js/app.js"></script>
 	<div id="template-workspace" class="fixed inset-0 bg-gray-50 dark:bg-gray-900 hidden z-50 flex flex-col">
         <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">

@@ -50,6 +50,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.21.2 | Light and dark mode is a **sun/moon switch in the top right corner**, with a colored dot beside it for the accent color. The ⚙️ button in the sidebar is gone. | [The dashboard](#3-the-dashboard) |
 | 1.21.0 | Groundwork for the Windows version. Nothing new on screen. | [Roadmap](../wiki/Roadmap.md) |
 | 1.20.0 | **Purpur, Quilt, NeoForge and Forge** servers; **From a modpack** (Modrinth, `.mrpack`, CurseForge server packs) and pack updates. | [Create or import a server](#4-create-or-import-a-server), [Modpack](#modpack) |
 | 1.19.0 | **Server type**: change a Java server between Vanilla, Paper and Fabric in place, with a preview, a backup and undo; **Roll back the last update**; backups show what made them. | [Changing a server's type](#changing-a-servers-type), [Rolling back an update](#rolling-back-an-update) |
@@ -382,11 +383,20 @@ The sidebar on the left holds everything that isn't about one server:
 | **🔀 Port forwarding** | Admins: what to set up on your internet router so players outside your home can join (see [Port forwarding](#port-forwarding)). |
 | **🖥️ Console** | The panel's live activity log. |
 | **📋 Templates** | Saved server settings to reuse. |
-| **⚙️** | Appearance: **Color Mode** (dark or light) and **Accent Palette**: **Redstone Red** (the default), Diamond Blue, Emerald Green or Amethyst Purple. Saved in your browser. |
 | **Sort by** | Name A–Z, Z–A, or online servers first. |
 | Server list | Every server, grouped by edition: green dot = running, grey = stopped, with its version and port. Click one to open it. On a cluster master, each node's servers follow under the node's 🌐 name, grouped by edition the same way. Click a heading to fold it; a folded heading shows how many of its servers are online, and the panel remembers what you folded in this browser. |
 | **♻️ N removed servers: restore** | Shown when servers were uninstalled with **Keep World**. |
 | **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts) and two-factor sign-in (all accounts). |
+
+In the **top right corner** of every page (at the right end of the top bar on a phone) are two
+small buttons, also saved in your browser:
+
+- The **sun** or **moon** switches between light and dark mode with one click. The sign-in page
+  has it too.
+- The **colored dot** picks the accent color: **Redstone Red** (the default), Diamond Blue,
+  Emerald Green or Amethyst Purple.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/accent-color.png"><img src="images/accent-color.png" alt="The accent color choices under the colored dot, beside the sun/moon switch"></picture>
 
 ### Port forwarding
 
@@ -578,6 +588,8 @@ If the machine already runs a Minecraft server that RedstonePanel didn't make, s
 own systemd service, a script or a `screen` session, the dialog lists it under **Found on this
 computer** with its folder, port, version and what started it. Looking changes nothing.
 
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/found-servers.png"><img src="images/found-servers.png" alt="Found on this computer: two servers set up outside the panel, and one already handed over with an Undo button"></picture>
+
 Click **Manage with RedstonePanel** to hand one over:
 
 - The service that ran it is stopped and turned off. It is not deleted.
@@ -693,6 +705,48 @@ The chat players see in game. Type in the box and click **Send**:
   `/whitelist add Steve` or `/list`. The reply shows under the chat.
 
 **Clear** empties the panel's view; it doesn't touch the server.
+
+### Quick commands
+
+You don't have to remember how a command is written. There are three ways to run one:
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/quick-commands.png"><img src="images/quick-commands.png" alt="Live Chat suggesting players for a command"></picture>
+
+- **Type it, with suggestions, as in the game.** Type `/` and a list opens above the box with
+  the commands that match and what each does. After the command, a line shows what it takes,
+  for example `/tp <player> <player or x y z>`, with the part you are on highlighted, and the
+  list changes to what fits there: the players online now (🟢), players seen before, `@a`
+  for everyone, or the fixed choices such as `survival`, `creative`, `clear`, `rain`.
+  **Tab** or a click fills in a suggestion, the arrow keys move through the list, **Esc** closes
+  it, and **Enter** sends as before. In a plain message, type the first two letters of an online
+  player's name and press **Tab** to finish it.
+- **Pick it from Commands.** The **Commands…** list above the box groups the everyday
+  commands under Players, World, Messages and Server. Pick one and a form asks only for what
+  that command needs: a player from a list, a choice, three numbers for a place, a reason.
+  The exact command is shown before you press **Run**. **Edit** puts it in the message box
+  instead, to change by hand. Commands that are hard to take back (stop the server, kill,
+  empty an inventory) ask first.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/quick-commands-form.png"><img src="images/quick-commands-form.png" alt="The Commands form for teleporting a player"></picture>
+
+- **One click.** The buttons next to Commands run a command that needs nothing filled in:
+  **List players**, **Save world**, **Day**, **Night** and **Clear weather**.
+
+Things to know:
+
+- The list holds about 35 everyday commands for each edition; Java and Bedrock servers each
+  get their own (a Java server has `/whitelist` and `/ban`, a Bedrock server `/allowlist`).
+  Anything else can still be typed in full.
+- A running Vanilla, Fabric, Quilt, Forge or NeoForge server also tells the panel which
+  commands and game rules it has, so commands added by mods are suggested too, and game rules
+  are offered as that Minecraft version names them (they were renamed in 1.21.11). Paper and
+  Purpur don't answer that question, so plugin commands aren't suggested.
+- A Bedrock gamertag with a space is put in quotes for you: `/kick "Sam Carter"`.
+- Bedrock servers don't send a reply back to the panel, so **List players** and **Save
+  world** are offered on Java servers only. Who is online on a Bedrock server comes from its
+  log and can be up to 30 seconds behind.
+- Suggestions and the form are for anyone with **Console & chat** on the server, the same
+  permission as the chat itself.
 
 Java servers are reached over **RCON**. The first time you open this tab on a server without
 RCON, the panel turns it on with a random password and restarts the server once; send your

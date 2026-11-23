@@ -4,6 +4,34 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.21.4 (2026-11-23)
+
+Release notes: release-notes/v1.21.4.md
+
+- Live Chat suggests as you type, like the game: type / for the commands that match, then the players online, players seen before or the fixed choices for each part of the command. Tab fills one in.
+- A Commands list above the message box opens a form that asks only for what the picked command needs (a player, a choice, a place) and shows the exact command before Run.
+- One-click buttons for List players, Save world, Day, Night and Clear weather.
+- A running Vanilla, Fabric, Quilt, Forge or NeoForge server tells the panel its own commands and game rules, so commands added by mods are suggested and game rules are named as that Minecraft version has them.
+- Java and Bedrock each get their own commands; Bedrock names with spaces are quoted for you. For anyone with Console & chat.
+
+## 1.21.3 (2026-11-23)
+
+Release notes: release-notes/v1.21.3.md
+
+- Found on this computer: New server now lists Minecraft servers on the machine that were set up outside the panel (your own systemd service, a script, a screen session), with folder, port, version and what started each one. Looking changes nothing.
+- Manage with RedstonePanel hands one over: the service that ran it is stopped and turned off (never deleted) and the panel runs the server from the same folder under its own service, with the memory it had. No file is copied or moved. A server that doesn't start under the panel is put back by itself.
+- Undo puts a handed-over server back as it was.
+- Fixed: a new server given the name of one you removed no longer opens with the removed server's Last crash card.
+
+## 1.21.2 (2026-11-23)
+
+Release notes: release-notes/v1.21.2.md
+
+- Light and dark mode is now a sun/moon switch in the top right corner of every page, one click, on the sign-in page too. On a phone it is at the right end of the top bar.
+- The accent color is a colored dot beside the switch: Redstone Red, Diamond Blue, Emerald Green or Amethyst Purple, one click each.
+- The gear button in the sidebar is gone. It opened the appearance choices under the title Panel Settings and was easy to mistake for the real Settings button at the bottom of the sidebar.
+- Your saved mode and color carry over.
+
 ## 1.21.1 (2026-11-23)
 
 Release notes: release-notes/v1.21.1.md
