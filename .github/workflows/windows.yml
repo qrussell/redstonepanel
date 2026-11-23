@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   install:
     runs-on: ${{ matrix.runner }}
@@ -22,18 +26,22 @@ jobs:
         runner: [windows-2022, windows-2025]
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Stage (bundled Python, libraries, the panel)
         shell: pwsh
         run: python packaging\windows\build.py stage "C:\Program Files\RedstonePanel"
       - name: Set up
         shell: pwsh
         run: |
-          & "C:\Program Files\RedstonePanel\python\python.exe" "C:\Program Files\RedstonePanel\app\packaging\windows\setup.py" install
+          & "C:\Program Files\RedstonePanel\python\python.exe" -X utf8 "C:\Program Files\RedstonePanel\app\packaging\windows\setup.py" install
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           "C:\Program Files\RedstonePanel" | Out-File -FilePath $env:GITHUB_PATH -Append
       - name: Install test
         shell: pwsh
-        run: python packaging\test\test-windows.py
+        run: |
+          python -X utf8 packaging\test\test-windows.py 2>&1 | Tee-Object test.log
+          exit $LASTEXITCODE
       - name: What the panel and the servers wrote
         if: always()
         shell: pwsh
@@ -41,7 +49,7 @@ jobs:
           $h = "C:\ProgramData\RedstonePanel"
           Get-ChildItem $h -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 80 FullName | Format-Table -HideTableHeaders
           foreach ($f in @(Get-ChildItem "$h\journal" -Recurse -Filter output.log -ErrorAction SilentlyContinue) + @(Get-Item "$h\logs\panel.log" -ErrorAction SilentlyContinue)) {
-            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 150; "::endgroup::"
+            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 60; "::endgroup::"
           }
           Get-ChildItem "$h\journal" -Recurse -Filter status.json -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName; Get-Content $_.FullName }
           "::group::event log"
@@ -52,8 +60,13 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          & "C:\Program Files\RedstonePanel\python\python.exe" "C:\Program Files\RedstonePanel\app\packaging\windows\setup.py" uninstall
+          & "C:\Program Files\RedstonePanel\python\python.exe" -X utf8 "C:\Program Files\RedstonePanel\app\packaging\windows\setup.py" uninstall
           sc.exe query redstonepanel; if ($LASTEXITCODE -eq 0) { "the service is still there"; exit 1 } else { exit 0 }
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path test.log) { Get-Content test.log | Where-Object { $_ -notmatch "^\s+ok " } | Select-Object -Last 150 }
 
   # The installer itself: built, installed without questions, tested, installed again over itself
   # (what an upgrade does) and removed.
@@ -66,6 +79,8 @@ jobs:
         runner: [windows-2022, windows-2025]
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build the installer
         shell: pwsh
         run: |
@@ -88,7 +103,9 @@ jobs:
           "C:\Program Files\RedstonePanel" | Out-File -FilePath $env:GITHUB_PATH -Append
       - name: Install test (the server is kept for the next step)
         shell: pwsh
-        run: python packaging\test\test-windows.py --keep
+        run: |
+          python -X utf8 packaging\test\test-windows.py --keep 2>&1 | Tee-Object test.log
+          exit $LASTEXITCODE
       - name: Install again over it; the server and the account stay
         shell: pwsh
         run: |
@@ -97,14 +114,15 @@ jobs:
           "msiexec exit code $($p.ExitCode)"
           Select-String -Path upgrade.log -Pattern "WixQuietExec64:|Return value 3|Error 1" | Select-Object -Last 60 | ForEach-Object { $_.Line }
           if ($p.ExitCode) { Get-Content upgrade.log -Tail 80; exit 1 }
-          python packaging\test\test-windows.py --after-upgrade
+          python -X utf8 packaging\test\test-windows.py --after-upgrade 2>&1 | Tee-Object -Append test.log
+          exit $LASTEXITCODE
       - name: What the panel and the servers wrote
         if: always()
         shell: pwsh
         run: |
           $h = "C:\ProgramData\RedstonePanel"
           foreach ($f in @(Get-ChildItem "$h\journal" -Recurse -Filter output.log -ErrorAction SilentlyContinue) + @(Get-Item "$h\logs\panel.log" -ErrorAction SilentlyContinue)) {
-            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 150; "::endgroup::"
+            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 60; "::endgroup::"
           }
       - name: Remove
         shell: pwsh
@@ -121,3 +139,8 @@ jobs:
           if (Get-NetFirewallRule -Group "RedstonePanel panel" -ErrorAction SilentlyContinue) { $left += "the panel's firewall rule" }
           if (-not (Test-Path "C:\ProgramData\RedstonePanel\servers")) { $left += "(the servers folder should have been kept)" }
           if ($left) { "Left behind: " + ($left -join "; "); exit 1 } else { "Removed cleanly; worlds, backups and settings were kept." }
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path test.log) { Get-Content test.log | Where-Object { $_ -notmatch "^\s+ok " } | Select-Object -Last 150 }

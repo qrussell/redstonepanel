@@ -140,6 +140,11 @@ def winerror(what):
 # ---------------------------------------------------------------------------
 # Programs
 # ---------------------------------------------------------------------------
+# The bundled Python ignores PYTHON* environment variables, and without this it writes text in
+# the machine's legacy code page, which has no arrows, check marks or most alphabets
+UTF8 = ("-X", "utf8")
+
+
 def python():
     """The Python the panel runs on (the one the installer carries)."""
     return sys.executable
@@ -147,7 +152,7 @@ def python():
 
 def runner_command(*args):
     """The command line that runs the service runner with args."""
-    return [python(), os.path.join(paths.APP_DIR, "core", "platform", "windows", "runner.py"), *args]
+    return [python(), *UTF8, os.path.join(paths.APP_DIR, "core", "platform", "windows", "runner.py"), *args]
 
 
 def resolve_program(argv):
@@ -155,9 +160,9 @@ def resolve_program(argv):
     command) and "python"."""
     argv = list(argv)
     if argv and argv[0] in ("redstonepanel", paths.PANEL_CMD):
-        return [python(), "-u", os.path.join(paths.APP_DIR, "run.py")] + argv[1:]      # -u: output as it happens
+        return [python(), *UTF8, "-u", os.path.join(paths.APP_DIR, "run.py")] + argv[1:]      # -u: output as it happens
     if argv and argv[0] == "python":
-        return [python()] + argv[1:]
+        return [python(), *UTF8] + argv[1:]
     return argv
 
 

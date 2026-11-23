@@ -31,7 +31,7 @@ def pipe(server):
 def send_command(server, text, program_path=PROGRAM):
     """A command line that types `text` and Enter into the server's console."""
     code = ("import sys;f=open(sys.argv[1],'wb',buffering=0);f.write((sys.argv[2]+'\\n').encode());f.close()")
-    return [_win.python(), "-c", code, pipe(server), text]
+    return [_win.python(), *_win.UTF8, "-c", code, pipe(server), text]
 
 
 def send(server, text, timeout=None, run=None, find=True):

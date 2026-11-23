@@ -77,7 +77,7 @@ def stage(out):
         f.write(version() + "\n")
     # `redstonepanel status`, `redstonepanel add-user NAME`, ... from an administrator prompt
     with open(os.path.join(out, "redstonepanel.cmd"), "w", encoding="ascii", newline="\r\n") as f:
-        f.write('@echo off\n"%~dp0python\\python.exe" "%~dp0app\\run.py" %*\n')
+        f.write('@echo off\n"%~dp0python\\python.exe" -X utf8 "%~dp0app\\run.py" %*\n')
     sh([os.path.join(py, "python.exe"), "-c",
         "import fastapi, uvicorn, multipart, cryptography, sys; print('bundled', sys.version.split()[0], "
         "'fastapi', fastapi.__version__, 'uvicorn', uvicorn.__version__, 'cryptography', cryptography.__version__)"])

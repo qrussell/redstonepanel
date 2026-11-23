@@ -136,7 +136,7 @@ def is_older(installed, candidate, timeout=10):
 
 def manager_command(options, args):
     """The command line that does what `apt-get OPTIONS ARGS` does for Java on Linux."""
-    return [_win.python(), os.path.join(os.path.dirname(os.path.abspath(__file__)), "javapkg.py"), *options, *args]
+    return [_win.python(), *_win.UTF8, os.path.join(os.path.dirname(os.path.abspath(__file__)), "javapkg.py"), *options, *args]
 
 
 def start(cmd, env=None):

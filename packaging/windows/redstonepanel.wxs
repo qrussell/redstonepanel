@@ -23,7 +23,6 @@
     <Icon Id="panel.ico" SourceFile="$(var.Root)\static\img\favicon.ico" />
     <Property Id="ARPPRODUCTICON" Value="panel.ico" />
     <Property Id="ARPURLINFOABOUT" Value="https://redstonepanel.cielocloud.org" />
-    <Property Id="ARPNOMODIFY" Value="1" />
 
     <!-- Where the data goes, and where the program went: remembered from the last install -->
     <Property Id="DATAFOLDER">
@@ -62,17 +61,17 @@
 
     <!-- setup.py does the work. Its output goes to the installer's log (msiexec /l*v file.log). -->
     <SetProperty Id="StopPanel" Sequence="execute" Before="StopPanel"
-                 Value="&quot;[APPFOLDER]python\python.exe&quot; -B &quot;[APPFOLDER]app\packaging\windows\setup.py&quot; stop" />
+                 Value="&quot;[APPFOLDER]python\python.exe&quot; -X utf8 -B &quot;[APPFOLDER]app\packaging\windows\setup.py&quot; stop" />
     <CustomAction Id="StopPanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="ignore" />
     <SetProperty Id="RemovePanel" Sequence="execute" Before="RemovePanel"
-                 Value="&quot;[APPFOLDER]python\python.exe&quot; -B &quot;[APPFOLDER]app\packaging\windows\setup.py&quot; uninstall" />
+                 Value="&quot;[APPFOLDER]python\python.exe&quot; -X utf8 -B &quot;[APPFOLDER]app\packaging\windows\setup.py&quot; uninstall" />
     <CustomAction Id="RemovePanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="ignore" />
     <SetProperty Id="SetUpPanel" Sequence="execute" Before="SetUpPanel"
-                 Value="&quot;[INSTALLDIR]python\python.exe&quot; -B &quot;[INSTALLDIR]app\packaging\windows\setup.py&quot; install --home &quot;[DATAFOLDER].&quot;" />
+                 Value="&quot;[INSTALLDIR]python\python.exe&quot; -X utf8 -B &quot;[INSTALLDIR]app\packaging\windows\setup.py&quot; install --home &quot;[DATAFOLDER].&quot;" />
     <CustomAction Id="SetUpPanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="check" />
     <!-- A failed install takes the service out again -->
     <SetProperty Id="UndoPanel" Sequence="execute" Before="UndoPanel"
-                 Value="&quot;[INSTALLDIR]python\python.exe&quot; -B &quot;[INSTALLDIR]app\packaging\windows\setup.py&quot; uninstall" />
+                 Value="&quot;[INSTALLDIR]python\python.exe&quot; -X utf8 -B &quot;[INSTALLDIR]app\packaging\windows\setup.py&quot; uninstall" />
     <CustomAction Id="UndoPanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="rollback" Impersonate="no" Return="ignore" />
 
     <InstallExecuteSequence>
