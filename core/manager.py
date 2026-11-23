@@ -1129,6 +1129,8 @@ def _reserve_name(edition):
                 taken = bool(needed & _used_ports())
             if not taken:
                 _busy.add(name)
+                from core import crashes
+                crashes.forget(name)        # a new server: no crash of an earlier one of that name
                 return name, port
             counter += 1
             suffix = f"-{counter}"
@@ -1191,6 +1193,8 @@ def remove_server(server_name, keep_world, note=None):
                   f"restore it from New Server > Removed servers.")
     elif os.path.exists(d) and in_servers_folder(d):
         system.delete_tree(d)
+        from core import crashes
+        crashes.forget(server_name)
         write_log(f"[REMOVE] Removed {server_name} and deleted {d}.")
 
 def _read_removed_info(d):

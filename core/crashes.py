@@ -445,6 +445,14 @@ def get(server):
                 s["present"] = bool(cur)
     return rec
 
+def forget(server):
+    """Drops the record: the server is gone for good, or the name is being given to a new one,
+    which must not open with someone else's Last crash."""
+    try:
+        os.remove(_path(server))
+    except (OSError, CrashError):
+        pass
+
 def dismiss(server):
     _path(server)
     rec = load(server)
