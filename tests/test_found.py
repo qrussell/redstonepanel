@@ -58,8 +58,25 @@ class Describe(unittest.TestCase):
     def test_the_panels_own_servers_are_left_out(self):
         d = folder("minecraft-java", 25565)
         self.assertIsNone(F.describe(java(d), managed=[d]))
-        with mock.patch.object(M.os.path, "exists", side_effect=lambda p: p == M._unit_path("minecraft-java")):
+        with mock.patch.object(F.services, "unit_files", return_value=["minecraft-java.service"]):
             self.assertIsNone(F.describe(java(folder("elsewhere", 25572), "minecraft-java.service")))
+
+    def test_somebody_elses_service_is_not_the_panels(self):
+        # Their unit file sits in the same systemd folder as the panel's; found on a real system
+        from core.platform import paths
+        units = tempfile.mkdtemp(dir=TMP)
+        for name in ("mc-own.service", "minecraft-java.service"):
+            open(os.path.join(units, name), "w").close()
+        with mock.patch.object(paths, "UNIT_DIR", units):
+            self.assertEqual(F.describe(java(folder("theirs", 25573), "mc-own.service"))["service"], "mc-own.service")
+            self.assertIsNone(F.describe(java(folder("ours", 25574), "minecraft-java.service")))
+
+    def test_the_heap_the_panels_unit_gets(self):
+        with mock.patch.object(M, "default_heap", return_value={"xms": "1G", "xmx": "2G"}):
+            self.assertEqual(F._heap_args({"heap": "256M", "heap_start": "128M"}), {"xms": "128M", "xmx": "256M"})
+            self.assertEqual(F._heap_args({"heap": "200M", "heap_start": ""}), {"xms": "200M", "xmx": "200M"})   # never above the maximum
+            self.assertEqual(F._heap_args({"heap": "4G", "heap_start": ""}), {"xms": "1G", "xmx": "4G"})
+            self.assertEqual(F._heap_args({"heap": "", "heap_start": "1G"}), {})
 
 
 class Scan(unittest.TestCase):
@@ -86,7 +103,7 @@ class HandOverAndBack(unittest.TestCase):
         self.units = tempfile.mkdtemp(dir=TMP)
         self.data = tempfile.mkdtemp(dir=TMP)
         for target, name, value in ((paths, "UNIT_DIR", self.units), (F, "RECORD_DIR", os.path.join(self.data, "found")),
-                                    (F, "SEEN_FILE", os.path.join(self.data, "seen.json")), (F, "STOP_WAIT", 2)):
+                                    (F, "SEEN_FILE", os.path.join(self.data, "seen.json")), (F, "STOP_WAIT", 2), (F, "START_WAIT", 0)):
             p = mock.patch.object(target, name, value)
             p.start()
             self.addCleanup(p.stop)
@@ -139,6 +156,18 @@ class HandOverAndBack(unittest.TestCase):
         self.assertEqual(fake.state.units["mc-survival.service"], {"state": "active", "enabled": True})
         self.assertIn(("25590", "tcp"), fake.state.rules)           # the port its owner had opened is open again
         self.assertIsNone(F.record(name))
+        self.assertEqual(F.taken_over(), [])
+
+    def test_a_server_that_does_not_start_is_put_back(self):
+        fake = self.fake
+        with mock.patch.object(F.services, "is_active", return_value=False):
+            with self.assertRaises(F.FoundError) as e:
+                F.manage(self.d, actor="alex")
+        self.assertIn("didn't start", str(e.exception))
+        self.assertEqual(fake.state.units["mc-survival.service"]["state"], "active")
+        self.assertTrue(fake.state.units["mc-survival.service"]["enabled"])
+        self.assertTrue(os.path.isfile(os.path.join(self.d, "paper-1.21.4.jar")))
+        self.assertEqual(os.listdir(self.units), [])
         self.assertEqual(F.taken_over(), [])
 
     def test_a_service_that_will_not_stop_changes_nothing(self):

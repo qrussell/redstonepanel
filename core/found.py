@@ -18,6 +18,7 @@ from core.settings import DATA_DIR
 RECORD_DIR = os.path.join(DATA_DIR, "found")          # one NAME.json per server taken over: how to undo it
 FOLDER_RE = re.compile(r"/[A-Za-z0-9._/-]+")          # what a unit file's WorkingDirectory takes safely
 STOP_WAIT = 120
+START_WAIT = 5                                        # a server that can't start fails within seconds
 
 
 class FoundError(ValueError):
@@ -59,7 +60,37 @@ def _heap(argv):
     return ""
 
 
-def describe(program, managed=()):
+def _xms(argv):
+    for a in argv:
+        if a.startswith("-Xms"):
+            return a[4:]
+    return ""
+
+
+def _size(heap):
+    """A heap size ("512M", "2G") in bytes."""
+    return int(heap[:-1]) * {"k": 1 << 10, "m": 1 << 20, "g": 1 << 30}[heap[-1].lower()]
+
+
+def _heap_args(info):
+    """The heap the server had, for the panel's unit. A server started with only -Xmx gets a
+    starting heap no bigger than that (Java refuses to start otherwise)."""
+    from core.manager import HEAP_RE, default_heap
+    xmx, xms = info.get("heap") or "", info.get("heap_start") or ""
+    if not HEAP_RE.match(xmx):
+        return {}
+    if not HEAP_RE.match(xms) or _size(xms) > _size(xmx):
+        xms = default_heap()["xms"]
+        if _size(xms) > _size(xmx):
+            xms = xmx
+    return {"xms": xms, "xmx": xmx}
+
+
+def _panel_units():
+    return set(services.unit_files())
+
+
+def describe(program, managed=(), panel_units=None):
     """What the panel can tell about one running program, or None when it isn't a Minecraft
     server or is one of the panel's own."""
     cwd, argv = program.get("cwd") or "", program.get("argv") or []
@@ -73,7 +104,10 @@ def describe(program, managed=()):
     if not cwd or not os.path.isfile(os.path.join(cwd, "server.properties")):
         return None
     service = program.get("service") or ""
-    if any(_same(cwd, d) for d in managed) or (service and os.path.exists(manager._unit_path(service[:-len(".service")] if service.endswith(".service") else service))):
+    # The panel's own: by folder, or by a service whose unit file is one of the panel's. Somebody
+    # else's unit lives in the same systemd folder, so "the unit file exists" says nothing.
+    units = _panel_units() if panel_units is None else panel_units
+    if any(_same(cwd, d) for d in managed) or (service and (service in units or f"{service}.service" in units)):
         return None
     props = manager.read_properties(cwd)
     port = str(props.get("server-port", "")).strip()
@@ -85,18 +119,18 @@ def describe(program, managed=()):
     return {"folder": cwd, "edition": edition, "port": int(port) if port.isdigit() else (25565 if edition == "Java" else 19132),
             "version": version, "world": props.get("level-name") or "world", "service": service,
             "started_by": service or "a terminal, a script or screen", "user": program.get("user") or "",
-            "pid": program.get("pid"), "since": program.get("started"), "jar": jar, "heap": _heap(argv),
+            "pid": program.get("pid"), "since": program.get("started"), "jar": jar, "heap": _heap(argv), "heap_start": _xms(argv),
             "java": program.get("exe") if edition == "Java" else None}
 
 
 def scan():
     """[{"folder", "edition", "port", "version", "world", "service", "started_by", "user", "pid",
-    "since", "jar", "heap", "java"}] for each Minecraft server running here that isn't the
+    "since", "jar", "heap", "heap_start", "java"}] for each Minecraft server running here that isn't the
     panel's, one per folder, sorted by port."""
-    managed = _managed_folders()
+    managed, units = _managed_folders(), _panel_units()
     found = {}
     for program in system.game_programs():
-        info = describe(program, managed)
+        info = describe(program, managed, units)
         if info and os.path.normcase(os.path.realpath(info["folder"])) not in found:
             found[os.path.normcase(os.path.realpath(info["folder"]))] = info
     return sorted(found.values(), key=lambda f: (f["port"], f["folder"]))
@@ -226,7 +260,7 @@ def manage(folder, actor="?"):
                 java = None
                 system.make_executable(os.path.join(folder, "bedrock_server"))
                 manager.write_screenrc(folder)
-            heap = {"xmx": info["heap"]} if manager.HEAP_RE.match(info.get("heap") or "") else {}
+            heap = _heap_args(info)
             rec["firewall_had"] = _rules_already_open(edition, folder)
             _save(name, rec)
             manager.open_server_firewall(name, edition, folder)
@@ -235,6 +269,12 @@ def manage(folder, actor="?"):
             manager._write_unit(name, folder, edition, **heap, **({"java": java} if java else {}), jvm={})
             services.enable(name)
             services.start(name)
+            deadline = time.time() + START_WAIT
+            while time.time() < deadline and services.state(name) in ("active", "activating"):
+                time.sleep(1)
+            if not services.is_active(name):
+                raise FoundError("The server didn't start under the panel's service, so it was put back as it was. "
+                                 "Nothing in its folder was changed.")
         except Exception as e:
             try:
                 undo(name, actor="the panel, because taking it over failed")

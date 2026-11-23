@@ -572,6 +572,33 @@ backup…** lists every backup there, from every panel that copies to it. Pick o
 if it's free here, its server software is downloaded again, and it starts. Add the storage under
 [Backup storage](#backup-storage) first.
 
+**A server you set up yourself, outside the panel** (admins)
+
+If the machine already runs a Minecraft server that RedstonePanel didn't make, started by your
+own systemd service, a script or a `screen` session, the dialog lists it under **Found on this
+computer** with its folder, port, version and what started it. Looking changes nothing.
+
+Click **Manage with RedstonePanel** to hand one over:
+
+- The service that ran it is stopped and turned off. It is not deleted.
+- The panel runs the server from the **same folder** under a service of its own, with the memory
+  it had. No file is copied or moved; the folder is given to the `minecraft` account, and a jar
+  with another name is renamed `server.jar`.
+- Players are disconnected for the moment it takes to restart.
+- If the server doesn't start under the panel, everything is put back by itself.
+
+A server started from a terminal or `screen` has no service the panel could stop safely: stop it
+yourself (type `stop` in its console), and it stays listed, as stopped, for an hour so you can
+hand it over.
+
+**Undo**, next to a server you handed over, puts it back: the panel's service is removed, the
+folder goes back to its owner, the jar gets its name back and the old service is turned on and
+started again. The world is never touched.
+
+The panel says why when it can't take a server over: a folder inside a home folder the
+`minecraft` account can't get into, a path with a space, a port one of the panel's servers
+already uses, or a Java server that isn't started with `-jar`.
+
 **Removed servers** are listed at the bottom of the same dialog. See
 [Restore a removed server](#15-restore-a-removed-server).
 
