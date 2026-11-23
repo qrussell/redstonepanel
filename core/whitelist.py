@@ -13,6 +13,9 @@ import re
 import uuid
 
 from core import backups, manager, playerlog, rcon
+from core.platform import system
+
+os = system.fs()          # Python's os; on Windows, the same calls made safe without dir_fd (core/platform)
 
 JAVA_NAME = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 GAMERTAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ]{0,14}[A-Za-z0-9]?(#\d{1,4})?$")

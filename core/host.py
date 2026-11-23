@@ -63,6 +63,12 @@ def _read(path, default=""):
         return default
 
 
+def _machine(name):
+    """One of the files this machine describes itself in: /proc/<name> on Linux; on a system
+    without /proc, the same text from the platform layer."""
+    return _read(os.path.join(PROC, name)) or system.machine_file(name, PROC)
+
+
 def _cached(key, ttl, compute):
     now = time.time()
     with _lock:
@@ -86,7 +92,7 @@ def parse_meminfo(text):
 
 
 def memory(text=None):
-    m = parse_meminfo(_read(os.path.join(PROC, "meminfo")) if text is None else text)
+    m = parse_meminfo(_machine("meminfo") if text is None else text)
     total = m.get("MemTotal", 0)
     available = m.get("MemAvailable", m.get("MemFree", 0) + m.get("Cached", 0))
     swap_total, swap_free = m.get("SwapTotal", 0), m.get("SwapFree", 0)
@@ -121,7 +127,7 @@ def parse_net_dev(text):
 
 
 def cpu_model(text=None):
-    text = _read(os.path.join(PROC, "cpuinfo")) if text is None else text
+    text = _machine("cpuinfo") if text is None else text
     for key in ("model name", "Model", "Hardware", "cpu model"):
         m = re.search(rf"^{key}\s*:\s*(.+)$", text, re.M)
         if m:
@@ -130,7 +136,7 @@ def cpu_model(text=None):
 
 
 def os_name(text=None):
-    text = _read(OS_RELEASE) if text is None else text
+    text = (_read(OS_RELEASE) or system.machine_file("os-release")) if text is None else text
     m = re.search(r'^PRETTY_NAME="?([^"\n]*)"?', text, re.M)
     return m.group(1) if m else None
 
@@ -144,7 +150,7 @@ def timezone():
 
 def _uptime():
     try:
-        return float(_read(os.path.join(PROC, "uptime"), "0").split()[0])
+        return float((_machine("uptime") or "0").split()[0])
     except (ValueError, IndexError):
         return None
 
@@ -231,8 +237,8 @@ def _unit_uptime(props):
 # Samples and rates
 # ---------------------------------------------------------------------------
 def _sample(server_units):
-    cpu = parse_cpu_stat(_read(os.path.join(PROC, "stat")))
-    net = parse_net_dev(_read(os.path.join(PROC, "net/dev")))
+    cpu = parse_cpu_stat(_machine("stat"))
+    net = parse_net_dev(_machine("net/dev"))
     shown = systemctl_show(server_units, ("Id", "CPUUsageNSec")) if server_units else {}
     units = {u: _int(p.get("CPUUsageNSec")) for u, p in shown.items()}
     return time.monotonic(), cpu, net, units
@@ -270,45 +276,32 @@ def rates(server_units):
 # ---------------------------------------------------------------------------
 # Disks and folder sizes
 # ---------------------------------------------------------------------------
-def _mounts():
-    out = []
-    for line in _read(os.path.join(PROC, "self/mounts")).splitlines():
-        f = line.split()
-        if len(f) >= 3:
-            out.append((f[1].replace("\\040", " "), f[2]))
-    return out
-
-
 def _existing(path):
     while path and not os.path.exists(path):
         parent = os.path.dirname(path)
         if parent == path:
             break
         path = parent
-    return path or "/"
+    return path or system.root_path()
 
 
 def disks():
     """The file systems holding the servers, backups and panel data (each listed once)."""
     places = (("Game servers", manager.SERVERS_ROOT), ("Backups", backups.BACKUP_ROOT),
-              ("Panel data", panel_settings.DATA_DIR), ("System", "/"))
-    mounts = _mounts()
+              ("Panel data", panel_settings.DATA_DIR), ("System", system.root_path()))
     found = {}
     for label, path in places:
         p = _existing(path)
         try:
-            dev, st = os.stat(p).st_dev, os.statvfs(p)
+            fs = system.filesystem(p)
         except OSError:
             continue
+        dev = fs["device"]
         if dev in found:
             found[dev]["holds"].append(label)
             continue
-        mount = max((m for m in mounts if p == m[0] or p.startswith(m[0].rstrip("/") + "/")),
-                    key=lambda m: len(m[0]), default=("/", None))
-        total = st.f_blocks * st.f_frsize
-        free = st.f_bavail * st.f_frsize
-        used = (st.f_blocks - st.f_bfree) * st.f_frsize
-        found[dev] = {"mount": mount[0], "fstype": mount[1], "holds": [label], "total": total,
+        used, free = fs["used"], fs["free"]
+        found[dev] = {"mount": fs["mount"], "fstype": fs["fstype"], "holds": [label], "total": fs["total"],
                       "used": used, "free": free,
                       "percent": round(100 * used / (used + free), 1) if used + free else None}
     return list(found.values())
@@ -701,17 +694,14 @@ def _build():
     failed = failed_units()
     panel = shown.get("redstonepanel.service", {})
     java = runtimes.status(listed)
-    try:
-        load = [round(x, 2) for x in os.getloadavg()]
-    except OSError:
-        load = None
+    load = system.load_average()
     st = cluster.state()
     role = st.get("role", "standalone")
     servers = _servers(listed, shown, unit_cpu, fw)
     rep = {
         "generated": int(time.time()),
         "host": {"hostname": socket.gethostname(), "name": panel_settings.display_name(), "os": os_name(),
-                 "kernel": os.uname().release, "uptime": _uptime(), "timezone": timezone(), "ips": _ips(),
+                 "kernel": system.kernel(), "uptime": _uptime(), "timezone": timezone(), "ips": _ips(),
                  "version": panel_version(), "update": panel_update()},
         "cpu": {"model": cpu_model(), "cores": os.cpu_count(), "load": load, "percent": cpu},
         "memory": memory(),

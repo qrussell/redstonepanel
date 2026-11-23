@@ -849,7 +849,7 @@ def installed_javas():
     for home in sorted(glob.glob(os.path.join(JVM_ROOT, "*"))):
         if os.path.islink(home):
             continue
-        java = os.path.join(home, "bin", "java")
+        java = os.path.join(home, "bin", paths.JAVA_PROGRAM)
         major = _release_major(home)
         if major and os.access(java, os.X_OK):
             found.setdefault(major, java)
@@ -885,7 +885,7 @@ def choose_exact_java(major, required, minecraft=None, maximum=None):
 def java_major_of(path):
     """Major version of a java binary in a unit's ExecStart (None if unknown)."""
     real = os.path.realpath(path)
-    if real.endswith("/bin/java"):
+    if real.endswith(os.sep + os.path.join("bin", paths.JAVA_PROGRAM)):
         return _release_major(os.path.dirname(os.path.dirname(real)))
     return None
 

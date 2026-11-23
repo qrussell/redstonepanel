@@ -21,7 +21,6 @@ either (no RCON, screen not answering) the files are copied live and the backup 
 as such.
 """
 import datetime
-import fcntl
 import io
 import json
 import os
@@ -343,7 +342,7 @@ def _lock(server):
     os.chmod(BACKUP_ROOT, 0o700)
     fd = os.open(os.path.join(d, ".lock"), os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        system.lock(fd)
     except BlockingIOError:
         os.close(fd)
         raise BackupError(f"A backup of {server} is already running.")

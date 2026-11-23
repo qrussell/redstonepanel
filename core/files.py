@@ -17,6 +17,9 @@ import shutil
 import stat
 
 from core import manager
+from core.platform import system
+
+os = system.fs()          # Python's os; on Windows, the same calls made safe without dir_fd (core/platform)
 
 MAX_TEXT = 1024 * 1024               # editable in the browser
 MAX_UPLOAD = 512 * 1024 * 1024       # plugin and mod jars, worlds in pieces
@@ -26,6 +29,13 @@ MAX_ENTRIES = 5000                   # listed per folder
 TEXT_EXTENSIONS = {".txt", ".properties", ".json", ".json5", ".yml", ".yaml", ".toml", ".cfg", ".conf",
                    ".ini", ".log", ".md", ".csv", ".mcfunction", ".mcmeta", ".js", ".sh", ".xml", ".lang",
                    ".secret", ".env", ".snbt"}
+
+
+def rmtree_at(name, dfd):
+    """Deletes folder `name` in the open folder dfd and everything in it, never through a link."""
+    if hasattr(os, "rmtree_at"):
+        return os.rmtree_at(name, dfd)
+    return shutil.rmtree(name, dir_fd=dfd)
 
 
 class FileError(ValueError):
@@ -338,7 +348,7 @@ def delete(server, path, actor="?"):
         st = _lstat(dfd, name)
         if stat.S_ISDIR(st.st_mode):
             # rmtree with dir_fd works on file descriptors and doesn't follow symlinks
-            shutil.rmtree(name, dir_fd=dfd)
+            rmtree_at(name, dfd)
         else:
             os.unlink(name, dir_fd=dfd)
     finally:

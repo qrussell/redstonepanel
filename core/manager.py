@@ -838,7 +838,7 @@ def unit_java(exec_start):
 
 def unit_java_major(exec_start):
     path = unit_java(exec_start)
-    if path and os.path.realpath(path).startswith(javaservers.JVM_ROOT + "/") and \
+    if path and os.path.realpath(path).startswith(os.path.realpath(javaservers.JVM_ROOT) + os.sep) and \
             os.path.dirname(path) != os.path.dirname(paths.DEFAULT_JAVA):
         return javaservers.java_major_of(path)
     return java_major()                      # /usr/bin/java: the system default
@@ -975,13 +975,21 @@ def _fetch_bedrock(d):
         write_log(f"[WARNING] {e}")
         raise ServerError(str(e))
 
+def meminfo_text(path=None):
+    """This machine's memory as /proc/meminfo has it ("MemTotal: N kB" ...); on a system without
+    /proc, the same text from the platform layer. "" when it can't be read."""
+    try:
+        with open(path or os.path.join(paths.PROC, "meminfo")) as f:
+            return f.read()
+    except OSError:
+        return system.machine_file("meminfo") if path in (None, os.path.join(paths.PROC, "meminfo")) else ""
+
 def default_heap(meminfo=os.path.join(paths.PROC, "meminfo")):
     """A new Java server's heap: 1-2 GB, or 512 MB-1 GB on a machine with 3 GB of memory or less
     (a 2 GB Raspberry Pi), where 2 GB would leave nothing for the system."""
     try:
-        with open(meminfo) as f:
-            kb = int(re.search(r"^MemTotal:\s+([0-9]+) kB", f.read(), re.M).group(1))
-    except (OSError, AttributeError, ValueError):
+        kb = int(re.search(r"^MemTotal:\s+([0-9]+) kB", meminfo_text(meminfo), re.M).group(1))
+    except (AttributeError, ValueError):
         kb = 0
     return {"xms": "512M", "xmx": "1G"} if 0 < kb <= 3 * 1024 * 1024 else {"xms": "1G", "xmx": "2G"}
 
@@ -1525,9 +1533,8 @@ def _heap_fits(xmx):
     3 GB or less (as 1.17's Memory does)."""
     from core import deployopts
     try:
-        with open(os.path.join(paths.PROC, "meminfo")) as f:
-            total = int(re.search(r"^MemTotal:\s+([0-9]+) kB", f.read(), re.M).group(1)) * 1024
-    except (OSError, AttributeError, ValueError):
+        total = int(re.search(r"^MemTotal:\s+([0-9]+) kB", meminfo_text(), re.M).group(1)) * 1024
+    except (AttributeError, ValueError):
         return
     reserve = 768 * 1024 ** 2 if total <= 3 * 1024 ** 3 else 1024 ** 3
     if deployopts.heap_bytes(xmx) > total - reserve:

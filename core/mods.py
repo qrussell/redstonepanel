@@ -23,6 +23,9 @@ import stat
 import zipfile
 
 from core import files, javaservers, manager
+from core.platform import system
+
+os = system.fs()          # Python's os; on Windows, the same calls made safe without dir_fd (core/platform)
 
 FOLDERS = {"fabric": "mods", "quilt": "mods", "forge": "mods", "neoforge": "mods",
            "paper": "plugins", "purpur": "plugins"}

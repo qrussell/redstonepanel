@@ -27,6 +27,10 @@ def available():
     return fake.state.service_manager
 
 
+def prepare():
+    fake.record("services.prepare")
+
+
 def systemctl(*args, timeout=None, env=None):
     fake.record("services.systemctl", *args)
     return done()

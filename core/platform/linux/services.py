@@ -26,6 +26,12 @@ def available():
     return paths.service_manager_running()
 
 
+def prepare():
+    """Called when the panel starts: whatever the service manager needs from the panel before
+    it is used. Nothing on Linux (the package installs the drop-in and systemd does the rest)."""
+    return None
+
+
 # ---------------------------------------------------------------------------
 # The raw command (for the few callers that need their own arguments)
 # ---------------------------------------------------------------------------

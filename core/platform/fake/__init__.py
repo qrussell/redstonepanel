@@ -39,6 +39,10 @@ def reset():
     state.owned = []                # folders handed to the game account
     state.deleted = []
     state.service_manager = True
+    state.locks = set()             # file descriptors holding a lock
+    state.passwords = {}            # system account -> password
+    state.machine_files = {}        # "meminfo" -> text
+    state.processes = set()         # pids that are alive
     return state
 
 

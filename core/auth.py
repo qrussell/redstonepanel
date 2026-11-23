@@ -16,15 +16,10 @@ towards the same rate limit as wrong passwords. A session records that it passed
 step, so turning two-factor on signs out sessions that never did.
 """
 import base64
-import ctypes
-import ctypes.util
-import fcntl
-import grp
 import hashlib
 import hmac
 import json
 import os
-import pwd
 import re
 import secrets
 import threading
@@ -33,7 +28,7 @@ import time
 from core import settings as panel_settings
 from core import twofactor
 from core.settings import DATA_DIR   # <app>/data (RP_DATA_DIR overrides it for test instances)
-from core.platform import paths
+from core.platform import paths, system
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 SECRET_FILE = os.path.join(DATA_DIR, "secret.key")
 
@@ -115,11 +110,7 @@ def _public(u):
             "two_factor": twofactor.is_enabled(twofactor.account_key("panel", u["username"]))}
 
 def linux_account_exists(username):
-    try:
-        pwd.getpwnam(username)
-        return True
-    except KeyError:
-        return False
+    return system.system_account_exists(username)
 
 def list_panel_users():
     return [_public(u) for u in _load_users()]
@@ -185,89 +176,16 @@ def _check_password_rules(password):
 
 
 # ---------------------------------------------------------------------------
-# Linux accounts via PAM (ctypes; no extra packages)
+# Accounts of the system itself (Linux: PAM and the sudo group). The check lives in
+# core/platform; these names stay because the rest of the panel and its tests use them.
 # ---------------------------------------------------------------------------
-class _PamHandle(ctypes.Structure):
-    _fields_ = [("handle", ctypes.c_void_p)]
-
-class _PamMessage(ctypes.Structure):
-    _fields_ = [("msg_style", ctypes.c_int), ("msg", ctypes.c_char_p)]
-
-class _PamResponse(ctypes.Structure):
-    _fields_ = [("resp", ctypes.c_void_p), ("resp_retcode", ctypes.c_int)]
-
-_CONV_FUNC = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int,
-                              ctypes.POINTER(ctypes.POINTER(_PamMessage)),
-                              ctypes.POINTER(ctypes.POINTER(_PamResponse)), ctypes.c_void_p)
-
-class _PamConv(ctypes.Structure):
-    _fields_ = [("conv", _CONV_FUNC), ("appdata_ptr", ctypes.c_void_p)]
-
-_PAM_PROMPT_ECHO_OFF, _PAM_PROMPT_ECHO_ON = 1, 2
-_libpam = _libc = None
-
-def _load_pam():
-    global _libpam, _libc
-    if _libpam is None:
-        _libpam = ctypes.CDLL(ctypes.util.find_library("pam") or "libpam.so.0")
-        _libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
-        _libc.calloc.restype = ctypes.c_void_p
-        _libc.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t]
-        _libc.strdup.restype = ctypes.c_void_p
-        _libc.strdup.argtypes = [ctypes.c_char_p]
-        _libpam.pam_start.restype = ctypes.c_int
-        _libpam.pam_start.argtypes = [ctypes.c_char_p, ctypes.c_char_p,
-                                      ctypes.POINTER(_PamConv), ctypes.POINTER(_PamHandle)]
-        for fn in (_libpam.pam_authenticate, _libpam.pam_acct_mgmt, _libpam.pam_end):
-            fn.restype = ctypes.c_int
-            fn.argtypes = [_PamHandle, ctypes.c_int]
-
 def pam_authenticate(username, password):
-    """True if PAM accepts the password and the account is usable (not locked/expired)."""
-    _load_pam()
-    pw = password.encode()
-
-    @_CONV_FUNC
-    def conv(n, messages, p_response, _appdata):
-        # PAM frees these with free(), so they must come from calloc/strdup
-        addr = _libc.calloc(n, ctypes.sizeof(_PamResponse))
-        if not addr:
-            return 5   # PAM_BUF_ERR
-        resp = ctypes.cast(addr, ctypes.POINTER(_PamResponse))
-        p_response[0] = resp
-        for i in range(n):
-            if messages[i].contents.msg_style in (_PAM_PROMPT_ECHO_OFF, _PAM_PROMPT_ECHO_ON):
-                resp[i].resp = _libc.strdup(pw)
-                resp[i].resp_retcode = 0
-        return 0
-
-    handle = _PamHandle()
-    conv_struct = _PamConv(conv, None)
-    rc = _libpam.pam_start(PAM_SERVICE.encode(), username.encode(), ctypes.byref(conv_struct), ctypes.byref(handle))
-    if rc != 0:
-        return False
-    try:
-        rc = _libpam.pam_authenticate(handle, 0)
-        if rc == 0:
-            rc = _libpam.pam_acct_mgmt(handle, 0)
-        return rc == 0
-    finally:
-        _libpam.pam_end(handle, rc)
+    """True if the system accepts the password and the account is usable (not locked/expired)."""
+    return system.check_system_password(username, password)
 
 def linux_user_allowed(username):
-    """Linux account exists and is in one of ALLOWED_LINUX_GROUPS."""
-    try:
-        pw = pwd.getpwnam(username)
-    except KeyError:
-        return False
-    gids = set(os.getgrouplist(username, pw.pw_gid))
-    for name in ALLOWED_LINUX_GROUPS:
-        try:
-            if grp.getgrnam(name).gr_gid in gids:
-                return True
-        except KeyError:
-            continue
-    return False
+    """The system account exists and may sign in to the panel (Linux: in ALLOWED_LINUX_GROUPS)."""
+    return system.system_account_allowed(username, ALLOWED_LINUX_GROUPS)
 
 
 # ---------------------------------------------------------------------------
@@ -287,11 +205,11 @@ def _with_fails(fn):
             return fn(_fails)
         try:
             os.makedirs(os.path.dirname(FAILS_FILE), mode=0o700, exist_ok=True)
-            fd = os.open(FAILS_FILE, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            fd = os.open(FAILS_FILE, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
         except OSError:
             return fn(_fails)
         with os.fdopen(fd, "r+") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
+            system.lock(f.fileno(), wait=True)
             try:
                 store = json.load(f)
                 if not isinstance(store, dict):

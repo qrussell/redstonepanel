@@ -18,7 +18,10 @@ import os
 import re
 import time
 
+from core.platform import system
 from core.settings import DATA_DIR
+
+os = system.fs()          # Python's os; on Windows, the same calls made safe without dir_fd (core/platform)
 
 CRASH_DIR = os.path.join(DATA_DIR, "crashes")
 NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.@-]*$")

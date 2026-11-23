@@ -1,0 +1,5 @@
+# What the Windows installer carries next to Python (the .deb takes these from Ubuntu's archive).
+fastapi
+uvicorn
+python-multipart
+cryptography

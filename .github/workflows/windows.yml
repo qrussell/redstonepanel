@@ -1,4 +1,4 @@
-# RedstonePanel on Windows (preview, from 1.22): unit tests, the installer build and the install
+# RedstonePanel on Windows (preview, from 1.22): the bundled-Python build, the setup and the install
 # test on GitHub's Windows runners. GitLab CI has no Windows runner, so this is where the Windows
 # side is tested; GitLab mirrors branches here.
 name: windows
@@ -13,24 +13,44 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  install:
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         runner: [windows-2022, windows-2025]
     steps:
       - uses: actions/checkout@v7
-      - name: What the runner has
+      - name: Stage (bundled Python, libraries, the panel)
+        shell: pwsh
+        run: python packaging\windows\build.py stage "C:\Program Files\RedstonePanel"
+      - name: Set up
         shell: pwsh
         run: |
-          python --version
-          whoami /groups | Select-String "Administrators|High Mandatory"
-          "WIX=$env:WIX"; Get-ChildItem "$env:WIX\bin" -ErrorAction SilentlyContinue | Select-Object -First 5 Name
-          dotnet --version
-          (Get-Command wix -ErrorAction SilentlyContinue).Source
-          (Get-Command java -ErrorAction SilentlyContinue).Source
-          (Get-Command ssh -ErrorAction SilentlyContinue).Source
-          (Get-Command iscc -ErrorAction SilentlyContinue).Source
-          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version | Format-List
-          Get-NetFirewallProfile | Select-Object Name, Enabled | Format-Table
+          & "C:\Program Files\RedstonePanel\python\python.exe" "C:\Program Files\RedstonePanel\app\packaging\windows\setup.py" install
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          "C:\Program Files\RedstonePanel" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Install test
+        shell: pwsh
+        run: python packaging\test\test-windows.py
+      - name: What the panel and the servers wrote
+        if: always()
+        shell: pwsh
+        run: |
+          $h = "C:\ProgramData\RedstonePanel"
+          Get-ChildItem $h -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 80 FullName | Format-Table -HideTableHeaders
+          foreach ($f in @(Get-ChildItem "$h\journal" -Recurse -Filter output.log -ErrorAction SilentlyContinue) + @(Get-Item "$h\logs\panel.log" -ErrorAction SilentlyContinue)) {
+            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 150; "::endgroup::"
+          }
+          Get-ChildItem "$h\journal" -Recurse -Filter status.json -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName; Get-Content $_.FullName }
+          "::group::event log"
+          Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='RedstonePanel'} -MaxEvents 30 -ErrorAction SilentlyContinue | ForEach-Object { "$($_.TimeCreated) $($_.Id) $($_.Message)" }
+          Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; Level=2,3} -MaxEvents 15 -ErrorAction SilentlyContinue | ForEach-Object { "$($_.TimeCreated) $($_.Id) $($_.Message)" }
+          "::endgroup::"
+      - name: Uninstall
+        if: always()
+        shell: pwsh
+        run: |
+          & "C:\Program Files\RedstonePanel\python\python.exe" "C:\Program Files\RedstonePanel\app\packaging\windows\setup.py" uninstall
+          sc.exe query redstonepanel; if ($LASTEXITCODE -eq 0) { "the service is still there"; exit 1 } else { exit 0 }

@@ -18,7 +18,7 @@ import urllib.request
 
 from core import settings
 from core.settings import DATA_DIR
-from core.platform import console, paths, services, CommandError
+from core.platform import console, paths, services, system, CommandError
 
 CONFIG_FILE = os.path.join(DATA_DIR, "notifications.json")
 STATE_FILE = os.path.join(DATA_DIR, "notify-state.json")
@@ -261,13 +261,7 @@ def bedrock_quit_cleanly(d):
 BEDROCK_STOP_WAIT = 75        # systemd's own stop timeout is 90 s; leave it time to clean up
 
 def _pid_alive(pid):
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+    return system.process_alive(pid)
 
 def stop_bedrock(server, mainpid=None, timeout=BEDROCK_STOP_WAIT, sleep=time.sleep, run=None):
     """Run by the drop-in's ExecStop before systemd stops a game server (Stop, Restart, backups,
