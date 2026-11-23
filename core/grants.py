@@ -323,6 +323,9 @@ mods     GET     {_S}/addons/details
 mods     POST    {_S}/addons/bundle
 mods     POST    {_S}/addons/install
 mods     GET     {_S}/addons/updates
+mods     GET     {_S}/player-pack
+mods     PUT     {_S}/player-pack
+mods     GET     {_S}/player-pack/file
 mods     POST    {_S}/addons/update
 mods     POST    {_S}/addons/undo
 mods     GET     {_S}/addons/compatibility

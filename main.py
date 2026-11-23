@@ -46,6 +46,7 @@ from starlette.routing import Match
 import core.modpacks as modpacks
 import core.joinpage as joinpage
 import core.joinsite as joinsite
+import core.playerpack as playerpack
 from starlette.background import BackgroundTask
 import json
 import re
@@ -1165,6 +1166,7 @@ def uninstall_server(request: Request, server_name: str, keep_world: bool = True
     if not keep_world:
         playerlog.forget(server_name)
         joinpage.forget("local", server_name)
+        playerpack.forget(server_name)
         grants.forget_server(server_name)
     return {"status": "success"}
 
@@ -2110,6 +2112,37 @@ def join_info_api(request: Request, server_name: str):
     _require_admin(request, "read a server's join details")
     _known_server(server_name)
     return _join_call(joinpage.local_summary, server_name)
+
+# --- Player packs (1.21.6): the mods players need, worked out from the server's mods folder
+#     (core/playerpack.py). The Mods tab shows and changes it; the join page hands it out.
+def _player_pack_view(server_name: str, fresh: bool = False):
+    view = playerpack.admin_view(server_name, fresh=fresh)
+    cfg = joinpage.page(server_name)
+    st = joinsite.status()
+    view["join_page"] = {"enabled": bool(cfg["enabled"]), "site": bool(st["enabled"]),
+                         "path": joinpage.path_of(cfg) if cfg["enabled"] else None,
+                         "port": st["port"], "scheme": st["scheme"]}
+    return view
+
+@app.get("/api/servers/{server_name}/player-pack")
+def player_pack_api(request: Request, server_name: str, fresh: bool = False):
+    return _files_call(request, _player_pack_view, server_name, fresh)
+
+@app.put("/api/servers/{server_name}/player-pack")
+def set_player_pack_api(request: Request, server_name: str, body: dict = Body(...)):
+    _files_call(request, playerpack.save_config, server_name, body, actor=request.state.user["username"])
+    return _files_call(request, _player_pack_view, server_name)
+
+@app.get("/api/servers/{server_name}/player-pack/file")
+def player_pack_file_api(request: Request, server_name: str):
+    """The .mrpack itself (also what a cluster master fetches for the jars copied into it)."""
+    def build(name):
+        p, data = playerpack.local_pack(name)
+        if not p:
+            raise playerpack.PackError("This server's player pack is off.", 404)
+        return Response(content=data, media_type="application/x-modrinth-modpack+zip", headers={
+            "Content-Disposition": f'attachment; filename="{playerpack.file_name(p["name"] or name, p["version"])}"'})
+    return _files_call(request, build, server_name)
 
 # --- Master: the cluster dashboard (signed-in users; trusted-LAN visitors are refused)
 def _need_master():

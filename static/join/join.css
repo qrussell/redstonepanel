@@ -55,3 +55,8 @@ details ol { margin-top: 0.5rem; }
        border-top: 1px solid var(--line); color: var(--text); text-decoration: none; min-height: 44px; }
 .row:first-child { border-top: 0; }
 .row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* Player packs (1.21.6) */
+ul.mods { margin: 0.5rem 0 0; padding-left: 1.2rem; columns: 2 14rem; column-gap: 1.5rem; font-size: 0.9rem; }
+ul.mods li { break-inside: avoid; margin-bottom: 0.15rem; overflow-wrap: anywhere; }
+.copy .value { overflow-wrap: anywhere; }

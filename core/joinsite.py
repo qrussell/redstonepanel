@@ -193,6 +193,27 @@ def _need_block(view):
     loader = e(view["loader"] or "mods")
     pack = view["pack"]
     out = f'<section class="card"><h2>What you need</h2><p><b>Minecraft: Java Edition {mc}</b> with <b>{loader}</b> and this server\'s mods.</p>'
+    pp = view.get("player_pack")
+    if pp:
+        base = f'/join/{quote(view["path"], safe="")}'
+        n, opt = pp["count"], pp["optional"]
+        out += (f'<p class="packname">{e(pp["title"])} <span class="muted">player pack {e(pp["version"])}</span></p>'
+                f'<p class="buttons"><a class="btn primary" href="{e(base)}/pack.mrpack" download="{e(pp["file"])}">'
+                f'Download the player pack</a></p>'
+                f'<p class="small">{n} mod{"" if n == 1 else "s"}'
+                f'{f", {opt} of them optional" if opt else ""}, at the versions this server runs. '
+                'The pack is made from the server itself, so it changes when the server\'s mods do: if you '
+                'can\'t join after an update, download it again.</p>')
+        rows = "".join(
+            "<li>" + (f'<a href="{e(m["url"])}" rel="noopener noreferrer">{e(m["name"])}</a>' if m["url"] else e(m["name"]))
+            + (f' <span class="muted">{e(m["version"])}</span>' if m["version"] else "")
+            + (' <span class="muted">(optional)</span>' if m["optional"] else "") + "</li>" for m in pp["mods"])
+        out += f'<details><summary>The mods in the pack</summary><ul class="mods">{rows}</ul></details>'
+        if pp["ask"]:
+            out += ('<p class="warn">Not in the pack, because they aren\'t on Modrinth: '
+                    + ", ".join(e(x) for x in pp["ask"])
+                    + ". Ask whoever runs the server whether you need them.</p>")
+        return out + "</section>"
     if pack and pack["url"]:
         label = e(pack["name"]) + (f' <span class="muted">{e(pack["version"])}</span>' if pack["version"] else "")
         out += f'<p class="packname">{label}</p><p class="buttons">'
@@ -221,6 +242,32 @@ def _howto_block(view):
                 + "</section>")
     pack = view["pack"]
     out = '<section class="card"><h2>How to join</h2>'
+    if view.get("player_pack"):
+        toml = f'/join/{quote(view["path"], safe="")}/packwiz/pack.toml'
+        last = "Press <b>Play</b>, then <b>Multiplayer</b> and <b>Add Server</b>, and paste the server address."
+        out += ('<details open><summary>With Modrinth App</summary>'
+                + _steps(["Install <a href=\"https://modrinth.com/app\" rel=\"noopener noreferrer\">Modrinth App</a> "
+                          "and sign in with your Minecraft account.",
+                          "Press <b>Download the player pack</b> above.",
+                          "In Modrinth App press <b>+</b> (new instance), choose <b>From file</b>, and pick the "
+                          "<code>.mrpack</code> file you downloaded.", last])
+                + '</details><details><summary>With Prism Launcher</summary>'
+                + _steps(["Install <a href=\"https://prismlauncher.org\" rel=\"noopener noreferrer\">Prism Launcher</a> "
+                          "and add your Minecraft account.",
+                          "Press <b>Download the player pack</b> above.",
+                          "Choose <b>Add Instance</b>, then <b>Import</b>, and pick the <code>.mrpack</code> file "
+                          "you downloaded.",
+                          "Launch it, then <b>Multiplayer</b> and <b>Add Server</b>, and paste the server address."])
+                + '</details><details><summary>Keep the mods up to date by themselves (packwiz)</summary>'
+                  '<p class="small">For people who know their launcher: Prism Launcher and MultiMC can check this '
+                  'server\'s mods every time the game starts, with '
+                  '<a href="https://packwiz.infra.link/tutorials/installing/packwiz-installer/" '
+                  'rel="noopener noreferrer">packwiz-installer</a>. Point it at this address:</p>'
+                + f'<div class="copy"><div><span class="label">packwiz pack</span>'
+                  f'<code class="value" data-abs="{e(toml)}">{e(toml)}</code></div>'
+                  f'<button type="button" class="btn" data-copy="{e(toml)}" data-abs-copy="{e(toml)}" '
+                  f'aria-label="Copy the packwiz address">Copy</button></div></details>')
+        return out + ('<p class="small">The official Minecraft Launcher can\'t install modpacks by itself.</p></section>')
     if pack and pack["source"] == "modrinth":
         name = e(pack["name"])
         out += ('<details open><summary>With Modrinth App</summary>'
@@ -333,7 +380,7 @@ def handle(method, path, ip):
                 return Answer(f.read(), content_type=ASSETS[parts[1]], cache="public, max-age=3600")
         except OSError:
             return not_found()
-    if len(parts) > 2:
+    if len(parts) > 2 and not (parts[1] == "packwiz" and len(parts) <= 4):
         return not_found()
     hit = joinpage.find(parts[0])
     if not hit:
@@ -352,6 +399,21 @@ def handle(method, path, ip):
             if not data.startswith(b"\x89PNG\r\n\x1a\n"):
                 return not_found()
             return Answer(data, content_type="image/png", cache="public, max-age=300")
+        if parts[1] == "pack.mrpack" or parts[1] == "packwiz":
+            from core import playerpack
+            p, title, data = joinpage.player_pack(key)
+            if not p or not p["mods"]:
+                return not_found()
+            if parts[1] == "pack.mrpack":
+                name = playerpack.file_name(title, p["version"])
+                return Answer(data, content_type="application/x-modrinth-modpack+zip", cache="no-cache",
+                              extra={"Content-Disposition": f'attachment; filename="{name}"'})
+            got = playerpack.packwiz(p, title, data).get("/".join(parts[2:]))
+            if got is None:
+                return not_found()
+            jar = parts[-1].endswith(".jar")
+            return Answer(got, content_type="application/java-archive" if jar else "text/plain; charset=utf-8",
+                          cache="no-cache")
     except joinpage.JoinError:
         return Answer("This server's page isn't available right now.\n", 503)
     except Exception:

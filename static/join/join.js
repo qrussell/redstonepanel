@@ -2,6 +2,13 @@
 // by itself. The page works without this file; nothing here is needed to read it.
 (function () {
   'use strict';
+  // Addresses on this same site, shown and copied in full (the page alone only knows the path)
+  document.querySelectorAll('[data-abs]').forEach(function (el) {
+    try { el.textContent = new URL(el.getAttribute('data-abs'), window.location.href).href; } catch (e) { /* the path is shown */ }
+  });
+  document.querySelectorAll('button[data-abs-copy]').forEach(function (b) {
+    try { b.setAttribute('data-copy', new URL(b.getAttribute('data-abs-copy'), window.location.href).href); } catch (e) { /* the path is copied */ }
+  });
   document.querySelectorAll('button[data-copy]').forEach(function (b) {
     b.addEventListener('click', function () {
       var text = b.getAttribute('data-copy');

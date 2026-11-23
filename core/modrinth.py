@@ -128,6 +128,18 @@ def projects(ids):
     return out
 
 
+def project_sides(ids):
+    """id -> {"slug", "title", "client_side", "server_side"}: which side of the game each
+    project runs on (for player packs)."""
+    ids = sorted(set(i for i in ids if i))
+    out = {}
+    for at in range(0, len(ids), 100):
+        for p in get_json(f"{API}/projects?ids={_q(ids[at:at + 100])}") or []:
+            out[p["id"]] = {"slug": p.get("slug"), "title": p.get("title"),
+                            "client_side": p.get("client_side"), "server_side": p.get("server_side")}
+    return out
+
+
 def _primary(version):
     fs = version.get("files") or []
     f = next((f for f in fs if f.get("primary")), fs[0] if fs else None)

@@ -47,6 +47,7 @@ DEFAULT_PORTS = {"Java": "25565", "Bedrock": "19132"}
 
 _lock = threading.RLock()
 _summary_cache = {}             # key -> (time, summary)
+_pack_cache = {}                # key -> ((pack version, title), .mrpack bytes) for a node's server
 
 
 class JoinError(ValueError):
@@ -342,9 +343,15 @@ def local_summary(server, list_servers=None):
            "status": s.get("status") if s.get("status") in ("online", "offline") else "offline",
            "port": port if port.isdigit() else "", "motd": str(s.get("motd") or "")[:200],
            "transport": s.get("transport"), "geyser_port": "", "modpack": None, "icon": "",
-           "players": None}
+           "players": None, "player_pack": None}
     if edition == "Java":
         out["modpack"] = _modpack(d)
+        if loader in javaservers.MOD_LOADERS:
+            try:
+                from core import playerpack
+                out["player_pack"] = playerpack.public_part(playerpack.manifest(server))
+            except Exception:
+                out["player_pack"] = None            # the page still says which loader and version
         try:
             for r in portforward.java_extras(server, props):
                 if r["what"].startswith("Geyser"):
@@ -483,6 +490,62 @@ def pack_links(cfg, s):
     return None
 
 
+def _pack_title(cfg, s, p):
+    title = re.sub("§.", "", s.get("motd") or "").strip() or default_slug(s.get("name") or "server")
+    return (p.get("name") or title)[:60] or "Player pack"
+
+
+def player_pack(key):
+    """(public part, title, .mrpack bytes) of a page's player pack, or (None, None, None).
+    A node's pack is built here from what the node said; only the jars an admin chose to hand
+    out are fetched from the node, and each is checked against its checksum."""
+    from core import playerpack
+    member, server = split_key(key)
+    s = summary(key)
+    p = playerpack.clean_public(s.get("player_pack"))
+    if not p:
+        return None, None, None
+    title = _pack_title(page(key), s, p)
+    if member == "local":
+        got, data = playerpack.local_pack(server, title)
+        return (playerpack.clean_public(got), title, data) if got else (None, None, None)
+    hit = _pack_cache.get(key)
+    if hit and hit[0] == (p["version"], title):
+        return p, title, hit[1]
+    read_jar = None
+    if any(l["state"] == "bundled" for l in p["mods"]):
+        from core import cluster, cluster_client
+        node = cluster.find_node(member)
+        raw = None
+        if node:
+            try:
+                res = cluster_client.open_proxy(node, "GET", f"/api/servers/{quote(server, safe='')}/player-pack/file",
+                                                role="admin")
+                raw = res.read_all(playerpack.MAX_BUNDLED + (1 << 20)) if res.status == 200 else (res.close() or None)
+            except Exception:
+                raw = None
+        read_jar = (lambda name: playerpack.bundled_jar(raw, name)) if raw else None
+    data = playerpack.mrpack(p, title, read_jar)
+    _pack_cache[key] = ((p["version"], title), data)
+    if len(_pack_cache) > 50:
+        _pack_cache.pop(next(iter(_pack_cache)))
+    return p, title, data
+
+
+def _player_pack_view(cfg, s):
+    from core import playerpack
+    p = playerpack.clean_public(s.get("player_pack"))
+    if not p or not p["mods"]:
+        return None
+    return {"title": _pack_title(cfg, s, p), "version": p["version"],
+            "file": playerpack.file_name(_pack_title(cfg, s, p), p["version"]),
+            "count": len(p["mods"]), "optional": sum(1 for l in p["mods"] if l["state"] == "optional"),
+            "mods": [{"name": l["name"], "version": l["version"], "optional": l["state"] == "optional",
+                      "url": f"https://modrinth.com/mod/{l['slug']}" if l["slug"] and l["state"] != "bundled" else ""}
+                     for l in sorted(p["mods"], key=lambda l: l["name"].lower())][:400],
+            "ask": p["ask"]}
+
+
 def public_view(cfg, s, public_address=None):
     """The page's whole content, from the fixed list of fields that may leave the machine."""
     loader = s.get("loader") or ""
@@ -504,6 +567,7 @@ def public_view(cfg, s, public_address=None):
         "address": addresses(cfg, s, public_address),
         "geyser": bool(s.get("geyser_port")) and s.get("edition") == "Java",
         "pack": pack_links(cfg, s) if needs == "mods" else None,
+        "player_pack": _player_pack_view(cfg, s) if needs == "mods" else None,
         "note": cfg["note"],
         "link": {"url": cfg["link_url"], "label": cfg["link_label"] or "More about this server"} if cfg["link_url"] else None,
         "has_icon": str(s.get("icon") or "").startswith("iVBORw0KGgo"),     # a PNG, in base64
