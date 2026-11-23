@@ -1900,7 +1900,7 @@ browser checks at 1280 and 390 pixels wide with sample data. Not tested with a r
 online: no game client was available, so player names came from the stand-in. The manual's
 pictures use sample data.
 
-### 1.21.7: a Visual Editor for settings files on the Files tab *(built, not released; number to be confirmed)*
+### 1.21.7: a Visual Editor for settings files on the Files tab *(built, not released)*
 
 **Why.** Configuration has a Visual Editor for `server.properties`, but every other settings
 file (a plugin's `.properties` or `.cfg`, `eula.txt`, a second properties file) opened on the
