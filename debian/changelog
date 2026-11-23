@@ -1,3 +1,21 @@
+redstonepanel (1.21.4) noble; urgency=medium
+
+  * Live Chat suggests as you type, like the game: type / for the
+    commands that match, then the players online, players seen before or
+    the fixed choices for each part of the command. Tab fills one in.
+  * A Commands list above the message box opens a form that asks only for
+    what the picked command needs (a player, a choice, a place) and shows
+    the exact command before Run.
+  * One-click buttons for List players, Save world, Day, Night and Clear
+    weather.
+  * A running Vanilla, Fabric, Quilt, Forge or NeoForge server tells the
+    panel its own commands and game rules, so commands added by mods are
+    suggested and game rules are named as that Minecraft version has them.
+  * Java and Bedrock each get their own commands; Bedrock names with
+    spaces are quoted for you. For anyone with Console & chat.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Mon, 23 Nov 2026 21:48:49 -0000
+
 redstonepanel (1.21.3) noble; urgency=medium
 
   * Found on this computer: New server now lists Minecraft servers on

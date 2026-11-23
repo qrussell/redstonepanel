@@ -4,6 +4,16 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.21.4 (2026-11-23)
+
+Release notes: release-notes/v1.21.4.md
+
+- Live Chat suggests as you type, like the game: type / for the commands that match, then the players online, players seen before or the fixed choices for each part of the command. Tab fills one in.
+- A Commands list above the message box opens a form that asks only for what the picked command needs (a player, a choice, a place) and shows the exact command before Run.
+- One-click buttons for List players, Save world, Day, Night and Clear weather.
+- A running Vanilla, Fabric, Quilt, Forge or NeoForge server tells the panel its own commands and game rules, so commands added by mods are suggested and game rules are named as that Minecraft version has them.
+- Java and Bedrock each get their own commands; Bedrock names with spaces are quoted for you. For anyone with Console & chat.
+
 ## 1.21.3 (2026-11-23)
 
 Release notes: release-notes/v1.21.3.md
