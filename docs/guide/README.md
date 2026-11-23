@@ -21,7 +21,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | …? | Where |
 | --- | --- |
 | Install or update the panel | [Install](#1-install) |
-| Run it on a Windows PC | [On Windows with WSL](#on-windows-with-wsl) |
+| Run it on a Windows PC | [On Windows (preview)](#on-windows-preview), or [with WSL](#on-windows-with-wsl) |
 | Create a Java or Bedrock server | [Create or import a server](#4-create-or-import-a-server) |
 | Bring in a server I already have | [Import](#4-create-or-import-a-server) |
 | Talk to players or run a command | [Live Chat](#6-live-chat) |
@@ -78,6 +78,7 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 **Contents**
 
 1. [Install](#1-install)
+   - [On Windows (preview)](#on-windows-preview)
    - [On Windows with WSL](#on-windows-with-wsl)
 2. [Sign in](#2-sign-in)
 3. [The dashboard](#3-the-dashboard)
