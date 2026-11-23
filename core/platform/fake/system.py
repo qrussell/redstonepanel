@@ -173,3 +173,20 @@ def hint(what, *args):
     if what == "install-package":
         return f"sudo apt install {' '.join(args)}"
     return f"({what} {' '.join(str(a) for a in args)})".replace(" )", ")")
+
+
+def check_servers_folder(folder):
+    import os
+    fake.record("system.check_servers_folder", folder)
+    if not os.path.isabs(folder) or " " in folder:
+        return None, "Give the full path of a folder, for example /srv/minecraft."
+    if folder in getattr(fake.state, "bad_servers_folders", ()):
+        return None, f"{folder} belongs to the system or to the panel itself; choose a folder somewhere else."
+    return os.path.normpath(folder), ""
+
+
+def prepare_servers_folder(folder):
+    import os
+    fake.record("system.prepare_servers_folder", folder)
+    os.makedirs(folder, exist_ok=True)
+    return ""

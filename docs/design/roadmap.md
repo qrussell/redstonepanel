@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.0 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) and the groundwork for Windows (1.21) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.1 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) and a servers folder you choose (1.21.1) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1786,6 +1786,35 @@ when both systems' tests pass.
 files the server holds open (fallback: a Volume Shadow Copy snapshot), antivirus scanning
 slowing or locking world saves, clean stops inside the time Windows allows at shutdown, and
 third-party firewalls that ignore Defender's rules.
+
+### 1.21.1: choose where servers are kept *(released 23 Nov 2026)*
+
+**Why.** Servers have always gone in `/opt`, which is on the system disk. On a machine with a
+small system disk and a big second drive, or separate partitions, that is the wrong place, and
+there was no supported way to change it. Quentin asked for it on 23 Nov 2026 while trying the
+Windows preview, where the same question is "which drive".
+
+**How.** One setting, **Panel Settings → Servers folder** (`servers_folder` in the settings
+file, empty for the usual place), with its own API (`GET`/`PUT /api/settings/servers-folder`,
+admins only, never reachable by a cluster master). It decides where *new* servers are made.
+Servers already made stay put: each unit file has always carried its own folder, so nothing
+about a running server depends on the setting. Every folder that was ever chosen is remembered
+(`servers_folders_used`), and everything that used to look in `/opt` now looks in all of them:
+free names, used ports, removed servers, what may be deleted. What is a fit folder is the
+platform layer's business (`system.check_servers_folder`, `system.prepare_servers_folder`).
+
+**Size.** Small: one setting, about thirty places that named the folder.
+
+**As built.** As planned. Refused, with the reason: system folders, the top folder of a disk
+(`/mnt`, `/home`), names with spaces or other odd characters, read-only and `noexec` disks, a
+folder the `minecraft` account can't reach, and paths containing "java" or "bedrock" (the panel
+tells the two editions apart by those words in a unit's start command). An unpacked backup
+becomes a server by a rename on the disk it was unpacked on. Not in this release: moving an
+existing server to the new folder, and choosing where backups go. Tested: 15 unit tests
+(`tests/test_servers_folder.py`); `test-install.sh` on Ubuntu 24.04 (158 checks, 27 of them
+new: refusals, a folder on `/srv`, import there under a name `/opt` doesn't use, ownership,
+unit file, file manager, backup, uninstall keeping the world, Removed servers, going back to
+`/opt`, deleting for good).
 
 ### 2.0: an API for scripts and bots
 

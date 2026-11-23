@@ -1120,20 +1120,19 @@ def import_copy(tid, panel, server, filename, actor):
     if not backups.FILE_RE.fullmatch(filename or "") or backups.FILE_RE.fullmatch(filename).group("server") != server:
         raise TargetError("No such copy.", 404)
     name = _free_name(server)
-    os.makedirs(manager.SERVERS_ROOT, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=".redstonepanel-offsite-", suffix=".tar.gz", dir=manager.SERVERS_ROOT)
+    fd, tmp = tempfile.mkstemp(prefix=".redstonepanel-offsite-", suffix=".tar.gz", dir=manager._made_servers_root())
     os.close(fd)
     staging = None
     try:
         _download_checked(t, panel, server, filename, tmp)
-        staging, root = archive.unpack(tmp, manager.SERVERS_ROOT)
+        staging, root = archive.unpack(tmp, manager._made_servers_root())
         edition = _edition_of(root)
         if edition == "bedrock" and not manager.bedrock_supported():
             raise TargetError(manager.bedrock_unsupported_message())
         if not manager._reserve_exact(name):
             raise TargetError(f"{name} was taken meanwhile; try again.", 409)
         try:
-            dest = os.path.join(manager.SERVERS_ROOT, name)
+            dest = os.path.join(manager._root_holding(root), name)
             os.rename(root, dest)
             with open(os.path.join(dest, manager.REMOVED_INFO), "w") as f:
                 json.dump({"edition": edition, "removed_at": int(time.time()),
@@ -1170,7 +1169,7 @@ def _edition_of(root):
 def _free_name(server):
     """server if nothing here uses that name, else server-2, server-3, …"""
     def free(n):
-        return not os.path.lexists(os.path.join(manager.SERVERS_ROOT, n)) and not os.path.exists(manager._unit_path(n))
+        return manager.find_server_folder(n) is None and not os.path.exists(manager._unit_path(n))
     if server.startswith("minecraft-") and manager.SERVICE_NAME_RE.match(server) and free(server):
         return server
     base = server if server.startswith("minecraft-") else "minecraft-" + server[len("minecraft"):].lstrip("-_.")

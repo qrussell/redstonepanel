@@ -512,19 +512,62 @@ def write_raw_properties(dir_path, content):
     with open(os.path.join(dir_path, "server.properties"), "w") as f:
         f.write(content)
 
-SERVERS_ROOT = paths.SERVERS_ROOT
+SERVERS_ROOT = paths.SERVERS_ROOT        # the usual place; servers_root() is where new ones go
+
+
+def servers_root():
+    """Where new servers are made: the folder chosen in Panel Settings, or the usual place."""
+    from core import settings
+    return settings.load().get("servers_folder") or SERVERS_ROOT
+
+
+def server_roots():
+    """Every folder servers may be in: where new ones go, the usual place, and any folder that
+    was chosen before (servers stay where they were made). The one for new servers is first."""
+    from core import settings
+    s = settings.load()
+    roots = []
+    for r in [s.get("servers_folder") or SERVERS_ROOT, SERVERS_ROOT] + list(s.get("servers_folders_used") or []):
+        if r and r not in roots:
+            roots.append(r)
+    return roots
+
+
+def find_server_folder(name):
+    """The folder called `name` in any servers folder, or None. Used to keep names unique
+    everywhere, and to find a removed server again."""
+    for r in server_roots():
+        d = os.path.join(r, name)
+        if os.path.lexists(d):
+            return d
+    return None
+
+
+def in_servers_folder(path):
+    """True when path is directly inside one of the servers folders (what the panel may delete)."""
+    parent = os.path.dirname(os.path.realpath(path))
+    return any(parent == os.path.realpath(r) for r in server_roots())
 PORT_KEYS = ("server-port", "server-portv6", "query.port", "rcon.port")
+
+
+def _server_folder_names():
+    """[(servers folder, name)] of everything in every servers folder, sorted by name."""
+    found = []
+    for root in server_roots():
+        try:
+            found += [(root, n) for n in os.listdir(root)]
+        except OSError:
+            continue
+    return sorted(found, key=lambda rn: rn[1])
 
 def _used_ports(exclude_dir=None):
     """Every port that a managed server (/opt/minecraft-*) actually opens, per its server.properties.
     Bedrock has no RCON, so an rcon.port line in a Bedrock server's file (e.g. from a Java
     template) is ignored and never blocks a Java server from using that port."""
     used = set()
-    if not os.path.isdir(SERVERS_ROOT):
-        return used
     skip = os.path.realpath(exclude_dir) if exclude_dir else None
-    for name in os.listdir(SERVERS_ROOT):
-        path = os.path.join(SERVERS_ROOT, name)
+    for root, name in _server_folder_names():
+        path = os.path.join(root, name)
         if not name.startswith("minecraft-") or os.path.realpath(path) == skip:
             continue
         props = read_properties(path)
@@ -1091,7 +1134,7 @@ def _reserve_name(edition):
     with _busy_lock:
         while True:
             name = f"{base_name}{suffix}"
-            taken = (name in _busy or os.path.exists(os.path.join(SERVERS_ROOT, name))
+            taken = (name in _busy or find_server_folder(name) is not None
                      or os.path.exists(_unit_path(name)) or not services.name_free(name))
             if not taken:
                 # Check every port other servers claim (RCON included), and Bedrock's IPv6 port too
@@ -1159,7 +1202,7 @@ def remove_server(server_name, keep_world, note=None):
                 pass          # only a hint for restoring; the folder alone is enough
         write_log(f"[REMOVE] Removed {server_name} from the panel. Its files stay in {d}; "
                   f"restore it from New Server > Removed servers.")
-    elif os.path.exists(d) and d.startswith(os.path.join(paths.SERVERS_ROOT, "")):
+    elif os.path.exists(d) and in_servers_folder(d):
         system.delete_tree(d)
         write_log(f"[REMOVE] Removed {server_name} and deleted {d}.")
 
@@ -1210,14 +1253,12 @@ def _removed_edition(d, name, info):
 def list_removed_servers():
     """Server folders in /opt that no systemd unit uses: servers uninstalled with
     'Keep World', or whose unit was deleted some other way."""
-    if not os.path.isdir(SERVERS_ROOT):
-        return []
     in_use = _unit_dirs()
     with _busy_lock:
         busy = set(_busy)
     removed = []
-    for name in sorted(os.listdir(SERVERS_ROOT)):
-        d = os.path.join(SERVERS_ROOT, name)
+    for root, name in _server_folder_names():
+        d = os.path.join(root, name)
         if (not name.startswith("minecraft-") or not SERVICE_NAME_RE.match(name)
                 or os.path.islink(d) or not os.path.isdir(d)):
             continue
@@ -1359,8 +1400,8 @@ def delete_removed_server(name):
     if not match:
         raise ServerError(f"There's no removed server called '{name}'.")
     d = os.path.realpath(match["directory"])
-    if os.path.dirname(d) != os.path.realpath(SERVERS_ROOT):
-        raise ServerError(f"{name} isn't a folder in {SERVERS_ROOT}.")
+    if not in_servers_folder(d):
+        raise ServerError(f"{name} isn't in a servers folder.")
     system.delete_tree(d)
     from core import deployopts
     deployopts.set_flags(name, None)
@@ -1373,10 +1414,27 @@ def export_server(server_name):
     shutil.make_archive(export_base, 'zip', d)
     return f"{export_base}.zip"
 
+def _root_holding(path):
+    """The servers folder an unpacked folder is in, so it becomes a server by a rename on the
+    same disk; where new servers go when it is somewhere else."""
+    real = os.path.realpath(path)
+    for r in server_roots():
+        if real.startswith(os.path.join(os.path.realpath(r), "")):
+            return r
+    return _made_servers_root()
+
+
+def _made_servers_root():
+    """servers_root(), made if it isn't there yet."""
+    root = servers_root()
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
 def import_server(archive_path):
     """Creates a new server from a .zip / .tar.gz / .tar backup. Raises archive.ArchiveError."""
     from core import archive
-    staging, root = archive.unpack(archive_path, SERVERS_ROOT)
+    staging, root = archive.unpack(archive_path, _made_servers_root())
     try:
         return _import_unpacked(staging, root)
     finally:
@@ -1402,7 +1460,7 @@ def _import_unpacked(staging, root):
 
     svc_name, port = _reserve_name(edition)       # auto-allocated name and port
     try:
-        mc_dir = os.path.join(SERVERS_ROOT, svc_name)
+        mc_dir = os.path.join(_root_holding(root), svc_name)
         # The unpacked files become the server folder (a rename: same filesystem, no copying)
         os.rename(root, mc_dir)
         # A backup of a removed server may still carry the removal note
@@ -1448,7 +1506,7 @@ def _reserve_exact(name):
     if not (SERVICE_NAME_RE.match(name or "") and name.startswith("minecraft-")):
         return False
     with _busy_lock:
-        if name in _busy or os.path.lexists(os.path.join(SERVERS_ROOT, name)) or os.path.exists(_unit_path(name)):
+        if name in _busy or find_server_folder(name) is not None or os.path.exists(_unit_path(name)):
             return False
         _busy.add(name)
         return True
@@ -1464,7 +1522,7 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
     if not name:
         name, _ = _reserve_name(edition)
     try:
-        mc_dir = os.path.join(SERVERS_ROOT, name)
+        mc_dir = os.path.join(_root_holding(root), name)
         os.rename(root, mc_dir)
         if on_placed:
             on_placed(name)
@@ -1499,8 +1557,9 @@ def discard_server(name):
     if os.path.exists(_unit_path(name)):
         remove_server(name, keep_world=False)
         return
-    d = os.path.realpath(os.path.join(SERVERS_ROOT, name))
-    if SERVICE_NAME_RE.match(name or "") and os.path.dirname(d) == os.path.realpath(SERVERS_ROOT) and os.path.isdir(d):
+    d = find_server_folder(name) if SERVICE_NAME_RE.match(name or "") else None
+    d = os.path.realpath(d) if d else None
+    if d and in_servers_folder(d) and os.path.isdir(d):
         system.delete_tree(d)
 
 def _reserve_chosen(edition, name=None, port=None):
@@ -1649,7 +1708,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
     else:
         svc_name, port = _reserve_name(edition)       # auto-allocated name and port
     try:
-        mc_dir = os.path.join(SERVERS_ROOT, svc_name)
+        mc_dir = os.path.join(_made_servers_root(), svc_name)
 
         # Java isn't part of the package: a missing one raises JavaMissing, and the panel offers to install it
         ensure_minecraft_user(mc_dir)

@@ -189,6 +189,46 @@ c=$(code -b $L -X POST $B/api/servers/import -H "$O" -F "file=@/tmp/java-backup.
 [ "$c" = 200 ] && grep -q '"server":"minecraft-java"' /tmp/body && ok "import wrapped .zip Java backup" || bad "import .zip ($c $(cat /tmp/body))"
 check "  files at the top of /opt/minecraft-java" test -f /opt/minecraft-java/server.jar -a -f /opt/minecraft-java/world/level.dat
 check "  no __MACOSX junk"                 test ! -e /opt/minecraft-java/__MACOSX
+# --- Servers folder (1.21.1): new servers go where Panel Settings says; the ones in /opt stay and still count
+SF=$B/api/settings/servers-folder
+c=$(code -b $L $SF)
+[ "$c" = 200 ] && [ "$(jget "d['folder']")" = /opt ] && [ "$(jget "d['is_default']")" = True ] \
+    && ok "servers folder: /opt until one is chosen" || bad "servers folder view ($c $(cat /tmp/body))"
+for badf in relative/path /etc/minecraft / /home "/srv/my servers" /srv/java-servers /var/lib/redstonepanel/x; do
+    c=$(code -b $L -X PUT $SF -H "$J" -H "$O" -d "{\"folder\":\"$badf\"}")
+    [ "$c" = 400 ] && ok "  refused: $badf" || bad "  $badf should be refused ($c $(cat /tmp/body))"
+done
+mkdir -p /closed && chmod 700 /closed
+c=$(code -b $L -X PUT $SF -H "$J" -H "$O" -d '{"folder":"/closed/minecraft"}')
+[ "$c" = 400 ] && grep -q "can't get into" /tmp/body && ok "  refused: a folder the minecraft account can't reach" \
+    || bad "  closed folder ($c $(cat /tmp/body))"
+check "  ... and the setting is unchanged"  bash -c "curl -s -b $L $SF | grep -q '\"folder\":\"/opt\"'"
+c=$(code -b $L -X PUT $SF -H "$J" -H "$O" -d '{"folder":"/srv/rp-disk2/minecraft"}')
+[ "$c" = 200 ] && [ "$(jget "d['folder']")" = /srv/rp-disk2/minecraft ] && test -d /srv/rp-disk2/minecraft \
+    && ok "servers folder set to /srv/rp-disk2/minecraft (made)" || bad "set servers folder ($c $(cat /tmp/body))"
+check "  /opt is still listed with its servers" bash -c "curl -s -b $L $SF | python3 -c \"import json,sys; d=json.load(sys.stdin); f=[x for x in d['folders'] if x['folder']=='/opt'][0]; assert f['servers'] >= 1 and not f['current']\""
+c=$(code -b $L -X POST $B/api/servers/import -H "$O" -F "file=@/tmp/java-backup.zip")
+[ "$c" = 200 ] && grep -q '"server":"minecraft-java-2"' /tmp/body && ok "  import goes there, under a name /opt doesn't use" \
+    || bad "  import into the new folder ($c $(cat /tmp/body))"
+check "  files in /srv/rp-disk2/minecraft/minecraft-java-2" test -f /srv/rp-disk2/minecraft/minecraft-java-2/world/level.dat
+check "  owned by minecraft"                test "$(stat -c %U /srv/rp-disk2/minecraft/minecraft-java-2/server.jar)" = minecraft
+check "  the unit runs from there"          grep -qx "WorkingDirectory=/srv/rp-disk2/minecraft/minecraft-java-2" /etc/systemd/system/minecraft-java-2.service
+check "  nothing new in /opt"               bash -c '! ls -d /opt/minecraft-java-2 /opt/.redstonepanel-import-* 2>/dev/null'
+check "  no staging left behind"            bash -c '! ls -d /srv/rp-disk2/minecraft/.redstonepanel-* 2>/dev/null'
+check "  the old server is still listed"    bash -c "curl -s -b $L $B/api/servers | grep -q '\"minecraft-java\"'"
+check "  the file manager works there"      bash -c "curl -s -b $L '$B/api/servers/minecraft-java-2/files' | grep -q 'server.jar'"
+c=$(code -b $L -X POST $B/api/servers/minecraft-java-2/backups -H "$O")
+[ "$c" = 200 ] && ok "  Back up now works there" || bad "  backup in the new folder ($c $(cat /tmp/body))"
+c=$(code -b $L -X DELETE -H "$O" "$B/api/servers/minecraft-java-2?keep_world=true")
+[ "$c" = 200 ] && test -d /srv/rp-disk2/minecraft/minecraft-java-2 && ok "  uninstall (keep world) keeps the folder" || bad "  uninstall keep ($c)"
+check "  it is under Removed servers"       bash -c "curl -s -b $L $B/api/servers/removed | grep -q '/srv/rp-disk2/minecraft/minecraft-java-2'"
+c=$(code -b $L -X PUT $SF -H "$J" -H "$O" -d '{"folder":""}')
+[ "$c" = 200 ] && [ "$(jget "d['folder']")" = /opt ] && ok "  empty goes back to /opt" || bad "  back to /opt ($c $(cat /tmp/body))"
+check "  the removed server is still found"  bash -c "curl -s -b $L $B/api/servers/removed | grep -q '/srv/rp-disk2/minecraft/minecraft-java-2'"
+c=$(code -b $L -X DELETE -H "$O" $B/api/servers/removed/minecraft-java-2)
+[ "$c" = 200 ] && test ! -e /srv/rp-disk2/minecraft/minecraft-java-2 && ok "  ... and deleting it for good removes it from the second folder" \
+    || bad "  delete removed ($c $(cat /tmp/body))"
+check "  /opt/minecraft-java untouched"     test -f /opt/minecraft-java/server.jar
 # --- New server's Advanced options (1.17.2): refusals need no download, startup flags on the imported server
 c=$(code -b $L -X POST $B/api/servers/deploy -H "$J" -H "$O" -d '{"edition":"java","advanced":{"flags":{"extra":["-XX:OnError=sh"]}}}')
 [ "$c" = 400 ] && grep -q 'runs a command' /tmp/body && ok "advanced: -XX:OnError refused (400)" || bad "advanced OnError ($c $(cat /tmp/body))"

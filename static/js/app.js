@@ -5225,6 +5225,38 @@ const ServerApp = {
 		this.loadSftpSettings(d.enabled ? `SFTP is on, port ${d.port}.` : 'SFTP is off.', true);
 	},
 
+	// --- Panel Settings: where new game servers are kept (1.21.1) ---
+	async loadServersFolder(message, ok, typed) {
+		const box = document.getElementById('set-servers-folder');
+		if (!box) return;
+		const res = await fetch('/api/settings/servers-folder');
+		if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = await res.json(), esc = t => this.escapeHtml(t);
+		const gb = n => n == null ? '' : (n / 1e9 >= 100 ? Math.round(n / 1e9) : (n / 1e9).toFixed(1)) + ' GB';
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const others = d.folders.filter(f => !f.current && f.servers);
+		box.innerHTML = `
+			<div class="flex flex-col sm:flex-row gap-2 mb-1">
+				<input id="set-servers-folder-path" value="${esc(typed != null ? typed : (d.is_default ? '' : d.folder))}" placeholder="${esc(d.default)}" spellcheck="false" autocomplete="off" class="${field} font-mono">
+				<button onclick="ServerApp.saveServersFolder(this)" class="px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold text-sm disabled:opacity-50 whitespace-nowrap">Save folder</button>
+			</div>
+			<p id="set-servers-folder-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-1">${esc(message || '')}</p>
+			<p class="${note} mb-1">New servers are made in <b class="font-mono">${esc(d.folder)}</b>${d.folders[0] && d.folders[0].free != null ? ` (${gb(d.folders[0].free)} free of ${gb(d.folders[0].total)})` : ''}. Give the full path of a folder on the disk you want them on; leave it empty for the usual place, <span class="font-mono">${esc(d.default)}</span>. The folder is made if it isn't there.</p>
+			<p class="${note}">Servers you already have stay where they are and keep working.${others.length ? ' Still in use: ' + others.map(f => `<span class="font-mono">${esc(f.folder)}</span> (${f.servers} server${f.servers === 1 ? '' : 's'})`).join(', ') + '.' : ''}</p>`;
+	},
+
+	async saveServersFolder(button) {
+		button.disabled = true;
+		const typed = document.getElementById('set-servers-folder-path').value.trim();
+		const res = await fetch('/api/settings/servers-folder', {
+			method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: typed })
+		});
+		if (!res.ok) return this.loadServersFolder(await this.apiError(res), false, typed);
+		const d = await res.json();
+		this.loadServersFolder(`New servers will be made in ${d.folder}.`, true);
+	},
+
 	// --- Panel Settings: connection (HTTP/HTTPS) and sign-in (admins only) ---
 	async openPanelSettings(section) {
 		const overlay = document.getElementById('settings-overlay');
@@ -5269,6 +5301,9 @@ const ServerApp = {
 			<h4 id="set-section-storage" class="font-bold text-gray-900 dark:text-white mb-2">Backup storage</h4>
 			<div id="set-storage" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 			</div>
+
+			<h4 id="set-section-servers-folder" class="font-bold text-gray-900 dark:text-white mb-2">Servers folder</h4>
+			<div id="set-servers-folder" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
 			<div class="${this.notYet('sftp') ? 'hidden' : ''}">
 			<h4 id="set-section-sftp" class="font-bold text-gray-900 dark:text-white mb-2">SFTP</h4>
@@ -5340,6 +5375,7 @@ const ServerApp = {
 		this.loadStorageSettings();
 		this.loadSetupSettings();
 		this.loadSftpSettings();
+		this.loadServersFolder();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
 	},

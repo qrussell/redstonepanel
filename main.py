@@ -507,6 +507,52 @@ def set_sftp_api(req: SftpSettings, request: Request):
     sftp.apply(s, old, actor=request.state.user["username"])
     return _sftp_view(request)
 
+# --- Panel Settings: where new game servers are kept (1.21.1; admins only) ---
+def _folder_view(folder, current):
+    servers = sum(1 for n in (os.listdir(folder) if os.path.isdir(folder) else [])
+                  if n.startswith("minecraft-") and os.path.isdir(os.path.join(folder, n)))
+    there = folder
+    while there and not os.path.isdir(there):
+        there = os.path.dirname(there) if os.path.dirname(there) != there else ""
+    try:
+        usage = shutil.disk_usage(there) if there else None
+    except OSError:
+        usage = None
+    return {"folder": folder, "current": folder == current, "servers": servers,
+            "free": usage.free if usage else None, "total": usage.total if usage else None}
+
+def _servers_folder_view():
+    current = manager.servers_root()
+    return {"folder": current, "default": manager.SERVERS_ROOT, "is_default": current == manager.SERVERS_ROOT,
+            "folders": [_folder_view(r, current) for r in manager.server_roots()]}
+
+@app.get("/api/settings/servers-folder")
+def get_servers_folder_api():
+    return _servers_folder_view()
+
+class ServersFolder(BaseModel):
+    folder: str = ""
+
+@app.put("/api/settings/servers-folder")
+def set_servers_folder_api(req: ServersFolder, request: Request):
+    old = panel_settings.load()
+    before = manager.servers_root()
+    try:
+        s = panel_settings.validate(dict(old, servers_folder=req.folder,
+                                         servers_folders_used=list(old["servers_folders_used"]) + [before]))
+    except panel_settings.SettingsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    after = s["servers_folder"] or manager.SERVERS_ROOT
+    if after != before:
+        from core.platform import system
+        error = system.prepare_servers_folder(after)
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        panel_settings.save(s)
+        manager.write_log(f"[SETTINGS] {request.state.user['username']} changed where new servers are kept: "
+                          f"{after} (was {before}). Servers already made stay where they are.")
+    return _servers_folder_view()
+
 # --- Panel Settings: connection (HTTP/HTTPS) and sign-in mode (admins only) ---
 def _restart_soon():
     """systemd (Restart=always) starts the panel again with the new settings."""
@@ -533,7 +579,9 @@ def get_settings_api(request: Request):
 def update_settings_api(request: Request, new: dict = Body(...)):
     old = panel_settings.load()
     # SFTP has its own switch (PUT /api/settings/sftp); this form never changes it
-    new = dict(new, sftp_enabled=old["sftp_enabled"], sftp_port=old["sftp_port"])
+    # ... and neither does it move the servers folder (PUT /api/settings/servers-folder)
+    new = dict(new, sftp_enabled=old["sftp_enabled"], sftp_port=old["sftp_port"],
+               servers_folder=old["servers_folder"], servers_folders_used=old["servers_folders_used"])
     try:
         s = panel_settings.validate(new)
     except panel_settings.SettingsError as e:
