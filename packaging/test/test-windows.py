@@ -296,8 +296,10 @@ def main():
           wait("journal", lambda: "Done (" in open(journal, encoding="utf-8", errors="replace").read(), 120), journal)
     code, out = ps(f"(Get-NetFirewallRule -DisplayName 'RedstonePanel {port}/tcp').Group")
     check("Defender Firewall has a rule for its port, in the RedstonePanel group", "RedstonePanel" in out, out[-300:])
-    code, out = ps(f"Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | ForEach-Object {{ (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User }}")
-    check("java.exe runs as that account, not as the system", name.lower() in out.lower() and "SYSTEM" not in out.upper().split(), out[-300:])
+    java_home = os.path.join(home, "java").replace("'", "''")
+    code, out = ps(f"Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | Where-Object {{ $_.ExecutablePath -like '{java_home}\\*' }} | "
+                   f"ForEach-Object {{ (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User }}")
+    check("the panel's java.exe runs as that account, not as the system", name.lower() in out.lower() and "SYSTEM" not in out.upper().split(), out[-300:])
 
     # ------------------------------------------------------------------ console
     section("Console and commands")
@@ -422,6 +424,8 @@ def main():
     check("Restart works", code == 200 and wait("listen", listening, 300, every=5), f"{code} {r}")
     p.put("/api/settings/notifications", {"clear": True})
 
+    servers_folder(p, args, body)
+
     # ------------------------------------------------------------------ the command line
     section("The redstonepanel command")
     code, out = run(["cmd", "/c", "redstonepanel", "status"])
@@ -469,6 +473,66 @@ def after_upgrade(p, args):
     check("its backups are still there", code == 200 and len(ov.get("backups", [])) >= 1, f"{code} {str(ov)[:200]}")
     args.keep = False
     return finish(p, args, name, port)
+
+
+def servers_folder(p, args, body):
+    """Panel Settings > Servers folder: new servers go to a folder of the owner's choosing."""
+    section("Servers folder")
+    home = args.home
+    code, view = p.get("/api/settings/servers-folder")
+    usual = os.path.join(home, "servers")
+    check("the usual place is the servers folder in the panel's home", code == 200 and view.get("is_default")
+          and os.path.normcase(view.get("folder", "")) == os.path.normcase(usual), f"{code} {view}")
+    drive = os.path.splitdrive(os.path.abspath(home))[0]
+    for bad, why in ((drive + "\\rp test\\servers", "a space"), (drive, "a whole drive"), ("servers", "no drive letter"),
+                     ("\\\\nas\\share\\servers", "a network share"),
+                     (os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "rp-servers"), "inside Windows"),
+                     (os.path.join(home, "data", "servers"), "inside the panel's data"), ("Q:\\servers", "a drive that isn't there")):
+        code, r = p.put("/api/settings/servers-folder", {"folder": bad})
+        check(f"a folder with {why} is refused, with a reason", code == 400 and bool(r.get("detail")), f"{bad}: {code} {r}")
+    top = drive + "\\rp-test-disk2"
+    other = top + "\\Minecraft"
+    code, view = p.put("/api/settings/servers-folder", {"folder": other})
+    if not check("another folder is accepted and made", code == 200 and os.path.isdir(other)
+                 and os.path.normcase(view.get("folder", "")) == os.path.normcase(other), f"{code} {view}"):
+        return
+    code, out = run(["icacls", other])
+    check("the new folder is left to administrators and the system", "BUILTIN\\Administrators" in out and "Everyone" not in out
+          and "Authenticated Users" not in out, out[:500])
+    name = None
+    try:
+        code, dep = p.post("/api/servers/deploy", body, timeout=900)
+        name = (dep or {}).get("name")
+        d = os.path.join(other, name or "?")
+        check("a new server is made in that folder", code == 200 and os.path.isfile(os.path.join(d, "server.jar")), f"{code} {dep}")
+        check("... and not in the usual place", bool(name) and not os.path.exists(os.path.join(usual, name)))
+        if not name:
+            return
+        check("its service runs", wait("svc", lambda: service_state(name) == "RUNNING", 60), str(service_state(name)))
+        code, out = run(["icacls", d])
+        check("its own account can change its folder", f"NT SERVICE\\{name}".lower() in out.lower(), out[:500])
+        log = os.path.join(d, "logs", "latest.log")
+        check("the server writes there (logs\\latest.log)", wait("log", lambda: os.path.isfile(log), 180, every=3), log)
+        code, lst = p.get("/api/servers")
+        names = [s.get("name") for s in (lst if isinstance(lst, list) else lst.get("servers", []))]
+        check("the panel lists servers from both folders", name in names and len(names) >= 2, str(names))
+        code, view = p.put("/api/settings/servers-folder", {"folder": ""})
+        check("back to the usual place; the other folder is still looked in", code == 200 and view.get("is_default")
+              and any(os.path.normcase(f.get("folder", "")) == os.path.normcase(other) for f in view.get("folders", [])), f"{code} {view}")
+        code, lst = p.get("/api/servers")
+        names = [s.get("name") for s in (lst if isinstance(lst, list) else lst.get("servers", []))]
+        check("... so its server is still listed", name in names, str(names))
+    finally:
+        if name:
+            code, r = p.call("DELETE", f"/api/servers/{name}?keep_world=false", timeout=300)
+            if code >= 400:
+                code, r = p.call("DELETE", f"/api/servers/{name}", {"keep_world": False}, timeout=300)
+            check("removing it deletes its folder there", code == 200 and wait("gone", lambda: not os.path.exists(os.path.join(other, name)), 60),
+                  f"{code} {r}")
+            check("... and its Windows service", wait("gone", lambda: service_state(name) is None, 60), str(service_state(name)))
+        p.put("/api/settings/servers-folder", {"folder": ""})
+        if not args.keep:
+            run(["cmd", "/c", "rmdir", "/s", "/q", top])
 
 
 def finish(p, args, name, port=None):

@@ -186,6 +186,47 @@ class Notifications(unittest.TestCase):
         self.assertNotIn("ValueQueries", xml)
 
 
+class ServersFolder(unittest.TestCase):
+    """What can be told from the path alone; the drive itself is looked at on Windows."""
+    def setUp(self):
+        from core.platform.windows import system
+        self.system = system
+
+    def test_paths_windows_would_misread_are_refused_with_a_reason(self):
+        for bad in ("D:\\My Servers", "D:", "D:\\", "servers", "\\\\nas\\share\\mc", "D:\\mc\\..\\x", "D:\\mc;x",
+                    "/srv/minecraft", "D:\\" + "a" * 120):
+            clean, error = self.system.check_servers_folder(bad)
+            self.assertIsNone(clean, bad)
+            self.assertTrue(error, bad)
+
+    def test_windows_own_folders_and_the_panels_are_refused(self):
+        with mock.patch.object(self.system, "_drive_type", return_value=3), \
+             mock.patch.object(self.system, "filesystem", return_value={"fstype": "NTFS"}), \
+             mock.patch.object(self.system.os.path, "isdir", return_value=True), \
+             mock.patch.object(self.system.os.path, "normcase", lambda p: p.lower()), \
+             mock.patch.object(self.system.os.path, "abspath", lambda p: p), \
+             mock.patch.object(self.system.os, "sep", "\\"), \
+             mock.patch.object(self.system.os.path, "exists", return_value=False), \
+             mock.patch.object(self.system.os.path, "lexists", return_value=False):
+            for bad in ("C:\\Windows\\servers", "c:\\users\\quent\\servers", "C:\\Users"):
+                clean, error = self.system.check_servers_folder(bad)
+                self.assertIsNone(clean, bad)
+                self.assertIn("belongs to Windows", error)
+            self.assertEqual(self.system.check_servers_folder("d:/Minecraft/servers"), ("D:\\Minecraft\\servers", ""))
+
+    def test_a_drive_that_cannot_hold_servers_is_refused(self):
+        with mock.patch.object(self.system.os.path, "isdir", return_value=True), \
+             mock.patch.object(self.system.os.path, "exists", return_value=False), \
+             mock.patch.object(self.system.os.path, "lexists", return_value=False):
+            with mock.patch.object(self.system, "_drive_type", return_value=2):
+                self.assertIn("removable", self.system.check_servers_folder("E:\\servers")[1])
+            with mock.patch.object(self.system, "_drive_type", return_value=1):
+                self.assertIn("no drive", self.system.check_servers_folder("Q:\\servers")[1])
+            with mock.patch.object(self.system, "_drive_type", return_value=3), \
+                 mock.patch.object(self.system, "filesystem", return_value={"fstype": "exFAT"}):
+                self.assertIn("NTFS", self.system.check_servers_folder("E:\\servers")[1])
+
+
 class OtherPeoplesServices(unittest.TestCase):
     """A PC may already have services called minecraft-java that something else made."""
 

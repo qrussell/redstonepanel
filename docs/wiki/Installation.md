@@ -197,6 +197,14 @@ that folder fixes it). The path also can't contain the words "java" or "bedrock"
 
 In a cluster, each machine has its own servers folder, set in that machine's own panel.
 
+**On Windows (preview)** the same setting takes a folder with its drive letter, for example
+`D:\Minecraft\servers`, so servers can live on a second disk while the panel stays on `C:`.
+Leave it empty for the usual place, `C:\ProgramData\RedstonePanel\servers`. The panel refuses
+a whole drive (`D:`), paths with spaces, network shares, removable drives, drives not formatted
+as NTFS, and folders inside `C:\Windows`, `C:\Program Files` or `C:\Users`. A folder the panel
+makes is open to administrators only; each server's own account is given just its own folder
+inside it.
+
 ## Reaching the panel from outside your network
 
 Don't forward port 8080 to the internet. Use a VPN (WireGuard, Tailscale), or put a reverse

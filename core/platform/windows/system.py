@@ -9,6 +9,7 @@ granting that server's account rights on it.
 import ctypes
 import json
 import os
+import re
 import shutil
 import socket
 import stat
@@ -111,12 +112,25 @@ def _server_for(path):
     if best:
         return best[0]
     # A folder being prepared for a server that has no unit yet: the panel names both alike
-    root = os.path.normcase(os.path.abspath(paths.SERVERS_ROOT)) + os.sep
-    if real.startswith(root):
-        first = os.path.abspath(path)[len(root):].split(os.sep)[0]
-        if first.startswith(GAME_ACCOUNT):
-            return first
+    for servers in _servers_folders():
+        root = os.path.normcase(os.path.abspath(servers)) + os.sep
+        if real.startswith(root):
+            first = os.path.abspath(path)[len(root):].split(os.sep)[0]
+            if first.startswith(GAME_ACCOUNT):
+                return first
     return None
+
+
+def _servers_folders():
+    """The usual servers folder and every one chosen in Panel Settings."""
+    found = [paths.SERVERS_ROOT]
+    try:
+        from core import settings
+        s = settings.load()
+        found += [f for f in [s.get("servers_folder")] + list(s.get("servers_folders_used") or []) if f]
+    except Exception:
+        pass
+    return found
 
 
 def _grant(path):
@@ -465,6 +479,93 @@ def process_alive(pid):
 def secure_folder(path):
     """Leaves a folder to administrators and the system (what mode 0700 owned by root is)."""
     return _win.lock_down(path).returncode
+
+
+_FOLDER_RE = re.compile(r"[A-Za-z]:(\\[A-Za-z0-9._-]+)+")
+_USERS_SID = "S-1-5-32-545"
+
+
+def _not_for_servers():
+    """Folders that are Windows' own or the panel's own."""
+    env = os.environ
+    found = [env.get("SystemRoot") or "C:\\Windows", env.get("ProgramFiles") or "C:\\Program Files",
+             env.get("ProgramFiles(x86)") or "C:\\Program Files (x86)", "C:\\Users",
+             paths.DATA_DIR, paths.BACKUP_ROOT, os.path.dirname(paths.LOG_FILE), paths.UNIT_DIR,
+             paths.JOURNAL_DIR, paths.JVM_ROOT, paths.RUN_DIR]
+    return [os.path.normcase(os.path.abspath(f)) for f in found]
+
+
+def _drive_type(mount):
+    try:
+        return _win.dll("kernel32").GetDriveTypeW(mount)
+    except (OSError, AttributeError):
+        return None
+
+
+def check_servers_folder(folder):
+    """(the folder as it will be stored, "") when game servers can be kept there, else
+    (None, why not). Nothing is created: prepare_servers_folder() does that."""
+    folder = str(folder).replace("/", "\\").rstrip("\\")
+    example = "for example D:\\Minecraft\\servers"
+    if folder.startswith("\\\\"):
+        return None, f"Servers can't be kept on a network share. Give a folder on a disk in this computer, {example}."
+    if " " in folder:
+        return None, f"The folder's path can't have a space in it. Give one such as D:\\Minecraft\\servers."
+    if re.fullmatch(r"[A-Za-z]:", folder):
+        return None, f"Give a folder, not a whole drive, {example}."
+    if not _FOLDER_RE.fullmatch(folder) or ".." in folder.split("\\"):
+        return None, (f"Give the full path of a folder with its drive letter, {example}. Its name can only have "
+                      f"letters, digits, dots, dashes and underscores.")
+    if len(folder) > 100:
+        return None, "Choose a shorter folder (100 characters at most)."
+    folder = folder[0].upper() + folder[1:]
+    if os.path.exists(folder):
+        real = os.path.realpath(folder)
+        if _FOLDER_RE.fullmatch(real):                 # as Windows spells it; a link's target if it is one
+            folder = real[0].upper() + real[1:]
+    low = os.path.normcase(folder)
+    if low == os.path.normcase(os.path.abspath(paths.SERVERS_ROOT)):
+        return paths.SERVERS_ROOT, ""
+    for bad in _not_for_servers():
+        if low == bad or low.startswith(bad + os.sep):
+            return None, f"{folder} belongs to Windows or to the panel itself; choose a folder somewhere else, {example}."
+    if os.path.lexists(folder) and not os.path.isdir(folder):
+        return None, f"{folder} is a file, not a folder."
+    mount = folder[:2] + "\\"
+    kind = _drive_type(mount)
+    if kind in (0, 1) or not os.path.isdir(mount):
+        return None, f"There is no drive {folder[:2]} in this computer."
+    if kind is not None and kind != 3:                 # 3: a fixed disk
+        return None, (f"Drive {folder[:2]} is a removable, network or optical drive. Servers start with Windows, "
+                      f"so they need a disk that is always there.")
+    try:
+        fstype = filesystem(mount).get("fstype")
+    except OSError as e:
+        return None, f"Can't look at drive {folder[:2]}: {e.strerror or e}."
+    if fstype and fstype.upper() not in ("NTFS", "REFS"):
+        return None, (f"Drive {folder[:2]} is formatted as {fstype}, which can't keep each server's files to its own "
+                      f"account. Choose a drive formatted as NTFS.")
+    return folder, ""
+
+
+def prepare_servers_folder(folder):
+    """Makes the folder (and those above it). A folder the panel makes, or finds empty, is left
+    to administrators and the system, as the usual one is; each server's account is given its
+    own folder inside when the server is made. Returns "" or why it couldn't."""
+    try:
+        new = not os.path.isdir(folder) or not os.listdir(folder)
+        os.makedirs(folder, exist_ok=True)
+    except OSError as e:
+        return f"Couldn't make {folder}: {e.strerror or e}."
+    if new:
+        r = _win.lock_down(folder)
+        if r.returncode != 0:
+            return f"Couldn't set who may open {folder}: {(r.stderr or r.stdout).strip()[:200]}"
+    # This folder only: each server's account passes through to its own folder
+    r = _win.quiet(["icacls", folder, "/grant", f"*{_USERS_SID}:(RX)", "/C", "/Q"], timeout=60)
+    if r.returncode != 0:
+        return f"Couldn't set who may open {folder}: {(r.stderr or r.stdout).strip()[:200]}"
+    return ""
 
 
 def fs():

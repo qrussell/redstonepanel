@@ -95,6 +95,15 @@ checking what was opened is what was asked for. Symbolic links and junctions sho
 and are never entered. Names Windows would read as something else are refused: devices
 (`CON`, `NUL`, `COM1`, also as `con.txt`), `name:stream`, and names ending in a dot or space.
 
+### Servers folder
+
+The **Servers folder** setting (1.21.1) works here too: `system.check_servers_folder` takes a
+path with a drive letter on a fixed NTFS or ReFS disk (no spaces, no whole drive, no share, not
+Windows' or the panel's own folders) and `system.prepare_servers_folder` makes it and leaves a
+new or empty folder to administrators and the system, as the installer does for the usual one.
+Each server's account still gets only its own folder, when its service is made. The install
+test sets another folder, makes a server there, checks its rights and removes it.
+
 ## Not in the preview
 
 Refused with one sentence by the API (`WINDOWS_NOT_YET` in `main.py`) and hidden in the page
