@@ -18,10 +18,11 @@ import urllib.request
 
 from core import settings
 from core.settings import DATA_DIR
+from core.platform import console, paths, services, CommandError
 
 CONFIG_FILE = os.path.join(DATA_DIR, "notifications.json")
 STATE_FILE = os.path.join(DATA_DIR, "notify-state.json")
-UNIT_DIR = "/etc/systemd/system"
+UNIT_DIR = paths.UNIT_DIR
 
 EVENTS = {
     "crashed": "Server crashed",
@@ -210,16 +211,12 @@ def stop_requested(server):
     job queued while ExecStopPost runs; `systemctl stop/restart` (and the panel) always does.
     A start job doesn't count (1.17.1): a server that dies within a second of starting (the
     wrong Java, say) exits while its start job is still waiting for ExecStartPost."""
-    import subprocess
     try:
-        r = subprocess.run(["systemctl", "list-jobs", "--no-legend", "--plain", f"{server}.service"],
-                           capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.SubprocessError):
+        jobs = services.queued_jobs(server, timeout=5)
+    except CommandError:
         return False
-    for line in r.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 3 and parts[1] == f"{server}.service" and parts[2] != "start":
-            return True
+    if any(job != "start" for job in jobs):
+        return True
     return False
 
 def describe_stop(env, requested=False):
@@ -281,18 +278,15 @@ def stop_bedrock(server, mainpid=None, timeout=BEDROCK_STOP_WAIT, sleep=time.sle
     (it saves the world and logs "Quit correctly") and wait for it to exit; systemd then
     stops whatever is left. Java saves on SIGTERM by itself, so nothing is done for it.
     Returns "saved", "timeout", "not-running" or None (not a panel Bedrock server)."""
-    import subprocess
     if not _is_panel_server(server):
         return None
     d = bedrock_dir(server)
     if not d:
         return None
-    run = run or subprocess.run
     try:
-        r = run(["sudo", "-u", "minecraft", "screen", "-S", server, "-p", "0", "-X", "stuff", "stop\r"],
-                capture_output=True, text=True, timeout=10)
+        r = console.send(server, "stop", timeout=10, run=run, find=False)
         sent = r.returncode == 0
-    except (OSError, subprocess.SubprocessError):
+    except CommandError:
         sent = False
     if not sent:
         return "not-running"           # no screen session: the game isn't there to save
@@ -311,10 +305,7 @@ def revive(server):
 
     Bedrock runs under screen, which exits 0 when the game dies, so systemd sees a clean exit
     and doesn't restart it."""
-    import subprocess
-    subprocess.run(["systemd-run", "--quiet", "--on-active=20", "--timer-property=AccuracySec=1s",
-                    "/usr/bin/systemctl", "start", f"{server}.service"],
-                   capture_output=True, text=True, timeout=10)
+    services.start_later(server, 20, timeout=10)
 
 def unit_event(phase, server, env=None):
     if not _is_panel_server(server):

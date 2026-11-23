@@ -31,7 +31,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -41,6 +40,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from core import archive, files, javaservers, manager, modrinth, properties
 from core.sources import SourceError, download
+from core.platform import paths, services, system
 
 PACK_FILE = ".redstonepanel-modpack.json"
 INDEX = "modrinth.index.json"
@@ -565,7 +565,7 @@ def _pack_heap():
     """The heap a modpack server gets when none is chosen: 4 GB when the machine has room for it
     (1 GB is kept for the system), else the most that fits in whole GB; None leaves the default."""
     try:
-        with open("/proc/meminfo") as f:
+        with open(os.path.join(paths.PROC, "meminfo")) as f:
             total = int(re.search(r"^MemTotal:\s+([0-9]+) kB", f.read(), re.M).group(1)) * 1024
     except (OSError, AttributeError, ValueError):
         return None
@@ -642,11 +642,10 @@ def _copy_in(staging, d, skip=()):
             os.remove(os.path.join(staging, *rel.split("/")))
         except OSError:
             pass
-    if os.geteuid() == 0:
-        subprocess.run(["chown", "-R", "minecraft:minecraft", staging], capture_output=True)
+    if system.is_admin():
+        system.take_for_game_account(staging)
         os.chmod(staging, 0o755)
-    r = subprocess.run(_as_minecraft(["cp", "-r", "--remove-destination", "--no-dereference", "--",
-                                      staging + "/.", d + "/"]), capture_output=True, text=True)
+    r = system.copy_into(staging, d, wrap=_as_minecraft)
     if r.returncode != 0:
         raise PackError(f"Couldn't copy the pack's files into the server folder: {r.stderr.strip()[-300:]}")
 
@@ -774,7 +773,7 @@ def update(server, source, upload_path=None, upload_name=None, options=None, bac
             pre = backups.run_backup(server, "pre-change")["file"] if backup else None
             was_running = backups._is_active(server)
             if was_running:
-                manager.run_and_log(["systemctl", "stop", f"{server}.service"])
+                services.stop(server)
             try:
                 # The loader first: the pack's mods are built for it
                 build = _loader_build(plan)
@@ -793,17 +792,17 @@ def update(server, source, upload_path=None, upload_name=None, options=None, bac
                     if rel.lower() not in keep and not protected(rel):
                         gone.append(rel)
                 for i in range(0, len(gone), 200):
-                    subprocess.run(_as_minecraft(["rm", "-f", "--"] + gone[i:i + 200]), cwd=d, capture_output=True)
+                    system.remove_files(d, gone[i:i + 200], wrap=_as_minecraft)
                 # The owner's own settings and any world stay as they are
                 skip = [rel for rel in staged["overrides"]
                         if rel in KEEP_ON_UPDATE or _is_world(d, rel.split("/", 1)[0])]
                 _copy_in(staging, d, skip)
                 # An uploaded newer version of a Modrinth pack keeps the link to its project
                 _write_record(d, plan, staged, origin or {k: old.get(k) for k in ("project", "slug", "url")})
-                manager.run_and_log(["chown", "-R", "minecraft:minecraft", d])
+                system.give_to_game_account(d)
             finally:
                 if was_running:
-                    manager.run_and_log(["systemctl", "start", f"{server}.service"])
+                    services.start(server)
         finally:
             shutil.rmtree(staging, ignore_errors=True)
     notes = _notes(plan)

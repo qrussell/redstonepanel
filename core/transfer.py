@@ -27,7 +27,6 @@ import platform
 import re
 import shutil
 import stat
-import subprocess
 import tarfile
 import threading
 import time
@@ -35,6 +34,7 @@ import uuid
 
 from core import archive, backups, manager, restarts
 from core.settings import DATA_DIR
+from core.platform import services
 
 TRANSFER_DIR = os.path.join(DATA_DIR, "transfers")
 ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -327,7 +327,7 @@ def export(server, stop, precopy=False, base=None):
             raise TransferError(f"{e} Try again when it's done.", 409)
         if stop and rec["was_running"]:
             manager.write_log(f"[MOVE] Stopping {server} to move it.")
-            manager.run_and_log(["systemctl", "stop", f"{server}.service"])
+            services.stop(server)
         partial = archive_path(tid) + ".partial"
         consistent, what = True, "a move" if stop else "a copy"
         with tarfile.open(partial, "w:gz", compresslevel=1) as tar:
@@ -371,7 +371,7 @@ def _finish_failed(rec):
     if rec.get("stop") and rec.get("was_running"):
         _drop(rec["id"])                        # so is_moving() lets it start
         manager.write_log(f"[MOVE] The move of {rec['server']} didn't happen; starting it here again.")
-        manager.run_and_log(["systemctl", "start", f"{rec['server']}.service"])
+        services.start(rec["server"])
 
 
 def open_archive(tid):
@@ -549,14 +549,12 @@ def _stays_running(name):
     deadline = time.time() + START_CHECK
     state = ""
     while time.time() < deadline:
-        state = subprocess.run(["systemctl", "is-active", f"{name}.service"],
-                               capture_output=True, text=True).stdout.strip()
+        state = services.state(name)
         if state == "failed":
             break
         time.sleep(2)
     if state != "active":
-        tail = subprocess.run(["journalctl", "-u", f"{name}.service", "-n", "8", "--no-pager", "-o", "cat"],
-                              capture_output=True, text=True).stdout.strip()
+        tail = services.log(services.unit(name), lines=8).strip()
         raise TransferError(f"{name} didn't keep running here ({state or 'unknown'})." + (f" Last lines: {tail}" if tail else ""))
 
 

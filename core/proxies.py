@@ -9,9 +9,9 @@ units, so it finds them by what they run, whatever they are named.
 import glob
 import os
 import shlex
-import subprocess
+from core.platform import paths, services, system
 
-UNIT_DIR = "/etc/systemd/system"
+UNIT_DIR = paths.UNIT_DIR
 PHANTOM_LAN_PORT = 19132          # Phantom binds this in addition to -bind_port
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "0.0.0.0", "::1", "[::1]", ""}
 
@@ -91,14 +91,12 @@ def related_to(p, server_port, local_ips=()):
 
 def _unit_state(unit):
     def q(*args):
-        r = subprocess.run(["systemctl", *args, unit], capture_output=True, text=True)
-        return r.stdout.strip() or "unknown"
+        return services.unit_state(unit, *args) or "unknown"
     return q("is-active"), q("is-enabled")
 
 
 def _local_ips():
-    r = subprocess.run(["hostname", "-I"], capture_output=True, text=True)
-    return tuple(r.stdout.split())
+    return tuple(system.addresses())
 
 
 def find_phantoms(unit_dir=UNIT_DIR, state=_unit_state):

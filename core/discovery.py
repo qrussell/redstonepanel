@@ -13,11 +13,11 @@ import ipaddress
 import json
 import socket
 import ssl
-import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
+from core.platform import system, CommandError
 
 PORTS = (("https", 8443), ("http", 8080))
 MAX_NETWORKS = 4
@@ -34,11 +34,10 @@ class DiscoveryError(ValueError):
 
 def _ip_json():
     try:
-        out = subprocess.run(["ip", "-j", "-4", "addr", "show"], capture_output=True, text=True, timeout=10)
-        data = json.loads(out.stdout or "[]")
+        data = json.loads(system.interfaces_json(timeout=10) or "[]")
         if data:
             return data
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except (ValueError, *CommandError):
         pass
     # No iproute2 (a minimal system): the address used for the default route, as a /24
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -55,7 +54,7 @@ def networks(ip_json=None):
     """([networks to search], {this machine's addresses}) from `ip -j -4 addr`."""
     try:
         data = _ip_json() if ip_json is None else ip_json
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except (ValueError, *CommandError):
         data = []
     nets, own = [], set()
     for iface in data if isinstance(data, list) else []:

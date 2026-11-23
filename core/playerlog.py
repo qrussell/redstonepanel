@@ -19,12 +19,12 @@ import gzip
 import json
 import os
 import re
-import subprocess
 import threading
 import time
 
 from core import manager
 from core.settings import DATA_DIR
+from core.platform import services, TimeoutExpired
 
 LOG_DIR = os.path.join(DATA_DIR, "players")
 STATE_FILE = os.path.join(LOG_DIR, "state.json")
@@ -129,12 +129,9 @@ class Parser:
 # Reading the sources: each gives [(ts, message)]
 # ---------------------------------------------------------------------------
 def journal_lines(server, since=None):
-    cmd = ["journalctl", "-u", f"{server}.service", "-o", "short-unix", "--no-pager", "-q"]
-    if since:
-        cmd += ["--since", f"@{int(since)}"]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=60).stdout
-    except (OSError, subprocess.TimeoutExpired):
+        out = services.log(services.unit(server), output="short-unix", quiet=True, since=since, timeout=60)
+    except (OSError, TimeoutExpired):
         return []
     return parse_journal(out)
 

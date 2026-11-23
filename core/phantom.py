@@ -25,9 +25,10 @@ import os
 import platform
 import re
 import shutil
-import subprocess
+import subprocess    # noqa: F401  (unused here since 1.21; tests replace subprocess.run through this module)
 
 from core import manager, proxies
+from core.platform import firewall, paths, services, CommandError
 
 VERSION = "0.5.4"
 RELEASE = f"https://github.com/jhead/phantom/releases/download/v{VERSION}"
@@ -37,7 +38,7 @@ ASSETS = {      # machine -> (release file, sha256)
     "armv7l": ("phantom-linux-arm7", "d04f4522e2dd8b693b7f6d9713f7490f8f6f09fecdfcc7d95adea174bd550db6"),
 }
 HOSTS = {"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
-BIN_DIR = os.environ.get("RP_PHANTOM_DIR") or "/usr/local/lib/redstonepanel/phantom"
+BIN_DIR = paths.PHANTOM_DIR
 UNIT_DIR = proxies.UNIT_DIR
 MARK = "X-RedstonePanel-Server"
 LAN_PORT = proxies.PHANTOM_LAN_PORT
@@ -136,18 +137,17 @@ def _local_ips():
 
 def _systemctl(*args):
     try:
-        return subprocess.run(["systemctl", *args], capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.SubprocessError) as e:
+        return services.systemctl(*args, timeout=30)
+    except CommandError as e:
         raise PhantomError(f"systemctl failed: {e}", 500)
 
 
 def _journal(unit, n=15):
     try:
-        r = subprocess.run(["journalctl", "-u", unit, "-n", str(n), "--no-pager", "-o", "cat"],
-                           capture_output=True, text=True, timeout=15)
-        lines = (ANSI_RE.sub("", l) for l in r.stdout.splitlines())    # Phantom colours its log
+        out = services.log(unit, lines=n, timeout=15)
+        lines = (ANSI_RE.sub("", l) for l in out.splitlines())    # Phantom colours its log
         return [l for l in lines if l.strip()][-n:]
-    except (OSError, subprocess.SubprocessError):
+    except CommandError:
         return []
 
 
@@ -284,11 +284,11 @@ def install(server, actor="admin"):
     binary = ensure_binary()
     with open(_unit_path(unit), "w", encoding="utf-8") as f:
         f.write(_unit_text(server, port, bind_port, binary))
-    manager.run_and_log(["systemctl", "daemon-reload"])
+    services.reload()
     for p, proto in ((LAN_PORT, "udp"), (bind_port, "udp")):
         manager.open_firewall(p, proto)
-    manager.run_and_log(["systemctl", "enable", unit])
-    manager.run_and_log(["systemctl", "restart", unit])
+    services.control(unit, "enable")
+    services.control(unit, "restart")
     what = "Repaired" if existing is not None else "Installed"
     manager.write_log(f"[PHANTOM] {actor}: {what} Phantom for {server} (forwards to port {port}; listens on UDP "
                       f"{LAN_PORT} and {bind_port}).")
@@ -313,7 +313,7 @@ def control(server, unit, action, actor="admin"):
     if action not in ACTIONS:
         raise PhantomError(f"Unknown action '{action}'.")
     _target(server, unit)
-    manager.run_and_log(["systemctl", action, unit])
+    services.control(unit, action)
     manager.write_log(f"[PHANTOM] {actor}: {action} {unit}.")
     return status(server)
 
@@ -335,7 +335,7 @@ def _remove_unit(unit, bind_port=None):
         os.remove(_unit_path(unit))
     except FileNotFoundError:
         pass
-    manager.run_and_log(["systemctl", "daemon-reload"])
+    services.reload()
     _systemctl("reset-failed", unit)
     remaining = _phantoms()
     if bind_port and not any(p["bind_port"] == bind_port for p in remaining):
@@ -345,8 +345,8 @@ def _remove_unit(unit, bind_port=None):
 
 
 def _close(port):
-    if shutil.which("ufw"):
-        manager.run_and_log(["ufw", "delete", "allow", f"{port}/udp"])
+    if firewall.installed():
+        firewall.remove(port, "udp")
         manager._firewall_changed()
 
 

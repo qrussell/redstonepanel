@@ -51,7 +51,6 @@ import os
 import platform
 import shutil
 import signal
-import subprocess
 import tempfile
 import threading
 

@@ -40,6 +40,7 @@ import urllib.error
 import urllib.request
 
 from core.version import panel_version
+from core.platform import packages, paths, system, TimeoutExpired
 
 LOADERS = {"vanilla": "Vanilla", "paper": "Paper", "purpur": "Purpur", "fabric": "Fabric", "quilt": "Quilt",
            "forge": "Forge", "neoforge": "NeoForge"}
@@ -50,7 +51,7 @@ MOD_LOADERS = ("fabric", "quilt", "forge", "neoforge")
 # These come as an installer that's run in the folder, not as a server.jar
 INSTALLER_LOADERS = ("quilt", "forge", "neoforge")
 INFO_FILE = ".redstonepanel-server.json"
-JVM_ROOT = "/usr/lib/jvm"
+JVM_ROOT = paths.JVM_ROOT
 
 MOJANG_MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 PAPER_API = "https://fill.papermc.io/v3/projects/paper"
@@ -120,9 +121,7 @@ def packaged_javas(refresh=False):
             return _packaged["majors"]
         majors = ()
         try:
-            r = subprocess.run(["apt-cache", "pkgnames", "openjdk-"], capture_output=True, text=True,
-                               timeout=30, env=dict(os.environ, LC_ALL="C"))
-            majors = tuple(sorted({int(m.group(1)) for m in map(_JRE_RE.match, r.stdout.split())
+            majors = tuple(sorted({int(m.group(1)) for m in map(_JRE_RE.match, packages.names("openjdk-", timeout=30))
                                    if m and int(m.group(1)) >= 8}))
         except (OSError, subprocess.SubprocessError, ValueError):
             pass
@@ -685,9 +684,7 @@ def sniff_folder(d):
 
 def _as_minecraft(cmd):
     """Installers are other people's code: they run as the minecraft user, never as root."""
-    if os.geteuid() != 0:
-        return cmd
-    return ["runuser", "-u", "minecraft", "--"] + cmd
+    return system.as_game_account(cmd)
 
 
 def _run_installer(d, target, java):
@@ -703,13 +700,12 @@ def _run_installer(d, target, java):
         args = ["--install-server", d]
     else:
         args = ["--installServer", d]
-    if os.geteuid() == 0:
-        subprocess.run(["chown", "-R", "minecraft:minecraft", d], capture_output=True)
+    if system.is_admin():
+        system.take_for_game_account(d)
     env = dict(os.environ, HOME=d)
     try:
-        r = subprocess.run(_as_minecraft([java, "-jar", jar] + args), cwd=d, env=env, capture_output=True,
-                           text=True, errors="replace", timeout=INSTALLER_TIMEOUT)
-    except subprocess.TimeoutExpired:
+        r = system.run_program(_as_minecraft([java, "-jar", jar] + args), cwd=d, env=env, timeout=INSTALLER_TIMEOUT)
+    except TimeoutExpired:
         raise JavaServerError(f"The {LOADERS[loader]} installer didn't finish in "
                               f"{INSTALLER_TIMEOUT // 60} minutes; nothing was changed.")
     except OSError as e:

@@ -37,7 +37,7 @@ stages:
 python:
   stage: check
   script:
-    - python -m py_compile main.py run.py https_redirect.py core/*.py tests/*.py packaging/*.py packaging/screenshots/*.py
+    - python -m py_compile main.py run.py https_redirect.py core/*.py core/platform/*.py core/platform/*/*.py tests/*.py packaging/*.py packaging/screenshots/*.py
     # rsync lets tests/test_backup_targets.py really copy to its stand-in SSH storage
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends rsync >/dev/null
     # fastapi lets tests/test_cluster.py check every API route against the node-token allowlist
@@ -77,7 +77,7 @@ package:
   stage: check
   script:
     # Every core module must be installed by the package
-    - for f in core/*.py; do grep -q "$f" debian/redstonepanel.install || { echo "$f missing from debian/redstonepanel.install"; exit 1; }; done
+    - for f in core/*.py core/platform/*.py core/platform/*/*.py; do grep -q "$f" debian/redstonepanel.install || { echo "$f missing from debian/redstonepanel.install"; exit 1; }; done
     # Shell scripts must parse and keep LF line endings (CRLF breaks them on Linux)
     - for f in packaging/*.sh packaging/test/*.sh packaging/screenshots/*.sh deploy/*.sh packaging/redstonepanel; do bash -n "$f" || exit 1; done
     - sh -n install.sh

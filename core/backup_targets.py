@@ -57,6 +57,7 @@ import xml.etree.ElementTree as ET
 
 from core import backups, manager, notify
 from core.settings import DATA_DIR
+from core.platform import paths, services
 
 CONFIG_FILE = os.path.join(DATA_DIR, "backup-targets.json")
 STATUS_FILE = os.path.join(DATA_DIR, "backup-targets-status.json")
@@ -69,7 +70,7 @@ SSH = "ssh"                     # the commands, replaceable in tests
 RSYNC = "rsync"
 SSH_KEYGEN = "ssh-keygen"
 SYSTEMD_RUN = "systemd-run"
-PANEL_CMD = "/usr/sbin/redstonepanel"
+PANEL_CMD = paths.PANEL_CMD
 
 TYPES = ("ssh", "s3")
 COPY_KINDS = ("scheduled", "manual")
@@ -978,9 +979,8 @@ def start_after_backup(server):
     if not targets_for(server):
         return False
     try:
-        r = subprocess.run([SYSTEMD_RUN, "--no-block", "--quiet", "--collect", f"--unit=redstonepanel-offsite-{server}",
-                            "--property=Nice=10", "--property=IOSchedulingClass=idle",
-                            PANEL_CMD, "offsite-copy", server], capture_output=True, text=True, timeout=30)
+        r = services.run_detached(f"redstonepanel-offsite-{server}", [PANEL_CMD, "offsite-copy", server],
+                                  low_priority=True, no_block=True, timeout=30, program=SYSTEMD_RUN)
         if r.returncode == 0:
             return True
         if "already" in (r.stderr or "") or "exists" in (r.stderr or ""):

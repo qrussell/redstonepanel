@@ -27,16 +27,16 @@ import importlib.util
 import os
 import posixpath
 import socket
-import subprocess
 import threading
 import time
 
 from core import auth, files, grants, manager, sshkeys
 from core import settings as panel_settings
 from core.settings import APP_DIR, DATA_DIR
+from core.platform import paths, services, TimeoutExpired
 
 UNIT = "redstonepanel-sftp.service"
-UNIT_DIR = "/etc/systemd/system"
+UNIT_DIR = paths.UNIT_DIR
 HOST_KEY = os.path.join(DATA_DIR, "sftp_host_key")
 PACKAGE = "python3-paramiko"
 SERVER_PREFIX = "minecraft"
@@ -60,8 +60,8 @@ def available():
 
 def _systemctl(*args):
     try:
-        return subprocess.run(["systemctl", *args], capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.TimeoutExpired):
+        return services.systemctl(*args, timeout=30)
+    except (OSError, TimeoutExpired):
         return None
 
 
@@ -113,7 +113,7 @@ After=network-online.target
 [Service]
 Type=simple
 # Runs as root like the panel: it checks Linux passwords (PAM) and writes files as their owner.
-ExecStart=/usr/bin/python3 {APP_DIR}/run.py sftp-serve
+ExecStart={paths.PYTHON} {APP_DIR}/run.py sftp-serve
 Environment=PYTHONDONTWRITEBYTECODE=1
 NoNewPrivileges=yes
 Restart=on-failure
@@ -127,7 +127,7 @@ WantedBy=multi-user.target
 def apply(new, old=None, actor="the panel"):
     """Makes the service match the settings: writes the unit, starts or stops it, opens or
     closes its port in ufw. Called when the setting changes and when the panel starts."""
-    if not os.path.isdir("/run/systemd/system"):
+    if not services.available():
         return
     path = os.path.join(UNIT_DIR, UNIT)
     port, old_port = new["sftp_port"], (old or {}).get("sftp_port")

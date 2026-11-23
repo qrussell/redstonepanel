@@ -17,14 +17,15 @@ never from request text.
 """
 import os
 import re
-import subprocess
+import subprocess    # noqa: F401  (unused here since 1.21; tests replace subprocess.run through this module)
 import threading
 import time
 
 from core import javaservers, manager
+from core.platform import packages, paths, services, CommandError
 
 PACKAGE_RE = re.compile(r"^openjdk-([0-9]+)-jre-headless$")
-APT_ENV = dict(os.environ, DEBIAN_FRONTEND="noninteractive", LC_ALL="C", LANG="C")
+APT_ENV = packages.ENV
 APT_OPTS = ["-q", "-o", "DPkg::Lock::Timeout=300", "-o", "Dpkg::Use-Pty=0"]
 APT_TIMEOUT = 1800
 MAX_LINES = 300
@@ -58,9 +59,8 @@ def package_for(major):
 def owner(path):
     """The package that installed a file (None if dpkg doesn't know it)."""
     try:
-        r = subprocess.run(["dpkg-query", "-S", os.path.realpath(path)], capture_output=True, text=True,
-                           timeout=20, env=APT_ENV)
-    except (OSError, subprocess.SubprocessError):
+        r = packages.owner_output(os.path.realpath(path), timeout=20, env=APT_ENV)
+    except CommandError:
         return None
     if r.returncode != 0:
         return None
@@ -72,19 +72,18 @@ def owner(path):
 def candidate(package):
     """The version apt would install (None when the package sources don't have it)."""
     try:
-        r = subprocess.run(["apt-cache", "policy", package], capture_output=True, text=True,
-                           timeout=30, env=APT_ENV)
-    except (OSError, subprocess.SubprocessError):
+        out = packages.policy(package, timeout=30, env=APT_ENV)
+    except CommandError:
         return None
-    m = re.search(r"^\s*Candidate:\s*(\S+)", r.stdout, re.M)
+    m = re.search(r"^\s*Candidate:\s*(\S+)", out, re.M)
     return m.group(1) if m and m.group(1) != "(none)" else None
 
 
 def _default_major():
     """The Java /usr/bin/java points at (update-alternatives), if any."""
-    if not os.path.exists("/usr/bin/java"):
+    if not os.path.exists(paths.DEFAULT_JAVA):
         return None
-    return javaservers.java_major_of("/usr/bin/java")
+    return javaservers.java_major_of(paths.DEFAULT_JAVA)
 
 
 def server_usage(servers=None):
@@ -187,10 +186,10 @@ def _line(text):
 
 def _apt(args):
     """Runs apt-get, keeping its output on the job. Returns the exit code."""
-    cmd = ["apt-get", *APT_OPTS, *args]
+    cmd = packages.manager_command(APT_OPTS, args)
     _line("$ " + " ".join(cmd))
     try:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=APT_ENV)
+        p = packages.start(cmd, env=APT_ENV)
     except OSError as e:
         raise RuntimeJobError(f"Couldn't run apt-get: {e.strerror or e}")
     started = time.time()
@@ -264,15 +263,14 @@ def rebind_waiting():
         changed.append({"name": u["name"], "java": best})
         if _systemctl("is-enabled", u["name"]) == "enabled" and _systemctl("is-active", u["name"]) != "active":
             _systemctl("reset-failed", u["name"])
-            manager.run_and_log(["systemctl", "restart", f"{u['name']}.service"])
+            services.restart(u["name"])
     return changed
 
 
 def _systemctl(verb, name):
     try:
-        return subprocess.run(["systemctl", verb, f"{name}.service"], capture_output=True, text=True,
-                              timeout=20).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+        return services.unit_state(services.unit(name), verb, timeout=20)
+    except CommandError:
         return ""
 
 
@@ -306,7 +304,7 @@ def use(server_name, major, actor="admin"):
     _rebind(server_name, javas[major])
     manager.write_log(f"[JAVA] {actor} moved {server_name} to Java {major}.")
     if running:
-        manager.run_and_log(["systemctl", "restart", f"{server_name}.service"])
+        services.restart(server_name)
     return {"name": server_name, "java": major, "path": javas[major], "restarted": running}
 
 
@@ -342,8 +340,8 @@ def removal_check(major):
 def _simulate(args, what):
     """Packages an apt-get dry run would remove or purge."""
     try:
-        r = subprocess.run(["apt-get", "-s", *args], capture_output=True, text=True, timeout=60, env=APT_ENV)
-    except (OSError, subprocess.SubprocessError) as e:
+        r = packages.run(packages.manager_command(["-s"], args), timeout=60, env=APT_ENV)
+    except CommandError as e:
         raise RuntimeJobError(f"Couldn't check what {what} would do: {e}")
     if r.returncode != 0:
         err = next((l[3:] for l in r.stdout.splitlines() + r.stderr.splitlines() if l.startswith("E: ")), None)

@@ -5,9 +5,9 @@ entry of debian/changelog, which is where each release sets its version.
 """
 import os
 import re
-import subprocess
 
 from core.settings import APP_DIR, PACKAGED
+from core.platform import CommandError
 
 _CHANGELOG_RE = re.compile(r"^\S+ \(([^)]+)\)")
 _cached = None
@@ -21,11 +21,10 @@ def from_changelog(text):
 
 def _installed():
     try:
-        r = subprocess.run(["dpkg-query", "-W", "-f=${Version}", "redstonepanel"],
-                           capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.SubprocessError):
+        from core.platform import packages
+        return packages.installed_version(timeout=5)
+    except CommandError:
         return None
-    return r.stdout.strip() or None if r.returncode == 0 else None
 
 
 def _source():

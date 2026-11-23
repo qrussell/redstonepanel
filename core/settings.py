@@ -13,20 +13,22 @@ import json
 import os
 import re
 import socket
-import subprocess
 import threading
 import time
 from urllib.parse import urlsplit
 
-APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from core.platform import paths, system
+
+APP_DIR = paths.APP_DIR
 
 # Where state lives. A .deb install puts the code in /usr/share/redstonepanel and uses the
 # standard Linux locations; a copy anywhere else (e.g. /opt/redstonepanel) keeps everything
 # next to the code. RP_DATA_DIR / RP_TLS_DIR / RP_LOG_FILE override either (test instances).
-PACKAGED = APP_DIR.startswith("/usr/")
-DATA_DIR = os.environ.get("RP_DATA_DIR") or ("/var/lib/redstonepanel" if PACKAGED else os.path.join(APP_DIR, "data"))
-TLS_DIR = os.environ.get("RP_TLS_DIR") or (os.path.join(DATA_DIR, "tls") if PACKAGED else os.path.join(APP_DIR, "tls"))
-LOG_FILE = os.environ.get("RP_LOG_FILE") or ("/var/log/redstonepanel/panel.log" if PACKAGED else os.path.join(APP_DIR, "panel.log"))
+# The paths themselves are spelled out in core/platform/paths.py.
+PACKAGED = paths.PACKAGED
+DATA_DIR = paths.DATA_DIR
+TLS_DIR = paths.TLS_DIR
+LOG_FILE = paths.LOG_FILE
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 
 # Private ranges only. Loopback (127.0.0.0/8, ::1) is deliberately NOT included:
@@ -238,8 +240,7 @@ def own_hosts():
         hosts |= {name, name.split(".")[0], name.split(".")[0] + ".local"}
         try:
             hosts.add(socket.getfqdn().lower())
-            out = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=3).stdout
-            hosts |= {ip.lower() for ip in out.split()}
+            hosts |= {ip.lower() for ip in system.addresses(timeout=3)}
         except Exception:
             pass
         _hosts_cache.update(at=now, hosts=hosts)

@@ -335,14 +335,11 @@ def _last_update(server):
 def journal(server, env):
     """What the game server printed to systemd's journal in this run (early failures such as the
     wrong Java happen before it opens its own log)."""
-    import subprocess
+    from core.platform import services, CommandError
     inv = (env or {}).get("INVOCATION_ID") or ""
-    sel = [f"_SYSTEMD_INVOCATION_ID={inv}"] if re.fullmatch(r"[0-9a-f]{32}", inv) else ["-u", f"{server}.service"]
     try:
-        r = subprocess.run(["journalctl", "--no-pager", "-o", "cat", "-n", "300", *sel],
-                           capture_output=True, text=True, timeout=10)
-        return r.stdout if r.returncode == 0 else ""
-    except (OSError, subprocess.SubprocessError):
+        return services.run_log(server, inv if re.fullmatch(r"[0-9a-f]{32}", inv) else None, lines=300, timeout=10)
+    except CommandError:
         return ""
 
 def gather(server, base, edition=None, env=None, now=None):
