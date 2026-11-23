@@ -41,7 +41,10 @@
             <p id="mobile-title" class="font-bold text-gray-900 dark:text-white truncate">RedstonePanel</p>
             <p id="mobile-subtitle" class="text-xs text-gray-500 dark:text-gray-400 truncate"></p>
         </div>
+        <!-- Light/dark switch and accent colour (on desktop they sit in the page's top right corner) -->
+        <div class="theme-controls relative flex items-center shrink-0"></div>
     </div>
+    <div id="theme-corner" class="theme-controls max-md:hidden fixed top-8 right-6 z-20 flex items-center gap-1"></div>
     <div id="nav-backdrop" onclick="ServerApp.closeNav()" class="md:hidden fixed inset-0 bg-black/50 z-30 hidden"></div>
 
     <aside id="sidebar" class="rp-sidebar w-72 max-w-[85vw] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full shadow-xl z-40 md:z-10">
@@ -71,7 +74,6 @@
             <div class="flex gap-2 mb-4">
                 <button onclick="ServerApp.toggleConsole(true)" class="flex-1 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition">🖥️ Console</button>
                 <button onclick="ServerApp.openTemplateManager()" class="admin-only flex-1 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition">📋 Templates</button>
-                <button onclick="ServerApp.openSettingsModal()" title="Appearance" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white px-3 py-2 rounded text-sm transition">⚙️</button>
             </div>
             
             <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
@@ -106,7 +108,7 @@
 
     <!-- Workspace background darkened in dark mode for better card contrast -->
     <main class="flex-1 flex flex-col min-h-0 min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="workspace">
-        <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <header class="p-4 md:p-6 md:pr-32 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
             <div class="min-w-0">
                 <h2 class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3 min-w-0">
                     <span id="ws-status" class="text-sm">⚫</span> <span id="ws-title" class="truncate">Select a server</span>
@@ -401,7 +403,7 @@
 
     <!-- Dashboard: shown when no server is selected -->
     <main class="flex-1 flex flex-col min-h-0 min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="dashboard">
-        <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+        <header class="p-4 md:p-6 md:pr-32 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
             <div class="min-w-0">
                 <h2 id="dash-title" class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white truncate">Dashboard</h2>
                 <p id="dash-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate">Loading...</p>
@@ -413,7 +415,7 @@
 
     <!-- Cluster (master only): the servers of every panel in the cluster -->
     <main class="flex-1 flex flex-col min-h-0 min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="cluster-view">
-        <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+        <header class="p-4 md:p-6 md:pr-32 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
             <div class="min-w-0">
                 <h2 id="cluster-title" class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Cluster</h2>
                 <p id="cluster-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mt-1">Loading...</p>
@@ -425,7 +427,7 @@
 
     <!-- Port forwarding (admins): what to set up on the internet router, per server and cluster member -->
     <main class="flex-1 flex flex-col min-h-0 min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="ports-view">
-        <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+        <header class="p-4 md:p-6 md:pr-32 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
             <div class="min-w-0">
                 <h2 class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Port forwarding</h2>
                 <p id="ports-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mt-1">What to set up on your internet router so players outside your home can join.</p>

@@ -382,11 +382,18 @@ The sidebar on the left holds everything that isn't about one server:
 | **🔀 Port forwarding** | Admins: what to set up on your internet router so players outside your home can join (see [Port forwarding](#port-forwarding)). |
 | **🖥️ Console** | The panel's live activity log. |
 | **📋 Templates** | Saved server settings to reuse. |
-| **⚙️** | Appearance: **Color Mode** (dark or light) and **Accent Palette**: **Redstone Red** (the default), Diamond Blue, Emerald Green or Amethyst Purple. Saved in your browser. |
 | **Sort by** | Name A–Z, Z–A, or online servers first. |
 | Server list | Every server, grouped by edition: green dot = running, grey = stopped, with its version and port. Click one to open it. On a cluster master, each node's servers follow under the node's 🌐 name, grouped by edition the same way. Click a heading to fold it; a folded heading shows how many of its servers are online, and the panel remembers what you folded in this browser. |
 | **♻️ N removed servers: restore** | Shown when servers were uninstalled with **Keep World**. |
 | **👥 Users / 🛡️ Settings / 🔑 Password** | Accounts and panel settings (admins), and changing your own password (panel accounts) and two-factor sign-in (all accounts). |
+
+In the **top right corner** of every page (at the right end of the top bar on a phone) are two
+small buttons, also saved in your browser:
+
+- The **sun** or **moon** switches between light and dark mode with one click. The sign-in page
+  has it too.
+- The **colored dot** picks the accent color: **Redstone Red** (the default), Diamond Blue,
+  Emerald Green or Amethyst Purple.
 
 ### Port forwarding
 
