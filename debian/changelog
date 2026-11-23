@@ -1,3 +1,17 @@
+redstonepanel (1.21.2) noble; urgency=medium
+
+  * Light and dark mode is now a sun/moon switch in the top right corner
+    of every page, one click, on the sign-in page too. On a phone it is at
+    the right end of the top bar.
+  * The accent color is a colored dot beside the switch: Redstone Red,
+    Diamond Blue, Emerald Green or Amethyst Purple, one click each.
+  * The gear button in the sidebar is gone. It opened the appearance
+    choices under the title Panel Settings and was easy to mistake for
+    the real Settings button at the bottom of the sidebar.
+  * Your saved mode and color carry over.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Mon, 23 Nov 2026 15:50:00 -0000
+
 redstonepanel (1.21.1) noble; urgency=medium
 
   * Choose where servers are kept: Panel Settings > Servers folder takes

@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.1 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) and a servers folder you choose (1.21.1) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.2 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) and a servers folder you choose (1.21.1) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1815,6 +1815,24 @@ existing server to the new folder, and choosing where backups go. Tested: 15 uni
 new: refusals, a folder on `/srv`, import there under a name `/opt` doesn't use, ownership,
 unit file, file manager, backup, uninstall keeping the world, Removed servers, going back to
 `/opt`, deleting for good).
+
+### 1.21.2: a simple light/dark switch *(released 23 Nov 2026)*
+
+**Why.** Light/dark mode and the accent color sat behind a ⚙️ button in the sidebar that opened
+a dialog titled "Panel Settings". It looked like a second Settings button, next to the real
+**🛡️ Settings** at the bottom of the sidebar, and changing the mode took four clicks. Quentin
+asked on 23 Nov 2026 for a simple switch in the top right corner.
+
+**How.** A sun/moon button fixed in the top right corner of the page (in the top bar on a
+phone) toggles the mode with one click; a colored dot beside it opens four swatches for the
+accent color. The ⚙️ button and its dialog are removed. The sign-in page gets the switch too.
+Still browser-only preferences (`rp_themeMode`, `rp_themeColor` in localStorage), so saved
+choices carry over. No API or package change.
+
+**As built.** As planned. Page headers keep clear of the corner with extra right padding from
+`md` up. Tested: Chromium at 1280 x 800 and 390 x 844 (toggle and accent saved, swatches close
+on a pick, Esc and a click elsewhere, no sideways scroll, 44 px buttons on the phone); 819 unit
+tests. Every manual screenshot was retaken, since they all show the sidebar or a page header.
 
 ### 2.0: an API for scripts and bots
 
