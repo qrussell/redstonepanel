@@ -318,6 +318,7 @@ It does what the next section does by hand.
 | Debian 13 (trixie) | ✅ tested | ✅ tested | Debian packages Java 21 and 25 only (see [Java](#what-gets-installed)). |
 | Raspberry Pi OS, 64-bit (Debian 13 based) | | ✅ Pi 4 and Pi 5 | Java servers only. See [Raspberry Pi](#raspberry-pi). |
 | Ubuntu 25.04 and 25.10 | ✅ | ✅ | Still installs, but Ubuntu no longer updates them: upgrade to 26.04. |
+| Windows 11, Windows Server 2022 and 2025 | ✅ Server 2022 and 2025 tested | | **Preview** from 1.22, with its own installer: Java servers on one computer. See [On Windows](docs/wiki/Installation.md#on-windows-preview). Windows 10 installs but isn't tested. |
 
 **Bedrock servers need an x86-64 machine.** Mojang only makes Bedrock Dedicated Server for
 64-bit Intel and AMD Linux, so on ARM64 (a Raspberry Pi, an ARM VPS) the panel hides Bedrock
