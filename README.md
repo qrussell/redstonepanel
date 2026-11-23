@@ -102,6 +102,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.21
+
+**Groundwork for Windows** *(1.21)*. Nothing changes on screen. Everything the panel asks of the operating system now goes through one internal package, so a native Windows version can be built next to the Linux one; 1.22 is planned as the Windows preview. Read the [1.21.0 release notes](release-notes/v1.21.0.md).
+
 ## What's new in 1.20
 
 **More server types and modpacks** *(1.20)*. Java servers can now be **Purpur**, **Quilt**, **NeoForge** or **Forge** as well as Vanilla, Paper and Fabric, each with the Java it needs. **New server → From a modpack** makes a server from a Modrinth modpack you search for, an uploaded `.mrpack` or an uploaded CurseForge server pack: the panel installs what the pack needs and only its server-side files, and never runs anything from a pack. Pack updates take a backup first and keep the world. Read the [1.20.0 release notes](release-notes/v1.20.0.md).
