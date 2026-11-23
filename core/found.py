@@ -227,6 +227,16 @@ def _stop_old(info):
     return {"service": service, "was_enabled": was_enabled}
 
 
+def _last_words(name):
+    """What the server printed before it gave up, for the message (" It said: ...", or "")."""
+    try:
+        text = services.run_log(name, lines=40)
+        lines = [l.strip() for l in (text if isinstance(text, str) else "\n".join(text or [])).splitlines() if l.strip()]
+    except Exception:
+        lines = []
+    return (" It said: " + " | ".join(lines[-4:])[:600]) if lines else ""
+
+
 def _java_for(info):
     """The Java the panel's service runs the server with: the one the panel would pick for its
     version, or, when the version doesn't say or that Java isn't on this machine, the very Java
@@ -286,7 +296,7 @@ def manage(folder, actor="?"):
                 time.sleep(1)
             if not services.is_active(name):
                 raise FoundError("The server didn't start under the panel's service, so it was put back as it was. "
-                                 "Nothing in its folder was changed.")
+                                 "Nothing in its folder was changed." + _last_words(name))
         except Exception as e:
             try:
                 undo(name, actor="the panel, because taking it over failed")
