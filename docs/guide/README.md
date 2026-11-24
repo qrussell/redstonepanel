@@ -584,6 +584,10 @@ Dashboard, or on a machine's card on the Cluster page. It is a full terminal (co
 `nano`, `sudo`), on a phone too, with a row of keys a phone keyboard doesn't have (Esc, Tab,
 Ctrl, arrows).
 
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/terminal.png"><img src="images/terminal.png" alt="A terminal open on the Dashboard, logged in as a Linux account"></picture>
+
+<p><img src="images/phone-terminal.png" alt="The terminal on a phone, with its row of keys" width="260"></p>
+
 It is **off** until an admin turns it on under **🛡️ Settings → Terminal**, and it only works
 over HTTPS, so what you type can't be read on your network.
 
@@ -620,6 +624,8 @@ Good to know:
 - **On a cluster**, the master can open a terminal on a node only when that node's own admin
   ticks **Allow a terminal from the cluster master** in the node's settings. You log in with an
   account of the node; your password passes through the master, encrypted on both legs.
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/terminal-settings.png"><img src="images/terminal-settings.png" alt="Settings, Terminal: on or off, Close after, Skip the password for, root, and the terminals open now"></picture>
+
 - In an emergency, `sudo redstonepanel terminal off` turns it off from SSH.
 - Not on Windows yet: the button doesn't appear on a Windows machine.
 

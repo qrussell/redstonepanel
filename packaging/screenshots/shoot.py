@@ -13,6 +13,9 @@ update-alert.png and bedrock-auto-update.png (1.16.12) are the Maintenance tab's
 card: demo.sh deploys Paper 1.21.4 so there is something newer, turns on Update automatically
 for the Bedrock server and runs the update check.
 
+terminal.png and phone-terminal.png (1.21.10) log in to the master's terminal as steve, the
+Linux account demo.sh adds with the demo admin's password, and run a few commands.
+
 The last step moves the demo's Bedrock server to the node and back (cluster-moved.png), with a
 pre-copy (1.16.13) so the picture shows how long it was down, so it runs after everything else.
 """
@@ -131,6 +134,27 @@ class Shooter:
             page.fill("#addon-q", query)
             page.keyboard.press("Enter")
             page.wait_for_timeout(4000)
+
+    def terminal(self, commands):
+        """Opens the master's terminal, logs in as steve at its login: prompt (the demo admin is a
+        panel account) and runs commands."""
+        page = self.page
+        page.evaluate("ServerApp.openTerminal('', 'Survival Box')")
+        page.wait_for_selector(".rp-terminal .xterm-rows:has-text('login:')", timeout=30000)
+        page.keyboard.type("steve\n")
+        page.wait_for_selector(".rp-terminal .xterm-rows:has-text('Password')", timeout=15000)
+        page.keyboard.type(os.environ["RP_PASS"] + "\n")
+        page.wait_for_selector(".rp-terminal .xterm-rows:has-text('steve@survival-box')", timeout=30000)
+        page.keyboard.type("clear\n")
+        page.wait_for_timeout(500)
+        for c in commands:
+            page.keyboard.type(c + "\n")
+            page.wait_for_timeout(1500)
+        page.wait_for_timeout(1000)
+
+    def close_terminal(self):
+        self.page.evaluate("document.querySelectorAll('.rp-terminal [data-act=close]').forEach(b => b.click())")
+        self.page.wait_for_timeout(500)
 
     # ---------------------------------------------------------------------------
     def everything(self):
@@ -475,6 +499,19 @@ class Shooter:
             self.close_modals()
         step("settings", settings)
 
+        # 1.21.10: the terminal, and its section in Settings
+        def terminal():
+            self.terminal(["systemctl status minecraft-java --no-pager -n 0 | head -8", "df -h /opt", "ls /opt"])
+            shot("terminal")
+            self.close_terminal()
+            page.evaluate("ServerApp.openPanelSettings()")
+            page.wait_for_selector("#set-terminal input", timeout=20000)
+            page.wait_for_timeout(1500)
+            page.evaluate("document.getElementById('set-section-terminal').scrollIntoView({block: 'start'})")
+            shot("terminal-settings", element="#set-terminal-wrap")
+            self.close_modals()
+        step("terminal", terminal)
+
         # 1.16.11: off-site copies of the Paper server's backups on the SSH storage
         def offsite():
             self.open_server("minecraft-java", tab="backups")
@@ -536,6 +573,14 @@ class Shooter:
             page.wait_for_timeout(1500)                  # the forwards for the master and the node
             self.tall_shot("phone-port-forwarding", "div:has(> div > h3:text-is('Forward these'))")
         step("phone port forwarding", ports)
+
+        def terminal():
+            page.goto(BASE + "/static/index.html")
+            page.wait_for_timeout(4000)
+            self.terminal(["df -h /opt", "ls /opt"])
+            shot("phone-terminal")
+            self.close_terminal()
+        step("phone terminal", terminal)
 
         def join_page():                             # turned on by the desktop's "join pages" step
             public = self.ctx.new_page()
