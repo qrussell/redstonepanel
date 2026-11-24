@@ -301,6 +301,11 @@ def main():
     code, out = ps(f"Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | Where-Object {{ $_.ExecutablePath -like '{java_home}\\*' }} | "
                    f"ForEach-Object {{ (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User }}")
     check("the panel's java.exe runs as that account, not as the system", name.lower() in out.lower() and "SYSTEM" not in out.upper().split(), out[-300:])
+    # Before Live Chat turns RCON on: the card must still load, saying what needs RCON
+    code, pf = p.get(f"/api/servers/{name}/perf", timeout=60)
+    print(f"        performance without RCON: {code} {str(pf)[:600]}")
+    check("the Performance card loads while RCON is off", code == 200 and isinstance(pf, dict) and pf.get("server") == name, f"{code} {str(pf)[:300]}")
+    check("... and says tick health needs RCON", "RCON" in str((pf or {}).get("tick", {}).get("why", "")), str((pf or {}).get("tick"))[:200])
 
     # ------------------------------------------------------------------ console
     section("Console and commands")
