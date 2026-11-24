@@ -9,6 +9,18 @@ the dashboard.
 
 ---
 
+## 1.22: RedstonePanel on Windows (preview) *(November 2026)*
+
+- **A Windows installer** for Windows 11 and Windows Server 2022 or 2025, no WSL needed: Java
+  servers on one computer, with nearly everything the Linux panel has. See
+  [On Windows (preview)](Installation.md#on-windows-preview).
+- Bedrock, more loaders, modpacks, limits, off-site backups, SFTP, the terminal and clusters
+  follow on Windows in 1.23 and 1.24.
+- **Found on this computer** says what it saw and can't manage, and when nothing was found.
+- A new server takes the lowest free port, also after you removed a server and kept its files.
+
+[Release notes](../../release-notes/v1.22.0.md)
+
 ## 1.21.10: a terminal in the panel *(November 2026)*
 
 - **⌨️ Terminal** on the Dashboard and on each machine of the Cluster page opens a shell on the
