@@ -1,7 +1,8 @@
 #!/bin/sh
 # Installs RedstonePanel from the signed qrussell-repo apt repository, so that `apt upgrade`
-# brings every later version. It runs on Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit
-# Raspberry Pi OS (Debian 13 based, Raspberry Pi 4 or 5), on x86-64 (amd64) or ARM64 machines.
+# brings every later version. It runs on Ubuntu 24.04, 26.04 and 26.10, Linux Mint 22 and 23
+# (built on Ubuntu 24.04 and 26.04), Debian 13 and 64-bit Raspberry Pi OS (Debian 13 based,
+# Raspberry Pi 4 or 5), on x86-64 (amd64) or ARM64 machines.
 #
 #   curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install.sh | sudo sh
 #
@@ -20,11 +21,21 @@ die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || die "run this as root, for example: curl -fsSL …/install.sh | sudo sh"
 [ -r /etc/os-release ] && . /etc/os-release
 
-# Supported: Ubuntu 24.04, 26.04, 26.10; Debian 13 (Raspberry Pi OS 64-bit says ID=debian).
+# Supported: Ubuntu 24.04, 26.04, 26.10; Debian 13 (Raspberry Pi OS 64-bit says ID=debian);
+# Linux Mint 22.x and 23.x, which use Ubuntu 24.04's and 26.04's packages (their os-release says
+# UBUNTU_CODENAME=noble or resolute).
 # Ubuntu 25.04 and 25.10 no longer get updates but still work, so existing machines can reinstall.
 system="${PRETTY_NAME:-unknown}"
 case "${ID:-}:${VERSION_ID:-}" in
     ubuntu:24.04|ubuntu:26.04|ubuntu:26.10|debian:13) problem= ;;
+    linuxmint:*)
+        case "${UBUNTU_CODENAME:-}" in
+            noble|resolute) problem= ;;
+            jammy|focal|bionic)
+                problem="RedstonePanel needs Linux Mint 22 or newer (Python 3.12 or newer); this is $system, which is built on an older Ubuntu. Upgrade to Linux Mint 22 first." ;;
+            *)
+                problem="RedstonePanel supports Linux Mint 22 and 23 (built on Ubuntu 24.04 and 26.04); this is $system." ;;
+        esac ;;
     ubuntu:25.04|ubuntu:25.10)
         problem=
         say "$system no longer gets security updates; consider upgrading to Ubuntu 26.04 LTS." ;;
@@ -33,7 +44,7 @@ case "${ID:-}:${VERSION_ID:-}" in
     raspbian:*)
         problem="this is 32-bit Raspberry Pi OS ($system). RedstonePanel needs the 64-bit Raspberry Pi OS on a Raspberry Pi 4 or 5." ;;
     *)
-        problem="RedstonePanel supports Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit Raspberry Pi OS; this is $system." ;;
+        problem="RedstonePanel supports Ubuntu 24.04, 26.04 and 26.10, Linux Mint 22 and 23, Debian 13 and 64-bit Raspberry Pi OS; this is $system." ;;
 esac
 arch=$(dpkg --print-architecture 2>/dev/null || echo unknown)
 case "$arch" in

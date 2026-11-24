@@ -301,8 +301,8 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   backs the cluster up every night
 
 The panel is a FastAPI app with a plain HTML/JavaScript front end. It ships as an
-`Architecture: all` Debian package for **Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit
-Raspberry Pi OS**, on x86-64 and ARM64 machines.
+`Architecture: all` Debian package for **Ubuntu 24.04, 26.04 and 26.10, Linux Mint 22 and 23,
+Debian 13 and 64-bit Raspberry Pi OS**, on x86-64 and ARM64 machines.
 
 ## Documentation
 
@@ -338,6 +338,7 @@ It does what the next section does by hand.
 | Ubuntu 26.04 LTS | ✅ tested | ✅ tested | The best choice for a new machine. |
 | Ubuntu 24.04 LTS | ✅ tested | ✅ | |
 | Ubuntu 26.10 | ✅ tested | ✅ | Supported by Ubuntu until July 2027. |
+| Linux Mint 22 and 23 | ✅ tested | | Built on Ubuntu 24.04 (Mint 22) and 26.04 (Mint 23), so they get the same packages. Linux Mint 21 is too old (Python 3.10): upgrade to Mint 22 first. LMDE isn't supported. |
 | Debian 13 (trixie) | ✅ tested | ✅ tested | Debian packages Java 21 and 25 only (see [Java](#what-gets-installed)). |
 | Raspberry Pi OS, 64-bit (Debian 13 based) | | ✅ Pi 4 and Pi 5 | Java servers only. See [Raspberry Pi](#raspberry-pi). |
 | Ubuntu 25.04 and 25.10 | ✅ | ✅ | Still installs, but Ubuntu no longer updates them: upgrade to 26.04. |
