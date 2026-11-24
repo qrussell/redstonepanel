@@ -122,6 +122,7 @@ def main():
         redirect = make_server(s["http_port"], s["https_port"])
         threading.Thread(target=redirect.serve_forever, daemon=True).start()
         settings.RUNTIME.update(scheme="https", port=s["https_port"], https_error=None)
+        settings.TLS_FILES.update(cert=ssl_args["ssl_certfile"], key=ssl_args["ssl_keyfile"])
         port = s["https_port"]
     else:
         settings.RUNTIME.update(scheme="http", port=s["http_port"], https_error=error)
@@ -172,6 +173,12 @@ def main():
         sftp.apply(s)
     except Exception as e:
         manager.write_log(f"[SFTP] Couldn't set up the SFTP service: {e}")
+    # 1.21.5: the public join pages, on their own port, while they are on (Panel Settings)
+    try:
+        from core import joinsite
+        joinsite.apply(s)
+    except Exception as e:
+        manager.write_log(f"[JOIN] Couldn't start the join pages: {e}")
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 

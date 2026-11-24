@@ -9,11 +9,12 @@ A "pick" is the build to install for a server, normalised for both sources:
      "requires": [{"source": "modrinth", "project": "..."}], "notes": []}
 """
 import json
+import os
 import urllib.parse
 
 from core.sources import SourceError, get_json
 
-API = "https://api.modrinth.com/v2"
+API = os.environ.get("RP_MODRINTH_API") or "https://api.modrinth.com/v2"      # the override is a test stand-in
 SITE = "https://modrinth.com"
 HOSTS = {"cdn.modrinth.com"}
 # What each kind of server loads (Quilt also loads Fabric mods; Purpur is Paper with extras)
@@ -125,6 +126,18 @@ def projects(ids):
     out = {}
     for p in get_json(f"{API}/projects?ids={_q(ids)}") or []:
         out[p["id"]] = {"slug": p.get("slug"), "title": p.get("title")}
+    return out
+
+
+def project_sides(ids):
+    """id -> {"slug", "title", "client_side", "server_side"}: which side of the game each
+    project runs on (for player packs)."""
+    ids = sorted(set(i for i in ids if i))
+    out = {}
+    for at in range(0, len(ids), 100):
+        for p in get_json(f"{API}/projects?ids={_q(ids[at:at + 100])}") or []:
+            out[p["id"]] = {"slug": p.get("slug"), "title": p.get("title"),
+                            "client_side": p.get("client_side"), "server_side": p.get("server_side")}
     return out
 
 

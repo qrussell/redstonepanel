@@ -323,6 +323,9 @@ mods     GET     {_S}/addons/details
 mods     POST    {_S}/addons/bundle
 mods     POST    {_S}/addons/install
 mods     GET     {_S}/addons/updates
+mods     GET     {_S}/player-pack
+mods     PUT     {_S}/player-pack
+mods     GET     {_S}/player-pack/file
 mods     POST    {_S}/addons/update
 mods     POST    {_S}/addons/undo
 mods     GET     {_S}/addons/compatibility
@@ -367,6 +370,9 @@ admin    POST    /api/java/runtimes/remove
 admin    GET     /api/panel/update
 admin    POST    /api/panel/update/check
 admin    POST    /api/panel/update
+admin    GET     /api/join-pages
+admin    PUT     /api/join-pages/page
+admin    GET     {_S}/join-info
 admin    GET     /api/port-forwarding
 admin    GET     /api/port-forwarding/local
 admin    PUT     /api/port-forwarding/settings

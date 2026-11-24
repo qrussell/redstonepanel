@@ -23,6 +23,8 @@ from playwright.sync_api import sync_playwright
 
 BASE = os.environ["BASE"]
 OUT = os.environ.get("OUT", "/out")
+# The public join pages (1.21.5) are on the same machine as the panel, on their own port
+JOIN_BASE = BASE.rsplit(":", 1)[0] + ":8444" if BASE.count(":") == 2 else BASE + ":8444"
 THEMES = os.environ.get("THEMES", "dark light").split()
 # ONLY="new server,modpack": take just these steps (the names given to step()), to retake a few
 # pictures on a demo kept with KEEP=1. The sign-in picture and the move are skipped too.
@@ -184,6 +186,35 @@ class Shooter:
             page.set_viewport_size(size)
         step("port forwarding", port_forwarding)
 
+        # Join pages (1.21.5): the admin's page, and the master's Java server's public page as a
+        # player sees it (on the join port, 8444, same host as the panel)
+        def join_pages():
+            put = """async ([path, body]) => (await fetch(path, {method: 'PUT',
+                     headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})).status"""
+            for path, body in (("/api/settings/join", {"enabled": True, "port": 8444, "index": False}),
+                               ("/api/join-pages/page", {"member": "local", "server": "minecraft-java", "enabled": True,
+                                                         "slug": "survival", "address": "play.example.org",
+                                                         "note": "We play most evenings. Be kind, no griefing.",
+                                                         "link_url": "https://discord.gg/example",
+                                                         "link_label": "Join our Discord"})):
+                code = page.evaluate(put, [path, body])
+                if code != 200:
+                    raise RuntimeError(f"{path} answered {code}")
+            page.evaluate("ServerApp.openJoin()")
+            page.wait_for_selector("text=The public port", timeout=30000)
+            page.wait_for_timeout(1500)
+            shot("join-pages")
+            public = self.ctx.new_page()
+            try:
+                public.goto(JOIN_BASE + "/join/survival")
+                public.wait_for_selector("text=How to join", timeout=30000)
+                public.wait_for_timeout(700)
+                public.screenshot(path=f"{self.out}/join-page.png")
+                taken.append(f"{self.theme}/join-page")
+            finally:
+                public.close()
+        step("join pages", join_pages)
+
         def master_java():
             self.open_server("minecraft-java")
             shot("overview")
@@ -286,6 +317,15 @@ class Shooter:
             else:
                 skipped.append(f"{self.theme}/mods-updates (no update available in the demo)")
         step("node server tabs", node_java)
+
+        # 1.21.6: the Mods tab's Player pack view, for the Fabric server on the node (asks Modrinth)
+        def player_pack():
+            self.open_server("minecraft-java", node=True, tab="addons")
+            page.evaluate("ServerApp.addonView('pack')")
+            page.wait_for_selector("#pack-extra", timeout=30000)
+            page.wait_for_timeout(1000)
+            shot("player-pack")
+        step("player pack", player_pack)
 
         def catalog():
             self.addons_browse("minecraft-java", True)
@@ -496,6 +536,18 @@ class Shooter:
             page.wait_for_timeout(1500)                  # the forwards for the master and the node
             self.tall_shot("phone-port-forwarding", "div:has(> div > h3:text-is('Forward these'))")
         step("phone port forwarding", ports)
+
+        def join_page():                             # turned on by the desktop's "join pages" step
+            public = self.ctx.new_page()
+            try:
+                public.goto(JOIN_BASE + "/join/survival")
+                public.wait_for_selector("text=How to join", timeout=30000)
+                public.wait_for_timeout(700)
+                public.screenshot(path=f"{self.out}/phone-join-page.png", full_page=True)
+                taken.append(f"{self.theme}/phone-join-page")
+            finally:
+                public.close()
+        step("phone join page", join_page)
 
     def move(self, server):
         """Moves a server to the other panel from the cluster page, pictures the finished move,
