@@ -5,6 +5,6 @@
 # Lower bounds follow Ubuntu 24.04, the oldest supported system; CI installs the newest.
 fastapi>=0.101
 python-multipart>=0.0.9
-httpx>=0.26
+httpx>=0.28.1
 paramiko>=2.12
 pyyaml>=6.0
