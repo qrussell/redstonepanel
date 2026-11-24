@@ -159,14 +159,32 @@ class RemovedServers(unittest.TestCase):
             M.delete_removed_server("minecraft-nope")
 
     def test_reserve_name_skips_folders_units_and_reserved_names(self):
-        self.server("minecraft-java", {"server.jar": ""}, {"server-port": 25565})   # removed: still holds its port
-        name, port = M._reserve_name("java")
-        try:
-            self.assertEqual((name, port), ("minecraft-java-2", 25566))
-            self.assertEqual(M._reserve_name("java"), ("minecraft-java-3", 25567))
-        finally:
+        # A removed server keeps its name (its folder is there) but not its port: restoring it
+        # moves it to another port if a new server took 25565
+        self.server("minecraft-java", {"server.jar": ""}, {"server-port": 25565})
+        self.server("minecraft-java-5", {"server.jar": ""}, {"server-port": 25566}, unit=True)   # in the panel
+        with mock.patch.object(M, "_port_bindable", return_value=True):
+            name, port = M._reserve_name("java")
+            try:
+                self.assertEqual((name, port), ("minecraft-java-2", 25565))
+                # A name and port held for a server being made right now count as taken
+                self.assertEqual(M._reserve_name("java"), ("minecraft-java-3", 25567))
+            finally:
+                M._release_name("minecraft-java-2")
+                M._release_name("minecraft-java-3")
+            self.assertEqual(M._reserve_name("java"), ("minecraft-java-2", 25565))
             M._release_name("minecraft-java-2")
-            M._release_name("minecraft-java-3")
+
+    def test_a_new_server_skips_a_port_something_else_listens_on(self):
+        with mock.patch.object(M, "_port_bindable", side_effect=lambda p: p != 25565):
+            name, port = M._reserve_name("java")
+        M._release_name(name)
+        self.assertEqual((name, port), ("minecraft-java", 25566))
+
+    def test_restoring_after_a_new_server_took_its_port_moves_it(self):
+        d = self.server("minecraft-java", {"server.jar": ""}, {"server-port": 25565})
+        self.server("minecraft-java-2", {"server.jar": ""}, {"server-port": 25565}, unit=True)
+        self.assertEqual(M._restore_ports(d, "java"), (25566, "25565"))
 
 
 if __name__ == "__main__":

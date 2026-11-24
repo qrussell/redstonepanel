@@ -36,8 +36,10 @@ class Folders(unittest.TestCase):
         self.settings["servers_folders_used"] = [M.servers_root()] + self.settings["servers_folders_used"]
         self.settings["servers_folder"] = folder
 
-    def server(self, root, name, props=None):
+    def server(self, root, name, props=None, unit=True):
         d = os.path.join(root, name)
+        if unit:
+            open(os.path.join(self.units, f"{name}.service"), "w").close()
         os.makedirs(d)
         open(os.path.join(d, "eula.txt"), "w").close()
         with open(os.path.join(d, "server.properties"), "w") as f:
@@ -60,7 +62,8 @@ class Folders(unittest.TestCase):
     def test_a_new_server_never_takes_a_name_used_in_another_folder(self):
         self.server(self.usual, "minecraft-java", {"server-port": 25565})
         self.choose(self.second)
-        name, port = M._reserve_name("java")
+        with mock.patch.object(M, "_port_bindable", return_value=True):
+            name, port = M._reserve_name("java")
         M._release_name(name)
         self.assertEqual((name, port), ("minecraft-java-2", 25566))
         self.assertFalse(M._reserve_exact("minecraft-java"))
@@ -72,9 +75,9 @@ class Folders(unittest.TestCase):
         self.assertEqual(M._used_ports(), {25565, 25575, 25570})
 
     def test_removed_servers_are_found_in_every_folder(self):
-        self.server(self.usual, "minecraft-old")
+        self.server(self.usual, "minecraft-old", unit=False)
         self.choose(self.second)
-        self.server(self.second, "minecraft-new")
+        self.server(self.second, "minecraft-new", unit=False)
         found = {s["name"]: s["directory"] for s in M.list_removed_servers()}
         self.assertEqual(found, {"minecraft-old": os.path.join(self.usual, "minecraft-old"),
                                  "minecraft-new": os.path.join(self.second, "minecraft-new")})
