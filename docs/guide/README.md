@@ -116,11 +116,11 @@ At the end: the [screenshot gallery](#screenshot-gallery), every screenshot in t
 
 ## 1. Install
 
-RedstonePanel runs on **Ubuntu 24.04, 26.04 or 26.10**, **Debian 13** and **64-bit Raspberry Pi
-OS** (on a Raspberry Pi 4 or 5), on x86-64 and ARM64 machines. On ARM64, including every
+RedstonePanel runs on **Ubuntu 24.04, 26.04 or 26.10**, **Linux Mint 22 or 23**, **Debian 13** and
+**64-bit Raspberry Pi OS** (on a Raspberry Pi 4 or 5), on x86-64 and ARM64 machines. On ARM64, including every
 Raspberry Pi, it runs **Java servers only**, because Mojang makes Bedrock Dedicated Server for
 x86-64 only (see [On a Raspberry Pi](#on-a-raspberry-pi)). Ubuntu 25.04 and 25.10 still work
-but no longer get updates; Debian 12 and 32-bit systems aren't supported. From 1.22 there is also
+but no longer get updates; Debian 12, Linux Mint 21 and 32-bit systems aren't supported. From 1.22 there is also
 a Windows installer, as a preview (see [On Windows (preview)](#on-windows-preview)). On Linux, the quickest way is
 the installer, which adds
 the signed qrussell-repo apt repository (checking its key) and installs the panel:
