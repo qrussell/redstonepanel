@@ -145,6 +145,12 @@ api PUT /api/users/alex/grants "{\"grants\":{\"minecraft-java\":[\"view\",\"cons
 api PUT /api/users/sam/grants '{"grants":{"minecraft-bedrock":["view","console","players"]}}' >/dev/null
 api PUT /api/settings/sftp '{"enabled":true,"port":2022}' >/dev/null
 
+say "the terminal (1.21.10): on for both, the node allows it from the master, a Linux account steve"
+dx $M "id steve >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo steve; echo 'steve:$PASS' | chpasswd; redstonepanel terminal on" >/dev/null
+dx $N "redstonepanel terminal on && echo '$PASS' | redstonepanel add-user nodeadmin --role admin \
+    && curl -sk -c /tmp/njar -H 'Content-Type: application/json' -d '{\"username\":\"nodeadmin\",\"password\":\"$PASS\"}' https://127.0.0.1:8443/api/auth/login \
+    && curl -sk -b /tmp/njar -X PUT -H 'Content-Type: application/json' -H 'Origin: https://127.0.0.1:8443' -d '{\"terminal_from_master\":true}' https://127.0.0.1:8443/api/settings/terminal" >/dev/null
+
 else
     PASS=$(docker exec $M cat /root/.demo-pass) || { echo "No demo to reuse: run without SETUP=0 first."; exit 1; }
 fi
