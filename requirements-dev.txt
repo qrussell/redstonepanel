@@ -7,4 +7,4 @@ fastapi>=0.101
 python-multipart>=0.0.9
 httpx>=0.26
 paramiko>=2.12
-pyyaml>=6.0
+pyyaml>=6.0.4
