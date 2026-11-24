@@ -122,6 +122,9 @@ The panel runs as root and a game server's folder belongs to the `minecraft` acc
 can put links in it. Since 1.21.8 every file the panel opens, writes, renames or deletes in a
 server folder is reached either through `core/files.py` (each path step opened with
 `O_NOFOLLOW`) or inside `system.game_files()` (the thread works with `minecraft`'s rights).
+Since 1.21.9, during a request about one server, `game_files()` uses the account that server's
+unit runs as (`User=`, set by the middleware through `system.server_account()`): root for a
+server that runs as root, `minecraft` when it isn't known.
 Keep it that way: see the 1.21.8 entry in `docs/design/roadmap.md`, and
 `packaging/test/test-game-files.sh`.
 
