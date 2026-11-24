@@ -516,7 +516,8 @@ def system_account_exists(username):
 
 def system_account_allowed(username, groups=("sudo",)):
     """The Windows account exists and is in the Administrators group or the RedstonePanel group.
-    Asked on every request of a signed-in session, so the answer is kept for 30 seconds."""
+    Asked on every request of a signed-in session, so a yes is kept for 30 seconds (a no isn't:
+    someone just added to the group can sign in at once)."""
     key = ((username or "").lower(), tuple(groups))
     hit = _groups_cache.get(key)
     if hit and time.monotonic() - hit[0] < GROUPS_TTL:
@@ -529,7 +530,10 @@ def system_account_allowed(username, groups=("sudo",)):
             ok = bool(found) and any(found[0] in group_member_sids(g) for g in wanted)
     except (OSError, AttributeError):
         ok = False
-    _groups_cache[key] = (time.monotonic(), ok)
+    if ok:
+        _groups_cache[key] = (time.monotonic(), ok)
+    else:
+        _groups_cache.pop(key, None)
     return ok
 
 

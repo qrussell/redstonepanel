@@ -814,6 +814,13 @@ class WindowsAccounts(unittest.TestCase):
             self.assertTrue(w.system_account_allowed("quent"))
         self.assertEqual(len(calls), 1)
         w._groups_cache.clear()
+        with mock.patch.object(w, "allowed_groups", return_value={"administrators"}), \
+                mock.patch.object(w, "_lookup", return_value=None), \
+                mock.patch.object(w, "local_groups", side_effect=lambda u: calls.append(u) or set()):
+            self.assertFalse(w.system_account_allowed("new"))
+            self.assertFalse(w.system_account_allowed("new"))      # a no is asked again
+        self.assertEqual(len(calls), 3)
+        w._groups_cache.clear()
 
     def test_a_session_and_two_factor_key_on_one_spelling(self):
         from core import auth

@@ -961,9 +961,18 @@ def windows_accounts(p):
     check("a wrong Windows password is refused", code == 401, f"{code} {who}")
     code, who = q.post("/api/auth/login", {"username": "RPTester", "password": pw})
     code, me = q.get("/api/auth/me")
-    check("a member of the RedstonePanel group signs in as an admin, under one spelling",
-          code == 200 and me.get("source") == "linux" and me.get("role") == "admin" and me.get("username") == "rptester",
-          f"{code} {str(me)[:300]}")
+    if not check("a member of the RedstonePanel group signs in as an admin, under one spelling",
+                 code == 200 and me.get("source") == "linux" and me.get("role") == "admin"
+                 and me.get("username") == "rptester", f"{code} {str(me)[:300]}"):
+        app = os.path.join(r"C:\Program Files\RedstonePanel", "app")
+        py = os.path.join(r"C:\Program Files\RedstonePanel", "python", "python.exe")
+        _c, out = run([py, "-X", "utf8", "-c",
+                       "import sys; sys.path.insert(0, sys.argv[1]); from core.platform.windows import system as w; "
+                       "n, pw = sys.argv[2], sys.argv[3]; print('lookup', w._lookup(n)); print('canonical', w.canonical_account(n)); "
+                       "print('groups', w.local_groups(n)); print('allowed', w.allowed_groups(('sudo', 'redstonepanel'))); "
+                       "print('password', w.check_system_password(n, pw)); import ctypes; print('err', ctypes.GetLastError())",
+                       app, "RPTester", pw])
+        print("   diag " + out.replace("\n", " | ")[-1200:])
     r = Panel(p.base)
     code, who = r.post("/api/auth/login", {"username": "rpother", "password": pw})
     check("an account in neither group still can't", code == 401, f"{code} {who}")
