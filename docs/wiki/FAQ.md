@@ -18,8 +18,8 @@
 
 - want to sell game servers to customers. RedstonePanel has no billing, tenant isolation or
   resale features, and none are planned;
-- need a macOS app. It runs on Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit Raspberry
-  Pi OS, and from 1.22 on Windows as a [preview](Installation.md#on-windows-preview) (Java
+- need a macOS app. It runs on Ubuntu 24.04, 26.04 and 26.10, Linux Mint 22 and 23, Debian
+  13 and 64-bit Raspberry Pi OS, and from 1.22 on Windows as a [preview](Installation.md#on-windows-preview) (Java
   servers on one computer; for everything else on Windows, use
   [WSL](#can-i-run-it-on-windows-with-wsl));
 - want every server isolated in its own container. RedstonePanel deliberately uses systemd
@@ -40,9 +40,10 @@ See [Installation](Installation.md) for the other ways and what to do next.
 
 ## Which systems does it run on?
 
-Ubuntu 24.04 LTS, 26.04 LTS and 26.10, Debian 13, and Raspberry Pi OS (64-bit), on x86-64
-(Intel, AMD) and ARM64 machines. Ubuntu 25.04 and 25.10 still install, but Ubuntu no longer
-updates them. Debian 12, 32-bit systems and other distributions aren't supported. See
+Ubuntu 24.04 LTS, 26.04 LTS and 26.10, Linux Mint 22 and 23, Debian 13, and
+Raspberry Pi OS (64-bit), on x86-64 (Intel, AMD) and ARM64 machines. Ubuntu 25.04 and 25.10
+still install, but Ubuntu no longer updates them. Debian 12, Linux Mint 21 and older, LMDE,
+32-bit systems and other distributions aren't supported. See
 [Installation](Installation.md#what-you-need).
 
 ## Can I run it on a Raspberry Pi?

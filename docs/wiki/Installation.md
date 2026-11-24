@@ -12,12 +12,14 @@ and updates with the rest of the system through `apt`. On a Windows PC, see
   | System | x86-64 (Intel, AMD) | ARM64 |
   | --- | --- | --- |
   | Ubuntu 26.04 LTS (best for a new machine), 24.04 LTS or 26.10 | ✅ | ✅ |
+  | Linux Mint 22 or 23 (built on Ubuntu 24.04 and 26.04) | ✅ | |
   | Debian 13 (trixie) | ✅ | ✅ |
   | Raspberry Pi OS 64-bit, on a Raspberry Pi 4 or 5 | | ✅ |
 
   Ubuntu 25.04 and 25.10 still install but no longer get updates from Ubuntu. Debian 12 (and
-  the Raspberry Pi OS built on it), 32-bit systems and other distributions aren't supported:
-  the installer says so and stops.
+  the Raspberry Pi OS built on it), Linux Mint 21 and older, LMDE, 32-bit systems and other
+  distributions aren't supported: the installer says so and stops. On Linux Mint 21, upgrade to
+  Mint 22 first; its Ubuntu 22.04 base has too old a Python.
 - **Bedrock servers need x86-64.** Mojang only makes Bedrock Dedicated Server for 64-bit Intel
   and AMD machines, so on ARM64 (a Raspberry Pi, an ARM VPS) the panel runs Java servers only.
   Bedrock players can join a Java server through Geyser, from the add-on catalog.
