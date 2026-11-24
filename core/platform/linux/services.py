@@ -129,7 +129,10 @@ def queued_jobs(server, timeout=5):
 
 def name_free(server):
     """False when the machine already has a service of this name that the panel didn't make."""
-    r = systemctl("cat", unit(server), timeout=10)
+    try:
+        r = systemctl("cat", unit(server), timeout=10)
+    except FileNotFoundError:
+        return True  # no systemctl (a container without systemd): no service can have the name
     return r.returncode != 0
 
 
