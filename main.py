@@ -133,7 +133,6 @@ TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
 WINDOWS_NOT_YET = (
     ("cluster", "Clusters aren't", re.compile(r"^/api/(settings/)?cluster(/|$)")),
     ("sftp", "SFTP isn't", re.compile(r"^/api/settings/sftp$")),
-    ("limits", "Memory and processor limits aren't", re.compile(r"^/api/servers/[^/]+/resources$")),
     ("phantom", "Phantom isn't", re.compile(r"^/api/servers/[^/]+/phantom")),
     ("panel-update", "Updating from the panel isn't", re.compile(r"^/api/panel/update")),
     ("offsite", "Off-site backup storage isn't", re.compile(r"^/api/(settings/backup-storage|servers/[^/]+/offsite)(/|$)")),

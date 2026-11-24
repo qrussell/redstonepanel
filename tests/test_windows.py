@@ -397,6 +397,61 @@ class NoUnixOnlyCalls(unittest.TestCase):
         self.assertTrue(major is not None)
 
 
+class Limits(unittest.TestCase):
+    """1.23: hard limits are Job Object limits read from the same drop-in systemd reads."""
+
+    def test_the_drop_in_values(self):
+        from core.platform.windows import jobs
+        self.assertEqual(jobs.memory_bytes("3221225472"), 3 << 30)
+        self.assertEqual(jobs.memory_bytes("3G"), 3 << 30)
+        self.assertEqual(jobs.memory_bytes("1536M"), 1536 << 20)
+        self.assertIsNone(jobs.memory_bytes("infinity"))
+        self.assertIsNone(jobs.memory_bytes(""))
+        self.assertEqual(jobs.cpu_cores("150%"), 1.5)
+        self.assertIsNone(jobs.cpu_cores(""))
+        self.assertIsNone(jobs.cpu_cores("0%"))
+
+    def test_processor_rate_is_a_share_of_the_whole_machine(self):
+        from core.platform.windows import jobs
+        self.assertEqual(jobs.cpu_rate(1.5, 4), 3750)
+        self.assertEqual(jobs.cpu_rate(0.01, 64), 2)
+        self.assertEqual(jobs.cpu_rate(0.0001, 64), 1)
+        self.assertIsNone(jobs.cpu_rate(4, 4))          # the whole machine: no cap
+        self.assertIsNone(jobs.cpu_rate(None, 4))
+        self.assertEqual(jobs.systemd_quota(1.5), "1.500000s")
+        self.assertEqual(jobs.systemd_quota(None), "infinity")
+
+    def test_the_runner_reads_them_from_the_limits_drop_in(self):
+        from core import perf
+        from core.platform.windows import jobs
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "minecraft-java.service"), "w") as f:
+                f.write("[Service]\nExecStart=java -jar server.jar\n")
+            os.makedirs(os.path.join(d, "minecraft-java.service.d"))
+            with open(os.path.join(d, "minecraft-java.service.d", perf.DROPIN_NAME), "w") as f:
+                f.write(perf.dropin_text(3 << 30, 1.5))
+            spec = units.load("minecraft-java.service", d)
+            self.assertEqual(jobs.limits_from_spec(spec, units.get), (3 << 30, 1.5))
+
+    def test_a_job_is_named_for_its_server_and_closed_to_the_game(self):
+        from core.platform.windows import jobs
+        self.assertEqual(jobs.job_name("minecraft-java.service"), "Global\\RedstonePanel.job.minecraft-java")
+        self.assertEqual(jobs.JOB_SDDL, "D:P(A;;GA;;;SY)(A;;GA;;;BA)")    # the system and administrators only
+
+    def test_reaching_the_limit(self):
+        from core.platform.windows import jobs
+        self.assertTrue(jobs.at_limit(1 << 30, (1 << 30) - (1 << 20)))
+        self.assertFalse(jobs.at_limit(1 << 30, 512 << 20))
+        self.assertFalse(jobs.at_limit(None, 1 << 30))
+
+    def test_a_stop_at_the_limit_is_news_the_notification_task_takes(self):
+        from core.platform.windows import runner
+        ok = {"kind": "stop", "requested": "0", "result": "oom-kill", "code": "exited", "status": "1",
+              "invocation": "a" * 32}
+        self.assertTrue(runner._valid_event(ok))
+        self.assertFalse(runner._valid_event(dict(ok, result="whatever")))
+
+
 class Preview(unittest.TestCase):
     """What the Windows preview doesn't do yet is refused in one sentence; reading still works."""
 
@@ -406,7 +461,7 @@ class Preview(unittest.TestCase):
         except ImportError:
             self.skipTest("needs fastapi")
         for method, path in (("POST", "/api/settings/cluster"), ("POST", "/api/cluster/moves"),
-                             ("PUT", "/api/settings/sftp"), ("PUT", "/api/servers/minecraft-a/resources"),
+                             ("PUT", "/api/settings/sftp"),
                              ("POST", "/api/panel/update"), ("POST", "/api/settings/backup-storage"),
                              ("PUT", "/api/servers/minecraft-a/offsite/t1"), ("POST", "/api/servers/modpack"),
                              ("POST", "/api/servers/minecraft-a/modpack/update"),
@@ -416,7 +471,8 @@ class Preview(unittest.TestCase):
         for method, path in (("GET", "/api/settings/cluster"), ("POST", "/api/servers/deploy"),
                              ("POST", "/api/servers/minecraft-a/backups"), ("PUT", "/api/settings"),
                              ("PUT", "/api/settings/notifications"), ("POST", "/api/java/runtimes/install"),
-                             ("GET", "/api/servers/minecraft-a/modpack")):
+                             ("GET", "/api/servers/minecraft-a/modpack"),
+                             ("PUT", "/api/servers/minecraft-a/resources")):
             self.assertIsNone(main.not_yet(method, path, windows=True), f"{method} {path}")
 
     def test_loaders_set_up_by_an_installer_are_refused_where_it_cannot_be_confined(self):

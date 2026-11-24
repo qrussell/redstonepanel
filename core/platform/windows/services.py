@@ -231,6 +231,11 @@ def _properties(unit_name):
              "MemoryCurrent": "[not set]", "CPUUsageNSec": "[not set]", "MemoryMax": "infinity",
              "CPUQuotaPerSecUSec": "infinity", "ActiveEnterTimestampMonotonic": "0",
              "ActiveEnterTimestamp": "", "NextElapseUSecRealtime": "", "LastTriggerUSec": ""}
+    if spec is not None:
+        from core.platform.windows import jobs
+        memory, cores = jobs.limits_from_spec(spec, units.get)
+        props["MemoryMax"] = str(memory) if memory else "infinity"
+        props["CPUQuotaPerSecUSec"] = jobs.systemd_quota(cores)
     if active == "active":
         usage = _json(unit_name, "usage.json")
         if usage and time.time() - float(usage.get("at", 0) or 0) < 30:
@@ -667,8 +672,31 @@ def run_detached(name, command, description=None, low_priority=False, no_block=F
 # Limits
 # ---------------------------------------------------------------------------
 def set_runtime_limits(server, memory_max=None, cpu=None):
-    """Not in the Windows preview: limits on a running server come with 1.23 (Job Objects)."""
-    return _done(1, stderr="Limits on a running server aren't in the Windows preview yet.")
+    """Applies a memory cap (bytes) and processor share (cores, e.g. 1.5) to a running server now,
+    without a restart: the runner's Job Object, opened by its name (jobs.py). None lifts that
+    limit. The drop-in (core/perf.py) is what the next start reads."""
+    from core.platform.windows import jobs
+    h = jobs.open_named(unit(server))
+    if not h:
+        return _done(0, stdout="not running")           # the drop-in applies when it starts
+    try:
+        jobs.set_limits(h, memory_max, cpu)
+    except OSError as e:
+        return _done(1, stderr=str(e))
+    finally:
+        jobs.close(h)
+    _log(f"{unit(server)}: limits now memory={memory_max or 'none'} cpu={cpu or 'none'}")
+    return _done()
+
+
+def limit_counters(server):
+    """How the server's hard limits held it back while running: {"throttled_usec": None (Windows
+    doesn't count time held back by its processor cap), "memory_max_events": times it reached its
+    memory limit (0 or 1 per run), "oom_kills": None}."""
+    usage = _json(unit(server), "usage.json") or {}
+    hits = usage.get("memory_limit_hits")
+    return {"throttled_usec": None, "memory_max_events": int(hits) if isinstance(hits, (int, float)) else None,
+            "oom_kills": None}
 
 
 # ---------------------------------------------------------------------------

@@ -18,7 +18,7 @@ import os
 import re
 import time
 
-from core.platform import system
+from core.platform import paths, system
 from core.settings import DATA_DIR
 
 os = system.fs()          # Python's os; on Windows, the same calls made safe without dir_fd (core/platform)
@@ -158,6 +158,54 @@ def _level(m, ctx):
     return ("The world's level.dat is damaged or missing.",
             "Restore a recent backup on the Backups tab. The panel backs up the current world first.")
 
+def _windows(ctx):
+    return ctx.get("windows", paths.WINDOWS)
+
+def _port_refused(m, ctx):
+    port = ctx.get("port")
+    which = f"port {port}" if port else "its port"
+    if _windows(ctx):
+        return (f"Windows wouldn't let the server use {which}. Hyper-V, WSL and Docker Desktop reserve blocks "
+                f"of ports at start-up, and a reserved port can't be used even when nothing is listening on it.",
+                "Give the server a port outside the reserved ranges (Port forwarding lists them under Checks), "
+                "or restart Windows and start the server before WSL or Docker.", "Port reserved by Windows")
+    return (f"The system wouldn't let the server use {which}: ports below 1024 are only for programs run as root.",
+            "Give the server a port of 1024 or above in Properties, then start it.", "Port not allowed")
+
+def _file_locked(m, ctx):
+    return ("Another program had one of the server's files open, so the server couldn't write it. On Windows "
+            "this is usually antivirus scanning the world, a backup or sync tool (OneDrive, Dropbox), or a "
+            "second copy of the server.",
+            "Leave the servers folder out of real-time antivirus scanning and cloud sync, close any other copy "
+            "of the server, then start it.")
+
+def _access_denied(m, ctx):
+    path = (m.group("path") or "").strip()
+    named = f" ({path})" if path else ""
+    if _windows(ctx):
+        return (f"The server's Windows account isn't allowed to change a file in its folder{named}. Files copied "
+                f"in with File Explorer can keep rights that shut the server's account out.",
+                "Copy the file in through the Files tab instead, or in File Explorer open its Properties → "
+                "Security → Advanced and turn on Enable inheritance, then start the server.")
+    return (f"The server's account isn't allowed to change a file in its folder{named}; it probably belongs to "
+            f"another user.",
+            "Copy the file in through the Files tab instead (it then belongs to the server), then start the server.")
+
+# Windows exit statuses (NTSTATUS) that say why a program stopped, as the runner reports them
+WINDOWS_STATUS = {
+    3221225781: ("missing_library", "Missing Windows library",
+                 "Windows couldn't load a library (DLL) the server needs, so it stopped as it started.",
+                 "For Bedrock, install the latest Microsoft Visual C++ Redistributable (x64) from Microsoft, then "
+                 "start the server."),
+    3221225477: ("program_crash", "The server program crashed",
+                 "The server program itself crashed (an access violation), not the world or an add-on setting.",
+                 "Start it again. If it keeps happening, update the server, and for Bedrock check that the whole "
+                 "download was unpacked (Maintenance → Update)."),
+    3221226505: ("program_crash", "The server program crashed",
+                 "The server program itself crashed (it found its own memory damaged).",
+                 "Start it again. If it keeps happening, update the server or take out the add-on you added last."),
+}
+
 FABRIC_DEP_RE = re.compile(
     r"Mod '(?P<name>[^']+)' \((?P<id>[^)]+)\) \S+ requires .*? of "
     r"(?:mod '(?P<depname>[^']+)' \((?P<dep>[^)]+)\)|(?P<dep2>[A-Za-z0-9_.-]+))"
@@ -176,6 +224,11 @@ CAUSES = [
     ("port_in_use", re.compile(r"FAILED TO BIND TO PORT|Address already in use|Network port occupied|"
                                r"Port \[?\d+\]? may be in use"), "Port already in use", _port),
     ("out_of_memory", re.compile(r"java\.lang\.OutOfMemoryError"), "Out of memory", _oom),
+    ("port_refused", re.compile(r"(?:BindException|SocketException).*Permission denied|forbidden by its access permissions"),
+     "Port not allowed", _port_refused),
+    ("file_locked", re.compile(r"being used by another process|FileSystemException: .* (?:used by another|locked)"),
+     "A file was in use", _file_locked),
+    ("access_denied", re.compile(r"AccessDeniedException:? (?P<path>\S*)"), "File rights", _access_denied),
     ("eula", re.compile(r"You need to agree to the EULA"), "EULA not accepted", _eula),
     ("corrupt_level", re.compile(r"level\.dat.*(?:Exception|corrupt|Failed|failed|Couldn't)|"
                                  r"(?:Exception|Failed|failed|Couldn't) (?:reading|to read|to load|load) .*level\.dat"),
@@ -300,14 +353,28 @@ def find_causes(text, ctx=None):
     if "extra_port_in_use" in seen and "port_in_use" in seen and not GAME_PORT_RE.search(text):
         # the "Address already in use" was the extra port's, not the game port's
         found = [c for c in found if c["id"] != "port_in_use"]
+    status = WINDOWS_STATUS.get(_status_number(ctx.get("exit_status")))
+    if status and status[0] not in seen and not found:
+        cid, title, what, fix = status
+        found.append({"id": cid, "title": title, "text": what, "fix": fix, "line": None})
     if ctx.get("service_result") == "oom-kill" and "out_of_memory" not in seen:
         limit = ctx.get("memory_limit")
         found.append({"id": "out_of_memory", "title": "Out of memory",
-                      "text": "The system stopped the server because it used more memory than it may" +
-                              (f" (its hard limit is {limit})." if limit else "."),
+                      "text": ("It reached its hard memory limit" + (f" ({limit})" if limit else "") +
+                               ": Windows refused it more memory, so it stopped." if ctx.get("windows", paths.WINDOWS)
+                               else "The system stopped the server because it used more memory than it may" +
+                               (f" (its hard limit is {limit})." if limit else ".")),
                       "fix": "Raise the hard memory limit or lower the heap in Maintenance → Memory and limits.",
                       "line": None})
     return found
+
+def _status_number(value):
+    """An exit status as a positive number (Windows' 0xC0000135 arrives as 3221225781 or -1073741515)."""
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return n + 2 ** 32 if n < 0 else n
 
 def suspects_named(text):
     """Names, ids and jar files that the text blames, most specific first (lowercased)."""
@@ -429,7 +496,7 @@ def analyze_texts(server, sources, env=None, now=None, installed=None, last_upda
     now = now or time.time()
     env = env or {}
     ctx = dict(voice or {}, server=server, service_result=env.get("SERVICE_RESULT"),
-               memory_limit=env.get("memory_limit"), port=port)
+               memory_limit=env.get("memory_limit"), port=port, exit_status=env.get("EXIT_STATUS"))
     source, text = sources[0] if sources else (None, "")
     causes = find_causes(text, ctx)
     seen = {c["id"] for c in causes}

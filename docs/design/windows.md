@@ -118,6 +118,14 @@ account. They are roadmap 1.23 and 1.24.
 Installing a new version stops the game servers while the files are replaced and starts them
 again afterwards.
 
+## No terminal on Windows
+
+The panel's terminal (1.21.10) stays Linux-only, by design (Quentin, 24 Nov 2026). A Windows
+panel usually runs on the computer its owner sits at, and a command prompt is one click away
+there without a remote connection. Leaving it out also keeps a way to run any command as any
+Windows account out of the panel. On Windows `terminal.supported()` is False, so the page hides the Terminal
+button and its Settings switch and the API refuses a session.
+
 ## The installer
 
 `packaging/windows/build.py` makes it on Windows: `stage` downloads the embeddable Python,

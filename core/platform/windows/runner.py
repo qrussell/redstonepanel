@@ -42,7 +42,7 @@ if APP_DIR not in sys.path:
     sys.path.insert(0, APP_DIR)
 
 from core.platform import paths                      # noqa: E402
-from core.platform.windows import _win, units         # noqa: E402
+from core.platform.windows import _win, jobs, units   # noqa: E402
 
 LOG_MAX = 8 * 1024 * 1024          # output.log is rotated at this size
 LOG_KEEP = 3                       # ... keeping this many older files
@@ -53,8 +53,6 @@ PIPE_PREFIX = "\\\\.\\pipe\\RedstonePanel.console."
 
 SERVICE_ACCEPT_STOP, SERVICE_ACCEPT_PRESHUTDOWN = 0x1, 0x100
 SERVICE_CONTROL_STOP, SERVICE_CONTROL_INTERROGATE, SERVICE_CONTROL_PRESHUTDOWN = 1, 4, 15
-JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
-JOB_OBJECT_LIMIT_JOB_MEMORY = 0x200
 BELOW_NORMAL_PRIORITY_CLASS = 0x4000
 
 
@@ -141,24 +139,6 @@ def decode(raw):
 # ---------------------------------------------------------------------------
 # Job Objects: everything the game starts ends with it, and its numbers
 # ---------------------------------------------------------------------------
-class IO_COUNTERS(ctypes.Structure):
-    _fields_ = [(n, ctypes.c_ulonglong) for n in ("ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
-                                                  "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
-
-
-class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
-    _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong), ("PerJobUserTimeLimit", ctypes.c_longlong),
-                ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
-                ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
-                ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD)]
-
-
-class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
-    _fields_ = [("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION), ("IoInfo", IO_COUNTERS),
-                ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
-                ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
-
-
 class JOBOBJECT_BASIC_ACCOUNTING_INFORMATION(ctypes.Structure):
     _fields_ = [("TotalUserTime", ctypes.c_longlong), ("TotalKernelTime", ctypes.c_longlong),
                 ("ThisPeriodTotalUserTime", ctypes.c_longlong), ("ThisPeriodTotalKernelTime", ctypes.c_longlong),
@@ -210,17 +190,22 @@ def _k32():
 
 
 class Job:
-    def __init__(self, memory_max=None):
-        k = _k32()
-        self.h = k.CreateJobObjectW(None, None)
-        if not self.h:
-            raise _win.winerror("Can't create a Job Object")
-        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-        if memory_max:
-            info.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_JOB_MEMORY
-            info.JobMemoryLimit = int(memory_max)
-        k.SetInformationJobObject(self.h, 9, ctypes.byref(info), ctypes.sizeof(info))
+    """The Job Object a unit's program runs in. With a unit, it is named (jobs.job_name) so the
+    panel can change its limits while it runs; memory and cores are the unit's MemoryMax= and
+    CPUQuota= (None: no limit)."""
+
+    def __init__(self, memory_max=None, cores=None, unit=None):
+        self.h = jobs.create(jobs.job_name(unit) if unit else None)
+        try:
+            jobs.set_limits(self.h, memory_max, cores, cpu=bool(cores))
+        except OSError:
+            jobs.set_limits(self.h, memory_max, None, cpu=False)     # no processor cap taken: memory still applies
+        self.memory_max, self.cores = memory_max, cores
+
+    def at_memory_limit(self):
+        """True when Windows refused the program more memory than its limit (peak reached it)."""
+        limit, peak = jobs.memory_state(self.h)
+        return jobs.at_limit(limit, peak)
 
     def add(self, process):
         if not _k32().AssignProcessToJobObject(self.h, wintypes.HANDLE(int(process._handle))):
@@ -339,6 +324,7 @@ class Program:
         self.unit, self.spec, self.journal = unit, spec, journal
         self.process = self.job = None
         self.stdin_lock = threading.Lock()
+        self.memory_limit_hit = False
 
     def start(self):
         argv = _win.resolve_program(units.split_command(units.get(self.spec, "Service", "ExecStart", "")))
@@ -350,7 +336,8 @@ class Program:
         flags = _win.CREATE_NO_WINDOW
         if units.get(self.spec, "Service", "Nice"):
             flags |= BELOW_NORMAL_PRIORITY_CLASS
-        self.job = Job()
+        memory, cores = jobs.limits_from_spec(self.spec, units.get)
+        self.job = Job(memory, cores, self.unit)
         self.process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, bufsize=0, creationflags=flags)
         try:
@@ -369,8 +356,15 @@ class Program:
     def _measure(self):
         while self.process.poll() is None:
             cpu, memory, count = self.job.numbers()
+            limit, peak = jobs.memory_state(self.job.h) if self.job.h else (None, None)
+            if jobs.at_limit(limit, peak) and not self.memory_limit_hit:
+                self.memory_limit_hit = True
+                self.journal.write(f"[runner] {self.unit} reached its memory limit ({limit // 1024 ** 2} MB): "
+                                   f"Windows refused it more.")
             if cpu is not None:
-                self.journal.usage(at=time.time(), cpu_nsec=cpu, memory=memory, processes=count)
+                self.journal.usage(at=time.time(), cpu_nsec=cpu, memory=memory, processes=count,
+                                   memory_max=limit or 0, memory_peak=peak or 0,
+                                   memory_limit_hits=int(self.memory_limit_hit))
             time.sleep(2)
 
     def send(self, text):
@@ -536,6 +530,9 @@ class Service:
                 ok = requested or exit_status == 0 or str(exit_status) in " ".join(
                     spec.get("Service", {}).get("SuccessExitStatus", [])).split()
                 result, code = ("success" if ok else "exit-code"), "exited"
+                if not ok and (program.memory_limit_hit or program.job.at_memory_limit()):
+                    result = "oom-kill"            # what systemd calls a stop for going over MemoryMax=
+                    self.journal.write(f"[runner] {self.unit} stopped after reaching its memory limit.")
                 program.close()
             failed = result != "success"
             if failed:
@@ -633,7 +630,7 @@ def note_event(unit, record):
 
 def _valid_event(record):
     return (isinstance(record, dict) and record.get("kind") in ("start", "stop")
-            and record.get("requested") in ("0", "1") and record.get("result") in ("success", "exit-code")
+            and record.get("requested") in ("0", "1") and record.get("result") in ("success", "exit-code", "oom-kill")
             and record.get("code") in ("", "exited")
             and isinstance(record.get("status"), str) and re.fullmatch(r"-?[0-9]{0,12}", record["status"])
             and isinstance(record.get("invocation"), str) and re.fullmatch(r"[0-9a-f]{32}", record["invocation"]))

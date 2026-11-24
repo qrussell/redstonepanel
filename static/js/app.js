@@ -53,7 +53,7 @@ const ServerApp = {
             // On Windows the panel is a preview (since 1.22) and says so next to its version
             const preview = this.currentUser.system === 'windows';
             ver.innerText = 'v' + this.currentUser.panel_version + (preview ? ' · Windows preview' : '');
-            ver.title = `RedstonePanel ${this.currentUser.panel_version}` + (preview ? ' for Windows, a preview: Java servers on one computer' : '');
+            ver.title = `RedstonePanel ${this.currentUser.panel_version}` + (preview ? ' for Windows, a preview: one computer, clusters come later' : '');
         }
 
         this.applyTheme();
@@ -75,10 +75,14 @@ const ServerApp = {
     },
 
     // The Windows preview doesn't do everything yet: /api/auth/me lists what under not_yet
-    // ('cluster', 'sftp', 'limits', 'offsite', 'modpacks', 'bedrock', 'installer-loaders', ...).
+    // ('cluster', 'sftp', ...).
     // Those parts of the page are hidden, and the API refuses them too.
     notYet(name) {
         return !!(this.currentUser && (this.currentUser.not_yet || []).includes(name));
+    },
+
+    onWindows() {
+        return !!(this.currentUser && this.currentUser.system === 'windows');
     },
 
     // On a cluster master: the nodes from the last overview, [{id, name, state, error, ...}]
@@ -2540,7 +2544,6 @@ const ServerApp = {
         const body = document.getElementById('resources-body');
         const srv = this.activeServer;
         if (!card || !srv) return;
-        if (this.notYet('limits')) { card.classList.add('hidden'); return; }       // not in the Windows preview yet
         card.classList.remove('hidden');
         const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/resources`);
         if (!res.ok) { body.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
@@ -2591,7 +2594,9 @@ const ServerApp = {
                 </select>
                 <input id="res-limit" class="${input} w-24" value="${custom ? esc(this.heapText(r.memory_limit)) : ''}" placeholder="3G" autocomplete="off">
             </div>
-            <p class="${note} mt-1">systemd stops the server if its whole process goes over this, so one runaway server can't starve the others.${r.java ? ' Automatic is its memory plus half again, for what Java uses outside the heap.' : ''}</p>
+            <p class="${note} mt-1">${this.onWindows()
+                ? "Windows refuses the server more memory than this, so Java runs out of memory and stops instead of starving the others; the Last crash card on the Overview says when that happened."
+                : "systemd stops the server if its whole process goes over this, so one runaway server can't starve the others."}${r.java ? ' Automatic is its memory plus half again, for what Java uses outside the heap.' : ''}</p>
             <p class="text-sm font-bold text-gray-900 dark:text-white mt-4">CPU limit</p>
             <label class="flex flex-wrap items-center gap-2 mt-1 text-sm text-gray-700 dark:text-gray-300">
                 <input id="res-cpu" type="number" min="0" max="${esc(r.cores)}" step="0.5" class="${input} w-24" value="${r.cpu_limit || 0}"> cores (0 = no limit)

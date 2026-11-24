@@ -286,6 +286,29 @@ def set_runtime_limits(server, memory_max=None, cpu=None):
                    f"CPUQuota={int(round(cpu * 100)) if cpu else ''}{'%' if cpu else ''}"])
 
 
+def limit_counters(server):
+    """How the server's hard limits held it back (cgroup v2 counters): {"throttled_usec": time
+    its CPU quota held it back, "memory_max_events": times it hit MemoryMax=, "oom_kills"}."""
+    base = os.path.join(paths.CGROUP_ROOT, f"{unit(server)}")
+    cpu, mem = _kv(os.path.join(base, "cpu.stat")), _kv(os.path.join(base, "memory.events"))
+    return {"throttled_usec": cpu.get("throttled_usec"), "memory_max_events": mem.get("max"),
+            "oom_kills": mem.get("oom_kill")}
+
+
+def _kv(path):
+    out = {}
+    try:
+        with open(path) as f:
+            text = f.read()
+    except OSError:
+        return out
+    for line in text.splitlines():
+        k, _, v = line.partition(" ")
+        if v.strip().isdigit():
+            out[k] = int(v)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Logs (the journal)
 # ---------------------------------------------------------------------------
