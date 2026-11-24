@@ -318,6 +318,15 @@ class Shooter:
                 skipped.append(f"{self.theme}/mods-updates (no update available in the demo)")
         step("node server tabs", node_java)
 
+        # 1.21.6: the Mods tab's Player pack view, for the Fabric server on the node (asks Modrinth)
+        def player_pack():
+            self.open_server("minecraft-java", node=True, tab="addons")
+            page.evaluate("ServerApp.addonView('pack')")
+            page.wait_for_selector("#pack-extra", timeout=30000)
+            page.wait_for_timeout(1000)
+            shot("player-pack")
+        step("player pack", player_pack)
+
         def catalog():
             self.addons_browse("minecraft-java", True)
             shot("mods-catalog")

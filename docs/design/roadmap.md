@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.5 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3) and quick commands in Live Chat (1.21.4) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.6 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3) and quick commands in Live Chat (1.21.4) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1913,7 +1913,7 @@ the player count, the address to type, the Minecraft version and loader, and how
 server made from a Modrinth modpack links to the exact pack version it runs; other mod
 servers show a link the admin pastes. The pages get their own port (8444) so the panel never
 has to face the internet, and that port answers nothing else. Player packs the panel builds
-itself from a hand-assembled mods folder (`.mrpack`, packwiz) are the next release.
+itself from a hand-assembled mods folder (`.mrpack`, packwiz) came in 1.21.6.
 
 **As built.** `core/joinpage.py` holds each page's settings (`data/join-pages.json`), what
 this machine knows about a server, and `public_view()`, the fixed list of fields that may
@@ -1940,6 +1940,39 @@ server; a panel restart; and a master serving a node's server over HTTPS, stayin
 node is unreachable. Not tested: a real player following a page from outside the home, the
 Modrinth App button on a real desktop, and the Add server button on a real phone. The
 manual's pictures are of the test container's stand-in servers.
+
+
+### 1.21.6: player packs *(released 24 Nov 2026)*
+
+**Why.** The second half of Quentin's request of 23 Nov 2026: the join page should link a
+modpack that follows the mods the server uses. A server made from a Modrinth modpack already
+links to that pack (1.21.5); a server whose mods were picked by hand had nothing to link.
+
+**How.** Hash every jar in the server's mods folder, ask Modrinth which file each is, and sort
+by the project's client side: required goes in, optional goes in marked optional, unsupported
+(server-only) stays out, and a file Modrinth doesn't know stays out and is named on the page.
+Build a `.mrpack` that points at Modrinth's own files by checksum, serve it from the join page,
+and rebuild it whenever the folder changes. Offer the same list as a packwiz folder.
+
+**As built.** `core/playerpack.py`. The admin's choices are in `data/player-packs.json`: mode
+(automatic, on, off), a name, a choice per file, and client-only extras by Modrinth project.
+`manifest()` is the whole pack as plain JSON, cached on the folder's names, sizes and times;
+its eight-character version is a hash of what players get. Added to the plan: what a required
+mod depends on (from the jars' own metadata) is required too, because Modrinth calls Fabric
+API optional on the client; and **Include** on a file Modrinth doesn't know copies the jar
+into the pack's `overrides` (64 MB together). Automatic means on unless the server came from
+a Modrinth modpack. If Modrinth can't be reached the last manifest stands. The public side is
+`/join/<link>/pack.mrpack` and `/join/<link>/packwiz/...` on the join port, under the same
+rate limit. A cluster master builds a node server's pack itself from the public part of the
+node's manifest, which rides in `join-info` and is checked field by field (file names,
+checksums, Modrinth-only download addresses); a jar the admin chose to hand out is fetched
+from the node through `GET /api/servers/{name}/player-pack/file` and checked against its
+checksum. No change to the cluster contract. The Mods tab has a third view, **Player pack**
+(Mods & plugins permission). `RP_MODRINTH_API` points the panel at a stand-in for tests.
+Tested: `tests/test_playerpack.py` (17 tests), `packaging/test/test-player-pack.sh` (55
+checks in systemd containers, in the GitHub `cluster` matrix), and the sorting against
+Modrinth's real answers for six mods. Not tested: importing the pack into Modrinth App or
+Prism Launcher on a real desktop, and packwiz-installer.
 
 ### 2.0: an API for scripts and bots
 

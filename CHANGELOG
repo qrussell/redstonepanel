@@ -4,6 +4,16 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.21.6 (2026-11-24)
+
+Release notes: release-notes/v1.21.6.md
+
+- Player packs: for a Fabric, Quilt, Forge or NeoForge server the panel works out which mods players need from the server's own mods folder and offers them on the join page as a pack (.mrpack) their launcher installs in one go. Add, update or remove a mod and the pack follows.
+- Mods that run only on the server are left out, mods that work without are marked optional, and what a required mod depends on is required. A mod Modrinth doesn't know is named on the page.
+- The Mods tab gets a Player pack view: overrule any line, add extras for players such as shaders, name the pack, or turn it off.
+- The same pack as a packwiz folder, for launchers that check the server's mods every time the game starts.
+- On a cluster master the join page offers the pack of a server on any node.
+
 ## 1.21.5 (2026-11-23)
 
 Release notes: release-notes/v1.21.5.md
