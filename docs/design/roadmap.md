@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.9 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) and join pages through a proxy (1.21.9) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.10 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) and a terminal in the panel (1.21.10) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -2082,7 +2082,7 @@ that still use an old copy of a library after any apt install. The package now i
 stand-in Phantom proxy and an ordinary service that all use a deleted library: only the
 ordinary one is restarted, and without the rule the game server would have been.
 
-### 1.21.10: a terminal in the panel *(planned)*
+### 1.21.10: a terminal in the panel *(released 24 Nov 2026)*
 
 **Why.** Quentin asked on 24 Nov 2026 for a terminal inside the panel, so an admin can fix
 something on the machine without a separate SSH program, from any browser or phone. It has to
@@ -2130,6 +2130,17 @@ wait for Windows.
 
 **Size.** About 1.18's: one feature, one new dependency (`python3-websockets`, in Ubuntu's and
 Debian's archives; uvicorn needs it for websockets), one vendored library.
+
+**As built.** `core/terminal.py` (tickets, sessions, the login prompt, the relay),
+`core/platform/linux/terminal.py` (PAM check, `login -f` on a pseudo-terminal, foreground uid
+check; a fallback without `login` sets groups and ids itself) and a fake side for tests,
+`static/js/terminal.js`. Session tokens gained a random part so two sign-ins in the same second
+differ, and sign-out marks that cookie signed out. Ubuntu 24.04's `login` writes no wtmp entry,
+so the logins are checked in the journal (`session opened for user`). Tested by
+`tests/test_terminal.py` (33 tests) and `packaging/test/test-terminal.sh` (46 checks in two
+systemd containers: the button, the prompt, a linked sign-in, wrong passwords and the block,
+root refused, `sudo`, idle close, sign-out, limits, the node opt-in through the master, and no
+websocket on the join port).
 
 ### 2.0: an API for scripts and bots
 

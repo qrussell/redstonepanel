@@ -9,6 +9,20 @@ the dashboard.
 
 ---
 
+## 1.21.10: a terminal in the panel *(November 2026)*
+
+- **⌨️ Terminal** on the Dashboard and on each machine of the Cluster page opens a shell on the
+  machine in your browser, for admins, on Linux. On a phone it has a row of keys for Esc, Tab,
+  Ctrl and the arrows.
+- It runs as a Linux account, never as the panel: your own if you signed in with it, otherwise
+  the account you log in with at its `login:` prompt. See
+  [Terminal](../guide/README.md#terminal).
+- Off until an admin turns it on under **🛡️ Settings → Terminal**, HTTPS only, closed when
+  idle, and every terminal is logged. A cluster node decides for itself whether the master may
+  open one there.
+
+[Release notes](../../release-notes/v1.21.10.md)
+
 ## 1.21.9: join pages through a proxy *(November 2026)*
 
 - **🔗 Join pages → Through a proxy (HAProxy or Cloudflare)**: HAProxy (for example on
