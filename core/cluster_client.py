@@ -208,7 +208,8 @@ def _node_servers(node):
             return hit[1]
     base = {"id": node["id"], "name": node["name"], "url": node["url"], "platform": node.get("platform"),
             "machine": node.get("machine"), "version": node.get("version"), "cert_expires": node.get("cert_expires"),
-            "cluster_api": node.get("cluster_api"), "verify": cluster.node_verify(node)}
+            "cluster_api": node.get("cluster_api"), "verify": cluster.node_verify(node),
+            "terminal": node.get("terminal")}
     try:
         servers = call_node(node, "GET", "/api/servers")
         result = dict(base, state="ok", servers=servers if isinstance(servers, list) else [])
@@ -243,6 +244,7 @@ def _hello_fields(node):
         out["cert_expires"] = h["cert_expires"]
     if cluster.clean_machine(h.get("machine")):
         out["machine"] = h["machine"]
+    out["terminal"] = cluster.clean_terminal(h.get("terminal"))      # None from a node before 1.21.10
     return out
 
 
@@ -417,3 +419,58 @@ def maintenance(log, restart, every=MAINTENANCE_EVERY, first=120):
     t = threading.Thread(target=loop, name="cluster-maintenance", daemon=True)
     t.start()
     return t
+
+
+# ---------------------------------------------------------------------------
+# 1.21.10: a terminal on a node. The master opens a websocket to the node's
+# /api/terminal/node-ws with its token; the node shows its own login prompt.
+# ---------------------------------------------------------------------------
+NODE_TERMINAL_PATH = "/api/terminal/node-ws"
+
+
+class WebSocketLink:
+    """A websocket to a node, with the same shape as the browser's side in core/terminal.py."""
+
+    def __init__(self, ws):
+        self.ws = ws
+
+    async def recv(self):
+        try:
+            msg = await self.ws.recv()
+        except Exception:                        # noqa: BLE001  (closed, either way)
+            return ("closed", None)
+        return ("bytes", msg) if isinstance(msg, (bytes, bytearray)) else ("text", msg)
+
+    async def send_bytes(self, data):
+        await self.ws.send(bytes(data))
+
+    async def send_text(self, text):
+        await self.ws.send(text)
+
+    async def close(self, code=1000):
+        await self.ws.close(code)
+
+
+async def open_terminal(node, actor, client_ip):
+    """A WebSocketLink to the node's terminal, or raises NodeError."""
+    try:
+        import websockets
+    except ImportError:
+        raise NodeError("error", "This panel can't open websockets (python3-websockets is missing).")
+    scheme_host = node["url"].replace("https://", "wss://", 1)
+    headers = dict(_node_headers(node, actor, "admin"), **{"X-RedstonePanel-Client-IP": str(client_ip or "")[:64]})
+    try:
+        try:
+            from websockets.asyncio.client import connect        # websockets 13 and later
+            ws = await connect(scheme_host + NODE_TERMINAL_PATH, ssl=node_ctx(node), additional_headers=headers,
+                               max_size=1 << 20, open_timeout=10)
+        except ImportError:
+            ws = await websockets.connect(scheme_host + NODE_TERMINAL_PATH, ssl=node_ctx(node),     # Ubuntu 24.04: 10.4
+                                          extra_headers=headers, max_size=1 << 20, open_timeout=10)
+    except ssl.SSLError as e:
+        raise NodeError("cert_error", f"{node['name']}'s certificate couldn't be checked ({e}).")
+    except OSError as e:
+        raise NodeError("unreachable", f"{node['name']} can't be reached ({e}).")
+    except Exception as e:                       # noqa: BLE001  (refused: the node said no)
+        raise NodeError("rejected", f"{node['name']} refused the terminal ({e}).")
+    return WebSocketLink(ws)

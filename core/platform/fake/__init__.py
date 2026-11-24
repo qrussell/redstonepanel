@@ -39,6 +39,10 @@ def reset():
     state.owned = []                # folders handed to the game account
     state.deleted = []
     state.service_manager = True
+    state.terminal_supported = True     # False: a system with no terminal (Windows, for now)
+    state.terminal_accounts = {}        # name -> {"password", "uid", "shell", "locked"}
+    state.terminal_uid = None           # what foreground_uid() says, when not the account's own
+    state.shells = []                   # every Shell spawn() returned
     return state
 
 

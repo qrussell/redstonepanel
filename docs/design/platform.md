@@ -35,6 +35,7 @@ os.path.join(paths.SERVERS_ROOT, name)       # /opt/<name>
 | `packages` | Java versions on offer and installed, the panel's own package | `apt-get`, `apt-cache`, `dpkg`, `dpkg-query` |
 | `system` | This machine: addresses, the `minecraft` account, file ownership | `hostname`, `ip`, `useradd`, `chown`, `chmod`, `rm`, `tail` |
 | `certs` | Making and checking certificates | `openssl` |
+| `terminal` | The panel's terminal (1.21.10): an account's password and login shell, a login session on a pseudo-terminal | PAM, `/etc/shells`, `login -f` on `pty.fork()` |
 | `paths` | Folders and files | `/opt`, `/var/lib/redstonepanel`, `/etc/systemd/system`, `/usr/lib/jvm`, `/proc`, ... |
 
 Each name imported from `core.platform` is a small stand-in that passes the call to the system

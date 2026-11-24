@@ -47,6 +47,8 @@ import core.modpacks as modpacks
 import core.joinpage as joinpage
 import core.joinsite as joinsite
 import core.playerpack as playerpack
+import core.terminal as terminal
+from fastapi import WebSocket
 from starlette.background import BackgroundTask
 import json
 import re
@@ -57,6 +59,7 @@ import shutil
 import signal
 import tempfile
 import threading
+import time
 
 app = FastAPI(title="RedstonePanel API", version=panel_version())
 
@@ -331,7 +334,8 @@ def login_code_api(req: CodeRequest, request: Request, response: Response):
     return user
 
 @app.post("/api/auth/logout")
-def logout_api(response: Response):
+def logout_api(request: Request, response: Response):
+    terminal.signed_out(request.cookies.get(auth.SESSION_COOKIE))      # its terminals close too
     response.delete_cookie(auth.SESSION_COOKIE, path="/")
     response.delete_cookie(auth.PENDING_COOKIE, path="/api/auth/login")
     return {"status": "success"}
@@ -566,7 +570,9 @@ def update_settings_api(request: Request, new: dict = Body(...)):
     new = dict(new, sftp_enabled=old["sftp_enabled"], sftp_port=old["sftp_port"],
                servers_folder=old["servers_folder"], servers_folders_used=old["servers_folders_used"],
                # ... or the join pages (PUT /api/settings/join)
-               join_enabled=old["join_enabled"], join_port=old["join_port"], join_index=old["join_index"])
+               join_enabled=old["join_enabled"], join_port=old["join_port"], join_index=old["join_index"],
+               # ... or the terminal (PUT /api/settings/terminal)
+               **{k: old[k] for k in panel_settings.TERMINAL_KEYS})
     try:
         s = panel_settings.validate(new)
     except panel_settings.SettingsError as e:
@@ -1941,6 +1947,205 @@ def clear_server_chat(server_name: str):
 def debug_server_chat(server_name: str):
     return manager.get_chat_debug(server_name)
 
+
+
+# ---------------------------------------------------------------------------
+# 1.21.10: the terminal (core/terminal.py). A shell as a Linux account, for admins, on Linux.
+# The browser gets a one-use ticket (a POST, so the cross-site checks above apply), then opens
+# the websocket. Websockets don't pass through the HTTP middleware, so each one checks the
+# session, the ticket and its Origin itself.
+# ---------------------------------------------------------------------------
+class _BrowserSocket:
+    """A browser's websocket, in the shape core/terminal.py uses."""
+
+    def __init__(self, ws):
+        self.ws = ws
+
+    async def recv(self):
+        try:
+            msg = await self.ws.receive()
+        except Exception:                        # noqa: BLE001
+            return ("closed", None)
+        if msg.get("type") == "websocket.disconnect":
+            return ("closed", None)
+        if msg.get("bytes") is not None:
+            return ("bytes", msg["bytes"])
+        return ("text", msg.get("text") or "")
+
+    async def send_bytes(self, data):
+        await self.ws.send_bytes(bytes(data))
+
+    async def send_text(self, text):
+        await self.ws.send_text(text)
+
+    async def close(self, code=1000):
+        try:
+            await self.ws.close(code)
+        except Exception:                        # noqa: BLE001  (already closed)
+            pass
+
+
+def _secure(request):
+    return request.url.scheme in ("https", "wss")
+
+@app.get("/api/terminal")
+def terminal_status_api(request: Request):
+    return terminal.status(request.state.user, _secure(request), _client_ip(request))
+
+@app.post("/api/terminal/ticket")
+def terminal_ticket_api(request: Request, body: dict = Body(default={})):
+    user = request.state.user
+    node_id = body.get("node") if isinstance(body, dict) else None
+    cookie = request.cookies.get(auth.SESSION_COOKIE)
+    try:
+        if node_id:
+            node = _terminal_node(node_id)
+            ticket = terminal.issue_ticket(user, cookie, _secure(request), _client_ip(request), node=node["id"])
+        else:
+            ticket = terminal.issue_ticket(user, cookie, _secure(request), _client_ip(request))
+    except terminal.Refused as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    return {"ticket": ticket}
+
+@app.get("/api/terminal/sessions")
+def terminal_sessions_api():
+    return {"sessions": terminal.list_sessions()}
+
+@app.delete("/api/terminal/sessions/{sid}")
+def terminal_end_api(sid: str, request: Request):
+    if not terminal.end_session(sid, request.state.user["username"]):
+        raise HTTPException(status_code=404, detail="That terminal isn't open any more.")
+    return {"status": "success"}
+
+@app.put("/api/settings/terminal")
+def terminal_settings_api(request: Request, body: dict = Body(...)):
+    if not terminal.platform_terminal.supported():
+        raise HTTPException(status_code=400, detail="This machine's system doesn't have the terminal yet.")
+    changes = {k: body[k] for k in panel_settings.TERMINAL_KEYS if k in body and k != "terminal_enabled"}
+    old = panel_settings.load()
+    try:
+        s = terminal.turn(body.get("terminal_enabled", old["terminal_enabled"]), request.state.user["username"],
+                          **changes)
+    except panel_settings.SettingsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {k: s[k] for k in panel_settings.TERMINAL_KEYS}
+
+def _terminal_node(node_id):
+    """A node the master may open a terminal on, or HTTPException."""
+    node = _proxy_node(node_id)
+    if (node.get("cluster_api") or 1) < cluster.TERMINAL_API:
+        raise HTTPException(status_code=400, detail=f"{node['name']} needs RedstonePanel 1.21.10 or later for a "
+                                                    "terminal from the master.")
+    try:
+        fields = cluster_client._hello_fields(node)          # ask now: its settings may have changed
+    except Exception:                                        # noqa: BLE001
+        fields = {}
+    t = fields.get("terminal")
+    if not fields:
+        raise HTTPException(status_code=502, detail=f"{node['name']} isn't answering.")
+    cluster.update_node(node["id"], **fields)
+    if not (t and t["supported"] and t["enabled"] and t["from_master"]):
+        raise HTTPException(status_code=403, detail=f"{node['name']} doesn't allow a terminal from the master. Its "
+                                                    "own admin can allow it under Panel Settings > Terminal.")
+    return node
+
+def _ws_ip(ws):
+    return ws.client.host if ws.client else None
+
+async def _ws_user(ws, node=None):
+    """(user, cookie, ticket entry) for a browser's terminal websocket, or None after refusing it."""
+    cookie = ws.cookies.get(auth.SESSION_COOKIE)
+    user = await run_in_threadpool(auth.read_session_token, cookie) if cookie else None
+    entry = terminal.take_ticket(ws.query_params.get("ticket"), cookie, node=node) if user else None
+    ok = (user and entry and panel_settings.same_origin(ws.headers) is True and user["role"] == "admin"
+          and not user.get("needs_2fa_setup") and entry["user"] == user["username"]
+          and (_secure(ws) or terminal.is_local(_ws_ip(ws))) and not terminal.is_signed_out(cookie))
+    if not ok:
+        await ws.close(code=4403)
+        return None
+    return user, cookie, entry
+
+def _still_allowed(cookie, local=True):
+    def check():
+        user = auth.read_session_token(cookie)
+        if not user or user["role"] != "admin" or terminal.is_signed_out(cookie):
+            return "you signed out, or aren't an admin any more"
+        if local and not panel_settings.load()["terminal_enabled"]:
+            return "the terminal was turned off"
+        return None
+    return check
+
+@app.websocket("/api/terminal/ws")
+async def terminal_ws(ws: WebSocket):
+    got = await _ws_user(ws)
+    if not got:
+        return
+    user, cookie, _entry = got
+    if not terminal.status(user, True, None)["available"]:
+        await ws.close(code=4403)
+        return
+    await ws.accept()
+    linked = terminal.linked_account(user)
+    who = {"panel_user": user["username"], "ip": _ws_ip(ws), "linked": linked, "cookie": cookie,
+           "recent": bool(linked) and terminal.recent(cookie),
+           "two_factor_key": twofactor.account_key(user["source"], user["username"]) if user.get("two_factor") else None,
+           "still_allowed": _still_allowed(cookie)}
+    await terminal.serve(_BrowserSocket(ws), who)
+
+@app.websocket("/api/cluster/nodes/{node_id}/terminal/ws")
+async def cluster_terminal_ws(ws: WebSocket, node_id: str):
+    got = await _ws_user(ws, node=node_id)
+    if not got:
+        return
+    user, cookie, _entry = got
+    node = await run_in_threadpool(cluster.find_node, node_id)
+    if not node or cluster.role() != "master":
+        await ws.close(code=4404)
+        return
+    ip = _ws_ip(ws)
+    try:
+        link = await cluster_client.open_terminal(node, user["username"], ip)
+    except cluster_client.NodeError as e:
+        await ws.accept()
+        await ws.send_bytes(f"{e}\r\n".encode())
+        await ws.close(1000)
+        return
+    await ws.accept()
+    started = time.time()
+    await run_in_threadpool(manager.write_log, f"[TERMINAL] {user['username']} opened a terminal on node "
+                                               f"{node['name']} from {ip}.")
+    try:
+        await terminal.relay(_BrowserSocket(ws), link, _still_allowed(cookie, local=False))
+    finally:
+        await run_in_threadpool(manager.write_log, f"[TERMINAL] {user['username']}'s terminal on node {node['name']} "
+                                                   f"closed after {int((time.time() - started) // 60)} min.")
+
+@app.websocket("/api/terminal/node-ws")
+async def node_terminal_ws(ws: WebSocket):
+    """A node: the master's terminal for one of its admins. The node checks the Linux password."""
+    bearer = ws.headers.get("authorization", "")
+    ip = _ws_ip(ws)
+    master = await run_in_threadpool(cluster.read_node_token, bearer[7:].strip(),
+                                     ws.headers.get("x-redstonepanel-epoch"), ip) \
+        if bearer.lower().startswith("bearer ") else None
+    s = panel_settings.load()
+    actor = (ws.headers.get("x-redstonepanel-actor") or "?")[:64]
+    client_ip = ws.headers.get("x-redstonepanel-client-ip") or ""
+    if not terminal.valid_ip(client_ip):
+        client_ip = ip
+    if not (master and ws.headers.get("x-redstonepanel-role") == "admin" and terminal.platform_terminal.supported()
+            and s["terminal_enabled"] and s["terminal_from_master"]):
+        await ws.close(code=4403)
+        return
+    await ws.accept()
+
+    def still_allowed():
+        cur = panel_settings.load()
+        return None if cur["terminal_enabled"] and cur["terminal_from_master"] else "the terminal was turned off"
+
+    who = {"panel_user": f"{actor} (master {master.get('master', '?')})", "ip": client_ip, "linked": None,
+           "via": f"through the master from {ip}", "still_allowed": still_allowed}
+    await terminal.serve(_BrowserSocket(ws), who)
 
 # ---------------------------------------------------------------------------
 # Clusters (docs/design/fleet.md): one master panel controls other panels' game servers

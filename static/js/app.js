@@ -5800,6 +5800,67 @@ const ServerApp = {
 		this.loadSftpSettings(d.enabled ? `SFTP is on, port ${d.port}.` : 'SFTP is off.', true);
 	},
 
+	// --- 1.21.10: Panel Settings → Terminal (its own switch; saving never restarts the panel) ---
+	async loadTerminalSettings(message, ok) {
+		const box = document.getElementById('set-terminal');
+		if (!box) return;
+		const [st, ses] = await Promise.all([fetch('/api/terminal'), fetch('/api/terminal/sessions')]);
+		if (!st.ok) return;
+		const d = await st.json();
+		document.getElementById('set-terminal-wrap').classList.toggle('hidden', !d.supported);
+		if (!d.supported) return;
+		const s = this.settingsData || {};
+		const sessions = ses.ok ? (await ses.json()).sessions : [];
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const node = this.currentUser && this.currentUser.cluster && this.currentUser.cluster.role === 'node';
+		const check = (id, on, title, text) => `
+			<label class="flex items-start gap-2 mb-2 text-sm cursor-pointer">
+				<input type="checkbox" id="${id}" ${on ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">${title}</b><br><span class="${note}">${text}</span></span>
+			</label>`;
+		box.innerHTML = `
+			${check('set-term-on', d.enabled, 'Let admins open a terminal on this machine',
+				'A <b>⌨️ Terminal</b> button on the Dashboard. The shell runs as a Linux account, never as the panel itself: an admin who signed in with their Linux account gets that account; others type a Linux account and its password. Accounts with <span class="font-mono">nologin</span> (like <span class="font-mono">minecraft</span>) can\'t log in. Only over HTTPS. Helpers never get a terminal.')}
+			${check('set-term-root', s.terminal_allow_root, 'Allow logging in as root', 'Off is safer: log in as yourself and use <span class="font-mono">sudo</span>.')}
+			${node ? check('set-term-master', s.terminal_from_master, 'Allow a terminal from the cluster master',
+				'Admins on the master can open a terminal here. They still need a Linux account and password on this machine; the password passes through the master.') : ''}
+			<div class="flex flex-wrap items-end gap-2 mb-2">
+				<label class="${note}">Close after (minutes with nothing typed)<br><input id="set-term-idle" type="number" min="5" max="120" value="${esc(s.terminal_idle_minutes ?? 15)}" class="${field} w-28 mt-1"></label>
+				<label class="${note}">Skip the password after a Linux sign-in for (minutes, 0 = always ask)<br><input id="set-term-recent" type="number" min="0" max="60" value="${esc(s.terminal_recent_minutes ?? 15)}" class="${field} w-28 mt-1"></label>
+				<button onclick="ServerApp.saveTerminalSettings(this)" class="px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold text-sm">Save terminal</button>
+			</div>
+			<p id="set-term-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-1">${esc(message || '')}</p>
+			${d.enabled && !d.secure ? '<p class="text-sm text-yellow-700 dark:text-yellow-300 mb-2">The terminal needs HTTPS (Connection, below), so the passwords and everything shown can\'t be read on the network.</p>' : ''}
+			<p class="${note}">Every terminal that opens or closes, and every wrong password, is written to the panel log. What is typed is never recorded. Five wrong passwords in 10 minutes block that account and address for 10 minutes.</p>
+			${sessions.length ? `<div class="mt-3"><p class="${note} mb-1">Open now:</p>${sessions.map(x => `
+				<div class="flex items-center justify-between gap-2 text-sm py-1 border-t border-gray-100 dark:border-gray-700">
+					<span class="text-gray-900 dark:text-gray-200 min-w-0 break-words"><b>${esc(x.panel_user)}</b> as <span class="font-mono">${esc(x.account || '(signing in)')}</span> from ${esc(x.ip)}${x.via ? ` ${esc(x.via)}` : ''}, ${esc(this.fmtWhen(x.started))}</span>
+					<button onclick="ServerApp.endTerminal(${this.jsArg(x.id)})" class="px-3 py-1 rounded text-xs font-bold text-white bg-red-600 hover:bg-red-700">End</button>
+				</div>`).join('')}</div>` : ''}`;
+	},
+
+	async saveTerminalSettings(button) {
+		button.disabled = true;
+		const get = id => document.getElementById(id);
+		const body = { terminal_enabled: get('set-term-on').checked, terminal_allow_root: get('set-term-root').checked,
+			terminal_idle_minutes: parseInt(get('set-term-idle').value, 10) || 0,
+			terminal_recent_minutes: parseInt(get('set-term-recent').value, 10) || 0 };
+		if (get('set-term-master')) body.terminal_from_master = get('set-term-master').checked;
+		const res = await fetch('/api/settings/terminal', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+		if (!res.ok) return this.loadTerminalSettings(await this.apiError(res), false);
+		const d = await res.json();
+		Object.assign(this.settingsData || {}, d);
+		this.loadTerminalSettings(d.terminal_enabled ? 'The terminal is on.' : 'The terminal is off.', true);
+		this.loadDashboard();
+	},
+
+	async endTerminal(id) {
+		await fetch(`/api/terminal/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+		this.loadTerminalSettings();
+	},
+
 	// --- Panel Settings: where new game servers are kept (1.21.1) ---
 	async loadServersFolder(message, ok, typed) {
 		const box = document.getElementById('set-servers-folder');
@@ -5841,7 +5902,7 @@ const ServerApp = {
 		const res = await fetch('/api/settings');
 		if (!res.ok) { box.innerHTML = `<p class="text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
 		const d = await res.json();
-		const s = d.settings, esc = t => this.escapeHtml(t);
+		const s = this.settingsData = d.settings, esc = t => this.escapeHtml(t);
 		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
 		const radio = (name, value, current, title, desc) => `
 			<label class="flex gap-3 p-3 rounded border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900">
@@ -5880,6 +5941,11 @@ const ServerApp = {
 
 			<h4 id="set-section-sftp" class="font-bold text-gray-900 dark:text-white mb-2">SFTP</h4>
 			<div id="set-sftp" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+
+			<div id="set-terminal-wrap" class="hidden">
+			<h4 id="set-section-terminal" class="font-bold text-gray-900 dark:text-white mb-2">Terminal</h4>
+			<div id="set-terminal" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+			</div>
 
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
@@ -5942,6 +6008,7 @@ const ServerApp = {
 		this.loadStorageSettings();
 		this.loadSetupSettings();
 		this.loadSftpSettings();
+		this.loadTerminalSettings();
 		this.loadServersFolder();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
@@ -6135,8 +6202,30 @@ const ServerApp = {
 		} else {
 			this.setupData = null;
 		}
+		if (this.isAdmin()) {
+			try {
+				const r = await fetch('/api/terminal');
+				this.terminalInfo = r.ok ? await r.json() : null;
+			} catch (e) { /* keep the last answer */ }
+		} else {
+			this.terminalInfo = null;
+		}
 		await this.loadHostHistory();
 		if (!document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard();
+	},
+
+	// --- 1.21.10: the terminal (static/js/terminal.js). Admins only, on a Linux machine, when on. ---
+	openTerminal(nodeId, nodeName) {
+		const t = this.terminalInfo || {};
+		const name = nodeName || (this.dashData && this.dashData.host && (this.dashData.host.name || this.dashData.host.hostname));
+		RPTerminal.start({ node: nodeId || '', name, idleMinutes: t.idle_minutes });
+	},
+
+	canOpenNodeTerminal(n) {
+		const t = n.local ? (this.terminalInfo && this.terminalInfo.available)
+			: n.terminal && n.terminal.supported && n.terminal.enabled && n.terminal.from_master;
+		return !!(this.isAdmin() && n.state === 'ok' && t && (n.local || (n.cluster_api || 1) >= 8)
+			&& this.terminalInfo && this.terminalInfo.secure);
 	},
 
 	// Formatting helpers
@@ -6189,6 +6278,7 @@ const ServerApp = {
 		const svc = d.services || {};
 		const hostLine = [d.host.os, d.host.uptime ? `up ${this.fmtDuration(d.host.uptime)}` : null].filter(Boolean).join(' · ');
 		document.getElementById('dash-title').innerText = d.host.name || d.host.hostname;
+		document.getElementById('btn-terminal').classList.toggle('hidden', !(this.terminalInfo && this.terminalInfo.available));
 		document.getElementById('dash-subtitle').innerText = `${hostLine}${hostLine ? ' · ' : ''}refreshes every 10 seconds`;
 
 		// Needs attention
@@ -7126,7 +7216,10 @@ const ServerApp = {
 							${n.local ? '' : `<p class="text-xs text-gray-500 dark:text-gray-400 font-mono">${esc(n.url)} · RedstonePanel ${esc(n.version || '?')}</p>`}
 							${this.nodeResources(n.id)}
 						</div>
+						<div class="flex flex-wrap justify-end items-center gap-3">
+						${this.canOpenNodeTerminal(n) ? `<button onclick="ServerApp.openTerminal(${this.jsArg(n.local ? '' : n.id)}, ${this.jsArg(n.name)})" title="A shell on this machine, as a Linux account" class="${btn} bg-gray-500 hover:bg-gray-600">⌨️ Terminal</button>` : ''}
 						${n.local ? '' : `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-sm underline text-theme whitespace-nowrap">Open dashboard ↗</a>`}
+						</div>
 					</div>
 					${ok ? '' : `<p class="mx-4 mb-3 text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200">⚠️ ${esc(this.clusterStates[n.state] || n.state)}${n.error ? ` <span class="text-xs">(${esc(n.error)})</span>` : ''}</p>`}
 					${rows || (ok ? '<p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">No Minecraft servers on this panel yet.</p>' : '')}

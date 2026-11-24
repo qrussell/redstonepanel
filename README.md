@@ -229,6 +229,8 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   pick, with **Moderator** and **Co-owner** presets (**Users → Servers**)
 - SFTP for FileZilla, WinSCP or any SFTP program (1.18, off until turned on): sign in as
   `account.server` with the panel password or an SSH key, and reach only that server's folder
+- a terminal in the browser for admins (1.21.10, off until turned on, HTTPS only): a shell as
+  a Linux account, never as the panel itself, on this machine or a cluster node that allows it
 - a file manager for each server's folder (admins, and users given **Files**): browse, edit text files such as plugin
   configs, drag and drop uploads, download, rename and delete
 - mods (Fabric, Quilt, NeoForge, Forge), plugins (Paper, Purpur) and add-ons (Bedrock): drop `.jar`, `.mcpack` or `.mcaddon`
@@ -593,6 +595,11 @@ Admins can also change how the panel is reached under **Panel Settings**:
   reach only that server's folder. Admins reach every server; users need **Files** on it.
   Accounts with two-factor sign-in must use a key. It needs `python3-paramiko` (installed
   with the panel as a recommended package).
+- **Terminal.** Off by default, HTTPS only, admins only, Linux only. The shell always runs as a
+  Linux account: the one the admin signed in with, or one they log in to at the terminal's
+  `login:` prompt with its password (root only if allowed). Accounts are never linked by
+  matching names. Wrong passwords are rate limited, idle terminals close, every terminal is in
+  the activity log (what is typed is not), and the join-page port has no terminal.
 - **Trusted-LAN sign-in.** Visitors from the private networks you list (by default
   `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) can use the panel without
   signing in. Its limits:
