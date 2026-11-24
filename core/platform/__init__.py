@@ -5,7 +5,7 @@ needed them. Those calls now live in one place per system, so a second system is
 next to `linux/`, not a change to every feature. `windows/` is that second system (a preview
 from 1.22).
 
-    from core.platform import services, firewall, console, packages, system, certs, paths
+    from core.platform import services, firewall, console, packages, system, certs, terminal, paths
 
     services.start("minecraft-java")        # systemctl start minecraft-java.service
     firewall.allow(25565, "tcp")            # ufw allow 25565/tcp
@@ -22,6 +22,7 @@ What each area is for:
     packages   the system's package manager: Java, and the panel's own package
     system     this machine: addresses, accounts, file ownership
     certs      making and checking certificates
+    terminal   the panel's terminal (1.21.10): checking an account's password, a login shell
     paths      where things live (core/platform/paths.py)
 
 Rules for code outside this package:
@@ -39,7 +40,7 @@ from core.platform import paths            # noqa: F401  (re-exported)
 CommandError = (OSError, subprocess.SubprocessError)
 TimeoutExpired = subprocess.TimeoutExpired
 
-AREAS = ("services", "firewall", "console", "packages", "system", "certs")
+AREAS = ("services", "firewall", "console", "packages", "system", "certs", "terminal")
 SYSTEMS = ("linux", "windows", "fake")
 
 _state = {"name": None, "areas": {}}
@@ -99,6 +100,7 @@ console = _Area("console")
 packages = _Area("packages")
 system = _Area("system")
 certs = _Area("certs")
+terminal = _Area("terminal")
 
-__all__ = ["services", "firewall", "console", "packages", "system", "certs", "paths",
+__all__ = ["services", "firewall", "console", "packages", "system", "certs", "terminal", "paths",
            "CommandError", "TimeoutExpired", "use", "name", "area"]

@@ -53,6 +53,8 @@ OS_RELEASE = "/etc/os-release"
 LOCALTIME = "/etc/localtime"
 BLOCK_DEVICES = "/sys/dev/block"
 LOGIN_SHELL = "/bin/bash"                            # the minecraft account's shell
+LOGIN = "/bin/login"                                 # 1.21.10: starts a terminal's login session
+SHELLS_FILE = "/etc/shells"                          # the login shells this machine allows
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ tests/test_grants.py fails when a route has no rule. A route that isn't listed n
 import json
 import os
 import re
+import tempfile
 import threading
 
 from core.settings import DATA_DIR
@@ -81,9 +82,9 @@ def _load():
 
 
 def _save(users):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    tmp = GRANTS_FILE + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.makedirs(os.path.dirname(GRANTS_FILE), exist_ok=True)
+    # A temporary name of its own: the panel and `redstonepanel add-user` may both write at once
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(GRANTS_FILE), prefix=".grants-", suffix=".tmp")
     with os.fdopen(fd, "w") as f:
         json.dump({"version": 1, "users": users}, f, indent=2, sort_keys=True)
     os.replace(tmp, GRANTS_FILE)
@@ -246,6 +247,10 @@ signed   GET     /api/auth/ssh-keys
 signed   POST    /api/auth/ssh-keys
 signed   DELETE  /api/auth/ssh-keys/{{fingerprint}}
 user     GET     /api/sftp
+user     GET     /api/terminal
+admin    POST    /api/terminal/ticket
+admin    GET     /api/terminal/sessions
+admin    DELETE  /api/terminal/sessions/{{sid}}
 user     GET     /api/servers
 user     GET     /api/host
 user     GET     /api/host/history

@@ -128,6 +128,12 @@ def create_panel_user(username, password, role):
         users = _load_users()
         if _find(users, username):
             raise AuthError(f"Panel user '{username}' already exists.")
+        # 1.18's one-time step gives `user` accounts made before per-server permissions their old
+        # rights. The panel runs it as it starts, but an account can be added before that (the
+        # `redstonepanel add-user` right after installing): run it here first, or the new account
+        # would be counted as an old one and get every server
+        from core import grants
+        grants.migrate_existing_users([u["username"] for u in users if u.get("role") == "user"])
         users.append({"username": username, "password_hash": hash_password(password), "role": role,
                       "disabled": False, "session_version": 1,
                       "created": int(time.time()), "last_login": None})
@@ -257,6 +263,16 @@ def _clear_fails(keys):
             store.pop(k, None)
     _with_fails(drop)
 
+# The same store, for other kinds of passwords (the terminal's: core/terminal.py)
+def throttled(keys):
+    return _throttled(keys)
+
+def record_fail(keys):
+    _record_fail(keys)
+
+def clear_fails(keys):
+    _clear_fails(keys)
+
 def fail_keys(username, client_ip):
     return (f"user:{(username or '').lower()}", f"ip:{client_ip}")
 
@@ -383,7 +399,16 @@ def _identity_fields(identity):
     return {k: identity[k] for k in ("u", "src", "v", "m") if k in identity}
 
 def make_session_token(identity):
-    return _sign(dict(_identity_fields(identity), exp=int(time.time()) + SESSION_SECONDS), "session")
+    # n: each sign-in's cookie is its own, even two in the same second (signing one out, which
+    # closes its terminals, must not touch the other)
+    return _sign(dict(_identity_fields(identity), exp=int(time.time()) + SESSION_SECONDS, n=secrets.token_hex(8)),
+                 "session")
+
+def session_started(token):
+    """When a valid session cookie was signed in (epoch seconds), else None. A session is only
+    ever made at sign-in, so it is its expiry less its length."""
+    payload = _unsign(token, "session")
+    return payload["exp"] - SESSION_SECONDS if payload else None
 
 def make_pending_token(identity):
     fields = {k: identity[k] for k in ("u", "src", "v")}

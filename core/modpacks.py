@@ -501,7 +501,7 @@ def stage_server_pack(root, staging):
 # ---------------------------------------------------------------------------
 def read_record(d):
     try:
-        with open(os.path.join(d, PACK_FILE)) as f:
+        with system.game_files(), open(os.path.join(d, PACK_FILE)) as f:
             rec = json.load(f)
     except (OSError, ValueError):
         return None
@@ -516,9 +516,10 @@ def _write_record(d, plan, staged, source):
            "installed_at": int(time.time()), "files": staged["files"], "overrides": staged["overrides"],
            **{k: v for k, v in (source or {}).items() if v}}
     tmp = os.path.join(d, PACK_FILE + ".part")
-    with open(tmp, "w") as f:
-        json.dump(rec, f, indent=1)
-    os.replace(tmp, os.path.join(d, PACK_FILE))
+    with system.game_files():
+        with open(tmp, "w") as f:
+            json.dump(rec, f, indent=1)
+        os.replace(tmp, os.path.join(d, PACK_FILE))
     return rec
 
 

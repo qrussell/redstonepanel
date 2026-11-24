@@ -104,6 +104,14 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.21
 
+**A terminal in the panel** *(1.21.10)*. Admins can open a shell on the machine from the browser, on a phone too. It runs as a Linux account, never as the panel: your own if you signed in with it, or the one you log in with at its `login:` prompt. Off until you turn it on, HTTPS only, and every terminal is logged. Read the [1.21.10 release notes](release-notes/v1.21.10.md).
+
+**Join pages through a proxy** *(1.21.9)*. HAProxy (for example on pfSense) or Cloudflare can send `/join` on your own domain to the join pages, with a separate request limit for each player and the settings to copy. Mods such as Simple Voice Chat get a port of their own per server instead of crashing the second one. Upgrades also no longer let Ubuntu restart your game servers. Read the [1.21.9 release notes](release-notes/v1.21.9.md).
+
+**Security fixes** *(1.21.8)*. The panel works in server folders with the `minecraft` account's rights, so a link a server or plugin puts there can't make it read or change other files, and Bedrock player names are checked before they reach the console. Read the [1.21.8 release notes](release-notes/v1.21.8.md).
+
+**A Visual Editor for settings files** *(1.21.7)*. On the **Files** tab, `server.properties`, `eula.txt` and other `name=value` files open in a form like Configuration's, with True/False lists, number boxes and a filter. **Visual Editor** and **Raw Text** switch between the form and the text, and only the values you change are written. Read the [1.21.7 release notes](release-notes/v1.21.7.md).
+
 **Player packs** *(1.21.6)*. On a mod server, the panel works out which mods players need from the server's own mods folder and offers them on the join page as one download their launcher installs, at the versions the server runs. Change the server's mods and the pack follows. The Mods tab's **Player pack** view lets you overrule any line and add extras such as shaders. Read the [1.21.6 release notes](release-notes/v1.21.6.md).
 
 **Join pages for players** *(1.21.5)*. **🔗 Join pages** gives each server a public page that tells players how to join: the address, whether it's online, how many are playing, the Minecraft version, and for a modpack server the exact pack to install. Nothing is public until you turn it on, and the pages have a port of their own, so the panel stays off the internet. Read the [1.21.5 release notes](release-notes/v1.21.5.md).
@@ -225,6 +233,8 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
   pick, with **Moderator** and **Co-owner** presets (**Users → Servers**)
 - SFTP for FileZilla, WinSCP or any SFTP program (1.18, off until turned on): sign in as
   `account.server` with the panel password or an SSH key, and reach only that server's folder
+- a terminal in the browser for admins (1.21.10, off until turned on, HTTPS only): a shell as
+  a Linux account, never as the panel itself, on this machine or a cluster node that allows it
 - a file manager for each server's folder (admins, and users given **Files**): browse, edit text files such as plugin
   configs, drag and drop uploads, download, rename and delete
 - mods (Fabric, Quilt, NeoForge, Forge), plugins (Paper, Purpur) and add-ons (Bedrock): drop `.jar`, `.mcpack` or `.mcaddon`
@@ -590,6 +600,11 @@ Admins can also change how the panel is reached under **Panel Settings**:
   reach only that server's folder. Admins reach every server; users need **Files** on it.
   Accounts with two-factor sign-in must use a key. It needs `python3-paramiko` (installed
   with the panel as a recommended package).
+- **Terminal.** Off by default, HTTPS only, admins only, Linux only. The shell always runs as a
+  Linux account: the one the admin signed in with, or one they log in to at the terminal's
+  `login:` prompt with its password (root only if allowed). Accounts are never linked by
+  matching names. Wrong passwords are rate limited, idle terminals close, every terminal is in
+  the activity log (what is typed is not), and the join-page port has no terminal.
 - **Trusted-LAN sign-in.** Visitors from the private networks you list (by default
   `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) can use the panel without
   signing in. Its limits:
@@ -717,7 +732,8 @@ the system updated.
 
 To report a security problem, please open a private
 [security advisory](https://github.com/qrussell/redstonepanel/security/advisories/new)
-rather than a public issue.
+rather than a public issue. The [security policy](SECURITY.md) says what to include and what
+to expect.
 
 ## Building from source
 
@@ -769,6 +785,13 @@ classes in `static/*.html` or `static/js/app.js`, regenerate it (needs Node.js):
 ```bash
 packaging/build-css.sh
 ```
+
+### Contributing
+
+Pull requests are welcome on GitHub; see [CONTRIBUTING.md](CONTRIBUTING.md). GitHub is a
+mirror, so approved pull requests are merged through GitLab. The maintainer's side of that,
+and where the security features are set up, is in
+[docs/maintainers/README.md](docs/maintainers/README.md).
 
 ### Releases
 

@@ -43,6 +43,10 @@ def reset():
     state.passwords = {}            # system account -> password
     state.machine_files = {}        # "meminfo" -> text
     state.processes = set()         # pids that are alive
+    state.terminal_supported = True     # False: a system with no terminal (Windows, for now)
+    state.terminal_accounts = {}        # name -> {"password", "uid", "shell", "locked"}
+    state.terminal_uid = None           # what foreground_uid() says, when not the account's own
+    state.shells = []                   # every Shell spawn() returned
     return state
 
 

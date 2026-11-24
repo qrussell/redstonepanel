@@ -38,10 +38,12 @@ from core.platform import certs
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
-CLUSTER_API = 7                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
+CLUSTER_API = 8                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
                                 # 4: backup copies on another member (1.16.8), 5: pre-copy moves (1.16.13),
                                 # 6: New server's Advanced options and moves that keep startup flags (1.17.2),
-                                # 7: Purpur, Quilt, Forge, NeoForge and modpacks (1.20)
+                                # 7: Purpur, Quilt, Forge, NeoForge and modpacks (1.20),
+                                # 8: the terminal, through the master (1.21.10)
+TERMINAL_API = 8                # a node needs this for a terminal from the master
 LOADERS_API = 7                 # a node needs this for the 1.20 server types and modpacks
 ADVANCED_API = 6                # a node needs this for New server's Advanced options
 MIN_JOIN_API = 1                # oldest node contract a master still lets join (phase 1 nodes)
@@ -208,7 +210,7 @@ def clean_machine(value):
 def public_node(n):
     """A node record without its token."""
     out = {k: n.get(k) for k in ("id", "name", "url", "platform", "machine", "version", "cluster_api",
-                                 "cert_expires", "added", "added_by", "last_ok", "sans", "renew_error")}
+                                 "cert_expires", "added", "added_by", "last_ok", "sans", "renew_error", "terminal")}
     out["verify"] = node_verify(n)
     return out
 
@@ -526,12 +528,20 @@ def read_node_token(token, epoch_header, ip):
 
 
 def hello():
+    from core import terminal                  # (imports the panel's sign-in code)
     st = state()
     s = panel_settings.load()
     cert = s["cert_file"] if s["https_mode"] == "custom" else node_crt()
     return {"name": panel_settings.display_name(s), "version": panel_version(), "cluster_api": CLUSTER_API,
             "platform": "linux", "machine": platform.machine(), "cluster_id": st.get("cluster_id"), "cert_expires": cert_expires(cert),
-            "https_mode": s["https_mode"]}
+            "https_mode": s["https_mode"], "terminal": terminal.node_fields()}
+
+
+def clean_terminal(value):
+    """A node's terminal fields from its hello: {"supported", "enabled", "from_master"}, or None."""
+    if not isinstance(value, dict):
+        return None
+    return {k: value.get(k) is True for k in ("supported", "enabled", "from_master")}
 
 
 # ---------------------------------------------------------------------------

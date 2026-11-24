@@ -9,6 +9,58 @@ the dashboard.
 
 ---
 
+## 1.21.10: a terminal in the panel *(November 2026)*
+
+- **⌨️ Terminal** on the Dashboard and on each machine of the Cluster page opens a shell on the
+  machine in your browser, for admins, on Linux. On a phone it has a row of keys for Esc, Tab,
+  Ctrl and the arrows.
+- It runs as a Linux account, never as the panel: your own if you signed in with it, otherwise
+  the account you log in with at its `login:` prompt. See
+  [Terminal](../guide/README.md#terminal).
+- Off until an admin turns it on under **🛡️ Settings → Terminal**, HTTPS only, closed when
+  idle, and every terminal is logged. A cluster node decides for itself whether the master may
+  open one there.
+
+[Release notes](../../release-notes/v1.21.10.md)
+
+## 1.21.9: join pages through a proxy *(November 2026)*
+
+- **🔗 Join pages → Through a proxy (HAProxy or Cloudflare)**: HAProxy (for example on
+  pfSense) or a Cloudflare Tunnel can send `/join` on your own domain to the join pages. Each
+  player keeps their own request limit, and the section shows the settings to copy. See
+  [Join pages through a proxy](../guide/README.md#join-pages-through-a-proxy-haproxy-or-cloudflare-1219).
+- Cloudflare-proxied domains (orange cloud), an address for the panel's links, and **Only
+  through the proxy**.
+- Mods with a port of their own (Simple Voice Chat, Geyser, BlueMap and more) get a free port
+  each when two servers would share one, instead of one server crashing.
+- Fixed: upgrades no longer let Ubuntu's `needrestart` restart Minecraft servers.
+
+[Release notes](../../release-notes/v1.21.9.md)
+
+## 1.21.8: security fixes *(November 2026)*
+
+- The panel now works in server folders with the `minecraft` account's rights, so a link a
+  server or plugin puts in its folder can't make the panel read or change other files.
+  Server and world downloads leave links out.
+- Bedrock player names on **Configuration → Players** are checked before they can reach the
+  server's console.
+- A world outside the server folder is refused, and unknown server names are refused up front.
+- Fixed: Java players keep their UUID on Configuration → Players.
+
+[Release notes](../../release-notes/v1.21.8.md)
+
+## 1.21.7: a Visual Editor for settings files *(November 2026)*
+
+- **Files → Visual Editor**: `server.properties`, `eula.txt` and other `name=value` files
+  (`.properties`, most `.cfg`, `.conf`, `.ini`) open in a form like Configuration's, with
+  True/False lists, number boxes and a filter.
+- **Visual Editor** and **Raw Text** switch between the form and the text, which always show
+  the same file. Comments, spacing and order are kept. See
+  [Files](../guide/README.md#11-files).
+- Fixed: saving from the Files tab no longer turns Windows line endings into Unix ones.
+
+[Release notes](../../release-notes/v1.21.7.md)
+
 ## 1.21.6: player packs *(November 2026)*
 
 - **Player packs**: for a Fabric, Quilt, Forge or NeoForge server, the panel works out which

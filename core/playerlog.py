@@ -24,7 +24,7 @@ import time
 
 from core import manager
 from core.settings import DATA_DIR
-from core.platform import services, TimeoutExpired
+from core.platform import services, system, TimeoutExpired
 
 LOG_DIR = os.path.join(DATA_DIR, "players")
 STATE_FILE = os.path.join(LOG_DIR, "state.json")
@@ -197,12 +197,15 @@ def bedrock_file_lines(text):
 
 
 def _read(path):
+    """A server log (the game's folder): read as the game account, so a log swapped for a link
+    to a root-only file shows nothing."""
     try:
-        if path.endswith(".gz"):
-            with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
+        with system.game_files():
+            if path.endswith(".gz"):
+                with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
+                    return f.read()
+            with open(path, encoding="utf-8", errors="replace") as f:
                 return f.read()
-        with open(path, encoding="utf-8", errors="replace") as f:
-            return f.read()
     except (OSError, EOFError):
         return ""
 

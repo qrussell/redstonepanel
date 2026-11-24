@@ -6,6 +6,7 @@ service account (NT SERVICE\\minecraft-<name>), which Windows makes with the ser
 can change only that server's folder. "Giving a folder to the game account" therefore means
 granting that server's account rights on it.
 """
+import contextlib
 import ctypes
 import json
 import os
@@ -712,6 +713,25 @@ def other_game_services():
         out.append({"service": s.get("name") or "", "running": (s.get("state") or "").lower() == "running",
                     "folder": __import__("ntpath").dirname(program), "program": program})
     return out
+
+
+# Files in a server's folder: on Linux the panel (root) switches to the game account's rights
+# while it touches them. On Windows the panel runs as SYSTEM and each server's own account has
+# rights to its own folder only (adopt_folder / give_to_game_account), and a file the panel
+# writes there inherits the folder's rights, so there is nothing to switch.
+@contextlib.contextmanager
+def game_files(as_owner_of=None):
+    yield
+
+
+@contextlib.contextmanager
+def server_account(user):
+    yield
+
+
+@contextlib.contextmanager
+def panel_files():
+    yield
 
 
 def owner_of(path):

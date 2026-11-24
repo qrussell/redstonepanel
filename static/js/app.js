@@ -4029,7 +4029,7 @@ const ServerApp = {
         const onNode = !!this.activeServer.node;
         const where = !p.active ? ''
             : onNode ? 'Players download it from this server\'s join page (Join pages in the sidebar of the cluster master).'
-            : jp.enabled && jp.site ? `Players download it from <a class="underline text-theme" target="_blank" rel="noopener noreferrer" href="${esc(`${jp.scheme}://${location.hostname}:${jp.port}/join/${encodeURIComponent(jp.path)}`)}">this server's join page</a>.`
+            : jp.enabled && jp.site ? `Players download it from <a class="underline text-theme" target="_blank" rel="noopener noreferrer" href="${esc(`${jp.url || `${jp.scheme}://${location.hostname}:${jp.port}`}/join/${encodeURIComponent(jp.path)}`)}">this server's join page</a>.`
             : 'Players download it from this server\'s join page, which is off. Turn it on under <button class="underline text-theme" onclick="ServerApp.openJoin()">Join pages</button>.';
         const state = p.active
             ? `The player pack is <b>on</b>${p.mode === 'auto' ? ' (automatic)' : ''}: ${given} mod${given === 1 ? '' : 's'}${c.optional ? `, ${c.optional} optional` : ''}; ${c.out} left out.`
@@ -5830,6 +5830,67 @@ const ServerApp = {
 		this.loadSftpSettings(d.enabled ? `SFTP is on, port ${d.port}.` : 'SFTP is off.', true);
 	},
 
+	// --- 1.21.10: Panel Settings → Terminal (its own switch; saving never restarts the panel) ---
+	async loadTerminalSettings(message, ok) {
+		const box = document.getElementById('set-terminal');
+		if (!box) return;
+		const [st, ses] = await Promise.all([fetch('/api/terminal'), fetch('/api/terminal/sessions')]);
+		if (!st.ok) return;
+		const d = await st.json();
+		document.getElementById('set-terminal-wrap').classList.toggle('hidden', !d.supported);
+		if (!d.supported) return;
+		const s = this.settingsData || {};
+		const sessions = ses.ok ? (await ses.json()).sessions : [];
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const node = this.currentUser && this.currentUser.cluster && this.currentUser.cluster.role === 'node';
+		const check = (id, on, title, text) => `
+			<label class="flex items-start gap-2 mb-2 text-sm cursor-pointer">
+				<input type="checkbox" id="${id}" ${on ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">${title}</b><br><span class="${note}">${text}</span></span>
+			</label>`;
+		box.innerHTML = `
+			${check('set-term-on', d.enabled, 'Let admins open a terminal on this machine',
+				'A <b>⌨️ Terminal</b> button on the Dashboard. The shell runs as a Linux account, never as the panel itself: an admin who signed in with their Linux account gets that account; others type a Linux account and its password. Accounts with <span class="font-mono">nologin</span> (like <span class="font-mono">minecraft</span>) can\'t log in. Only over HTTPS. Helpers never get a terminal.')}
+			${check('set-term-root', s.terminal_allow_root, 'Allow logging in as root', 'Off is safer: log in as yourself and use <span class="font-mono">sudo</span>.')}
+			${node ? check('set-term-master', s.terminal_from_master, 'Allow a terminal from the cluster master',
+				'Admins on the master can open a terminal here. They still need a Linux account and password on this machine; the password passes through the master.') : ''}
+			<div class="flex flex-wrap items-end gap-2 mb-2">
+				<label class="${note}">Close after (minutes with nothing typed)<br><input id="set-term-idle" type="number" min="5" max="120" value="${esc(s.terminal_idle_minutes ?? 15)}" class="${field} w-28 mt-1"></label>
+				<label class="${note}">Skip the password after a Linux sign-in for (minutes, 0 = always ask)<br><input id="set-term-recent" type="number" min="0" max="60" value="${esc(s.terminal_recent_minutes ?? 15)}" class="${field} w-28 mt-1"></label>
+				<button onclick="ServerApp.saveTerminalSettings(this)" class="px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold text-sm">Save terminal</button>
+			</div>
+			<p id="set-term-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-1">${esc(message || '')}</p>
+			${d.enabled && !d.secure ? '<p class="text-sm text-yellow-700 dark:text-yellow-300 mb-2">The terminal needs HTTPS (Connection, below), so the passwords and everything shown can\'t be read on the network.</p>' : ''}
+			<p class="${note}">Every terminal that opens or closes, and every wrong password, is written to the panel log. What is typed is never recorded. Five wrong passwords in 10 minutes block that account and address for 10 minutes.</p>
+			${sessions.length ? `<div class="mt-3"><p class="${note} mb-1">Open now:</p>${sessions.map(x => `
+				<div class="flex items-center justify-between gap-2 text-sm py-1 border-t border-gray-100 dark:border-gray-700">
+					<span class="text-gray-900 dark:text-gray-200 min-w-0 break-words"><b>${esc(x.panel_user)}</b> as <span class="font-mono">${esc(x.account || '(signing in)')}</span> from ${esc(x.ip)}${x.via ? ` ${esc(x.via)}` : ''}, ${esc(this.fmtWhen(x.started))}</span>
+					<button onclick="ServerApp.endTerminal(${this.jsArg(x.id)})" class="px-3 py-1 rounded text-xs font-bold text-white bg-red-600 hover:bg-red-700">End</button>
+				</div>`).join('')}</div>` : ''}`;
+	},
+
+	async saveTerminalSettings(button) {
+		button.disabled = true;
+		const get = id => document.getElementById(id);
+		const body = { terminal_enabled: get('set-term-on').checked, terminal_allow_root: get('set-term-root').checked,
+			terminal_idle_minutes: parseInt(get('set-term-idle').value, 10) || 0,
+			terminal_recent_minutes: parseInt(get('set-term-recent').value, 10) || 0 };
+		if (get('set-term-master')) body.terminal_from_master = get('set-term-master').checked;
+		const res = await fetch('/api/settings/terminal', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+		if (!res.ok) return this.loadTerminalSettings(await this.apiError(res), false);
+		const d = await res.json();
+		Object.assign(this.settingsData || {}, d);
+		this.loadTerminalSettings(d.terminal_enabled ? 'The terminal is on.' : 'The terminal is off.', true);
+		this.loadDashboard();
+	},
+
+	async endTerminal(id) {
+		await fetch(`/api/terminal/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+		this.loadTerminalSettings();
+	},
+
 	// --- Panel Settings: where new game servers are kept (1.21.1) ---
 	async loadServersFolder(message, ok, typed) {
 		const box = document.getElementById('set-servers-folder');
@@ -5885,7 +5946,7 @@ const ServerApp = {
 		const res = await fetch('/api/settings');
 		if (!res.ok) { box.innerHTML = `<p class="text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
 		const d = await res.json();
-		const s = d.settings, esc = t => this.escapeHtml(t);
+		const s = this.settingsData = d.settings, esc = t => this.escapeHtml(t);
 		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
 		const radio = (name, value, current, title, desc) => `
 			<label class="flex gap-3 p-3 rounded border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900">
@@ -5929,12 +5990,17 @@ const ServerApp = {
 			<div id="set-sftp" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 			</div>
 
+			<div id="set-terminal-wrap" class="hidden">
+			<h4 id="set-section-terminal" class="font-bold text-gray-900 dark:text-white mb-2">Terminal</h4>
+			<div id="set-terminal" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+			</div>
+
 			<div class="${this.notYet('cluster') ? 'hidden' : ''}">
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 			</div>
 			${this.notYet('cluster') ? `<h4 class="font-bold text-gray-900 dark:text-white mb-2">Windows preview</h4>
-			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">RedstonePanel on Windows is a preview: Java servers (Vanilla, Paper, Purpur, Fabric) on one computer. Not here yet: Bedrock servers, Quilt, Forge, NeoForge and modpacks, memory and processor limits, off-site backup storage, SFTP, clusters and updating from the panel. To update, run the new installer; your servers and settings stay.</p>` : ''}
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">RedstonePanel on Windows is a preview: Java servers (Vanilla, Paper, Purpur, Fabric) on one computer. Not here yet: Bedrock servers, Quilt, Forge, NeoForge and modpacks, memory and processor limits, off-site backup storage, SFTP, the terminal, clusters and updating from the panel. To update, run the new installer; your servers and settings stay.</p>` : ''}
 
 			<h4 id="set-section-connection" class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
 			<div class="space-y-2 mb-3">
@@ -5994,6 +6060,7 @@ const ServerApp = {
 		this.loadStorageSettings();
 		this.loadSetupSettings();
 		this.loadSftpSettings();
+		this.loadTerminalSettings();
 		this.loadServersFolder();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
@@ -6187,8 +6254,30 @@ const ServerApp = {
 		} else {
 			this.setupData = null;
 		}
+		if (this.isAdmin()) {
+			try {
+				const r = await fetch('/api/terminal');
+				this.terminalInfo = r.ok ? await r.json() : null;
+			} catch (e) { /* keep the last answer */ }
+		} else {
+			this.terminalInfo = null;
+		}
 		await this.loadHostHistory();
 		if (!document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard();
+	},
+
+	// --- 1.21.10: the terminal (static/js/terminal.js). Admins only, on a Linux machine, when on. ---
+	openTerminal(nodeId, nodeName) {
+		const t = this.terminalInfo || {};
+		const name = nodeName || (this.dashData && this.dashData.host && (this.dashData.host.name || this.dashData.host.hostname));
+		RPTerminal.start({ node: nodeId || '', name, idleMinutes: t.idle_minutes });
+	},
+
+	canOpenNodeTerminal(n) {
+		const t = n.local ? (this.terminalInfo && this.terminalInfo.available)
+			: n.terminal && n.terminal.supported && n.terminal.enabled && n.terminal.from_master;
+		return !!(this.isAdmin() && n.state === 'ok' && t && (n.local || (n.cluster_api || 1) >= 8)
+			&& this.terminalInfo && this.terminalInfo.secure);
 	},
 
 	// Formatting helpers
@@ -6241,6 +6330,7 @@ const ServerApp = {
 		const svc = d.services || {};
 		const hostLine = [d.host.os, d.host.uptime ? `up ${this.fmtDuration(d.host.uptime)}` : null].filter(Boolean).join(' · ');
 		document.getElementById('dash-title').innerText = d.host.name || d.host.hostname;
+		document.getElementById('btn-terminal').classList.toggle('hidden', !(this.terminalInfo && this.terminalInfo.available));
 		document.getElementById('dash-subtitle').innerText = `${hostLine}${hostLine ? ' · ' : ''}refreshes every 10 seconds`;
 
 		// Needs attention
@@ -6713,6 +6803,26 @@ const ServerApp = {
 		this.renderJoin();
 	},
 
+	async saveJoinProxy(button) {
+		button.disabled = true;
+		const l = this.joinData.listener;
+		const res = await fetch('/api/settings/join', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ enabled: l.enabled, port: l.port, index: l.index,
+			                       proxies: document.getElementById('join-proxies').value,
+			                       proxy_only: document.getElementById('join-proxy-only').checked,
+			                       url: document.getElementById('join-url').value.trim(),
+			                       cloudflare: document.getElementById('join-cloudflare').checked }) });
+		if (!res.ok) {
+			this.joinNote = { key: 'proxy', text: await this.apiError(res), ok: false };
+			return this.loadJoin();
+		}
+		this.joinData = await res.json();
+		const p = this.joinData.proxy;
+		const who = [...p.addresses, ...(p.cloudflare ? ['Cloudflare'] : [])];
+		this.joinNote = { key: 'proxy', ok: true, text: who.length ? `Saved. Requests from ${who.join(', ')} are treated as your proxy.` : 'Saved. No proxy is set.' };
+		this.renderJoin();
+	},
+
 	toggleJoinForm(key) {
 		this.joinOpen[key] = !this.joinOpen[key];
 		this.renderJoin();
@@ -6784,6 +6894,40 @@ const ServerApp = {
 			<p class="${note} mt-2">The port is opened in this server's firewall. For players outside your home, forward TCP ${esc(l.port)} to this machine on your router as well.</p>
 		</div>`;
 
+		const px = d.proxy || { addresses: [], only: false, url: '', cloudflare: false, haproxy: '', cloudflared: '' };
+		const proxyCard = `<div class="${card}">
+			<h3 class="${h}">Through a proxy (HAProxy or Cloudflare, optional)</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Already run HAProxy (for example on pfSense) or Cloudflare? Send <span class="font-mono">/join</span> on your own domain to the port above, and players get the pages with your domain and certificate. The port above keeps working too.</p>
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+				<label class="${note}">The proxy's address<input id="join-proxies" maxlength="300" value="${esc(px.addresses.join(', '))}" placeholder="10.0.0.1" class="${field} w-full mt-1 font-mono">
+					<span class="block mt-1">The address HAProxy or a Cloudflare Tunnel connects from: pfSense's LAN address, or 127.0.0.1 for a tunnel on this machine. Only requests from it may say which player they are for, so each player keeps their own limit.</span></label>
+				<label class="${note}">Address players open<input id="join-url" maxlength="200" value="${esc(px.url)}" placeholder="https://play.example.com" class="${field} w-full mt-1 font-mono">
+					<span class="block mt-1">Used for the links the panel shows. Empty: the address from Port forwarding with the port above.</span></label>
+			</div>
+			<label class="flex items-start gap-2 mt-3 text-sm cursor-pointer">
+				<input type="checkbox" id="join-cloudflare" ${px.cloudflare ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Cloudflare's proxy (orange cloud) sends players here</b><br><span class="${note}">For a domain proxied by Cloudflare with a port forwarded on your router (Cloudflare carries 443, 8443 or 2053, not 8444). Requests from Cloudflare's own addresses may name the player. Not needed for a Cloudflare Tunnel.</span></span>
+			</label>
+			<label class="flex items-start gap-2 mt-3 text-sm cursor-pointer">
+				<input type="checkbox" id="join-proxy-only" ${px.only ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Only through the proxy</b><br><span class="${note}">The port above answers nobody but the proxy. Don't forward it on your router then.</span></span>
+			</label>
+			<div class="flex flex-wrap gap-2 mt-3">
+				<button onclick="ServerApp.saveJoinProxy(this)" class="${btn} bg-theme hover-bg-theme text-white">Save</button>
+			</div>
+			${msg('proxy')}
+			<details class="mt-3"><summary class="text-sm font-bold text-gray-900 dark:text-white cursor-pointer">HAProxy settings to copy</summary>
+				<pre id="join-haproxy" class="mt-2 p-3 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-mono whitespace-pre overflow-x-auto text-gray-800 dark:text-gray-200">${esc(px.haproxy)}</pre>
+				<button onclick="ServerApp.copyJoinLink(document.getElementById('join-haproxy').innerText, this)" class="${grey} mt-2">Copy</button>
+				<p class="${note} mt-2">On pfSense: Services &gt; HAProxy. The manual's "Join pages through a proxy" section shows each screen.</p>
+			</details>
+			<details class="mt-3"><summary class="text-sm font-bold text-gray-900 dark:text-white cursor-pointer">Cloudflare Tunnel settings to copy</summary>
+				<pre id="join-cloudflared" class="mt-2 p-3 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-mono whitespace-pre overflow-x-auto text-gray-800 dark:text-gray-200">${esc(px.cloudflared)}</pre>
+				<button onclick="ServerApp.copyJoinLink(document.getElementById('join-cloudflared').innerText, this)" class="${grey} mt-2">Copy</button>
+				<p class="${note} mt-2">For cloudflared on this machine. In the Cloudflare dashboard instead: add a public hostname with path <span class="font-mono">^/join</span>, the service above, and No TLS Verify on. Then enter 127.0.0.1 as the proxy's address.</p>
+			</details>
+		</div>`;
+
 		const addressCard = d.public_address ? '' : `<div class="${card}">${warn(`No internet address is set yet, so the pages can't tell players what to type. Set it under <button onclick="ServerApp.openPorts()" class="underline font-bold">🔀 Port forwarding</button>, or type an address for each server below.`)}</div>`;
 
 		const row = (m, s) => {
@@ -6849,7 +6993,7 @@ const ServerApp = {
 			${down ? `<ul class="${note} list-disc ml-5 mt-3">${down}</ul>` : ''}
 		</div>`;
 
-		document.getElementById('join-body').innerHTML = listenerCard + addressCard + serversCard;
+		document.getElementById('join-body').innerHTML = listenerCard + proxyCard + addressCard + serversCard;
 		this.joinNote = null;
 	},
 
@@ -7178,7 +7322,10 @@ const ServerApp = {
 							${n.local ? '' : `<p class="text-xs text-gray-500 dark:text-gray-400 font-mono">${esc(n.url)} · RedstonePanel ${esc(n.version || '?')}</p>`}
 							${this.nodeResources(n.id)}
 						</div>
+						<div class="flex flex-wrap justify-end items-center gap-3">
+						${this.canOpenNodeTerminal(n) ? `<button onclick="ServerApp.openTerminal(${this.jsArg(n.local ? '' : n.id)}, ${this.jsArg(n.name)})" title="A shell on this machine, as a Linux account" class="${btn} bg-gray-500 hover:bg-gray-600">⌨️ Terminal</button>` : ''}
 						${n.local ? '' : `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-sm underline text-theme whitespace-nowrap">Open dashboard ↗</a>`}
+						</div>
 					</div>
 					${ok ? '' : `<p class="mx-4 mb-3 text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200">⚠️ ${esc(this.clusterStates[n.state] || n.state)}${n.error ? ` <span class="text-xs">(${esc(n.error)})</span>` : ''}</p>`}
 					${rows || (ok ? '<p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">No Minecraft servers on this panel yet.</p>' : '')}

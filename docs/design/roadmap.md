@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.6 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3) and quick commands in Live Chat (1.21.4) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.10 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) and a terminal in the panel (1.21.10) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1974,7 +1974,7 @@ checks in systemd containers, in the GitHub `cluster` matrix), and the sorting a
 Modrinth's real answers for six mods. Not tested: importing the pack into Modrinth App or
 Prism Launcher on a real desktop, and packwiz-installer.
 
-### 1.21.7: a Visual Editor for settings files on the Files tab *(built, not released)*
+### 1.21.7: a Visual Editor for settings files on the Files tab *(released 24 Nov 2026)*
 
 **Why.** Configuration has a Visual Editor for `server.properties`, but every other settings
 file (a plugin's `.properties` or `.cfg`, `eula.txt`, a second properties file) opened on the
@@ -2006,6 +2006,141 @@ read back by Configuration, a `.cfg` with sections, `eula.txt`, each save logged
 That run found that a text box turns Windows line endings (CRLF) into LF, which the old text
 editor did too; the editor now remembers a file's line endings and saves them back. The
 manual's picture uses sample data.
+
+### 1.21.8: security fixes from code scanning *(released 24 Nov 2026)*
+
+**Why.** GitHub code scanning (CodeQL), set up on 24 Nov 2026, and the review of its 212 alerts
+that Quentin asked for found real problems along with the false alarms. Quentin chose to ship
+the fixes on their own as 1.21.8 ("the best, not the quickest"), with join pages through a
+proxy moving to 1.21.9.
+
+**How.**
+- **Player names reach the console checked** (!129). Configuration → Players took any text as a
+  Bedrock player's name and, when the Xbox lookups failed, typed it into the server's console
+  with a line break in it (so it could run any command), with the server started as root.
+  Names and IDs are now checked like the whitelist's, and that lookup runs the server as
+  `minecraft`. !133 fixes a name clash in that change that cost Java players their UUID.
+- **Server names and world names** (!130). Every route with a server name in it answers 404
+  before anything else unless the name is a `minecraft*` unit name, a backup's world name must
+  be a plain path inside the server folder, and the website's demo console escapes its text.
+- **The panel works in server folders as the game account.** The panel runs as root, the game
+  account owns its servers' folders, and the server or a plugin can put a link there
+  (`server.properties` → `/etc/shadow`, `level-name=../../etc`). Plain `open()`, `rename()` and
+  `shutil` calls as root followed such links, so settings, operators, the whitelist, a server or
+  world download, a world rename, the Live Chat log and installs could read or change files
+  anywhere. `core/files.py` (Files tab, SFTP) already opened each path step with `O_NOFOLLOW`;
+  everything else now runs inside `system.game_files()`, which switches only the calling
+  thread's file-access user and group to `minecraft` (Linux `setfsuid`/`setfsgid`), so a link
+  reaches only what the game account could reach anyway and new files belong to it. The
+  panel's own log and data are written with `system.panel_files()` from inside such a block.
+  Downloads leave links out; a world outside the folder is refused; `chown -R -h` and
+  `chmod +x` no longer follow a link; staging folders for installs and updates are made by
+  the game account. On the first start of 1.21.8, files the panel wrote in server folders as
+  root before are handed to `minecraft`, or it couldn't change them any more. A file the game
+  account can't open is answered with 403 and logged as `[SECURITY]`.
+
+**As built.** `core/platform/linux/system.py` (`game_files`, `panel_files`; the fake platform
+has both, doing nothing), used in `manager`, `javaservers`, `updates`, `backups`, `convert`,
+`modpacks`, `whitelist`, `playerlog`, `transfer` and `archive.zip_tree`. New code that touches
+a server folder outside `core/files.py` must do it inside `system.game_files()`, must not start
+threads there (they would inherit the switch), and needs the folder to belong to `minecraft`
+first. Tested: `tests/test_game_files.py` (root only: links to root files are refused, new
+files belong to `minecraft`, other threads keep root), `tests/test_player_roles.py`,
+`packaging/test/test-game-files.sh` (27 checks; 16 of them fail on 1.21.7: it plants links
+as `minecraft` and checks that settings, operators, whitelist, downloads, world rename and
+Live Chat never read or change a root-only file), the install test and `test-bedrock-update.sh`.
+
+### 1.21.9: join pages through a proxy (HAProxy or Cloudflare) *(released 24 Nov 2026)*
+
+**Why.** Join pages (1.21.5) have a port of their own, 8444, to forward on the router. Quentin
+asked on 24 Nov 2026 to also let HAProxy (his runs on pfSense) route to them, and then
+Cloudflare. A proxy already reaches the pages, since they use relative links, but three things
+went wrong behind one: every player looked like the proxy and shared one rate limit, the panel
+showed `address:8444` links, and the port couldn't be closed to everyone but the proxy.
+He chose 1.21.8, after the visual editor and before the Windows preview; it moved to 1.21.9 when
+1.21.8 became a security-only release (24 Nov 2026).
+
+**As built.** A **Through a proxy (HAProxy or Cloudflare)** card in Join pages: the proxy's
+address (requests from it may name the player in `X-Forwarded-For`, read from the right and
+skipping proxies; anyone else's header is ignored), the address players open (used for the
+panel's links), **Cloudflare's proxy (orange cloud)** (requests from Cloudflare's published
+networks may name the player in `CF-Connecting-IP`; `core/cloudflare.py` ships the list and
+refreshes it from cloudflare.com daily, checking it before use) and **Only through the proxy**.
+It shows HAProxy and Cloudflare Tunnel lines to copy, filled in. Nothing changes on the public
+pages and the cluster contract is unchanged. Tested: unit tests for the address rules, the
+settings and the Cloudflare list; `test-join-page.sh` runs a real HAProxy on exactly the lines
+the panel offers (pages and health check through it, a separate limit per player, a forged
+header ignored, the port closed to others). Not tested: a real Cloudflare Tunnel or proxied
+domain.
+
+**Also: upgrades leave game servers running.** Upgrading the 1.21.6 test build on Quentin's
+Ubuntu 25.04 panel restarted one of his game servers: Ubuntu's `needrestart` restarts services
+that still use an old copy of a library after any apt install. The package now installs
+`/etc/needrestart/conf.d/redstonepanel.conf`, which tells needrestart to leave `minecraft*` and
+`phantom-minecraft*` services alone; they pick up new libraries at their next restart.
+`test-needrestart.sh` runs needrestart in automatic mode against a stand-in game server, a
+stand-in Phantom proxy and an ordinary service that all use a deleted library: only the
+ordinary one is restarted, and without the rule the game server would have been.
+
+### 1.21.10: a terminal in the panel *(released 24 Nov 2026)*
+
+**Why.** Quentin asked on 24 Nov 2026 for a terminal inside the panel, so an admin can fix
+something on the machine without a separate SSH program, from any browser or phone. It has to
+work without giving anyone the panel's own root. Placed after 1.21.9 (join pages through a
+proxy) and before 1.22 (Windows preview), at Quentin's choice: it is Linux-only, so it doesn't
+wait for Windows.
+
+**How.**
+- **Who.** A **⌨️ Terminal** button on the Dashboard (and on each member of the Cluster page)
+  for panel **admins**, only on a Linux machine and only when **Panel Settings → Terminal** is
+  on (off by default). `user` accounts and trusted-LAN visitors never get one, and the API
+  refuses them (`core/grants.py`: admin rules).
+- **As which account.** The shell runs as a Linux account, never as the panel. An admin who
+  signed in **with their Linux account** gets a shell as that account, with no prompt while the
+  sign-in is recent (**Skip the password for**, 15 minutes by default) and that account's
+  password after that. A **panel-only admin** gets a `login:` prompt and types a Linux account
+  and its password. Accounts are never linked by matching names: any admin can create a panel
+  account, so a name match would let them become any Linux user. `root` only when **Allow
+  logging in as root** is on; `nologin` accounts (such as `minecraft`) never.
+- **Checks.** The password is checked through PAM (as the panel's sign-in does) and never
+  reaches the shell or a log. With panel two-factor on, the code is asked after the password.
+  Wrong passwords count per account and per address in the sign-in failure store: 5 in 10
+  minutes blocks for 10 minutes, with 2 seconds after each.
+- **The shell.** `login -f -h <address> <account>` on a new pseudo-terminal (the
+  `core/platform` area `terminal`), so the account gets its own groups, home, limits, PAM
+  session (in the system log) and logind session, like a console login. The panel checks that the foreground process
+  runs as that account and closes it otherwise.
+- **The browser.** xterm.js 5.5 (MIT, vendored in `static/vendor/xterm`, loaded only when a
+  terminal opens) over a websocket. `POST /api/terminal/ticket` gives a one-use ticket for 30
+  seconds (cross-site checks apply); the websocket checks the ticket, the session cookie and its
+  Origin. HTTPS only, except from the machine itself. A phone gets a key row (Esc, Tab, Ctrl,
+  arrows).
+- **Limits.** Closes after N minutes with nothing typed (15 by default, warning a minute
+  before), after 12 hours, when the admin signs out (sign-out now also stops that cookie
+  opening terminals) or stops being an admin, and when the terminal is turned off. 3 per
+  admin, 10 per machine. **Open now** in Panel Settings lists them with **End**.
+- **Logging.** `[TERMINAL]` lines for every open, close (with why) and failed login; what is
+  typed is never recorded.
+- **Never on the join port.** The join pages' server has no `/api` and accepts no websocket.
+- **Clusters.** A node allows a terminal from the master only when its own admin turns on
+  **Allow a terminal from the cluster master** (the master can't change a node's settings). The
+  master copies bytes between the browser and the node's `/api/terminal/node-ws` (its token);
+  the node shows its own prompt and checks its own passwords. `CLUSTER_API` 8.
+- **Command line.** `redstonepanel terminal on|off`.
+
+**Size.** About 1.18's: one feature, one new dependency (`python3-websockets`, in Ubuntu's and
+Debian's archives; uvicorn needs it for websockets), one vendored library.
+
+**As built.** `core/terminal.py` (tickets, sessions, the login prompt, the relay),
+`core/platform/linux/terminal.py` (PAM check, `login -f` on a pseudo-terminal, foreground uid
+check; a fallback without `login` sets groups and ids itself) and a fake side for tests,
+`static/js/terminal.js`. Session tokens gained a random part so two sign-ins in the same second
+differ, and sign-out marks that cookie signed out. Ubuntu 24.04's `login` writes no wtmp entry,
+so the logins are checked in the journal (`session opened for user`). Tested by
+`tests/test_terminal.py` (33 tests) and `packaging/test/test-terminal.sh` (46 checks in two
+systemd containers: the button, the prompt, a linked sign-in, wrong passwords and the block,
+root refused, `sudo`, idle close, sign-out, limits, the node opt-in through the master, and no
+websocket on the join port).
 
 ### 2.0: an API for scripts and bots
 

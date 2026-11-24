@@ -41,7 +41,7 @@ python:
     # rsync lets tests/test_backup_targets.py really copy to its stand-in SSH storage
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends rsync >/dev/null
     # fastapi lets tests/test_cluster.py check every API route against the node-token allowlist
-    - pip install --quiet --disable-pip-version-check fastapi python-multipart httpx paramiko
+    - pip install --quiet --disable-pip-version-check -r requirements-dev.txt
     - python -m unittest discover -s tests -v
 
 # The unit tests again with each supported system's own Python, FastAPI and Starlette packages
@@ -96,6 +96,12 @@ workflows:
           data = yaml.safe_load(open(path, encoding="utf-8"))
           assert isinstance(data, dict) and data.get("jobs"), f"{path}: no jobs"
           print(f"ok {path}: {', '.join(data['jobs'])}")
+      # Dependabot and CodeQL settings must be valid YAML too
+      data = yaml.safe_load(open(".github/dependabot.yml", encoding="utf-8"))
+      assert data.get("version") == 2 and data.get("updates"), "dependabot.yml: no updates"
+      print("ok .github/dependabot.yml:", ", ".join(u["package-ecosystem"] for u in data["updates"]))
+      assert yaml.safe_load(open(".github/codeql/codeql-config.yml", encoding="utf-8")).get("queries")
+      print("ok .github/codeql/codeql-config.yml")
       EOF
 
 build-deb:

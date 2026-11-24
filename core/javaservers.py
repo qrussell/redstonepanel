@@ -600,14 +600,15 @@ def resolve(loader, minecraft=None, build=None, snapshot=False):
 # ---------------------------------------------------------------------------
 def read_info(d):
     """The folder's loader and version: the info file, else what the jar says, else {}."""
-    try:
-        with open(os.path.join(d, INFO_FILE)) as f:
-            info = json.load(f)
-        if isinstance(info, dict) and info.get("loader") in LOADERS:
-            return info
-    except (OSError, ValueError):
-        pass
-    return sniff_jar(os.path.join(d, "server.jar")) or sniff_folder(d)
+    with system.game_files():          # the game's folder: read as the game account
+        try:
+            with open(os.path.join(d, INFO_FILE)) as f:
+                info = json.load(f)
+            if isinstance(info, dict) and info.get("loader") in LOADERS:
+                return info
+        except (OSError, ValueError):
+            pass
+        return sniff_jar(os.path.join(d, "server.jar")) or sniff_folder(d)
 
 
 def launch_args(d, info=None):
@@ -648,7 +649,7 @@ def is_java_folder(d):
     if os.path.isfile(os.path.join(d, "server.jar")):
         return True
     try:
-        with open(os.path.join(d, INFO_FILE)) as f:
+        with system.game_files(), open(os.path.join(d, INFO_FILE)) as f:
             return json.load(f).get("loader") in LOADERS
     except (OSError, ValueError, AttributeError):
         return False
@@ -743,21 +744,22 @@ def _run_installer(d, target, java):
 def adopt(staging, d):
     """Moves a finished download or install from staging into the server folder d: files
     replace the old ones, libraries/ is merged. The old loader's launch jar goes."""
-    old = read_info(d)
-    old_launch = launch_file(d, old) if old.get("loader") in INSTALLER_LOADERS else None
-    for name in sorted(os.listdir(staging)):
-        src, dst = os.path.join(staging, name), os.path.join(d, name)
-        if os.path.isdir(src) and not os.path.islink(src):
-            if os.path.isdir(dst) and not os.path.islink(dst):
-                import shutil
-                shutil.copytree(src, dst, dirs_exist_ok=True, symlinks=True)
-                shutil.rmtree(src, ignore_errors=True)
-                continue
-        os.replace(src, dst)
-    new = read_info(d)
-    if old_launch and old_launch != launch_file(d, new) and os.path.dirname(old_launch) == d \
-            and os.path.basename(old_launch) != "server.jar":
-        _unlink(old_launch)
+    with system.game_files():          # all of it happens in the game's folder
+        old = read_info(d)
+        old_launch = launch_file(d, old) if old.get("loader") in INSTALLER_LOADERS else None
+        for name in sorted(os.listdir(staging)):
+            src, dst = os.path.join(staging, name), os.path.join(d, name)
+            if os.path.isdir(src) and not os.path.islink(src):
+                if os.path.isdir(dst) and not os.path.islink(dst):
+                    import shutil
+                    shutil.copytree(src, dst, dirs_exist_ok=True, symlinks=True)
+                    shutil.rmtree(src, ignore_errors=True)
+                    continue
+            os.replace(src, dst)
+        new = read_info(d)
+        if old_launch and old_launch != launch_file(d, new) and os.path.dirname(old_launch) == d \
+                and os.path.basename(old_launch) != "server.jar":
+            _unlink(old_launch)
 
 
 def sniff_jar(jar):
@@ -813,17 +815,20 @@ def install(d, loader, minecraft=None, current=None, build=None, snapshot=False,
         java = choose_exact_java(java_major, target["java_required"], target["minecraft"], java_max)
     else:
         java = choose_java(target["java_required"], target["minecraft"], java_max)
-    os.makedirs(d, exist_ok=True)
-    info = {k: target[k] for k in ("loader", "minecraft", "build", "java_required")}
-    if loader in INSTALLER_LOADERS:
-        info["launch"] = _run_installer(d, target, java)
-        if java_max:
-            info["java_max"] = java_max
-    else:
-        _download(target["url"], os.path.join(d, "server.jar"), sha1=target.get("sha1"),
-                  sha256=target.get("sha256"), **({"md5": target["md5"]} if target.get("md5") else {}))
-    with open(os.path.join(d, INFO_FILE), "w") as f:
-        json.dump(info, f)
+    # Everything lands in the game's folder as the game account: a link left there by the
+    # game (server.jar.part -> /etc/...) can't send a root write elsewhere. d belongs to it.
+    with system.game_files():
+        os.makedirs(d, exist_ok=True)
+        info = {k: target[k] for k in ("loader", "minecraft", "build", "java_required")}
+        if loader in INSTALLER_LOADERS:
+            info["launch"] = _run_installer(d, target, java)
+            if java_max:
+                info["java_max"] = java_max
+        else:
+            _download(target["url"], os.path.join(d, "server.jar"), sha1=target.get("sha1"),
+                      sha256=target.get("sha256"), **({"md5": target["md5"]} if target.get("md5") else {}))
+        with open(os.path.join(d, INFO_FILE), "w") as f:
+            json.dump(info, f)
     return info, java
 
 

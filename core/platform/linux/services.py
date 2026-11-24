@@ -77,6 +77,16 @@ def working_dir(server):
     return d
 
 
+def run_as(server):
+    """The account the server's unit runs as: its User= ("" for root), or None when systemd
+    doesn't know the unit."""
+    out = systemctl("show", "-p", "LoadState,User", unit(server)).stdout
+    vals = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    if vals.get("LoadState") != "loaded":
+        return None
+    return vals.get("User", "").strip()
+
+
 def show_many(units, props, timeout=10):
     """`systemctl show` for several units and properties at once, as systemd prints it (blocks
     of KEY=VALUE separated by blank lines). Times are in UTC."""

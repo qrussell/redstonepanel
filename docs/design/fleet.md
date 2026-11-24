@@ -236,7 +236,10 @@ adds it.
 ```
 
 `cluster_api` is the contract version. It is bumped only when the allowlist or a response the
-master relies on changes. The master shows **update RedstonePanel on this node** for nodes
+master relies on changes. Contract 8 (1.21.10) adds `"terminal": {"supported", "enabled",
+"from_master"}` to the hello and the node's terminal websocket `/api/terminal/node-ws`, which
+takes the node token and `X-RedstonePanel-Actor`, `-Role: admin` and `-Client-IP`; it is not a
+proxied route. The master shows **update RedstonePanel on this node** for nodes
 below the version it needs. `platform` exists for the Windows track (§12).
 
 ### Activity log
@@ -466,6 +469,7 @@ implemented in 1.16.0: `core/transfer.py`, `core/moves.py`, [move.md](move.md), 
 | Trusted-LAN visitor on the master reaches nodes | Cluster routes refuse `source == "trusted"`. |
 | Malicious website uses the token | The token is a header the master adds server-side. Browsers never hold it. |
 | Token brute force | 256-bit tokens. Failures count toward the existing per-IP throttle. |
+| Master opens a shell on a node (1.21.10 terminal) | Only when the node's own admin turns on **Allow a terminal from the cluster master**; the node shows its own `login:` prompt and checks its own Linux passwords, so the master's token alone never gives a shell. The password passes through the master (TLS on both legs), which the setting's text says. |
 
 ## 15. Testing
 

@@ -1,3 +1,84 @@
+redstonepanel (1.21.10) noble; urgency=medium
+
+  * Terminal: admins can open a shell on the machine from the browser
+    (Dashboard, and each machine on the Cluster page), on a phone too, with
+    a row of extra keys. Linux only, HTTPS only, off until an admin turns it
+    on under Panel Settings -> Terminal.
+  * The shell always runs as a Linux account, never as the panel: your own
+    account if you signed in to the panel with it, otherwise the account you
+    log in with at its login: prompt. root only when allowed; accounts such
+    as minecraft that can't log in, never. User accounts get no terminal.
+  * Passwords are checked through PAM, with the panel's two-factor code when
+    it is on. Five wrong passwords in 10 minutes block for 10 minutes.
+  * Closes after 15 minutes with nothing typed, after 12 hours and on
+    sign-out. 3 per admin, 10 per machine; Open now lists them with End.
+    Every open, close and failed login is logged; what is typed is not.
+  * Clusters: a node allows a terminal from the master only when its own
+    admin turns it on. Cluster API 8.
+  * Command line: redstonepanel terminal on|off.
+  * Signing out now also stops that sign-in opening terminals.
+  * New dependency: python3-websockets.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 24 Nov 2026 15:40:00 -0000
+
+redstonepanel (1.21.9) noble; urgency=medium
+
+  * Join pages: Through a proxy (HAProxy or Cloudflare). HAProxy, for
+    example on pfSense, or a Cloudflare Tunnel can send /join on your own
+    domain to the join pages. Enter the proxy's address and each player keeps
+    their own request limit; anyone else's forwarding header is ignored.
+  * Address players open: the panel's links use your own domain.
+  * Cloudflare's proxy (orange cloud): requests from Cloudflare's own
+    addresses may name the player. The list ships with the panel and is
+    refreshed from cloudflare.com once a day.
+  * Only through the proxy: the join port answers nobody but the proxy.
+  * HAProxy and Cloudflare Tunnel settings to copy, filled in.
+  * Mods and plugins with a port of their own (Simple Voice Chat, Geyser,
+    BlueMap, Dynmap, Plan, NuVotifier): when two servers share one, the
+    panel moves one to a free port, opens it in the firewall and says so.
+    A crash caused by a taken mod port names that port and mod.
+  * Upgrades leave game servers running: Ubuntu's needrestart is told not
+    to restart Minecraft servers and their Bedrock proxies after apt
+    upgrades something.
+  * Fixed: a Last crash card closes on its own once the server has run for
+    10 minutes after the problem is fixed.
+  * Fixed: an account added while the panel was starting got every server.
+  * Fixed: a server whose service runs as another account (such as root)
+    had its files refused since 1.21.8.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 24 Nov 2026 06:30:00 -0000
+
+redstonepanel (1.21.8) noble; urgency=medium
+
+  * Security: a Bedrock player's name on Configuration > Players is checked
+    before it can reach the server's console, and the panel's Xbox ID
+    fallback runs the server as the minecraft account, not root.
+  * Security: the panel works in server folders with the minecraft
+    account's rights, so a link the server or a plugin puts there can't
+    make it read or change other files (settings, operators, whitelist,
+    downloads, world rename, Live Chat, installs, updates, restores).
+    Downloads leave links out. On first start, files the panel wrote in
+    server folders as root are handed to the minecraft account.
+  * Security: a world outside the server folder is never downloaded,
+    renamed or restored, and unknown server names are refused up front.
+  * Fixed: Java players kept their UUID on Configuration > Players.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 24 Nov 2026 04:31:29 -0000
+
+redstonepanel (1.21.7) noble; urgency=medium
+
+  * Files tab: a file that is a list of name=value settings
+    (server.properties, eula.txt, most .properties, .cfg, .conf and .ini
+    files) opens with a Visual Editor like Configuration's, with True/False
+    lists, number boxes and a filter. Visual Editor and Raw Text switch
+    between the form and the text and always show the same file.
+  * The form changes only the values you change: comments, blank lines,
+    spacing and order stay as they were.
+  * Fixed: saving from the Files tab turned Windows line endings (CRLF)
+    into LF, for example in Bedrock's server.properties.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 24 Nov 2026 02:09:29 -0000
+
 redstonepanel (1.21.6) noble; urgency=medium
 
   * Player packs: for a Fabric, Quilt, Forge or NeoForge server the panel

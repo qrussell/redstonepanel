@@ -261,6 +261,15 @@ def exec_start(server):
     return units.get(units.load(unit(server)), "Service", "ExecStart", "")
 
 
+def run_as(server):
+    """The account the server's unit runs as: its User= ("" when none is set: the server's own
+    virtual account), or None when there is no such unit."""
+    loaded = units.load(unit(server))
+    if not loaded:
+        return None
+    return units.get(loaded, "Service", "User", "").strip()
+
+
 def working_dir(server):
     """The folder the server's unit runs in, or "" when there is no such unit."""
     return units.get(units.load(unit(server)), "Service", "WorkingDirectory", "")

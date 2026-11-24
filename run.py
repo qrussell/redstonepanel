@@ -11,6 +11,8 @@
     redstonepanel reset-security      recovery: plain HTTP on 8080, sign-in required, restart
     redstonepanel reset-2fa NAME      recovery: turn off two-factor sign-in for an account
                                       (panel or Linux) that lost its authenticator app
+    redstonepanel terminal on|off     turn the panel's terminal on or off (Panel Settings > Terminal);
+                                      off closes open terminals within a minute
     redstonepanel removed             list game servers uninstalled with "Keep World"
     redstonepanel restore NAME        give a removed server a systemd service again and start it
     redstonepanel backup NAME         back up a game server now (its backup timer runs this too)
@@ -61,6 +63,16 @@ def reset_security():
     if system.is_admin() and services.available():
         print("Restarted redstonepanel." if services.restart_panel() == 0
               else system.hint("restart-panel"))
+
+
+def terminal_cmd(what):
+    """Turns the panel's terminal (1.21.10) on or off from SSH, e.g. in a hurry."""
+    from core import terminal
+    if not terminal.platform_terminal.supported():
+        sys.exit("This machine's system doesn't have the terminal yet.")
+    s = terminal.turn(what == "on", "the redstonepanel command")
+    print("The terminal is " + ("on. Admins open it from the Dashboard (over HTTPS)." if s["terminal_enabled"]
+                                else "off. Open terminals close within a minute."))
 
 
 def reset_2fa(name):
@@ -142,6 +154,12 @@ def main():
     # Any panel: copy backups to SSH or S3 storage (1.16.11), retrying what's missing or failed
     from core import backup_targets
     backup_targets.sweeper()
+    # Once after upgrading to 1.21.8: files the panel wrote in server folders as root go to the
+    # game account, since it now works there as that account (before anything below writes there)
+    try:
+        manager.upgrade_game_folder_owners()
+    except Exception as e:
+        manager.write_log(f"[SYSTEM] Handing server files to the game account failed: {e}")
     # Once after upgrading to 1.16.11: open TCP server-port and UDP 7551 for Bedrock servers
     # without a transport line (NetherNet by default), which only had UDP server-port
     try:
@@ -526,6 +544,8 @@ if __name__ == "__main__":
         reset_security()
     elif cmd == "reset-2fa" and len(rest) == 1:
         reset_2fa(rest[0])
+    elif cmd == "terminal" and rest in (["on"], ["off"]):
+        terminal_cmd(rest[0])
     elif cmd == "status" and not rest:
         status()
     elif cmd == "add-user":

@@ -511,7 +511,7 @@ def _download_once(url, version, path):
     req = urllib.request.Request(url, headers={"User-Agent": BROWSER_UA})
     manager.write_log(f"[UPDATE] Downloading Bedrock {version} from {_host(url)} ...")
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r, open(path, "wb") as f:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r, system.game_files(), open(path, "wb") as f:
             if not _allowed_url(r.geturl()):
                 raise UpdateError(f"The Bedrock download was redirected to {_host(r.geturl())}; refused.")
             shutil.copyfileobj(r, f, 1 << 20)
@@ -522,7 +522,7 @@ def _download_once(url, version, path):
         raise UpdateError(f"Downloading Bedrock {version} failed: {getattr(e, 'reason', e)}")
     if not zipfile.is_zipfile(path):
         # Say what came back instead (an error page, usually), so a failure can be explained
-        with open(path, "rb") as f:
+        with system.game_files(), open(path, "rb") as f:
             head = f.read(200).decode("utf-8", "replace")
         manager.write_log(f"[UPDATE] {_host(url)} sent {os.path.getsize(path)} bytes ({kind}) that aren't a zip, "
                           f"starting: {re.sub(r'[^ -~]', '?', head)!r}")
@@ -567,63 +567,67 @@ def _safe_target(d, rel):
 def install_files(d, zip_path, stash=None):
     """Puts the zip's files into d, keeping the server's own settings files. With stash, every file
     it replaces is moved there first; returns the files it created, for put_back()."""
-    files = members(zip_path)
-    for _, rel in files:                             # check every path before changing anything
-        _safe_target(d, rel)
-    created = []
-    kept = []
-    with zipfile.ZipFile(zip_path) as z:
-        for info, rel in files:
-            target = os.path.join(d, rel)
-            if rel in BEDROCK_KEEP_FILES and os.path.exists(target):
-                kept.append(rel)
-                continue
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            if os.path.exists(target):
-                if stash:
-                    old = os.path.join(stash, rel)
-                    os.makedirs(os.path.dirname(old), exist_ok=True)
-                    os.replace(target, old)
-            else:
-                created.append(rel)
-            tmp = target + ".rp-new"
-            with z.open(info) as src, open(tmp, "wb") as out:
-                shutil.copyfileobj(src, out, 1 << 20)
-            mode = (info.external_attr >> 16) & 0o777
-            os.chmod(tmp, 0o755 if rel == "bedrock_server" or mode & 0o111 else 0o644)
-            os.replace(tmp, target)
+    # As the game account: the folder is the game's, and a link it left there (for example
+    # bedrock_server.rp-new -> /etc/...) must not turn into a write as root
+    with system.game_files():
+        files = members(zip_path)
+        for _, rel in files:                             # check every path before changing anything
+            _safe_target(d, rel)
+        created = []
+        kept = []
+        with zipfile.ZipFile(zip_path) as z:
+            for info, rel in files:
+                target = os.path.join(d, rel)
+                if rel in BEDROCK_KEEP_FILES and os.path.exists(target):
+                    kept.append(rel)
+                    continue
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                if os.path.exists(target):
+                    if stash:
+                        old = os.path.join(stash, rel)
+                        os.makedirs(os.path.dirname(old), exist_ok=True)
+                        os.replace(target, old)
+                else:
+                    created.append(rel)
+                tmp = target + ".rp-new"
+                with z.open(info) as src, open(tmp, "wb") as out:
+                    shutil.copyfileobj(src, out, 1 << 20)
+                mode = (info.external_attr >> 16) & 0o777
+                os.chmod(tmp, 0o755 if rel == "bedrock_server" or mode & 0o111 else 0o644)
+                os.replace(tmp, target)
     if kept:
         manager.write_log(f"[SYSTEM] Kept the server's own {', '.join(kept)}.")
     return created
 
 def put_back(d, stash, created):
     """Undoes install_files(): removes what it created, moves the replaced files back."""
-    for rel in created:
-        try:
-            os.remove(os.path.join(d, rel))
-        except OSError:
-            pass
-    for root, _, names in os.walk(stash):
-        for n in names:
-            old = os.path.join(root, n)
-            rel = os.path.relpath(old, stash)
-            target = os.path.join(d, rel)
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            os.replace(old, target)
+    with system.game_files():
+        for rel in created:
+            try:
+                os.remove(os.path.join(d, rel))
+            except OSError:
+                pass
+        for root, _, names in os.walk(stash):
+            for n in names:
+                old = os.path.join(root, n)
+                rel = os.path.relpath(old, stash)
+                target = os.path.join(d, rel)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                os.replace(old, target)
 
 def _write_version(d, version):
-    with open(os.path.join(d, VERSION_FILE), "w") as f:
+    with system.game_files(), open(os.path.join(d, VERSION_FILE), "w") as f:
         json.dump({"version": version, "installed": int(time.time())}, f)
 
 def fetch_bedrock(d):
     """New or binary-less servers (deploy, restore, import): the newest release into d."""
     latest = bedrock_latest()
     os.makedirs(d, exist_ok=True)
-    staging = tempfile.mkdtemp(prefix=".redstonepanel-update-", dir=d)
+    staging = manager.game_temp_dir(d, ".redstonepanel-update-")
     try:
         install_files(d, download_bedrock(latest, staging))
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        manager.remove_game_tree(staging)
     _write_version(d, latest["version"])
     manager.write_log(f"[SYSTEM] Installed Bedrock {latest['version']}.")
     return latest["version"]
@@ -650,7 +654,7 @@ def _log_size(d):
 def _started_since(d, offset):
     """True once BDS logged "Server started." after offset, else None."""
     try:
-        with open(os.path.join(d, "server.log"), "rb") as f:
+        with system.game_files(), open(os.path.join(d, "server.log"), "rb") as f:
             size = os.fstat(f.fileno()).st_size
             f.seek(offset if offset <= size else 0)       # screen may have started a new log
             text = f.read().decode("utf-8", "replace")
@@ -731,7 +735,7 @@ def run_update(server, warn=0, actor="?", sleep=time.sleep, force=False):
         return {"ok": True, "skipped": True, "from": before, "to": latest["version"]}
     started_at = int(time.time())
     result = {"at": started_at, "ok": False, "from": before, "to": latest["version"], "by": actor}
-    staging = tempfile.mkdtemp(prefix=".redstonepanel-update-", dir=d)
+    staging = manager.game_temp_dir(d, ".redstonepanel-update-")
     stash = os.path.join(staging, "old")
     created = None
     pre = None
@@ -792,7 +796,7 @@ def run_update(server, warn=0, actor="?", sleep=time.sleep, force=False):
         raise UpdateError(result["error"]) from e
     finally:
         _record(server, result)
-        shutil.rmtree(staging, ignore_errors=True)
+        manager.remove_game_tree(staging)
 
 def _roll_back(server, d, stash, created, before, pre, was_running):
     """Puts the old files and the world from the "Before update" backup back. Returns True if the
@@ -806,7 +810,8 @@ def _roll_back(server, d, stash, created, before, pre, was_running):
             _write_version(d, before)
         else:
             try:
-                os.remove(os.path.join(d, VERSION_FILE))
+                with system.game_files():
+                    os.remove(os.path.join(d, VERSION_FILE))
             except OSError:
                 pass
         if pre:

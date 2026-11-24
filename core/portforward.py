@@ -212,6 +212,14 @@ def java_extras(server, props):
             rows.append(_row(r, "tcp", "never", "RCON",
                              "Remote console with full control of the server. The panel uses it on this machine only.",
                              check=None))
+    try:
+        from core import modports
+        claimed = modports.server_ports(server)
+    except Exception:
+        claimed = []
+    for c in claimed:
+        if c["mod"] not in ("geyser", "voicechat"):           # those two are read below, as before
+            rows.append(_row(str(c["port"]), c["proto"], c["kind"], c["name"], c["note"], check=None))
     geyser_jar = any(n.lower().startswith("geyser") and n.endswith(".jar")
                      for n in _list(server, "plugins") + _list(server, "mods"))
     text = next((t for t in (_read(server, p) for p in GEYSER_CONFIGS) if t is not None), None)

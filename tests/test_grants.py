@@ -101,6 +101,22 @@ class Store(unittest.TestCase):
         self.assertEqual(G.migrate_existing_users(["new"]), [], "only once")
         self.assertEqual(G.get("new"), {})
 
+    def test_an_account_added_before_the_first_start_is_not_an_old_one(self):
+        # `redstonepanel add-user` right after installing can run before the panel's own start
+        # has done the one-time step: adding the account does it first
+        from core import auth
+        with mock.patch.object(auth, "USERS_FILE", os.path.join(os.path.dirname(self.file), "users.json")), \
+                mock.patch.object(auth, "linux_account_exists", return_value=False):
+            auth.create_panel_user("old", "old password 1", "user")      # before any grants file
+            self.assertEqual(G.get("old"), {}, "the first account on a new install starts with nothing")
+            os.remove(self.file)                                          # as if from before 1.18
+            G._cache.update(mtime=None, data=None)
+            auth.create_panel_user("new", "new password 1", "user")
+        self.assertEqual(G.get("old"), {"*": list(G.LEGACY)})
+        self.assertEqual(G.get("new"), {})
+        self.assertEqual(G.migrate_existing_users(["old", "new"]), [], "the panel's start does nothing more")
+        self.assertEqual(sorted(n for n in os.listdir(os.path.dirname(self.file)) if n.endswith(".tmp")), [])
+
     def test_an_unreadable_file_grants_nothing(self):
         with open(self.file, "w") as f:
             f.write("{not json")
@@ -245,6 +261,19 @@ class Api(unittest.TestCase):
 
     def give(self, grants):
         G.set_user("alex", grants)
+
+    def test_a_bad_server_name_is_refused_before_any_route(self):
+        # Routes build folder paths from {server_name}: names that aren't game servers never get there
+        trusted = {"username": "local network", "role": "user", "source": "trusted"}
+        for who in (alex("admin"), trusted):
+            self.user = who
+            for name in ("..", "%2E%2E", "etc", ".minecraft", "%20minecraft"):
+                r = self.client.get(f"/api/servers/{name}/players")
+                self.assertEqual(r.status_code, 404, f"{who['username']} {name}")
+            r = self.client.post("/api/servers/../action", json={"action": "restart"})
+            self.assertIn(r.status_code, (404, 405))
+        self.user = alex("admin")
+        self.assertEqual(self.client.post("/api/servers/minecraft-2/action", json={"action": "restart"}).status_code, 200)
 
     def test_no_grants_means_no_servers(self):
         self.assertEqual(self.client.get("/api/servers").json(), [])

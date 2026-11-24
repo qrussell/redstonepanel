@@ -42,6 +42,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Get a Discord message when a server crashes | [Notifications](#notifications) |
 | Give a friend access to only some servers | [What a helper may do](#what-a-helper-may-do) |
 | Move files with FileZilla or WinSCP | [SFTP](#sftp-filezilla-winscp) |
+| Open a shell on the machine in the browser | [Terminal](#terminal) |
 | Turn on HTTPS | [Panel Settings](#17-panel-settings-name-https-sign-in) |
 | Manage servers on several machines | [Clusters](#18-clusters) |
 | Fix "players can't connect" or a lock-out | [Troubleshooting](#20-troubleshooting) |
@@ -50,6 +51,8 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.21.10 | **⌨️ Terminal**: a shell on the machine in your browser, for admins, as a Linux account. | [Terminal](#terminal) |
+| 1.21.9 | **🔗 Join pages** can sit behind HAProxy or Cloudflare, on your own domain. | [Join pages through a proxy](#join-pages-through-a-proxy-haproxy-or-cloudflare-1219) |
 | 1.21.6 | **Player packs**: the mods players need, as one download on the join page that follows the server. | [Player packs](#player-packs) |
 | 1.21.5 | **🔗 Join pages**: a public page for each server that tells players how to join, on a port of its own. | [Join pages](#join-pages) |
 | 1.21.2 | Light and dark mode is a **sun/moon switch in the top right corner**, with a colored dot beside it for the accent color. The ⚙️ button in the sidebar is gone. | [The dashboard](#3-the-dashboard) |
@@ -542,9 +545,124 @@ pages; nodes open nothing. A node's own join pages belong to that node's admin a
 turned on from the master. If a node can't be reached, its servers' pages stay up and say
 offline.
 
+#### Join pages through a proxy (HAProxy or Cloudflare) *(1.21.9)*
+
+Already run HAProxy (for example the HAProxy package on pfSense) or Cloudflare for your
+website? Then players can open the join pages on your own domain and certificate, like
+`https://play.example.com/join/survival`. The proxy sends every path that starts with `/join` to
+the panel's join port. The port itself keeps working as before.
+
+In **🔗 Join pages**, under **Through a proxy (HAProxy or Cloudflare, optional)**:
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-pages-proxy.png"><img src="images/join-pages-proxy.png" alt="The Through a proxy section of Join pages, with the HAProxy settings to copy"></picture>
+
+- **The proxy's address**: the address HAProxy or a Cloudflare Tunnel connects to the panel
+  from. On pfSense that's its LAN address, for example `10.0.0.1`; for `cloudflared` on the
+  panel's own machine it's `127.0.0.1`. Only requests from this address may say which player
+  they are for (the `X-Forwarded-For` header). That keeps a separate request limit for each
+  player instead of one shared limit for everyone behind the proxy. Anyone else who sends the
+  header is ignored, so nobody can use it to get around the limit.
+- **Address players open**, for example `https://play.example.com`. The panel uses it for the
+  links it shows on this page and on the Mods tab. Leave it empty to keep using your Port
+  forwarding address with port 8444.
+- **Cloudflare's proxy (orange cloud) sends players here**: for a domain proxied by Cloudflare
+  with a port forwarded on your router. Requests from Cloudflare's own addresses may then name
+  the player (the `CF-Connecting-IP` header). The panel ships Cloudflare's list of addresses and
+  refreshes it from cloudflare.com once a day. Not needed for a Cloudflare Tunnel.
+- **Only through the proxy** makes the join port refuse everyone but the proxy (and Cloudflare,
+  when that's on). With a tunnel or HAProxy, don't forward 8444 on your router then.
+- **HAProxy settings to copy** and **Cloudflare Tunnel settings to copy** show the lines to
+  paste, already filled in with this panel's address and port.
+
+**HAProxy on pfSense** (**Services > HAProxy**):
+
+1. **Backend** tab, **Add**: name it `redstonepanel_join`. Under **Server list**, add a server
+   with this panel's LAN address and port `8444`. Tick **Encrypt (SSL)** when the panel uses
+   HTTPS, and leave **SSL checks** off, because the panel's own certificate is self-signed.
+   Under **Health checking**, choose **HTTP** and set **Http check URI** to
+   `/join/assets/join.css`.
+2. **Frontend** tab: open the HTTPS frontend that already serves your domain. Under **Default
+   backend, access control lists and actions**, add an ACL named `join` with **Path starts
+   with** `/join`, and an action **Use Backend** `redstonepanel_join` for the ACL `join`.
+   Make sure **Use "forwardfor" option** is ticked.
+3. **Apply Changes**, then enter pfSense's LAN address as **The proxy's address** in the panel.
+
+**Cloudflare Tunnel** (no port forwarding at all):
+
+1. In the Cloudflare dashboard, open your tunnel (**Networks > Tunnels**) and add a **public
+   hostname**: your domain, path `^/join`, service type **HTTPS** (or **HTTP** when the panel
+   uses HTTP) and URL `localhost:8444` when `cloudflared` runs on the panel's machine, or the
+   panel's LAN address with port 8444 when it runs elsewhere. Under **Additional application
+   settings > TLS**, turn on **No TLS Verify**, because the panel's certificate is
+   self-signed. A tunnel run from a `config.yml` file takes the lines from **Cloudflare Tunnel
+   settings to copy** instead.
+2. In the panel, enter the address `cloudflared` connects from as **The proxy's address**
+   (`127.0.0.1` on the same machine), and tick **Only through the proxy**.
+
+**Cloudflare's proxy (orange cloud) with port forwarding**: Cloudflare carries only some
+ports, and 8444 isn't one of them. Forward a port it does carry, such as 8443 or 2053, on your
+router to the panel's port 8444, set the **Address players open** to
+`https://play.example.com:8443` (or leave out the port when you forward 443), and tick
+**Cloudflare's proxy (orange cloud) sends players here**. Set Cloudflare's SSL/TLS mode to
+**Full**, because the panel's certificate is self-signed.
+
+On a cluster, point the proxy at the master only. It serves the pages of every node's servers.
+
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
 (**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
 **Mods**, **Plugins** or **Add-ons**.
+
+### Terminal
+
+Admins can open a shell on the machine from the browser: **⌨️ Terminal** at the top of the
+Dashboard, or on a machine's card on the Cluster page. It is a full terminal (colours, `htop`,
+`nano`, `sudo`), on a phone too, with a row of keys a phone keyboard doesn't have (Esc, Tab,
+Ctrl, arrows).
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/terminal.png"><img src="images/terminal.png" alt="A terminal open on the Dashboard, logged in as a Linux account"></picture>
+
+<p><img src="images/phone-terminal.png" alt="The terminal on a phone, with its row of keys" width="260"></p>
+
+It is **off** until an admin turns it on under **🛡️ Settings → Terminal**, and it only works
+over HTTPS, so what you type can't be read on your network.
+
+**Which account the shell runs as.** Never the panel's own (root). It is always a Linux account
+on that machine:
+
+- If you signed in to the panel **with your Linux account**, the terminal opens as that account.
+  For 15 minutes after signing in it opens straight away; after that it asks for that account's
+  password once (**Skip the password for** changes the 15 minutes; 0 always asks).
+- If you signed in with a **panel account**, the terminal shows a `login:` prompt. Type a Linux
+  account on that machine and its password, as you would over SSH. A panel account named like a
+  Linux account is not that account.
+- With [two-factor sign-in](#two-factor-sign-in) on, the terminal asks for a code after the
+  password.
+- `root` can't log in unless you tick **Allow logging in as root**: log in as yourself and use
+  `sudo`. Accounts that can't log in at all, like `minecraft`, can't log in here either.
+
+**Who can't.** User accounts (helpers) never get a terminal, whatever they're allowed to do on
+their servers, and neither do visitors let in by **trusted networks**. The join pages' port
+has no terminal.
+
+Good to know:
+
+- A terminal closes after 15 minutes with nothing typed (a minute's warning first; **Close
+  after** changes it), after 12 hours, when you sign out, and when the terminal is turned off.
+  Restarting or updating the panel closes open terminals too.
+- Each admin can have 3 open, and a machine 10. **Settings → Terminal → Open now** lists them
+  with an **End** button.
+- Five wrong passwords in 10 minutes block that account and your address for 10 minutes.
+- Every terminal that opens or closes, and every wrong password, is in the activity log
+  (`[TERMINAL] alex opened a shell as alex from 192.168.1.20`). What you type is never recorded.
+  The logins are also in the system's own log (`journalctl`, or `/var/log/auth.log`), as
+  `session opened for user alex`.
+- **On a cluster**, the master can open a terminal on a node only when that node's own admin
+  ticks **Allow a terminal from the cluster master** in the node's settings. You log in with an
+  account of the node; your password passes through the master, encrypted on both legs.
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/terminal-settings.png"><img src="images/terminal-settings.png" alt="Settings, Terminal: on or off, Close after, Skip the password for, root, and the terminals open now"></picture>
+
+- In an emergency, `sudo redstonepanel terminal off` turns it off from SSH.
+- Not on Windows yet: the button doesn't appear on a Windows machine.
 
 ## 4. Create or import a server
 
@@ -1541,6 +1659,37 @@ the server's mods every time the game starts.
 The panel needs to reach Modrinth to work the list out. If it can't, the last pack it built
 stays in place.
 
+### Mods and plugins that open their own port
+
+Some mods and plugins open a network port of their own next to the game port, with the same
+default on every server. Two servers on one machine that both run one of them would fight over
+it: the second can't open it, and Simple Voice Chat on Fabric even stops the whole server. The
+panel knows where these keep their port:
+
+| Mod or plugin | Config file | Default |
+|---|---|---|
+| Simple Voice Chat | `config/voicechat/` or `plugins/voicechat/voicechat-server.properties` (`port`) | UDP 24454 |
+| Geyser | `config.yml` in its folder (`bedrock: port`) | UDP 19132 |
+| BlueMap | `webserver.conf` (`port`) | TCP 8100 |
+| Dynmap | `configuration.txt` (`webserver-port`) | TCP 8123 |
+| Plan | `plugins/Plan/config.yml` (`Webserver: Port`) | TCP 8804 |
+| NuVotifier | `config.yml` in its folder (`port`) | TCP 8192 |
+
+- When two servers are set to the same port, or one is set to a port a server uses for the game,
+  RCON or query, the panel moves one of them to the **next free port** in its config file (a port
+  no other server uses and nothing on the machine is listening on). The server that has the port
+  now keeps it. The panel checks before it starts a server, after a server stops unexpectedly (so
+  the restart 20 seconds later works), and every two minutes. Most of these mods write their
+  config file the first time they start, so a new one is moved after that first start.
+- A server whose port moved uses the new one from its next start. **Needs attention** says which
+  port moved and where to until you restart it.
+- The panel opens these ports in the firewall (`ufw`) with the game port, and **Port
+  forwarding** lists them. Voice chat and Geyser are for players outside; the web maps, Plan and
+  NuVotifier are listed under "Only if you need them".
+- Geyser with `clone-remote-port: true` and voice chat with `port=-1` share the game port's
+  number and are left alone. Mods the panel doesn't know are never changed; if one can't open its
+  port, the **Last crash** card says a mod's port was taken, and names the port when the log does.
+
 ### Finding mods and plugins
 
 On Java servers other than Vanilla, **Find mods** (or **Find plugins**) is a catalog of
@@ -1986,6 +2135,7 @@ Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 | `redstonepanel set-name "NAME"` | Set the panel name (`""` = host name). |
 | `redstonepanel reset-security` | Back to plain HTTP on 8080 with sign-in required. |
 | `redstonepanel reset-2fa NAME` | Turn off two-factor sign-in for an account that lost its phone and recovery codes. |
+| `redstonepanel terminal on\|off` | Turn the [terminal](#terminal) on or off; off closes open terminals within a minute. |
 | `redstonepanel removed` | List servers uninstalled with Keep World. |
 | `redstonepanel restore NAME` | Restore a removed server. |
 | `redstonepanel backup NAME` | Back up a server now. |

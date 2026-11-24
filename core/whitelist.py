@@ -99,15 +99,9 @@ def _java_uuid(server, d, name):
 
 
 def _write(path, entries, d):
-    with open(path, "w") as f:
+    # As the game account: the file is the game's (a link there can't reach anything else)
+    with system.game_files(), open(path, "w") as f:
         json.dump(entries, f, indent=2)
-    try:
-        st = os.stat(os.path.join(d, "server.properties"))
-        os.chown(path, st.st_uid, st.st_gid)
-    except (OSError, AttributeError):       # AttributeError: Windows, where the folder's rights carry over
-        pass
-    except Exception:
-        pass
 
 
 def add(server, name):

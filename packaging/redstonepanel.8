@@ -1,4 +1,4 @@
-.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.21.6" "System Administration"
+.TH REDSTONEPANEL 8 "November 2026" "redstonepanel 1.21.10" "System Administration"
 .SH NAME
 redstonepanel \- manage the RedstonePanel Minecraft server panel
 .SH SYNOPSIS
@@ -15,6 +15,9 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .br
 .B redstonepanel reset-2fa
 .I NAME
+.br
+.B redstonepanel terminal
+.BR on | off
 .br
 .B redstonepanel removed
 .br
@@ -120,6 +123,13 @@ it for admins). If
 can't be read, it is moved aside to
 .I totp.json.damaged
 instead, which turns two\-factor off for every account.
+.TP
+.BR terminal " on|" off
+Turn the panel's terminal on or off (the same switch as Panel Settings > Terminal). When it is
+on, admins open a shell on this machine from the Dashboard, over HTTPS, as a Linux account: the
+one they signed in with, or one they type with its password at the terminal's login prompt.
+Turning it off closes open terminals within a minute. Every terminal is written to
+.IR /var/log/redstonepanel/panel.log .
 .TP
 .B removed
 List game servers that were uninstalled with \fBKeep World\fR: folders in
