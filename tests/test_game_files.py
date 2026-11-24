@@ -88,6 +88,21 @@ class GameFiles(unittest.TestCase):
         t.join(5)
         self.assertEqual(seen["read"], "root only\n")
 
+    def test_a_server_that_runs_as_root_is_handled_as_root(self):
+        # its unit has no User=: the server has root's rights itself, so its folder is root's to
+        # change (a hand-made server, or one from another tool), and the panel doesn't refuse it
+        with system.server_account(""), system.game_files(), open(self.secret, "a") as f:
+            f.write("root server\n")
+        with system.server_account("minecraft"), system.game_files():
+            with self.assertRaises(PermissionError):
+                open(self.secret, "a")
+        with system.server_account("no-such-account-x"), system.game_files():
+            with self.assertRaises(PermissionError, msg="an unknown account falls back to the game account"):
+                open(self.secret, "a")
+        with system.server_account(None), system.game_files():
+            with self.assertRaises(PermissionError):
+                open(self.secret, "a")
+
     def test_make_executable_refuses_a_link(self):
         target = os.path.join(self.server, "bedrock_server")
         os.symlink(self.secret, target)

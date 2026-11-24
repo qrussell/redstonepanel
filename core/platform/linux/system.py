@@ -1,5 +1,6 @@
 """This machine on Linux: its addresses, accounts and file ownership."""
 import contextlib
+import contextvars
 import ctypes
 import os
 import pwd
@@ -141,10 +142,7 @@ def game_files(as_owner_of=None):
             st = None
         pw = pwd.struct_passwd(("", "", st.st_uid, st.st_gid, "", "", "")) if st and st.st_uid else None
     else:
-        try:
-            pw = pwd.getpwnam(GAME_ACCOUNT)
-        except KeyError:
-            pw = None
+        pw = _account_entry(_server_account.get())
     if pw is None:
         yield
         return
@@ -159,6 +157,39 @@ def game_files(as_owner_of=None):
     finally:
         _fs.uid = _fs.gid = None
         _set_fs_ids(0, 0)
+
+
+# The account the game server a request is about runs as (its unit's User=), set by the panel
+# for that request; None: not known, use the game account
+_server_account = contextvars.ContextVar("rp_server_account", default=None)
+
+
+def _account_entry(name):
+    """The passwd entry game_files() switches to: the server's own account, or the game account
+    when that isn't known. None (stay root) for a server that runs as root: it has root's rights
+    itself, so nothing it leaves in its folder can reach more than it already could."""
+    if name is None:
+        name = GAME_ACCOUNT
+    if name in ("", "root", "0"):
+        return None
+    for n in (name, GAME_ACCOUNT):
+        try:
+            pw = pwd.getpwnam(n)
+        except KeyError:
+            continue
+        return None if pw.pw_uid == 0 else pw
+    return None
+
+
+@contextlib.contextmanager
+def server_account(user):
+    """Inside: game_files() works as `user`, the account a game server runs as ("" or "root": as
+    root; None: the game account). The panel sets it for each request about one server."""
+    token = _server_account.set(user)
+    try:
+        yield
+    finally:
+        _server_account.reset(token)
 
 
 @contextlib.contextmanager

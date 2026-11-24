@@ -211,16 +211,12 @@ them *in the game*, and only on the same Minecraft server. It doesn't use Discor
   suits modded communities best.
 - **Bedrock** and **Vanilla** players can't use it.
 - It needs its **own UDP port**, 24454 by default, and every server on the same machine needs a
-  different one. After the first start, change `port` in its `voicechat-server.properties`
-  (Fabric: `config/voicechat/`, Paper: `plugins/voicechat/`) in the **Files** tab, then restart.
-- **Open that port in the firewall yourself.** RedstonePanel opens the game ports in ufw, but not
-  extra ports that mods use (yet):
-
-  ```bash
-  sudo ufw allow 24454/udp
-  sudo ufw allow 24455/udp     # the next server's voice port, and so on
-  ```
-
+  different one. RedstonePanel looks after that: when a second server is set to a voice port
+  another server already uses, the panel moves it to the next free port in its
+  `voicechat-server.properties` (Fabric: `config/voicechat/`, Paper: `plugins/voicechat/`) and
+  **Needs attention** asks you to restart it. See
+  [Mods and plugins that open their own port](../guide/README.md#mods-and-plugins-that-open-their-own-port).
+- The panel opens each server's voice port in the firewall (ufw) too.
   If players connect from the internet, forward the same UDP ports on your router.
 
 ## 9. Keep it safe
