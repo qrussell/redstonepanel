@@ -127,7 +127,7 @@ class Settings(Base):
 
 class PublicView(Base):
     ALLOWED = {"path", "title", "edition", "loader", "loader_key", "minecraft", "needs", "status", "players",
-               "address", "geyser", "pack", "note", "link", "has_icon"}
+               "address", "geyser", "pack", "player_pack", "note", "link", "has_icon"}
 
     def test_only_the_fixed_fields_leave(self):
         s = summary(directory="/opt/minecraft-survival", rcon_port="25575", lan_ip="192.168.1.20", node="Basement",

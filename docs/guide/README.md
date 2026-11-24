@@ -482,7 +482,9 @@ Nothing is public until you turn it on, twice: the port, and then each server's 
     the top of the page. Only `https://` links are accepted.
   - **Where players get the mods** (mod servers). A server made **From a modpack** on Modrinth
     links to that exact pack version by itself, with an **Open in Modrinth App** button and
-    steps for Modrinth App and Prism Launcher. For anything else, paste the pack's page here.
+    steps for Modrinth App and Prism Launcher. Any other mod server offers its
+    [player pack](#player-packs) *(1.21.6)*: a download made from the server's own mods. A
+    link pasted here is shown only when the player pack is off.
 
 What a page shows depends on the server:
 
@@ -1448,6 +1450,47 @@ on any other port and forwards players to it. The Add-ons tab of a Bedrock serve
   installing the panel's.
 
 Removing a server removes its Phantom as well.
+
+### Player packs
+
+*(1.21.6)* On a Fabric, Quilt, Forge or NeoForge server, players need the same mods as the
+server to join. The **Player pack** view of the Mods tab works out that list from the
+server's own `mods` folder and hands it to players on the server's [join page](#join-pages)
+as a pack their launcher installs in one go. It follows the folder: add, update or remove a
+mod and the pack players download is the new one, with a new pack number.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/player-pack.png"><img src="images/player-pack.png" alt="The Player pack view of the Mods tab"></picture>
+
+For each file the panel asks Modrinth which mod it is and which side of the game it runs on:
+
+| Modrinth says | In the pack |
+| --- | --- |
+| Players need it | **In the pack** |
+| Works without it on the player's side | **Optional**: the launcher lets the player leave it out |
+| Works without it, but a mod in the pack needs it (Fabric API, for one) | **In the pack** |
+| Runs only on the server | **Left out** |
+| Modrinth doesn't know the file | **Left out**, and named on the join page so players know to ask |
+
+- The menu on each line overrules that: **Include**, **Optional** or **Leave out**.
+  **Include** on a file Modrinth doesn't know copies the file itself into the pack (up to
+  64 MB of such files together). Only do that with mods you may hand out.
+- **Extras for players** adds mods the server doesn't run, such as shaders or a minimap, by
+  their Modrinth name or page address. They go in as optional.
+- **Player pack: Automatic** is on, unless the server was made **From a modpack** on
+  Modrinth: its join page then links to that pack. Choose **On** if you have added or removed
+  mods since, or **Off** to hand out nothing.
+- **Download .mrpack** gives you the same file players get.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-page-pack.png"><img src="images/join-page-pack.png" alt="A join page offering the server's player pack"></picture>
+
+The pack is a Modrinth pack (`.mrpack`), which Modrinth App, Prism Launcher and most other
+launchers import. It holds no mods, only where each one is on Modrinth and its checksum, so
+the launcher downloads them from Modrinth. The join page also offers the pack as a
+[packwiz](https://packwiz.infra.link) folder for players who set their launcher up to check
+the server's mods every time the game starts.
+
+The panel needs to reach Modrinth to work the list out. If it can't, the last pack it built
+stays in place.
 
 ### Finding mods and plugins
 

@@ -3647,6 +3647,8 @@ const ServerApp = {
             this.addonDetail = null;
         }
         if (this.addonsView === 'browse') return this.renderAddonBrowser();
+        if (this.addonsView === 'pack' && this.MOD_KINDS.includes(this.addonsData.kind)) return this.loadPlayerPack();
+        if (this.addonsView === 'pack') this.addonsView = 'installed';
         this.renderAddons();
         if (this.isJavaAddonKind(this.addonsData.kind)) this.loadAddonUpdates();
         if (this.addonsData.kind === 'bedrock') this.loadPhantom();
@@ -3814,7 +3816,8 @@ const ServerApp = {
         if (view === 'browse') {
             if (!this.addonSearch) this.searchAddons();
             else this.renderAddonBrowser();
-        } else this.loadAddons();
+        } else if (view === 'pack') this.loadPlayerPack();
+        else this.loadAddons();
     },
 
     addonViewSwitch() {
@@ -3822,7 +3825,119 @@ const ServerApp = {
         if (!this.isJavaAddonKind(d.kind)) return '';
         const b = (v, label) => `<button onclick="ServerApp.addonView('${v}')" class="px-3 py-1.5 rounded text-sm ${this.addonsView === v
             ? 'bg-theme text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'}">${label}</button>`;
-        return `<div class="flex flex-wrap gap-2">${b('installed', 'Installed')}${b('browse', `Find ${this.addonNoun(d.kind)}`)}</div>`;
+        return `<div class="flex flex-wrap gap-2">${b('installed', 'Installed')}${b('browse', `Find ${this.addonNoun(d.kind)}`)}${this.MOD_KINDS.includes(d.kind) ? b('pack', 'Player pack') : ''}</div>`;
+    },
+
+    // --- Player pack (1.21.6): the mods players need, worked out from this server's mods folder
+    playerPackUrl(tail) {
+        return apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/player-pack${tail || ''}`);
+    },
+
+    async loadPlayerPack(fresh) {
+        const box = document.getElementById('addons-content');
+        if (!this.activeServer || !box) return;
+        const server = this.activeServer.name;
+        if (!this.playerPack || this.playerPack.server !== server) {
+            this.playerPack = null;
+            this.renderPlayerPack();
+        }
+        const res = await api(this.playerPackUrl(fresh ? '?fresh=true' : ''));
+        if (!this.activeServer || this.activeServer.name !== server || this.addonsView !== 'pack') return;
+        if (!res.ok) return this.renderPlayerPack(await this.apiError(res));
+        this.playerPack = await res.json();
+        this.renderPlayerPack();
+    },
+
+    async savePlayerPack(body) {
+        const server = this.activeServer.name;
+        const res = await api(this.playerPackUrl(), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!this.activeServer || this.activeServer.name !== server) return;
+        if (!res.ok) return this.renderPlayerPack(await this.apiError(res));
+        this.playerPack = await res.json();
+        this.renderPlayerPack();
+    },
+
+    addPlayerPackExtra() {
+        const box = document.getElementById('pack-extra');
+        const name = box ? box.value.trim() : '';
+        if (name) this.savePlayerPack({ add_extra: name });
+    },
+
+    renderPlayerPack(error) {
+        const box = document.getElementById('addons-content');
+        if (!box) return;
+        const d = this.addonsData, p = this.playerPack, esc = t => this.escapeHtml(String(t ?? ''));
+        const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
+        const small = 'px-2 py-1 rounded text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const field = 'px-2 py-1 rounded text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white';
+        const head = `<div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white">Player pack${d.minecraft ? ` <span class="text-sm font-normal text-gray-500">for ${esc(this.loaderName(d.kind))} ${esc(d.minecraft)}</span>` : ''}</h3>
+                ${p ? `<span class="${note}">pack ${esc(p.version)}</span>` : ''}
+            </div>
+            ${this.addonViewSwitch()}
+            ${error ? `<div class="p-3 rounded text-sm bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-gray-900 dark:text-gray-100">${esc(error)}</div>` : ''}`;
+        if (!p) {
+            box.innerHTML = head + (error ? '' : `<p class="${note}">Working out which mods players need…</p>`);
+            return;
+        }
+        const c = p.counts, given = c.in + c.optional + c.bundled;
+        const badge = { in: ['In the pack', 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200'],
+            optional: ['Optional', 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200'],
+            bundled: ['File in the pack', 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200'],
+            out: ['Left out', 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'] };
+        const choices = [['auto', 'Automatic'], ['in', 'Include'], ['optional', 'Optional'], ['out', 'Leave out']];
+        const row = (m, extra) => {
+            const b = badge[m.state] || badge.out;
+            const name = m.slug && (m.on_modrinth || extra) ? `<a href="https://modrinth.com/mod/${encodeURIComponent(m.slug)}" target="_blank" rel="noopener noreferrer" class="hover:underline">${esc(m.name)}</a>` : esc(m.name);
+            const pick = extra
+                ? `<button onclick="ServerApp.savePlayerPack({ remove_extra: ${this.jsArg(m.key)} })" class="${small}">Remove</button>`
+                : `<select aria-label="What players get of ${esc(m.name)}" onchange="ServerApp.savePlayerPack({ mods: { [${this.jsArg(m.file)}]: this.value } })" class="${field}">${choices.map(([v, label]) => `<option value="${v}"${m.choice === v ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+            return `<div class="flex flex-wrap items-start justify-between gap-3 p-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0">
+                <div class="min-w-0 flex-1">
+                    <p class="font-bold text-gray-900 dark:text-white break-words">${name} <span class="text-xs font-normal px-1.5 py-0.5 rounded ${b[1]}">${b[0]}</span></p>
+                    <p class="${note} break-all">${[m.version ? `v${esc(m.version)}` : '', extra ? '' : esc(m.file), esc(m.why)].filter(Boolean).join(' · ')}</p>
+                </div>
+                <div class="whitespace-nowrap">${pick}</div>
+            </div>`;
+        };
+        const jp = p.join_page || {};
+        const onNode = !!this.activeServer.node;
+        const where = !p.active ? ''
+            : onNode ? 'Players download it from this server\'s join page (Join pages in the sidebar of the cluster master).'
+            : jp.enabled && jp.site ? `Players download it from <a class="underline text-theme" target="_blank" rel="noopener noreferrer" href="${esc(`${jp.scheme}://${location.hostname}:${jp.port}/join/${encodeURIComponent(jp.path)}`)}">this server's join page</a>.`
+            : 'Players download it from this server\'s join page, which is off. Turn it on under <button class="underline text-theme" onclick="ServerApp.openJoin()">Join pages</button>.';
+        const state = p.active
+            ? `The player pack is <b>on</b>${p.mode === 'auto' ? ' (automatic)' : ''}: ${given} mod${given === 1 ? '' : 's'}${c.optional ? `, ${c.optional} optional` : ''}; ${c.out} left out.`
+            : p.mode === 'off' ? 'The player pack is <b>off</b>.'
+            : 'The player pack is <b>off</b> (automatic): this server was made from a Modrinth modpack, so its join page links to that pack. Turn the player pack on if you have added or removed mods since.';
+        const modes = [['auto', 'Automatic'], ['on', 'On'], ['off', 'Off']];
+        box.innerHTML = head + `
+            <div class="${card} p-4 space-y-3">
+                <p class="text-sm text-gray-800 dark:text-gray-200">${state} ${where}</p>
+                <div class="flex flex-wrap items-end gap-3">
+                    <label class="text-xs text-gray-600 dark:text-gray-300">Player pack<br>
+                        <select onchange="ServerApp.savePlayerPack({ mode: this.value })" class="${field} mt-1">${modes.map(([v, label]) => `<option value="${v}"${p.mode === v ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
+                    <label class="text-xs text-gray-600 dark:text-gray-300">Name players see<br>
+                        <input id="pack-name" maxlength="60" value="${esc(p.name)}" placeholder="The server's name" class="${field} mt-1 w-56"></label>
+                    <button onclick="ServerApp.savePlayerPack({ name: document.getElementById('pack-name').value })" class="${small}">Save name</button>
+                    <span class="flex-1"></span>
+                    ${p.active && given ? `<a href="${esc(this.playerPackUrl('/file'))}" class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white">Download .mrpack</a>` : ''}
+                    <button onclick="ServerApp.loadPlayerPack(true)" class="${small}">Check again</button>
+                </div>
+                ${(p.problems || []).map(x => `<p class="text-xs text-yellow-700 dark:text-yellow-300">⚠️ ${esc(x)}</p>`).join('')}
+                ${p.loader_version ? '' : `<p class="text-xs text-yellow-700 dark:text-yellow-300">⚠️ This server's record doesn't say which ${esc(p.loader_name)} version it runs, so the pack leaves the loader to the player's launcher.</p>`}
+            </div>
+            <div class="${card}">${p.mods.map(m => row(m, false)).join('') || `<p class="p-4 text-sm text-gray-500 dark:text-gray-400">No mods are installed yet.</p>`}</div>
+            <h3 class="text-base font-bold text-gray-900 dark:text-white pt-2">Extras for players</h3>
+            <p class="${note}">Mods the server doesn't run but players may like, such as shaders or a minimap. They go in the pack as optional.</p>
+            <div class="${card}">${p.extras.map(m => row(m, true)).join('')}
+                <div class="flex flex-wrap gap-2 p-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0">
+                    <input id="pack-extra" placeholder="A Modrinth mod, such as sodium, or its page address" class="${field} flex-1 min-w-0" onkeydown="if (event.key === 'Enter') ServerApp.addPlayerPackExtra()">
+                    <button onclick="ServerApp.addPlayerPackExtra()" class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white">Add</button>
+                </div>
+            </div>
+            <p class="${note}">The panel asks Modrinth which mod each file is and which side of the game it runs on. Mods that run only on the server are left out; a file Modrinth doesn't know is left out unless you choose Include, which copies the file itself into the pack. The pack is rebuilt whenever the mods folder changes.</p>`;
     },
 
     addonProjectUrl(u) {
