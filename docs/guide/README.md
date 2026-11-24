@@ -807,7 +807,7 @@ If the machine already runs a Minecraft server that RedstonePanel didn't make, s
 own systemd service, a script or a `screen` session, the dialog lists it under **Found on this
 computer** with its folder, port, version and what started it. Looking changes nothing.
 
-<picture><source media="(prefers-color-scheme: light)" srcset="images/light/found-servers.png"><img src="images/found-servers.png" alt="Found on this computer: two servers set up outside the panel, and one already handed over with an Undo button"></picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/found-servers.png"><img src="images/found-servers.png" alt="Found on this computer: two servers set up outside the panel, one already handed over with an Undo button, and a leftover service it can't manage"></picture>
 
 Click **Manage with RedstonePanel** to hand one over:
 
@@ -829,6 +829,13 @@ started again. The world is never touched.
 The panel says why when it can't take a server over: a folder inside a home folder the
 `minecraft` account can't get into, a path with a space, a port one of the panel's servers
 already uses, or a Java server that isn't started with `-jar`.
+
+Below them, dashed, the list names what the panel saw but can't manage, with the reason: a server
+running from a folder that no longer has its `server.properties` (its settings and world were
+moved or deleted), one whose folder the panel couldn't read, or a service named for Minecraft
+that is stopped, whose folder is gone, or that runs something other than a game server (a
+proxy, for example). These often come from another tool that was uninstalled. When there is
+nothing at all, the section says so.
 
 **Removed servers** are listed at the bottom of the same dialog. See
 [Restore a removed server](#15-restore-a-removed-server).

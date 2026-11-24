@@ -102,6 +102,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.22
+
+**RedstonePanel on Windows (preview)**. A Windows installer for Windows 11 and Windows Server 2022 or 2025 runs Java servers on one computer, with backups, schedules, the console, Live Chat, the file manager, add-ons, join pages and more; each game server is an ordinary Windows service. Bedrock, modpacks, limits and clusters follow in 1.23 and 1.24. See [On Windows](docs/wiki/Installation.md#on-windows-preview) and the [1.22.0 release notes](release-notes/v1.22.0.md).
+
 ## What's new in 1.21
 
 **A terminal in the panel** *(1.21.10)*. Admins can open a shell on the machine from the browser, on a phone too. It runs as a Linux account, never as the panel: your own if you signed in with it, or the one you log in with at its `login:` prompt. Off until you turn it on, HTTPS only, and every terminal is logged. Read the [1.21.10 release notes](release-notes/v1.21.10.md).

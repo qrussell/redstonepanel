@@ -4,6 +4,16 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.22.0 (2026-11-24)
+
+Release notes: release-notes/v1.22.0.md
+
+- Windows preview: a Windows installer (RedstonePanel-1.22.0-x64.msi) for Windows 11 and Windows Server 2022 or 2025, 64-bit. Python comes inside it; Java (Eclipse Temurin) is downloaded when a server needs it.
+- On Windows the preview runs Java servers (Vanilla, Paper, Purpur, Fabric) on one computer, with backups and restore, schedules, the console, Live Chat, the file manager, add-ons, the firewall, performance, crash explanations, webhooks, two-factor sign-in, join pages and a servers folder on any drive. Not yet on Windows: Bedrock, Quilt, Forge, NeoForge, modpacks, limits, off-site storage, SFTP, the terminal, clusters and updating from the panel; the panel leaves them out there.
+- Each game server on Windows is its own Windows service running as its own account, schedules are Task Scheduler tasks and ports are Windows Defender Firewall rules.
+- Found on this computer always shows for an admin: what it can take over, what it saw and can't manage with the reason, or that nothing was found.
+- Linux: nothing else changes.
+
 ## 1.21.10 (2026-11-24)
 
 Release notes: release-notes/v1.21.10.md

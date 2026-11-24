@@ -1,3 +1,26 @@
+redstonepanel (1.22.0) noble; urgency=medium
+
+  * Windows preview: a Windows installer (RedstonePanel-1.22.0-x64.msi)
+    for Windows 11 and Windows Server 2022 or 2025, 64-bit. Python comes
+    inside it; Java (Eclipse Temurin) is downloaded when a server needs it.
+  * On Windows the preview runs Java servers (Vanilla, Paper, Purpur,
+    Fabric) on one computer, with backups and restore, schedules, the
+    console, Live Chat, the file manager, add-ons, the firewall,
+    performance, crash explanations, webhooks, two-factor sign-in, join
+    pages and a servers folder on any drive. Not yet on Windows: Bedrock,
+    Quilt, Forge, NeoForge, modpacks, limits, off-site storage, SFTP, the
+    terminal, clusters and updating from the panel; the panel leaves them
+    out there.
+  * Each game server on Windows is its own Windows service running as its
+    own account, schedules are Task Scheduler tasks and ports are Windows
+    Defender Firewall rules.
+  * Found on this computer always shows for an admin: what it can take
+    over, what it saw and can't manage with the reason, or that nothing
+    was found.
+  * Linux: nothing else changes.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 24 Nov 2026 17:06:44 -0000
+
 redstonepanel (1.21.10) noble; urgency=medium
 
   * Terminal: admins can open a shell on the machine from the browser

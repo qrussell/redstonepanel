@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.10 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) and a terminal in the panel (1.21.10) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.22.0 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) and the Windows preview (1.22) shipped; the rest of the Windows version (1.23 and 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1754,6 +1754,25 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     panel accounts with two-factor, self-signed HTTPS, the host dashboard and the first-run
     guide. Labelled a preview in the panel and the release notes. **Gate:** a Windows install
     test passes on GitHub's `windows-2022` and `windows-2025` runners. **Size:** large.
+
+    **As built (released 24 Nov 2026).** As planned, with these differences. The runner is the
+    panel's own Python program (`core/platform/windows/runner.py`, standard library and
+    `ctypes`), not WinSW. Windows keeps the same systemd-format unit files, which the runner
+    reads, so feature code is shared; timers become Task Scheduler tasks. Each server runs as
+    its own virtual account (`NT SERVICE\minecraft-<name>`) with rights to its own folder only.
+    Event-log triggers in Task Scheduler didn't fire reliably, so the crash task reads the
+    runner's own event files. Python 3.13 makes folders with inheritance turned off, so the panel
+    turns it on below each server folder; a jar moved in from elsewhere keeps its old rights, so
+    a found server's files are granted by name. Releases made while it was built came along:
+    the servers folder on any drive (1.21.1, with a drive list on Windows), Found servers (1.21.3,
+    with the Windows process tree and services), quick commands, join pages and player packs,
+    the Visual Editor. Not in the preview: the terminal (1.21.10), which needs ConPTY and Windows
+    account sign-in; it is left for a later Windows release. Found while testing: Linux-only calls outside
+    `core/platform` (`os.major`) broke the Performance card on Windows; fixed, and the Windows
+    install test now opens it. Tested: `.github/workflows/windows.yml` on `windows-2022` and
+    `windows-2025` (staged install and MSI, upgrade over itself, removal), and Quentin's own
+    Windows PC. The release attaches the MSI and its SHA-256; the MSI isn't signed yet
+    (SignPath application pending).
 
 28. **1.23: the whole single machine.** Bedrock and its auto-update, Phantom, hard limits and
     performance history, crash explanations with Windows causes, off-site backups over `sftp`
