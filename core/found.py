@@ -107,12 +107,14 @@ def describe(program, managed=(), panel_units=None):
     units = _panel_units() if panel_units is None else panel_units
     if any(_same(cwd, d) for d in managed) or (service and (service in units or f"{service}.service" in units)):
         return None
-    props = manager.read_properties(cwd)
+    # Not the panel's yet: read with the rights of the folder's owner, never root's
+    with system.game_files(as_owner_of=cwd):
+        props = manager.read_properties(cwd)
+        try:
+            version = manager.server_version(cwd, edition == "Java").get("version")
+        except Exception:
+            version = None
     port = str(props.get("server-port", "")).strip()
-    try:
-        version = manager.server_version(cwd, edition == "Java").get("version")
-    except Exception:
-        version = None
     jar = _jar(argv)
     return {"folder": cwd, "edition": edition, "port": int(port) if port.isdigit() else (25565 if edition == "Java" else 19132),
             "version": version, "world": props.get("level-name") or "world", "service": service,
@@ -271,6 +273,9 @@ def manage(folder, actor="?"):
         rec.update(_stop_old(info))
         _save(name, rec)                                  # from here on undo() can put things back
         try:
+            # The game account owns the folder before the panel works in it (as that account)
+            manager.ensure_minecraft_user(folder)
+            system.give_to_game_account(folder)
             if edition == "java":
                 jar = os.path.basename(info["jar"])
                 if jar != "server.jar":

@@ -167,6 +167,8 @@ async def access_control(request: Request, call_next):
                     detail = ("Sign in as an admin to change this." if user["source"] == "trusted"
                               else "Only admins can do this.")
                     return JSONResponse({"detail": detail}, status_code=403)
+            if _bad_server_name(request.method, path):
+                return JSONResponse({"detail": "No Minecraft server by that name on this panel."}, status_code=404)
             refused = _grant_refusal(request.method, request.scope, user)
             if refused:
                 return JSONResponse({"detail": refused}, status_code=403)
@@ -186,6 +188,15 @@ def _route_of(method, path):
             if match == Match.FULL:
                 return r.path, child.get("path_params") or {}
     return None, {}
+
+def _bad_server_name(method, path):
+    """True when the route's {server_name} can't be a game server's name. Every server name is
+    a "minecraft..." unit name with no slashes, dots-only or other path tricks, and many routes
+    build folder and file paths from it, so a bad one is refused here, for admins too, before
+    any route sees it."""
+    _template, params = _route_of(method, path)
+    name = params.get("server_name")
+    return name is not None and not manager.SERVICE_NAME_RE.fullmatch(name)
 
 def _admin_only_detail(user):
     return "Sign in as an admin to do this." if user.get("source") == "trusted" else "Only admins can do this."
@@ -1036,6 +1047,17 @@ async def java_missing(request: Request, e: manager.JavaMissing):
     return JSONResponse({"detail": str(e), "java": {"required": e.required, "major": e.major,
                                                          "package": e.package}},
                         status_code=409)
+
+@app.exception_handler(PermissionError)
+async def permission_refused(request: Request, e: PermissionError):
+    """The panel works in server folders as the game account (1.21.8): a file there that the game
+    account can't open, such as a link the server or a plugin made to a system file, is left alone."""
+    name = os.path.basename(getattr(e, "filename", "") or "") or "a file"
+    manager.write_log(f"[SECURITY] Refused {request.method} {request.url.path}: {e}")
+    return JSONResponse({"detail": f"The panel couldn't open {name} with the game account's rights, so it left "
+                                   f"it alone. Check that the file belongs to the minecraft account and "
+                                   f"isn't a link to somewhere outside the server folder."},
+                        status_code=403)
 
 class JavaChoice(BaseModel):
     major: int

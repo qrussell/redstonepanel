@@ -57,7 +57,7 @@ import xml.etree.ElementTree as ET
 
 from core import backups, manager, notify
 from core.settings import DATA_DIR
-from core.platform import paths, services
+from core.platform import paths, services, system
 
 CONFIG_FILE = os.path.join(DATA_DIR, "backup-targets.json")
 STATUS_FILE = os.path.join(DATA_DIR, "backup-targets-status.json")
@@ -1138,6 +1138,10 @@ def import_copy(tid, panel, server, filename, actor):
             with open(os.path.join(dest, manager.REMOVED_INFO), "w") as f:
                 json.dump({"edition": edition, "removed_at": int(time.time()),
                            "from_backup": f"{t['name']}: {panel}/{server}/{filename}"}, f)
+            # A server folder belongs to the game account: the panel works in it as that
+            # account from here on (1.21.8). The account exists on any panel with servers;
+            # restore_server() below makes it otherwise, then hands the folder over again.
+            system.give_to_game_account(dest)
         finally:
             manager._release_name(name)
     finally:

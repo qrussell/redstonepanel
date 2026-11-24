@@ -37,7 +37,6 @@ import os
 import re
 import shutil
 import struct
-import tempfile
 import threading
 import time
 import zipfile
@@ -673,20 +672,21 @@ def keep_previous(d, info):
     """Keeps the current server.jar and what it is as *.previous (replacing an older pair).
     Quilt, Forge and NeoForge (1.20) aren't one jar: only what they are is kept, and putting
     them back runs their installer again for the same build."""
-    jar = os.path.join(d, "server.jar")
-    if _installer(info):
-        try:
-            os.remove(os.path.join(d, PREVIOUS_JAR))
-        except OSError:
-            pass
-    elif os.path.isfile(jar) and not os.path.islink(jar):
-        os.replace(jar, os.path.join(d, PREVIOUS_JAR))
-    prev = os.path.join(d, PREVIOUS_INFO)
-    tmp = prev + ".tmp"
-    fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
-    with os.fdopen(fd, "w") as f:
-        json.dump({k: info.get(k) for k in ("loader", "minecraft", "build", "java_required")}, f)
-    os.replace(tmp, prev)
+    with system.game_files():
+        jar = os.path.join(d, "server.jar")
+        if _installer(info):
+            try:
+                os.remove(os.path.join(d, PREVIOUS_JAR))
+            except OSError:
+                pass
+        elif os.path.isfile(jar) and not os.path.islink(jar):
+            os.replace(jar, os.path.join(d, PREVIOUS_JAR))
+        prev = os.path.join(d, PREVIOUS_INFO)
+        tmp = prev + ".tmp"
+        fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, "w") as f:
+            json.dump({k: info.get(k) for k in ("loader", "minecraft", "build", "java_required")}, f)
+        os.replace(tmp, prev)
 
 def remember(server, kind, frm, to, backup, java, renames=(), actor="?", was_running=True):
     """Records what Undo (or Roll back the last update) would put back."""
@@ -734,12 +734,13 @@ def _set_java(server, d, java):
         manager._write_unit(server, d, "java", java=java, **manager.unit_heap(exec_start))
 
 def _write_info(d, info):
-    path = os.path.join(d, javaservers.INFO_FILE)
-    tmp = path + ".tmp"
-    fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
-    with os.fdopen(fd, "w") as f:
-        json.dump({k: v for k, v in info.items() if k in ("loader", "minecraft", "build", "java_required")}, f)
-    os.replace(tmp, path)
+    with system.game_files():
+        path = os.path.join(d, javaservers.INFO_FILE)
+        tmp = path + ".tmp"
+        fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, "w") as f:
+            json.dump({k: v for k, v in info.items() if k in ("loader", "minecraft", "build", "java_required")}, f)
+        os.replace(tmp, path)
 
 def _chown(d):
     system.give_to_game_account(d)
@@ -838,12 +839,12 @@ def put_back(server, d, rec, start, sleep=time.sleep):
     staging = None
     if _installer(old):
         # Nothing was kept for these: their installer runs again, before anything is touched
-        staging = tempfile.mkdtemp(prefix=".redstonepanel-convert-", dir=d)
+        staging = manager.game_temp_dir(d, ".redstonepanel-convert-")
         try:
             javaservers.install(staging, old["loader"], old.get("minecraft"),
                                 build=str(old.get("build") or "").replace("loader ", "") or None)
         except (javaservers.JavaServerError, javaservers.MissingJavaError, OSError) as e:
-            shutil.rmtree(staging, ignore_errors=True)
+            manager.remove_game_tree(staging)
             raise ConvertError(f"{_label(old)} couldn't be downloaded again, so nothing was put back: {e}")
     elif not os.path.isfile(prev) or os.path.islink(prev):
         raise ConvertError("The previous server.jar is gone, so the panel can't put the old software back.")
@@ -851,7 +852,7 @@ def put_back(server, d, rec, start, sleep=time.sleep):
         return _put_back(server, d, rec, start, sleep, prev, staging)
     finally:
         if staging:
-            shutil.rmtree(staging, ignore_errors=True)
+            manager.remove_game_tree(staging)
 
 def _put_back(server, d, rec, start, sleep, prev, staging):
     from core import catalog
@@ -1005,7 +1006,7 @@ def run_change(server, p, install, actor, job, sleep=time.sleep):
     frm, to = p["from"], p["to"]
     old_info = javaservers.read_info(d) or {}
     what = f"{server} from {_label(frm)} to {_label(to)}"
-    staging = tempfile.mkdtemp(prefix=".redstonepanel-convert-", dir=d)
+    staging = manager.game_temp_dir(d, ".redstonepanel-convert-")
     was_running = backups._is_active(server)
     rec, pre, offset, starting = None, None, None, False
     manager.write_log(f"[UPDATE] {actor} is changing {what}.")
@@ -1102,7 +1103,7 @@ def run_change(server, p, install, actor, job, sleep=time.sleep):
         notify.send("update_failed", server, f"Changing {server} to {_label(to)} failed: {error.rstrip('.')}.")
         job.finish(error=error.rstrip(".") + ".", **more)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        manager.remove_game_tree(staging)
 
 def start_undo(server, kind=None, actor="?", wait=False, sleep=time.sleep):
     """Undo type change / Roll back the last update. kind: "convert" or "update" to insist on

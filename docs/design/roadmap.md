@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.7 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) and a Visual Editor for settings files (1.21.7) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.8 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) and security fixes from code scanning (1.21.8) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -2006,6 +2006,49 @@ read back by Configuration, a `.cfg` with sections, `eula.txt`, each save logged
 That run found that a text box turns Windows line endings (CRLF) into LF, which the old text
 editor did too; the editor now remembers a file's line endings and saves them back. The
 manual's picture uses sample data.
+
+### 1.21.8: security fixes from code scanning *(released 24 Nov 2026)*
+
+**Why.** GitHub code scanning (CodeQL), set up on 24 Nov 2026, and the review of its 212 alerts
+that Quentin asked for found real problems along with the false alarms. Quentin chose to ship
+the fixes on their own as 1.21.8 ("the best, not the quickest"), with join pages through a
+proxy moving to 1.21.9.
+
+**How.**
+- **Player names reach the console checked** (!129). Configuration → Players took any text as a
+  Bedrock player's name and, when the Xbox lookups failed, typed it into the server's console
+  with a line break in it (so it could run any command), with the server started as root.
+  Names and IDs are now checked like the whitelist's, and that lookup runs the server as
+  `minecraft`. !133 fixes a name clash in that change that cost Java players their UUID.
+- **Server names and world names** (!130). Every route with a server name in it answers 404
+  before anything else unless the name is a `minecraft*` unit name, a backup's world name must
+  be a plain path inside the server folder, and the website's demo console escapes its text.
+- **The panel works in server folders as the game account.** The panel runs as root, the game
+  account owns its servers' folders, and the server or a plugin can put a link there
+  (`server.properties` → `/etc/shadow`, `level-name=../../etc`). Plain `open()`, `rename()` and
+  `shutil` calls as root followed such links, so settings, operators, the whitelist, a server or
+  world download, a world rename, the Live Chat log and installs could read or change files
+  anywhere. `core/files.py` (Files tab, SFTP) already opened each path step with `O_NOFOLLOW`;
+  everything else now runs inside `system.game_files()`, which switches only the calling
+  thread's file-access user and group to `minecraft` (Linux `setfsuid`/`setfsgid`), so a link
+  reaches only what the game account could reach anyway and new files belong to it. The
+  panel's own log and data are written with `system.panel_files()` from inside such a block.
+  Downloads leave links out; a world outside the folder is refused; `chown -R -h` and
+  `chmod +x` no longer follow a link; staging folders for installs and updates are made by
+  the game account. On the first start of 1.21.8, files the panel wrote in server folders as
+  root before are handed to `minecraft`, or it couldn't change them any more. A file the game
+  account can't open is answered with 403 and logged as `[SECURITY]`.
+
+**As built.** `core/platform/linux/system.py` (`game_files`, `panel_files`; the fake platform
+has both, doing nothing), used in `manager`, `javaservers`, `updates`, `backups`, `convert`,
+`modpacks`, `whitelist`, `playerlog`, `transfer` and `archive.zip_tree`. New code that touches
+a server folder outside `core/files.py` must do it inside `system.game_files()`, must not start
+threads there (they would inherit the switch), and needs the folder to belong to `minecraft`
+first. Tested: `tests/test_game_files.py` (root only: links to root files are refused, new
+files belong to `minecraft`, other threads keep root), `tests/test_player_roles.py`,
+`packaging/test/test-game-files.sh` (27 checks; 16 of them fail on 1.21.7: it plants links
+as `minecraft` and checks that settings, operators, whitelist, downloads, world rename and
+Live Chat never read or change a root-only file), the install test and `test-bedrock-update.sh`.
 
 ### 1.21.9: join pages through a proxy (HAProxy or Cloudflare) *(built, not released)*
 

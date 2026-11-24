@@ -156,6 +156,28 @@ def fixed_udp_ports(d):
     return True
 
 
+GAME_FOLDERS_DONE = "game-folders-1.21.8"
+
+
+def upgrade_game_folder_owners():
+    """Once, after upgrading to 1.21.8: the panel now works in server folders as the game
+    account (system.game_files()), so files it wrote there as root before (an ops.json, an
+    eula.txt) are handed to the game account, or it couldn't change them any more."""
+    marker = os.path.join(DATA_DIR, GAME_FOLDERS_DONE)
+    if os.path.exists(marker):
+        return
+    for s in list_servers():
+        d = s.get("directory")
+        try:
+            if d and os.path.isdir(d) and not os.path.islink(d):
+                system.take_for_game_account(d)
+        except Exception as e:                 # one odd server mustn't stop the others or the panel
+            write_log(f"[SYSTEM] Couldn't hand {s.get('name')}'s files to the game account: {e}")
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(marker, "w") as f:
+        f.write("done\n")
+
+
 BEDROCK_FIREWALL_DONE = "bedrock-firewall-1.16.11"
 
 
@@ -450,7 +472,7 @@ def delete_template(template_id):
     save_templates(templates)
 
 def write_log(msg):
-    with open(LOG_FILE, "a") as f:
+    with system.panel_files(), open(LOG_FILE, "a") as f:
         f.write(msg + "\n")
 
 def run_and_log(cmd, shell=False):
@@ -460,7 +482,7 @@ def run_and_log(cmd, shell=False):
     
     process = subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     for line in process.stdout:
-        with open(LOG_FILE, "a") as f:
+        with system.panel_files(), open(LOG_FILE, "a") as f:
             f.write(line)
     
     process.wait()
@@ -486,7 +508,7 @@ def _read_text(path):
     if not os.path.exists(path):
         return ""
     # surrogateescape: bytes that aren't UTF-8 are written back exactly as they were
-    with open(path, "r", encoding="utf-8", errors="surrogateescape", newline="") as f:
+    with system.game_files(), open(path, "r", encoding="utf-8", errors="surrogateescape", newline="") as f:
         return f.read()
 
 def read_properties(dir_path):
@@ -498,18 +520,18 @@ def write_properties(dir_path, new_props):
     """Changes the given keys, escaped the way the game server expects; other lines stay as they are."""
     prop_file = os.path.join(dir_path, "server.properties")
     content = properties.update(_read_text(prop_file), new_props, java=_java_properties(dir_path))
-    with open(prop_file, "w", encoding="utf-8", errors="surrogateescape", newline="\n") as f:
+    with system.game_files(), open(prop_file, "w", encoding="utf-8", errors="surrogateescape", newline="\n") as f:
         f.write(content)
 
 def read_raw_properties(dir_path):
     prop_file = os.path.join(dir_path, "server.properties")
     if os.path.exists(prop_file):
-        with open(prop_file, "r") as f:
+        with system.game_files(), open(prop_file, "r") as f:
             return f.read()
     return ""
 
 def write_raw_properties(dir_path, content):
-    with open(os.path.join(dir_path, "server.properties"), "w") as f:
+    with system.game_files(), open(os.path.join(dir_path, "server.properties"), "w") as f:
         f.write(content)
 
 SERVERS_ROOT = paths.SERVERS_ROOT        # the usual place; servers_root() is where new ones go
@@ -619,7 +641,7 @@ _START_LINE_RE = re.compile(bedrock_net.GREP_PATTERN.encode())
 def _matching_lines(path, pattern):
     """The lines of a (possibly big, possibly not quite text) log that match a bytes pattern."""
     try:
-        with open(path, "rb") as f:
+        with system.game_files(), open(path, "rb") as f:
             return [line.decode("utf-8", "replace").rstrip("\r\n") for line in f if pattern.search(line)]
     except OSError:
         return []
@@ -801,7 +823,7 @@ def _load_json_list(path):
     if not os.path.exists(path):
         return []
     try:
-        with open(path, "r") as f:
+        with system.game_files(), open(path, "r") as f:
             data = json.load(f)
         return data if isinstance(data, list) else []
     except Exception:
@@ -953,6 +975,17 @@ def update_server_binary(server_name, version=None, backup=True, actor="Update b
     system.give_to_game_account(d)
     services.start(server_name, elevate=True)
 
+def game_temp_dir(d, prefix):
+    """A new folder inside the server folder d, made by (and for) the game account, so work
+    there runs as the game account (system.game_files()). Remove it with remove_game_tree()."""
+    with system.game_files():
+        return tempfile.mkdtemp(prefix=prefix, dir=d)
+
+def remove_game_tree(path):
+    """shutil.rmtree() inside a server folder, as the game account. Never raises."""
+    with system.game_files():
+        shutil.rmtree(path, ignore_errors=True)
+
 def reinstall_java(server_name, loader, version=None, build=None, current=None, before_swap=None):
     """Downloads a Java server's software again (a chosen Minecraft version and build, default
     the newest) and swaps it in, rewriting the unit when the Java or what it starts changed.
@@ -961,7 +994,7 @@ def reinstall_java(server_name, loader, version=None, build=None, current=None, 
     d = get_server_dir(server_name)
     exec_start = _unit_exec_start(server_name)
     current = javaservers.read_info(d) if current is None else current
-    staging = tempfile.mkdtemp(prefix=".redstonepanel-update-", dir=d)
+    staging = game_temp_dir(d, ".redstonepanel-update-")
     try:
         # Download next to the server first, so a failed download leaves it untouched
         # (Quilt, Forge and NeoForge run their installer there, as the minecraft user)
@@ -971,7 +1004,7 @@ def reinstall_java(server_name, loader, version=None, build=None, current=None, 
         before = javaservers.launch_args(d, current)
         javaservers.adopt(staging, d)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        remove_game_tree(staging)
     if os.path.realpath(unit_java(exec_start) or "") != os.path.realpath(java) \
             or javaservers.launch_args(d, info) != before:
         _write_unit(server_name, d, "java", java=java, **unit_heap(exec_start))
@@ -1190,7 +1223,7 @@ def remove_server(server_name, keep_world, note=None):
             info.update(unit_heap(exec_start))
             info.update(note or {})
             try:
-                with open(os.path.join(d, REMOVED_INFO), "w") as f:
+                with system.game_files(), open(os.path.join(d, REMOVED_INFO), "w") as f:
                     json.dump(info, f)
             except OSError:
                 pass          # only a hint for restoring; the folder alone is enough
@@ -1204,7 +1237,7 @@ def remove_server(server_name, keep_world, note=None):
 
 def _read_removed_info(d):
     try:
-        with open(os.path.join(d, REMOVED_INFO)) as f:
+        with system.game_files(), open(os.path.join(d, REMOVED_INFO)) as f:
             info = json.load(f)
         return info if isinstance(info, dict) else {}
     except (OSError, ValueError):
@@ -1260,9 +1293,12 @@ def list_removed_servers():
             continue
         if name in busy or os.path.exists(_unit_path(name)) or os.path.realpath(d) in in_use:
             continue
-        info = _read_removed_info(d)
-        edition = _removed_edition(d, name, info)
-        props = read_properties(d)
+        # Read with the rights of the folder's owner: the game account, or root for a folder the
+        # panel unpacked itself (an off-site backup) and hasn't handed over yet
+        with system.game_files(as_owner_of=d):
+            info = _read_removed_info(d)
+            edition = _removed_edition(d, name, info)
+            props = read_properties(d)
         binary = "bedrock_server" if edition == "bedrock" else "server.jar"
         removed_at = info.get("removed_at")
         removed.append({
@@ -1338,6 +1374,10 @@ def restore_server(name, same_version=False):
         if edition != "java":                     # Java itself is checked below, per Minecraft version
             require_bedrock_machine()
             require_tools("screen")
+        # The game account owns everything in the folder before the panel writes in it (as
+        # the game account, so a link in the folder can't send a write elsewhere)
+        ensure_minecraft_user(d)
+        system.give_to_game_account(d)
         downloaded = False
         if not match["has_binary"]:
             write_log(f"[RESTORE] {name} has no server binary; downloading the latest {edition.capitalize()} release.")
@@ -1358,7 +1398,7 @@ def restore_server(name, same_version=False):
         if edition == "java":
             eula = os.path.join(d, "eula.txt")
             if not os.path.exists(eula):
-                with open(eula, "w") as f:
+                with system.game_files(), open(eula, "w") as f:
                     f.write("eula=true\n")
         else:
             write_screenrc(d)
@@ -1377,7 +1417,8 @@ def restore_server(name, same_version=False):
         services.enable(name)
         services.start(name)
         try:
-            os.remove(os.path.join(d, REMOVED_INFO))
+            with system.game_files():
+                os.remove(os.path.join(d, REMOVED_INFO))
         except OSError:
             pass
         from core import backups, restarts
@@ -1406,9 +1447,10 @@ def delete_removed_server(name):
 def export_server(server_name):
     """Zips the server folder into a fresh temp dir (the caller deletes the dir after sending)."""
     d = get_server_dir(server_name)
-    export_base = os.path.join(tempfile.mkdtemp(prefix="redstonepanel-export-"), server_name)
-    shutil.make_archive(export_base, 'zip', d)
-    return f"{export_base}.zip"
+    from core import archive
+    zip_path = os.path.join(tempfile.mkdtemp(prefix="redstonepanel-export-"), f"{server_name}.zip")
+    archive.zip_tree(d, zip_path)
+    return zip_path
 
 def _root_holding(path):
     """The servers folder an unpacked folder is in, so it becomes a server by a rename on the
@@ -1459,9 +1501,13 @@ def _import_unpacked(staging, root):
         mc_dir = os.path.join(_root_holding(root), svc_name)
         # The unpacked files become the server folder (a rename: same filesystem, no copying)
         os.rename(root, mc_dir)
+        # The game account owns the files before the panel changes them (as the game account)
+        ensure_minecraft_user(mc_dir)
+        system.give_to_game_account(mc_dir)
         # A backup of a removed server may still carry the removal note
-        if os.path.exists(os.path.join(mc_dir, REMOVED_INFO)):
-            os.remove(os.path.join(mc_dir, REMOVED_INFO))
+        with system.game_files():
+            if os.path.exists(os.path.join(mc_dir, REMOVED_INFO)):
+                os.remove(os.path.join(mc_dir, REMOVED_INFO))
         write_log(f"[IMPORT] Imported a {edition.capitalize()} server as {svc_name} (port {port}).")
 
         props = read_properties(mc_dir)
@@ -1522,8 +1568,11 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
         os.rename(root, mc_dir)
         if on_placed:
             on_placed(name)
-        if os.path.exists(os.path.join(mc_dir, REMOVED_INFO)):
-            os.remove(os.path.join(mc_dir, REMOVED_INFO))
+        ensure_minecraft_user(mc_dir)
+        system.give_to_game_account(mc_dir)
+        with system.game_files():
+            if os.path.exists(os.path.join(mc_dir, REMOVED_INFO)):
+                os.remove(os.path.join(mc_dir, REMOVED_INFO))
         port, old_port = _restore_ports(mc_dir, edition)
         if edition == "bedrock":
             system.make_executable(f"{mc_dir}/bedrock_server")
@@ -1532,7 +1581,7 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
             java = java or java_for_folder(mc_dir)
             eula = os.path.join(mc_dir, "eula.txt")
             if not os.path.exists(eula):
-                with open(eula, "w") as f:
+                with system.game_files(), open(eula, "w") as f:
                     f.write("eula=true\n")
         heap = {k: v for k, v in (heap or {}).items() if k in ("xms", "xmx") and HEAP_RE.match(str(v))}
         open_server_firewall(name, edition, mc_dir)
@@ -1634,7 +1683,7 @@ def _apply_advanced_settings(svc_name, mc_dir, edition, plan, minecraft=None):
                 write_log(f"[WARNING] {svc_name}: couldn't find the UUID for {player}; not made an operator.")
                 continue
             ops.append({"uuid": pid, "name": player, "level": 4, "bypassesPlayerLimit": False})
-        with open(os.path.join(mc_dir, "ops.json"), "w") as f:
+        with system.game_files(), open(os.path.join(mc_dir, "ops.json"), "w") as f:
             json.dump(ops, f, indent=2)
 
 def _flags_of(server):
@@ -1710,6 +1759,9 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
         # Java isn't part of the package: a missing one raises JavaMissing, and the panel offers to install it
         ensure_minecraft_user(mc_dir)
         os.makedirs(mc_dir, exist_ok=True)
+        # The game account owns the folder from the start: the panel writes in it as that
+        # account (system.game_files()), like everything it does in a server folder
+        system.give_to_game_account(mc_dir)
 
         # Download & Extract Binary
         java = None
@@ -1721,16 +1773,19 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
             except (DependencyError, ServerError):
                 shutil.rmtree(mc_dir, ignore_errors=True)    # nothing useful in it yet
                 raise
-            with open(f"{mc_dir}/eula.txt", "w") as f:
-                f.write("eula=true\n")
-            with open(f"{mc_dir}/server.properties", "w") as f:
-                f.write(f"server-port={port}\nquery.port={port}\nmotd=A Managed Java Minecraft Server\n")
+            system.give_to_game_account(mc_dir)
+            with system.game_files():
+                with open(f"{mc_dir}/eula.txt", "w") as f:
+                    f.write("eula=true\n")
+                with open(f"{mc_dir}/server.properties", "w") as f:
+                    f.write(f"server-port={port}\nquery.port={port}\nmotd=A Managed Java Minecraft Server\n")
         else:
             try:
                 _fetch_bedrock(mc_dir)
             except ServerError:
                 shutil.rmtree(mc_dir, ignore_errors=True)    # nothing useful in it yet
                 raise
+            system.give_to_game_account(mc_dir)
             # The zip ships a full server.properties with every setting; BDS never writes missing
             # keys back, so only the ports change and the rest stays as Mojang shipped it. It also
             # ships server-udp-ports=19132: each server gets its own (UDP on the same number as
@@ -1789,7 +1844,7 @@ def read_permissions(server_name):
     perm_file = os.path.join(d, target_file)
     
     if os.path.exists(perm_file):
-        with open(perm_file, "r") as f:
+        with system.game_files(), open(perm_file, "r") as f:
             return f.read()
     return "[\n  \n]"
 
@@ -1801,11 +1856,15 @@ def write_permissions(server_name, content):
     target_file = "ops.json" if is_java else "permissions.json"
     perm_file = os.path.join(d, target_file)
     
-    with open(perm_file, "w") as f:
+    with system.game_files(), open(perm_file, "w") as f:
         f.write(content)
         
 def fallback_allowlist_xuid(server_name, gamertag):
-    """Last resort: Uses the native Bedrock engine to resolve the XUID."""
+    """Last resort: Uses the native Bedrock engine to resolve the XUID.
+    The gamertag goes into the server's console, so it must be a checked gamertag (no quotes
+    or line breaks), and the server runs as the game account, never as the panel (root)."""
+    if not _valid_player_name(gamertag, java=False):
+        return None
     d = get_server_dir(server_name)
     allowlist_path = os.path.join(d, "allowlist.json")
     
@@ -1815,14 +1874,15 @@ def fallback_allowlist_xuid(server_name, gamertag):
     # 2. Backup the current allowlist so we don't permanently alter it
     existing_allowlist = "[]"
     if os.path.exists(allowlist_path):
-        with open(allowlist_path, "r") as f:
+        with system.game_files(), open(allowlist_path, "r") as f:
             existing_allowlist = f.read()
             
     env = os.environ.copy()
     env["LD_LIBRARY_PATH"] = d
     
     # 3. Launch the server locally so we can pipe commands to its STDIN
-    proc = subprocess.Popen([f"{d}/bedrock_server"], cwd=d, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+    proc = subprocess.Popen(system.as_game_account([f"{d}/bedrock_server"]), cwd=d, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
     
     try:
         # Request the XUID from Xbox Live, then command the server to shut down
@@ -1833,7 +1893,7 @@ def fallback_allowlist_xuid(server_name, gamertag):
     # 4. Extract the resolved XUID from the newly modified file
     xuid = None
     if os.path.exists(allowlist_path):
-        with open(allowlist_path, "r") as f:
+        with system.game_files(), open(allowlist_path, "r") as f:
             try:
                 data = json.load(f)
                 for entry in data:
@@ -1844,7 +1904,7 @@ def fallback_allowlist_xuid(server_name, gamertag):
                 pass
                 
     # 5. Restore original allowlist & restart daemon
-    with open(allowlist_path, "w") as f:
+    with system.game_files(), open(allowlist_path, "w") as f:
         f.write(existing_allowlist)
         
     services.start(server_name, elevate=True)
@@ -1880,6 +1940,14 @@ def get_xuid(server_name, gamertag):
     write_log(f"[SYSTEM] APIs failed. Falling back to native allowlist resolution for {gamertag}...")
     return fallback_allowlist_xuid(server_name, gamertag)
 
+PLAYER_UUID_RE = re.compile(r"[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}")
+XUID_RE = re.compile(r"[0-9]{1,20}")
+
+def _valid_player_name(name, java):
+    """A Java player name or an Xbox gamertag (same rules as the whitelist)."""
+    from core import whitelist
+    return bool((whitelist.JAVA_NAME if java else whitelist.GAMERTAG).fullmatch(str(name or "")))
+
 def set_player_role(server_name, player_name, role, player_id=None):
     """Java: operator = entry in ops.json, member = no entry.
     Bedrock: operator / visitor = entry in permissions.json, member = no entry (server default).
@@ -1889,6 +1957,13 @@ def set_player_role(server_name, player_name, role, player_id=None):
     role = str(role).lower()
     if role not in (JAVA_ROLES if is_java else BEDROCK_ROLES):
         raise PlayerError(f"'{role}' is not a valid role for this edition.")
+    # The name can reach the server's console (Bedrock XUID lookup) and the ID goes into
+    # ops.json / permissions.json: only real player names and IDs.
+    player_name = str(player_name or "").strip()
+    if not _valid_player_name(player_name, is_java):
+        raise PlayerError(f"'{player_name}' isn't a valid {'Java player name' if is_java else 'gamertag'}.")
+    if player_id and not (PLAYER_UUID_RE if is_java else XUID_RE).fullmatch(str(player_id)):
+        raise PlayerError(f"'{player_id}' isn't a valid {'UUID' if is_java else 'XUID'}.")
 
     file_path = os.path.join(d, "ops.json" if is_java else "permissions.json")
     id_key = "uuid" if is_java else "xuid"
@@ -1924,7 +1999,7 @@ def set_player_role(server_name, player_name, role, player_id=None):
         else:
             entries.append({"permission": role, "name": player_name, "xuid": pid})
 
-    with open(file_path, "w") as f:
+    with system.game_files(), open(file_path, "w") as f:
         json.dump(entries, f, indent=2)
     write_log(f"[SYSTEM] {player_name} is now {role} on {server_name}.")
 
@@ -2214,42 +2289,44 @@ world.afterEvents.chatSend.subscribe((ev) => {
 '''
 
 def write_screenrc(mc_dir):
-    with open(os.path.join(mc_dir, "screenrc"), "w") as f:
+    with system.game_files(), open(os.path.join(mc_dir, "screenrc"), "w") as f:
         f.write("logfile flush 1\nlogfile " + os.path.join(mc_dir, "server.log") + "\n")
 
 def install_bedrock_chat_pack(server_name):
     """Installs the chat relay behavior pack and enables it for the active world. Restart afterwards."""
     d = get_server_dir(server_name)
-    pack_dir = os.path.join(d, "behavior_packs", "redstonepanel_chat")
-    os.makedirs(os.path.join(pack_dir, "scripts"), exist_ok=True)
-
-    manifest = {
-        "format_version": 2,
-        "header": {"name": "RedstonePanel Chat Relay", "description": "Prints player chat to the server console",
-                   "uuid": CHAT_PACK_UUID, "version": [1, 0, 0], "min_engine_version": [1, 21, 80]},
-        "modules": [{"type": "script", "language": "javascript", "uuid": CHAT_PACK_MODULE_UUID,
-                     "version": [1, 0, 0], "entry": "scripts/main.js"}],
-        "dependencies": [{"module_name": "@minecraft/server", "version": CHAT_PACK_SERVER_MODULE}],
-    }
-    with open(os.path.join(pack_dir, "manifest.json"), "w") as f:
-        json.dump(manifest, f, indent=2)
-    with open(os.path.join(pack_dir, "scripts", "main.js"), "w") as f:
-        f.write(CHAT_PACK_MAIN_JS)
-
     world_dir = os.path.join(d, "worlds", get_active_world_name(server_name))
-    os.makedirs(world_dir, exist_ok=True)
-    wbp = os.path.join(world_dir, "world_behavior_packs.json")
-    packs = []
-    if os.path.exists(wbp):
-        try:
-            with open(wbp, "r") as f:
-                packs = json.load(f)
-        except Exception:
-            packs = []
-    if not any(p.get("pack_id") == CHAT_PACK_UUID for p in packs):
-        packs.append({"pack_id": CHAT_PACK_UUID, "version": [1, 0, 0]})
-    with open(wbp, "w") as f:
-        json.dump(packs, f, indent=2)
+    # Written as the game account: the pack and world folders are the game's
+    with system.game_files():
+        pack_dir = os.path.join(d, "behavior_packs", "redstonepanel_chat")
+        os.makedirs(os.path.join(pack_dir, "scripts"), exist_ok=True)
+
+        manifest = {
+            "format_version": 2,
+            "header": {"name": "RedstonePanel Chat Relay", "description": "Prints player chat to the server console",
+                       "uuid": CHAT_PACK_UUID, "version": [1, 0, 0], "min_engine_version": [1, 21, 80]},
+            "modules": [{"type": "script", "language": "javascript", "uuid": CHAT_PACK_MODULE_UUID,
+                         "version": [1, 0, 0], "entry": "scripts/main.js"}],
+            "dependencies": [{"module_name": "@minecraft/server", "version": CHAT_PACK_SERVER_MODULE}],
+        }
+        with open(os.path.join(pack_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f, indent=2)
+        with open(os.path.join(pack_dir, "scripts", "main.js"), "w") as f:
+            f.write(CHAT_PACK_MAIN_JS)
+
+        os.makedirs(world_dir, exist_ok=True)
+        wbp = os.path.join(world_dir, "world_behavior_packs.json")
+        packs = []
+        if os.path.exists(wbp):
+            try:
+                with open(wbp, "r") as f:
+                    packs = json.load(f)
+            except Exception:
+                packs = []
+        if not any(p.get("pack_id") == CHAT_PACK_UUID for p in packs):
+            packs.append({"pack_id": CHAT_PACK_UUID, "version": [1, 0, 0]})
+        with open(wbp, "w") as f:
+            json.dump(packs, f, indent=2)
 
     system.give_to_game_account(d)
     write_log(f"[SYSTEM] Chat relay pack installed for {server_name}. Restart the server to activate it.")
@@ -2272,12 +2349,15 @@ def export_world(server_name):
     else:
         world_path = os.path.join(d, world_name)
         
-    if not os.path.exists(world_path):
+    # level-name is the game's to set: only a real folder right in the server folder is a world
+    if not world_name or world_name in (".", "..") or "/" in world_name or "\\" in world_name \
+            or os.path.islink(world_path) or not os.path.isdir(world_path):
         raise FileNotFoundError(f"World folder '{world_name}' not found.")
-        
-    export_base = os.path.join(tempfile.mkdtemp(prefix="redstonepanel-export-"), f"{server_name}_{world_name}")
-    shutil.make_archive(export_base, 'zip', world_path)
-    return f"{export_base}.zip", world_name
+
+    from core import archive
+    zip_path = os.path.join(tempfile.mkdtemp(prefix="redstonepanel-export-"), f"{server_name}_{world_name}.zip")
+    archive.zip_tree(world_path, zip_path)
+    return zip_path, world_name
 
 class WorldError(ValueError):
     """A world rename that can't be done safely."""
@@ -2298,6 +2378,12 @@ def rename_world(server_name, new_name):
     #    (the server would then quietly generate a brand-new empty world).
     if not new_name or new_name in (".", "..") or "/" in new_name or "\\" in new_name:
         raise WorldError("World name can't be empty or contain / or \\.")
+    if not old_name or old_name in (".", "..") or "/" in old_name or "\\" in old_name:
+        # level-name is the game's to set: only a folder right in the server folder is renamed
+        raise WorldError(f"level-name ('{old_name}') isn't a folder name in the server folder; fix it in "
+                         f"server.properties first.")
+    if os.path.islink(old_path):
+        raise WorldError(f"Current world folder '{old_name}' is a link; nothing renamed.")
     if new_name == old_name:
         raise WorldError(f"The world is already called '{old_name}'.")
     if not os.path.isdir(old_path):
@@ -2308,8 +2394,9 @@ def rename_world(server_name, new_name):
     # 1. Stop the server safely before modifying world files
     services.stop(server_name, elevate=True)
 
-    # 2. Rename the directory
-    os.rename(old_path, new_path)
+    # 2. Rename the directory (as the game account: level-name is the game's to set)
+    with system.game_files():
+        os.rename(old_path, new_path)
         
     # 3. Update server.properties
     props = read_properties(d)
