@@ -944,7 +944,7 @@ def found_servers(p, args):
 def windows_accounts(p):
     """1.23: Windows accounts in Administrators or a RedstonePanel group sign in, as Linux ones do."""
     section("Windows accounts")
-    pw = "Rp-" + os.urandom(6).hex() + "!a1"
+    pw = "Rp-" + os.urandom(4).hex() + "!a"           # 13 characters: `net user` asks a question above 14
     run(["net", "user", "rptester", "/delete"])
     run(["net", "user", "rpother", "/delete"])
     run(["net", "localgroup", "RedstonePanel", "/delete"])
