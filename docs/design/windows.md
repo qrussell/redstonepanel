@@ -75,7 +75,17 @@ The panel itself is the service `redstonepanel`, run by the same runner from
   journal, and read `services\` and `java\`. It can't read the panel's data, other servers or
   backups. This is stricter than Linux, where all servers share the `minecraft` user.
 - The home folder is for administrators and the system.
-- People sign in with panel accounts. Windows accounts come in 1.23.
+- People sign in with panel accounts or (1.23) Windows accounts. A Windows account may sign in
+  when it is in the computer's **Administrators** group (found by its SID, so it works in any
+  language) or in a local group named **RedstonePanel**: the two stand for Linux's `sudo` and
+  `redstonepanel` groups, and such accounts are panel admins, as Linux ones are. Windows checks
+  the password itself (`LogonUser`, a network sign-in, so disabled, locked, expired and
+  empty-password accounts are refused; a Windows Hello PIN isn't a password). Microsoft accounts
+  sign in with their email or the computer's name for them. Windows names aren't
+  case-sensitive and one account has several spellings (`quent`, `.\Quent`, `PC\quent`, the
+  email), so the panel keys sessions and two-factor on the one name Windows gives the account's
+  SID back (`system.canonical_account`). Group membership is asked again on every request,
+  kept for 30 seconds, so leaving the group ends the session within half a minute.
 
 ## The other areas
 
@@ -107,13 +117,56 @@ fixed NTFS and ReFS drives for the dropdown beside the box; picking one fills in
 and keeps the plain box. The install
 test sets another folder, makes a server there, checks its rights and removes it.
 
+## 1.23: the whole single machine
+
+- **Hard limits** (`core/platform/windows/jobs.py`). The runner starts the game inside a Job
+  Object named `Global\RedstonePanel.job.<server>`, readable and changeable only by the system
+  and administrators, and gives it the limits drop-in's `MemoryMax=` as a job memory limit and
+  `CPUQuota=` as a processor hard cap (`CpuRate`, hundredths of a percent of the whole
+  machine). The panel changes a running server's limits by opening the job by name, as
+  `systemctl set-property --runtime` does. Windows limits *committed* memory: it refuses the
+  game more, so Java reports it ran out of memory and stops, where Linux kills it. The runner
+  notices the job's peak at the limit, logs it, counts it for the Performance card and records
+  the stop as `oom-kill`, so the crash explanation says it reached its hard memory limit.
+- **Crash causes on Windows** (`core/crashes.py`): a port Windows reserved (Hyper-V, WSL,
+  Docker Desktop), a file locked by another program (antivirus, OneDrive), a file the server's
+  account may not change, and the exit statuses for a missing Visual C++ runtime and a crashed
+  program.
+- **Bedrock** runs `bedrock_server.exe` from the download-links API's `serverBedrockWindows`,
+  with the same auto-update. Its console is the runner's pipe, and the runner copies what it
+  prints to `server.log` in its folder, as `screen` does on Linux. **Phantom** is the pinned
+  `phantom-windows.exe` (SHA-256 checked) as its own service and virtual account.
+- **Quilt, Forge and NeoForge installers and modpacks.** Windows only starts a program as a
+  virtual account through that account's service, so `services.run_as_server` points the
+  stopped server's service at `runner.py service UNIT --task <job>` for one run (made for the
+  occasion when the server is new), starts it, waits, and puts the service back. The installer
+  then runs as `NT SERVICE\minecraft-<name>`, confined to the server's folder, as it runs as
+  `minecraft` on Linux. Copies the panel makes into a server folder (as the system) refuse
+  links and junctions.
+- **Off-site backups.** S3 as on Linux. SSH storage uses Windows' own OpenSSH client
+  (Settings → System → Optional features → OpenSSH Client) and `sftp` in batch mode instead of
+  `rsync`, resuming a cut-off upload with `reput`.
+- **Updating from the panel** (`core/platform/windows/panelpkg.py`). **Check for updates**
+  asks GitHub for the newest release (and the panel asks once a day by itself). **Update now**
+  downloads its `RedstonePanel-x.y.z-x64.msi` from GitHub over HTTPS, refuses it unless its
+  SHA-256 matches the release's `.sha256` (and GitHub's own digest of the file, when it gives
+  one), and starts a PowerShell process of its own that runs `msiexec /qn`, waits, starts the
+  panel and the game servers that were running before (also when the installer failed), and
+  writes the installer's exit code. Nothing runs from the panel's folder while the installer
+  replaces it. The new panel reads the code back; a failure names `installer.log` in
+  `<data>\upgrade\`. Unlike Linux, game servers stop for about a minute, because they run from
+  the panel's own Python.
+- **Needs attention about the PC itself** (`system.machine_notes`, every 2 minutes): the PC is
+  set to sleep when plugged in (`powercfg`), or Windows Update is waiting to restart it.
+  **Reserved ports** (`system.reserved_ports`, `netsh int ipv4 show excludedportrange`, every
+  5 minutes): a server whose port falls in a range Hyper-V, WSL or Docker Desktop took is an
+  error in Needs attention and under **Fix these first** on the Port forwarding page, which
+  also lists the ranges.
+
 ## Not in the preview
 
 Refused with one sentence by the API (`WINDOWS_NOT_YET` in `main.py`) and hidden in the page
-(`not_yet` in `/api/auth/me`): Bedrock servers, Quilt, Forge and NeoForge (their installers
-would have to run as the server's account), modpacks, memory and processor limits, off-site
-backup storage, SFTP, clusters, updating from the panel, and signing in with a Windows
-account. They are roadmap 1.23 and 1.24.
+(`not_yet` in `/api/auth/me`): clusters and SFTP (roadmap 1.24).
 
 Installing a new version stops the game servers while the files are replaced and starts them
 again afterwards.
