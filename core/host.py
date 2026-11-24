@@ -518,7 +518,12 @@ def _attention(level, text, server=None, where=None):
 
 
 def _servers(listed, shown, unit_cpu, fw):
+    from core import portforward
     rows = []
+    try:
+        reserved_ports = system.reserved_ports()      # Windows: ranges Hyper-V, WSL or Docker took
+    except Exception:
+        reserved_ports = []
     for s in listed:
         name = s["name"]
         u = shown.get(f"{name}.service", {})
@@ -533,6 +538,8 @@ def _servers(listed, shown, unit_cpu, fw):
         if next_restart:
             next_restart += restarts.get_schedule(name)["warn"] * 60
         port = s.get("port")
+        reserved = [(f"{p}/{proto}", clash) for p, proto in s.get("firewall_rules") or []
+                    for clash in [portforward.reserved_clash(p, proto, reserved_ports)] if clash]
         missing = None
         if fw["active"]:
             missing = [f"{p}/{proto}" for p, proto in s.get("firewall_rules") or []
@@ -554,6 +561,7 @@ def _servers(listed, shown, unit_cpu, fw):
             "java_required": s.get("java_required"), "java_installed": s.get("java_installed"),
             "firewall_open": None if missing is None else not missing,
             "firewall_missing": missing or [],
+            "reserved_ports": [{"port": p, "start": c[0], "end": c[1]} for p, c in reserved],
             "update": s.get("update"),
             "problems": bool(s.get("signaling_closed") or s.get("transport_rejected")
                              or any(p.get("problems") for p in s.get("proxies") or [])),
@@ -609,6 +617,11 @@ def _needs_attention(rep, failed, phantoms):
                                           f"{why}. Open {'them' if len(miss) > 1 else 'it'} with: "
                                           + system.hint("allow-ports", *miss),
                                   server=s["name"], where="services"))
+        for r in s.get("reserved_ports") or []:
+            from core import portforward
+            p, proto = r["port"].split("/")
+            out.append(_attention("error", f"{s['name']}: " + portforward.reserved_text(p, proto, (r["start"], r["end"])),
+                                  server=s["name"], where="ports"))
         if s["problems"]:
             out.append(_attention("warn", f"Players may not be able to connect to {s['name']}: see its Overview.",
                                   server=s["name"]))
@@ -664,11 +677,17 @@ def _needs_attention(rep, failed, phantoms):
                                   f"This panel's {label} certificate " + ("has expired." if exp < now
                                                                           else f"expires in {days} day{'s' if days != 1 else ''}."),
                                   where="settings"))
+    try:                                        # the computer itself (Windows: sleep, a pending restart)
+        for n in system.machine_notes():
+            out.append(_attention(n["level"], n["text"], where=n.get("where")))
+    except Exception:
+        pass
     if rep["services"]["https"]["error"]:
         out.append(_attention("error", f"HTTPS isn't working: {rep['services']['https']['error']}", where="settings"))
     if rep["host"].get("update"):
         out.append(_attention("info", f"RedstonePanel {rep['host']['update']} is available. "
-                                      "Update it with Update now, or: sudo apt upgrade redstonepanel", where="update"))
+                                      + ("Update it with Update now." if paths.WINDOWS else
+                                       "Update it with Update now, or: sudo apt upgrade redstonepanel"), where="update"))
     try:
         from core import backup_copies
         out.extend(backup_copies.attention())

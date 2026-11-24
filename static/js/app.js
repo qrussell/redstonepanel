@@ -7155,6 +7155,9 @@ const ServerApp = {
 
 		// 3. What to forward
 		const issues = d.members.flatMap(m => (m.servers || []).flatMap(s => (s.issues || []).map(i => `<li><b>${esc(s.name)}</b>${multi ? ' on ' + memberLabel(m) : ''}: ${esc(i)}</li>`))).join('');
+		// Windows: port ranges Hyper-V, WSL or Docker Desktop reserved (nothing can listen there)
+		const reserved = d.members.flatMap(m => (m.reserved || []).map(r => `<span class="font-mono whitespace-nowrap">${r.start === r.end ? r.start : `${r.start}–${r.end}`}/${esc(r.proto)}</span>`));
+		const reservedNote = reserved.length ? `<p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Ports Windows keeps for itself right now (Hyper-V, WSL or Docker Desktop reserve them when they start; no server can use them): ${reserved.join(', ')}.</p>` : '';
 		const memberNotes = d.members.map(m => {
 			if (m.state !== 'ok') return `<li>${memberLabel(m)}: couldn't be reached (${esc(m.error || m.state)}), so its servers aren't listed.</li>`;
 			if (m.old) return `<li>${memberLabel(m)} runs an older RedstonePanel: only its game ports are listed, and its address comes from the cluster (${esc(m.url_host)}). Update it for the full list.</li>`;
@@ -7170,7 +7173,7 @@ const ServerApp = {
 				<td data-label="${closed ? 'Port' : 'Outside port'}" class="py-2 pr-3 font-mono">${port(x.r.port)}</td>
 				<td data-label="Protocol" class="py-2 pr-3 font-mono">${proto(x.r.proto)}</td>
 				<td data-label="${closed ? 'Machine' : 'Forward to'}" class="py-2 pr-3 font-mono">${closed ? esc(x.ip) : `${esc(x.ip)}:${port(x.r.inside)}`}</td>
-				<td data-label="For" class="py-2 pr-3">${esc(x.r.what)}${x.r.note ? `<div class="text-xs text-gray-500">${esc(x.r.note)}</div>` : ''}${x.r.ufw === false ? '<div class="text-xs text-yellow-700 dark:text-yellow-300">ufw on this machine doesn\'t allow it yet.</div>' : ''}</td>
+				<td data-label="For" class="py-2 pr-3">${esc(x.r.what)}${x.r.note ? `<div class="text-xs text-gray-500">${esc(x.r.note)}</div>` : ''}${x.r.ufw === false ? `<div class="text-xs text-yellow-700 dark:text-yellow-300">${this.onWindows() ? 'Windows Defender Firewall' : 'ufw'} on this machine doesn't allow it yet.</div>` : ''}</td>
 				${checks ? `<td data-label="From here" class="py-2 pr-3">${this.portsCheckCell(x)}</td>` : ''}
 			</tr>`).join('')}</tbody></table></div>`; };
 		const joins = d.members.flatMap(m => (m.servers || []).map(s => ({ s, a: this.portsJoinAddress(s, rows) })))
@@ -7186,6 +7189,7 @@ const ServerApp = {
 			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">One port forward per line, from your internet address to the machine the server runs on. Keep the outside port the same as the inside port unless you have a reason not to (Bedrock needs them the same).</p>
 			${fwd.length ? table(fwd) : '<p class="text-sm text-gray-500">No servers yet, so there\'s nothing to forward.</p>'}
 			${issues ? `<div class="mt-3">${warn('<b>Fix these first</b><ul class="list-disc ml-5 mt-1">' + issues + '</ul>')}</div>` : ''}
+			${reservedNote}
 			${memberNotes ? `<ul class="list-disc ml-5 mt-3 text-sm text-gray-600 dark:text-gray-300">${memberNotes}</ul>` : ''}
 			${this.portsCheck ? `<p class="text-xs text-gray-500 mt-3">Checked ${esc(new Date(this.portsCheck.checked * 1000).toLocaleTimeString())} by connecting from ${esc(d.members[0].name)} to ${esc(this.portsCheck.address)}. This only works when the router loops connections back to the inside (pfSense: NAT reflection). “No answer” doesn't prove the forward is wrong: the surest test is a phone on mobile data, with Wi-Fi off.</p>` : ''}
 			${joins ? `<p class="text-sm font-bold text-gray-900 dark:text-white mt-4">Players outside join with</p><ul class="list-disc ml-5 text-sm text-gray-700 dark:text-gray-300">${joins}</ul>` : ''}

@@ -827,5 +827,51 @@ class WindowsAccounts(unittest.TestCase):
             self.assertEqual(auth.find_account(".\\Quent"), ("linux", "quent"))
 
 
+class MachineNotes(unittest.TestCase):
+    """1.23: reserved port ranges (Hyper-V, WSL, Docker), PC sleep and a pending Windows Update restart."""
+    NETSH = """
+Protocol tcp Port Exclusion Ranges
+
+Start Port    End Port
+----------    --------
+      5357        5357
+     50000       50059     *
+     25500       25599
+
+* - Administered port exclusions.
+"""
+    POWERCFG = """    Power Setting GUID: 29f6c1db-86da-48c5-9fdb-f2b67b1f44da  (Sleep after)
+      Current AC Power Setting Index: 0x00000708
+      Current DC Power Setting Index: 0x00000384
+"""
+
+    def test_reading_netsh_and_powercfg(self):
+        from core.platform.windows import system as w
+        self.assertEqual(w.parse_excluded_ranges(self.NETSH), [(5357, 5357), (50000, 50059), (25500, 25599)])
+        self.assertEqual(w.parse_powercfg_minutes(self.POWERCFG), (30, 15))
+        self.assertEqual(w.parse_powercfg_minutes(""), (None, None))
+
+    def test_a_port_inside_a_reserved_range(self):
+        from core import portforward
+        reserved = [("tcp", 25500, 25599), ("udp", 19100, 19199)]
+        self.assertEqual(portforward.reserved_clash("25565", "tcp", reserved), (25500, 25599))
+        self.assertIsNone(portforward.reserved_clash("25565", "udp", reserved))
+        self.assertEqual(portforward.reserved_clash("19000:19132", "udp", reserved), (19100, 19199))
+        self.assertIsNone(portforward.reserved_clash("25600", "tcp", reserved))
+        self.assertIn("25500–25599", portforward.reserved_text("25565", "tcp", (25500, 25599)))
+
+    def test_sleep_and_a_pending_restart_need_attention(self):
+        from core.platform.windows import system as w
+        w._machine_cache.clear()
+        with mock.patch.object(w, "_sleep_minutes", return_value=30), mock.patch.object(w, "_restart_pending", return_value=True):
+            notes = w.machine_notes()
+        self.assertEqual([n["where"] for n in notes], ["power", "windows-update"])
+        self.assertIn("after 30 minutes", notes[0]["text"])
+        w._machine_cache.clear()
+        with mock.patch.object(w, "_sleep_minutes", return_value=0), mock.patch.object(w, "_restart_pending", return_value=False):
+            self.assertEqual(w.machine_notes(), [])
+        w._machine_cache.clear()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -997,6 +997,98 @@ def fs():
     return dirfd.module()
 
 
+# ---------------------------------------------------------------------------
+# What the machine itself is doing to the servers (1.23): reserved ports, sleep, Windows Update
+# ---------------------------------------------------------------------------
+_machine_cache = {}
+
+
+def _cached(key, seconds, fn):
+    hit = _machine_cache.get(key)
+    if hit and time.monotonic() - hit[0] < seconds:
+        return hit[1]
+    try:
+        value = fn()
+    except (OSError, ValueError, subprocess.SubprocessError):
+        value = hit[1] if hit else []
+    _machine_cache[key] = (time.monotonic(), value)
+    return value
+
+
+def parse_excluded_ranges(text):
+    """`netsh int ipv4 show excludedportrange` -> [(start, end), ...]."""
+    out = []
+    for line in (text or "").splitlines():
+        m = re.match(r"^\s*([0-9]{1,5})\s+([0-9]{1,5})\b", line)
+        if m and int(m.group(1)) <= int(m.group(2)) <= 65535:
+            out.append((int(m.group(1)), int(m.group(2))))
+    return out
+
+
+def reserved_ports():
+    """The port ranges Windows keeps for itself (Hyper-V, WSL, Docker Desktop reserve them at
+    start-up; nothing else can listen there): [(proto, start, end)]. Asked every 5 minutes."""
+    def read():
+        out = []
+        for proto in ("tcp", "udp"):
+            r = _win.quiet(["netsh", "int", "ipv4", "show", "excludedportrange", f"protocol={proto}"], timeout=20)
+            out += [(proto, a, b) for a, b in parse_excluded_ranges(r.stdout)]
+        return out
+    return _cached("reserved", 300, read)
+
+
+def parse_powercfg_minutes(text):
+    """The AC and DC values in minutes from `powercfg /query ... <setting>` (seconds in hex)."""
+    ac = re.search(r"AC Power Setting Index:\s*0x([0-9a-fA-F]+)", text or "")
+    dc = re.search(r"DC Power Setting Index:\s*0x([0-9a-fA-F]+)", text or "")
+    return (int(ac.group(1), 16) // 60 if ac else None, int(dc.group(1), 16) // 60 if dc else None)
+
+
+def _sleep_minutes():
+    """Minutes without use before this PC sleeps or hibernates when plugged in (0: never)."""
+    times = []
+    for setting in ("STANDBYIDLE", "HIBERNATEIDLE"):
+        r = _win.quiet(["powercfg", "/query", "SCHEME_CURRENT", "SUB_SLEEP", setting], timeout=20)
+        ac, _dc = parse_powercfg_minutes(r.stdout)
+        if ac:
+            times.append(ac)
+    return min(times) if times else 0
+
+
+def _restart_pending():
+    """Windows Update (or an installer) is waiting for a restart."""
+    import winreg
+    for key in (r"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending"):
+        try:
+            winreg.CloseKey(winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key))
+            return True
+        except OSError:
+            continue
+    return False
+
+
+def machine_notes():
+    """Needs attention notes about the computer itself: [{"level", "text", "where"}]."""
+    def read():
+        notes = []
+        minutes = _sleep_minutes()
+        if minutes:
+            notes.append({"level": "warn", "where": "power",
+                          "text": f"This PC goes to sleep after {minutes} minute{'s' if minutes != 1 else ''} without "
+                                  f"anyone using it, even while plugged in, and its game servers stop answering while "
+                                  f"it sleeps. Set it to never sleep when plugged in: Settings → System → Power → "
+                                  f"Screen and sleep (the screen can still turn off)."})
+        if _restart_pending():
+            notes.append({"level": "warn", "where": "windows-update",
+                          "text": "Windows Update is waiting to restart this PC, and may do it on its own outside "
+                                  "active hours, stopping the game servers. Restart it yourself at a quiet time "
+                                  "(Settings → Windows Update); servers set to start with Windows come back by "
+                                  "themselves."})
+        return notes
+    return _cached("notes", 120, read)
+
+
 def hint(what, *args):
     """A sentence telling an administrator what to type or do, in this system's terms."""
     if what == "ssh-client":

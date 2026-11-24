@@ -184,6 +184,17 @@ def fs():
     return os
 
 
+def reserved_ports():
+    """Port ranges the system keeps for itself, [(proto, start, end)]: none on Linux (Windows:
+    Hyper-V, WSL and Docker Desktop reserve some)."""
+    return []
+
+
+def machine_notes():
+    """Needs attention notes about the machine itself (Windows: sleep, a pending Windows Update restart)."""
+    return []
+
+
 def hint(what, *args):
     if what == "firewall-name":
         return "ufw"
