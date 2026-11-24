@@ -1,0 +1,8 @@
+name: "Redstone Panel CodeQL"
+# security-extended adds lower-severity and less certain security queries to the default set;
+# worth it for a panel that runs as root.
+queries:
+  - uses: security-extended
+paths-ignore:
+  # Generated, minified Tailwind output
+  - static/css
