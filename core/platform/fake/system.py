@@ -70,7 +70,7 @@ def as_game_account(cmd):
 
 
 @contextlib.contextmanager
-def game_files():
+def game_files(as_owner_of=None):
     """Tests run unprivileged: nothing to switch."""
     yield
 

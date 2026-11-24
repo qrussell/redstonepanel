@@ -125,16 +125,27 @@ def _set_fs_ids(uid, gid):
 
 
 @contextlib.contextmanager
-def game_files():
+def game_files(as_owner_of=None):
     """with game_files(): ... touches files with the game account's rights, not root's.
+    as_owner_of=folder: with the rights of whoever owns that folder instead (a server the panel
+    doesn't manage yet, found on this machine); nothing changes for a folder root owns.
     Nests; does nothing when the panel doesn't run as root or there is no game account yet
     (then there are no game server folders either)."""
     if getattr(_fs, "uid", None) is not None or os.geteuid() != 0:
         yield                 # already switched, or nothing to switch from
         return
-    try:
-        pw = pwd.getpwnam(GAME_ACCOUNT)
-    except KeyError:
+    if as_owner_of is not None:
+        try:
+            st = os.lstat(as_owner_of)
+        except OSError:
+            st = None
+        pw = pwd.struct_passwd(("", "", st.st_uid, st.st_gid, "", "", "")) if st and st.st_uid else None
+    else:
+        try:
+            pw = pwd.getpwnam(GAME_ACCOUNT)
+        except KeyError:
+            pw = None
+    if pw is None:
         yield
         return
     if os.getgroups():
