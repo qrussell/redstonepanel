@@ -427,7 +427,9 @@ def main():
     check("Restart works", code == 200 and wait("listen", listening, 300, every=5), f"{code} {r}")
     p.put("/api/settings/notifications", {"clear": True})
 
+    limits(p, args, name, listening)
     join_and_terminal(p, name)
+    bedrock(p, args)
     servers_folder(p, args, body)
     found_servers(p, args)
 
@@ -437,6 +439,114 @@ def main():
     check("`redstonepanel status` runs from a prompt", code == 0 and "admin" in out, out[-400:])
 
     return finish(p, args, name, port)
+
+
+def _usage(home, name):
+    try:
+        with open(os.path.join(home, "journal", f"{name}.service", "usage.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def limits(p, args, name, listening):
+    """1.23: Maintenance > Memory and limits, as Job Object limits."""
+    section("Memory and processor limits (Job Objects)")
+    code, r = p.get(f"/api/servers/{name}/resources")
+    check("Memory and limits loads", code == 200 and r.get("cores"), f"{code} {str(r)[:300]}")
+    code, r = p.put(f"/api/servers/{name}/resources", {"memory": "auto", "cpu": 1})
+    check("an automatic memory limit and a 1-core CPU limit are saved", code == 200, f"{code} {str(r)[:300]}")
+    dropin = os.path.join(args.home, "services", f"{name}.service.d", "redstonepanel-limits.conf")
+    text = open(dropin, encoding="utf-8").read() if os.path.isfile(dropin) else ""
+    check("they are written in the same drop-in as on Linux", "MemoryMax=" in text and "CPUQuota=100%" in text, text)
+    want = (r or {}).get("memory_max") or 0
+    check("the running server's job has the limit at once (no restart)",
+          wait("job limit", lambda: _usage(args.home, name).get("memory_max") == want and want, 30),
+          f"want {want} have {_usage(args.home, name)}")
+    code, r = p.post(f"/api/servers/{name}/action", {"action": "restart"}, timeout=300)
+    check("after a restart the server runs inside its limits",
+          code == 200 and wait("listen", listening, 300, every=5)
+          and wait("job limit", lambda: _usage(args.home, name).get("memory_max") == want, 30),
+          f"{code} {_usage(args.home, name)}")
+    code, out = ps("$h = [Runtime.InteropServices.Marshal]; "
+                   "Add-Type -Namespace RP -Name J -MemberDefinition '[DllImport(\"kernel32.dll\", SetLastError=true)] "
+                   "public static extern IntPtr OpenJobObjectW(uint a, bool i, [MarshalAs(UnmanagedType.LPWStr)] string n);'; "
+                   f"[RP.J]::OpenJobObjectW(4, $false, 'Global\\RedstonePanel.job.{name}')")
+    check("an administrator can open the server's job by its name", out.strip() not in ("", "0"), out[-200:])
+    code, pf = p.get(f"/api/servers/{name}/perf")
+    check("the Performance card shows the limit", code == 200 and (pf.get("memory") or {}).get("limit") == want,
+          f"{code} {str(pf)[:300]}")
+    code, r = p.put(f"/api/servers/{name}/resources", {"memory": "off", "cpu": 0})
+    check("turning the limits off works", code == 200 and not os.path.exists(dropin)
+          and wait("job limit", lambda: not _usage(args.home, name).get("memory_max"), 30),
+          f"{code} {_usage(args.home, name)}")
+
+
+def bedrock(p, args):
+    """1.23: a Bedrock server: the Windows build, its console, its firewall rules, a clean stop,
+    automatic updates and Phantom."""
+    section("A Bedrock server")
+    code, dep = p.post("/api/servers/deploy", {"edition": "bedrock"}, timeout=900)
+    name = (dep or {}).get("name")
+    if not check("a Bedrock server is deployed", code == 200 and bool(name), f"{code} {dep}"):
+        return
+    d = os.path.join(args.home, "servers", name)
+    check("it has Mojang's Windows program", os.path.isfile(os.path.join(d, "bedrock_server.exe")))
+    check("its service runs as its own account",
+          wait("svc", lambda: service_state(name) == "RUNNING", 60)
+          and f"NT SERVICE\\{name}".lower() in run(["sc", "qc", name])[1].lower())
+    log = os.path.join(d, "server.log")
+
+    def started():
+        return os.path.isfile(log) and "Server started." in open(log, encoding="utf-8", errors="replace").read()
+    check("it starts, and its console is kept in server.log", wait("bedrock start", started, 180, every=3),
+          open(log, encoding="utf-8", errors="replace").read()[-500:] if os.path.isfile(log) else "no server.log")
+
+    def srv():
+        c, lst = p.get("/api/servers")
+        return next((s for s in (lst if isinstance(lst, list) else lst.get("servers", [])) if s.get("name") == name), {})
+    s = wait("online", lambda: srv().get("status") == "online" and srv(), 60) or srv()
+    port = int(s.get("port") or 19132)
+    check("the panel lists it as a Bedrock server, online, with its version",
+          s.get("edition") == "Bedrock" and s.get("status") == "online" and bool(s.get("version")), str(s)[:300])
+    code, out = ps(f"@(Get-NetFirewallRule -Group RedstonePanel | Get-NetFirewallPortFilter | "
+                   f"Where-Object {{ $_.LocalPort -eq '{port}' }}).Protocol -join ','")
+    check(f"Defender Firewall has rules for port {port}", "TCP" in out.upper() or "UDP" in out.upper(), out[-200:])
+    size = os.path.getsize(log)
+    code, r = p.post(f"/api/servers/{name}/chat", {"message": "/list"}, timeout=60)
+    check("a console command reaches the server",
+          code == 200 and wait("list", lambda: "players online" in open(log, encoding="utf-8", errors="replace").read()[size:], 30),
+          f"{code} {r}")
+    code, b = p.post(f"/api/servers/{name}/backups", timeout=300)
+    check("Back up now works while it runs (save hold / query / resume)", code == 200 and b.get("file"), f"{code} {str(b)[:300]}")
+    code, u = p.get(f"/api/servers/{name}/updates")
+    check("Maintenance shows its Bedrock version and the newest", code == 200 and (u or {}).get("current"),
+          f"{code} {str(u)[:300]}")
+    code, u = p.put(f"/api/servers/{name}/updates", {"enabled": True})
+    check("automatic updates can be turned on", code == 200 and (u or {}).get("auto"), f"{code} {str(u)[:300]}")
+    code, out = run(["schtasks", "/Query", "/TN", "\\RedstonePanel\\redstonepanel-updates"])
+    check("the update check is a scheduled task", code == 0, out[-300:])
+
+    section("Phantom for the Bedrock server")
+    code, ph = p.post(f"/api/servers/{name}/phantom/install", timeout=300)
+    check("Phantom installs (pinned Windows build, SHA-256 checked)", code == 200 and (ph or {}).get("phantom"),
+          f"{code} {str(ph)[:400]}")
+    unit = f"phantom-{name}"
+    check("Phantom runs as its own service and account",
+          wait("phantom", lambda: service_state(unit) == "RUNNING", 60)
+          and f"NT SERVICE\\{unit}".lower() in run(["sc", "qc", unit])[1].lower(), run(["sc", "qc", unit])[1][-300:])
+    code, ph = p.post(f"/api/servers/{name}/phantom-remove", {"unit": f"{unit}.service"}, timeout=120)
+    check("Phantom is removed", code == 200 and wait("gone", lambda: service_state(unit) is None, 60), f"{code} {ph}")
+
+    code, r = p.post(f"/api/servers/{name}/action", {"action": "stop"}, timeout=300)
+    check("Stop saves the world: Bedrock quits cleanly",
+          code == 200 and wait("stopped", lambda: service_state(name) == "STOPPED", 150)
+          and "Quit correctly" in open(log, encoding="utf-8", errors="replace").read()[-2000:],
+          open(log, encoding="utf-8", errors="replace").read()[-400:])
+    if not args.keep:
+        code, r = p.call("DELETE", f"/api/servers/{name}?keep_world=false", timeout=300)
+        check("the Bedrock server is removed", code == 200 and wait("gone", lambda: service_state(name) is None, 60),
+              f"{code} {r}")
 
 
 def read_password(home):
