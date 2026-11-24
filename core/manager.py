@@ -496,6 +496,25 @@ def get_panel_logs(lines=100):
     with open(LOG_FILE, "r") as f:
         return "".join(f.readlines()[-lines:])
 
+_RUN_AS = {}                   # server -> (time looked up, account its unit runs as)
+
+
+def server_run_as(svc_name):
+    """The account the server's unit runs as ("" for root, None when there is no such unit),
+    looked up at most every few seconds: the panel asks on every request about a server."""
+    import time
+    now = time.monotonic()
+    hit = _RUN_AS.get(svc_name)
+    if hit and now - hit[0] < 10:
+        return hit[1]
+    try:
+        user = services.run_as(svc_name)
+    except Exception:
+        user = None
+    _RUN_AS[svc_name] = (now, user)
+    return user
+
+
 def get_server_dir(svc_name):
     d = services.working_dir(svc_name)
     return d if d else paths.server_dir(svc_name)
