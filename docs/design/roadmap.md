@@ -2029,6 +2029,15 @@ the panel offers (pages and health check through it, a separate limit per player
 header ignored, the port closed to others). Not tested: a real Cloudflare Tunnel or proxied
 domain.
 
+**Also: upgrades leave game servers running.** Upgrading the 1.21.6 test build on Quentin's
+Ubuntu 25.04 panel restarted one of his game servers: Ubuntu's `needrestart` restarts services
+that still use an old copy of a library after any apt install. The package now installs
+`/etc/needrestart/conf.d/redstonepanel.conf`, which tells needrestart to leave `minecraft*` and
+`phantom-minecraft*` services alone; they pick up new libraries at their next restart.
+`test-needrestart.sh` runs needrestart in automatic mode against a stand-in game server, a
+stand-in Phantom proxy and an ordinary service that all use a deleted library: only the
+ordinary one is restarted, and without the rule the game server would have been.
+
 ### 2.0: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already

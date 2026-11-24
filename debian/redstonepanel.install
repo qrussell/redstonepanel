@@ -12,3 +12,4 @@ static/js/app.js static/js/chat-commands.js static/js/propfile.js usr/share/reds
 static/join/join.css static/join/join.js usr/share/redstonepanel/static/join/
 packaging/redstonepanel usr/sbin/
 packaging/minecraft-.service.d/redstonepanel.conf usr/lib/systemd/system/minecraft-.service.d/
+packaging/needrestart/redstonepanel.conf etc/needrestart/conf.d/
