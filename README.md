@@ -104,6 +104,8 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.21
 
+**A Visual Editor for settings files** *(1.21.7)*. On the **Files** tab, `server.properties`, `eula.txt` and other `name=value` files open in a form like Configuration's, with True/False lists, number boxes and a filter. **Visual Editor** and **Raw Text** switch between the form and the text, and only the values you change are written. Read the [1.21.7 release notes](release-notes/v1.21.7.md).
+
 **Player packs** *(1.21.6)*. On a mod server, the panel works out which mods players need from the server's own mods folder and offers them on the join page as one download their launcher installs, at the versions the server runs. Change the server's mods and the pack follows. The Mods tab's **Player pack** view lets you overrule any line and add extras such as shaders. Read the [1.21.6 release notes](release-notes/v1.21.6.md).
 
 **Join pages for players** *(1.21.5)*. **🔗 Join pages** gives each server a public page that tells players how to join: the address, whether it's online, how many are playing, the Minecraft version, and for a modpack server the exact pack to install. Nothing is public until you turn it on, and the pages have a port of their own, so the panel stays off the internet. Read the [1.21.5 release notes](release-notes/v1.21.5.md).

@@ -1,3 +1,17 @@
+redstonepanel (1.21.7) noble; urgency=medium
+
+  * Files tab: a file that is a list of name=value settings
+    (server.properties, eula.txt, most .properties, .cfg, .conf and .ini
+    files) opens with a Visual Editor like Configuration's, with True/False
+    lists, number boxes and a filter. Visual Editor and Raw Text switch
+    between the form and the text and always show the same file.
+  * The form changes only the values you change: comments, blank lines,
+    spacing and order stay as they were.
+  * Fixed: saving from the Files tab turned Windows line endings (CRLF)
+    into LF, for example in Bedrock's server.properties.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 24 Nov 2026 02:09:29 -0000
+
 redstonepanel (1.21.6) noble; urgency=medium
 
   * Player packs: for a Fabric, Quilt, Forge or NeoForge server the panel

@@ -9,6 +9,18 @@ the dashboard.
 
 ---
 
+## 1.21.7: a Visual Editor for settings files *(November 2026)*
+
+- **Files → Visual Editor**: `server.properties`, `eula.txt` and other `name=value` files
+  (`.properties`, most `.cfg`, `.conf`, `.ini`) open in a form like Configuration's, with
+  True/False lists, number boxes and a filter.
+- **Visual Editor** and **Raw Text** switch between the form and the text, which always show
+  the same file. Comments, spacing and order are kept. See
+  [Files](../guide/README.md#11-files).
+- Fixed: saving from the Files tab no longer turns Windows line endings into Unix ones.
+
+[Release notes](../../release-notes/v1.21.7.md)
+
 ## 1.21.6: player packs *(November 2026)*
 
 - **Player packs**: for a Fabric, Quilt, Forge or NeoForge server, the panel works out which
