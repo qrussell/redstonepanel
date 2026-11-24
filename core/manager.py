@@ -625,7 +625,7 @@ def _server_folder_names():
     return sorted(found, key=lambda rn: rn[1])
 
 def _used_ports(exclude_dir=None, mods=True):
-    """Every port that a managed server (/opt/minecraft-*) actually opens, per its server.properties.
+    """Every port that a server in the panel (/opt/minecraft-*) actually opens, per its server.properties.
     Bedrock has no RCON, so an rcon.port line in a Bedrock server's file (e.g. from a Java
     template) is ignored and never blocks a Java server from using that port.
     mods: also the ports its mods and plugins open (core/modports.py), except exclude_dir's."""
@@ -638,9 +638,20 @@ def _used_ports(exclude_dir=None, mods=True):
         except Exception:
             pass
     skip = os.path.realpath(exclude_dir) if exclude_dir else None
+    in_use = _unit_dirs()
+    with _busy_lock:
+        busy = set(_busy)
+        # Ports picked for servers being made right now, whose folders may not have them yet
+        for n, ports in _busy_ports.items():
+            if not skip or n != os.path.basename(skip):
+                used |= ports
     for root, name in _server_folder_names():
         path = os.path.join(root, name)
         if not name.startswith("minecraft-") or os.path.realpath(path) == skip:
+            continue
+        # A removed server whose files were kept (New Server > Removed servers) doesn't hold its
+        # ports: restoring it picks another port if a new server took its own (_restore_ports)
+        if name not in busy and not os.path.exists(_unit_path(name)) and os.path.realpath(path) not in in_use:
             continue
         props = read_properties(path)
         is_bedrock = os.path.exists(os.path.join(path, "bedrock_server"))
@@ -1211,36 +1222,37 @@ HEAP_RE = re.compile(r"^[0-9]{1,6}[KkMmGg]$")
 # Names being deployed, imported or restored right now: their folders exist before their
 # units do, so they must not be listed as removed or picked again.
 _busy = set()
-_busy_lock = threading.Lock()
+_busy_ports = {}        # name -> the game ports _reserve_name() picked for it
+_busy_lock = threading.RLock()     # _used_ports() takes it too, also from inside _reserve_name()
 
 def _reserve_name(edition):
-    """Picks the next free minecraft-<edition>[-N] name and game port, and holds the name until
-    _release_name(), so parallel deploys/imports can't take the same one."""
+    """Picks the next free minecraft-<edition>[-N] name and the lowest free game port, and holds
+    the name until _release_name(), so parallel deploys/imports can't take the same one. The port
+    doesn't follow the name: a name kept by a removed server's folder (minecraft-java) gives the
+    new server minecraft-java-2, still on 25565 when nothing else uses it."""
     base_name = "minecraft-java" if edition == "java" else "minecraft-bedrock"
-    port = 25565 if edition == "java" else 19132
-    step = 1 if edition == "java" else 2
-    counter, suffix = 1, ""
+    counter, name = 1, base_name
     with _busy_lock:
-        while True:
-            name = f"{base_name}{suffix}"
-            taken = (name in _busy or find_server_folder(name) is not None
-                     or os.path.exists(_unit_path(name)) or not services.name_free(name))
-            if not taken:
-                # Check every port other servers claim (RCON included), and Bedrock's IPv6 port too
-                needed = {port, port + 1} if edition == "bedrock" else {port}
-                taken = bool(needed & _used_ports())
-            if not taken:
-                _busy.add(name)
-                from core import crashes
-                crashes.forget(name)        # a new server: no crash of an earlier one of that name
-                return name, port
+        while (name in _busy or find_server_folder(name) is not None
+               or os.path.exists(_unit_path(name)) or not services.name_free(name)):
             counter += 1
-            suffix = f"-{counter}"
+            name = f"{base_name}-{counter}"
+        # Every port other servers claim (RCON and mods included), and Bedrock's IPv6 port too
+        used = _used_ports()
+        port, step = (25565, 1) if edition == "java" else (19132, 2)
+        while (({port, port + 1} if edition == "bedrock" else {port}) & used
+               or (edition == "java" and not _port_bindable(port))):
             port += step
+        _busy.add(name)
+        _busy_ports[name] = {port, port + 1} if edition == "bedrock" else {port}
+        from core import crashes
+        crashes.forget(name)        # a new server: no crash of an earlier one of that name
+        return name, port
 
 def _release_name(name):
     with _busy_lock:
         _busy.discard(name)
+        _busy_ports.pop(name, None)
 
 def remove_server(server_name, keep_world, note=None):
     """Stops the server and deletes its systemd unit, so it leaves the panel.
