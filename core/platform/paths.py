@@ -54,6 +54,9 @@ PROC = "/proc"
 OS_RELEASE = "/etc/os-release"
 LOCALTIME = "/etc/localtime"
 BLOCK_DEVICES = "/sys/dev/block"
+SSH_PROGRAM = "ssh"                                  # off-site backups (OpenSSH client)
+SSH_KEYGEN_PROGRAM = "ssh-keygen"
+SFTP_PROGRAM = "sftp"
 LOGIN_SHELL = "/bin/bash"                            # the minecraft account's shell
 LOGIN = "/bin/login"                                 # 1.21.10: starts a terminal's login session
 SHELLS_FILE = "/etc/shells"                          # the login shells this machine allows
@@ -112,6 +115,10 @@ def windows_layout(home, app_dir=APP_DIR, environ=os.environ, python=None):
         "LOCALTIME": j(home, "run", "localtime"),
         "BLOCK_DEVICES": j(home, "run", "block"),
         "LOGIN_SHELL": j(windir, "System32", "cmd.exe"),
+        # The OpenSSH client that comes with Windows (Settings > System > Optional features)
+        "SSH_PROGRAM": j(windir, "System32", "OpenSSH", "ssh.exe"),
+        "SSH_KEYGEN_PROGRAM": j(windir, "System32", "OpenSSH", "ssh-keygen.exe"),
+        "SFTP_PROGRAM": j(windir, "System32", "OpenSSH", "sftp.exe"),
     }
 
 

@@ -428,6 +428,7 @@ def main():
     p.put("/api/settings/notifications", {"clear": True})
 
     limits(p, args, name, listening)
+    offsite_s3(p, args, name)
     join_and_terminal(p, name)
     bedrock(p, args)
     loaders(p, args)
@@ -548,6 +549,80 @@ def bedrock(p, args):
         code, r = p.call("DELETE", f"/api/servers/{name}?keep_world=false", timeout=300)
         check("the Bedrock server is removed", code == 200 and wait("gone", lambda: service_state(name) is None, 60),
               f"{code} {r}")
+
+
+S3_KEY, S3_SECRET = "rptestaccess", "rptest-secret-key-123"
+WEED_URL = "https://github.com/seaweedfs/seaweedfs/releases/download/3.80/windows_amd64.zip"
+
+
+def offsite_s3(p, args, name):
+    """1.23: backup copies to S3-compatible storage from Windows. SeaweedFS's S3 server (it checks
+    request signatures as real S3 does) runs next to the panel."""
+    section("Off-site backup copies to S3 storage")
+    import tempfile
+    import zipfile
+    top = tempfile.mkdtemp(prefix="rp-s3-")
+    try:
+        urllib.request.urlretrieve(WEED_URL, os.path.join(top, "weed.zip"))
+        with zipfile.ZipFile(os.path.join(top, "weed.zip")) as z:
+            z.extractall(top)
+    except (OSError, zipfile.BadZipFile) as e:
+        check("SeaweedFS (the S3 stand-in) downloads", False, str(e))
+        return
+    weed = next((os.path.join(r, f) for r, _d, fs in os.walk(top) for f in fs if f.lower() == "weed.exe"), None)
+    conf = os.path.join(top, "s3.json")
+    with open(conf, "w") as f:
+        json.dump({"identities": [{"name": "rp", "credentials": [{"accessKey": S3_KEY, "secretKey": S3_SECRET}],
+                                   "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}, f)
+    os.makedirs(os.path.join(top, "data"))
+    proc = subprocess.Popen([weed, "server", "-s3", f"-s3.config={conf}", "-dir=" + os.path.join(top, "data"),
+                             "-ip=127.0.0.1", "-master.port=19333", "-volume.port=18080", "-filer.port=18888",
+                             "-s3.port=8333"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        def up():
+            try:
+                urllib.request.urlopen("http://127.0.0.1:8333/", timeout=3)
+            except urllib.error.HTTPError:
+                return True
+            except OSError:
+                return False
+            return True
+        if not check("the S3 stand-in answers", wait("s3", up, 120, every=2)):
+            return
+        target = {"type": "s3", "name": "Bucket", "endpoint": "http://127.0.0.1:8333", "bucket": "rp-backups",
+                  "prefix": "mc", "region": "us-east-1", "access_key": S3_KEY, "secret_key": S3_SECRET}
+        app = os.path.join(r"C:\Program Files\RedstonePanel", "app")
+        py = os.path.join(r"C:\Program Files\RedstonePanel", "python", "python.exe")
+        code, out = run([py, "-X", "utf8", "-c",
+                         "import sys; sys.path.insert(0, sys.argv[1]); from core import backup_targets as T; "
+                         "T.S3Target({'endpoint': 'http://127.0.0.1:8333', 'bucket': 'rp-backups', 'prefix': '', "
+                         f"'region': 'us-east-1', 'access_key': '{S3_KEY}', 'secret_key': '{S3_SECRET}'}}).request('PUT', '')",
+                         app])
+        check("the bucket is made with the panel's own S3 client", code == 0, out[-400:])
+        code, st = p.post("/api/settings/backup-storage", target)
+        tid = next((t["id"] for t in (st or {}).get("targets", []) if t.get("name") == "Bucket"), None)
+        check("S3 storage is added", code == 200 and tid, f"{code} {str(st)[:300]}")
+        check("the secret is never sent back", S3_SECRET not in json.dumps(st))
+        code, t = p.post("/api/settings/backup-storage/test", {"id": tid})
+        check("Test writes, lists and deletes", code == 200 and (t or {}).get("ok"), f"{code} {t}")
+        code, r = p.put(f"/api/servers/{name}/offsite/{tid}", {"enabled": True})
+        check("the server's backups are copied there", code == 200, f"{code} {r}")
+        code, b = p.post(f"/api/servers/{name}/backups", timeout=300)
+        newest = (b or {}).get("file")
+
+        def copied():
+            c, v = p.get(f"/api/servers/{name}/offsite")
+            return any(c2.get("file") == newest for t2 in (v or {}).get("targets", []) if t2.get("id") == tid
+                       for c2 in t2.get("copies", []))
+        check("Back up now is copied to S3, checked", newest and wait("copy", copied, 240, every=4), str(newest))
+        os.remove(os.path.join(args.home, "backups", name, newest))
+        code, f = p.post(f"/api/servers/{name}/offsite/{tid}/fetch", {"file": newest}, timeout=300)
+        check("... and comes back from S3", code == 200 and (f or {}).get("file") == newest
+              and os.path.isfile(os.path.join(args.home, "backups", name, newest)), f"{code} {f}")
+        p.put(f"/api/servers/{name}/offsite/{tid}", {"enabled": False})
+        p.call("DELETE", f"/api/settings/backup-storage/{tid}")
+    finally:
+        proc.kill()
 
 
 def _deploy(p, body):

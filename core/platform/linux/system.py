@@ -424,6 +424,8 @@ def fs():
 
 def hint(what, *args):
     """A sentence telling an administrator what to type or do, in this system's terms."""
+    if what == "ssh-client":
+        return "Install it with: sudo apt install openssh-client rsync"
     if what == "restart-panel":
         return "Restart it with: sudo systemctl restart redstonepanel"
     if what == "install-tools":

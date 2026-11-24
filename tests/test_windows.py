@@ -462,8 +462,8 @@ class Preview(unittest.TestCase):
             self.skipTest("needs fastapi")
         for method, path in (("POST", "/api/settings/cluster"), ("POST", "/api/cluster/moves"),
                              ("PUT", "/api/settings/sftp"),
-                             ("POST", "/api/panel/update"), ("POST", "/api/settings/backup-storage"),
-                             ("PUT", "/api/servers/minecraft-a/offsite/t1"),
+                             ("POST", "/api/panel/update"),
+                             
                              ):
             self.assertIn("Windows preview", main.not_yet(method, path, windows=True) or "", f"{method} {path}")
             self.assertIsNone(main.not_yet(method, path, windows=False), f"{method} {path}")
@@ -471,6 +471,7 @@ class Preview(unittest.TestCase):
                              ("POST", "/api/servers/minecraft-a/backups"), ("PUT", "/api/settings"),
                              ("PUT", "/api/settings/notifications"), ("POST", "/api/java/runtimes/install"),
                              ("GET", "/api/servers/minecraft-a/modpack"), ("POST", "/api/servers/modpack"),
+                             ("POST", "/api/settings/backup-storage"), ("PUT", "/api/servers/minecraft-a/offsite/t1"),
                              ("POST", "/api/servers/minecraft-a/modpack/update"),
                              ("PUT", "/api/servers/minecraft-a/resources"),
                              ("POST", "/api/servers/minecraft-a/phantom/install")):
@@ -558,6 +559,42 @@ class Installers(unittest.TestCase):
             open(os.path.join(outside, "keep.txt"), "w").close()
             system.remove_files(dest, [os.path.join("mods", "keep.txt")])
             self.assertTrue(os.path.exists(os.path.join(outside, "keep.txt")))
+
+
+class OffsiteOverSftp(unittest.TestCase):
+    """1.23: SSH storage from Windows uses sftp (Windows has ssh and sftp, not rsync)."""
+
+    def test_upload_resumes_a_part_with_reput_and_download_uses_get(self):
+        from core import backup_targets as bt
+        t = {"type": "ssh", "host": "nas.lan", "port": 2222, "user": "rp", "folder": "~/backups"}
+        target, batches, calls = bt.SSHTarget(t), [], []
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            if cmd[0] == bt.SFTP:
+                with open(cmd[cmd.index("-b") + 1]) as f:
+                    batches.append(f.read())
+                return mock.Mock(returncode=0, stdout="", stderr="")
+            text = cmd[-1]
+            out = "PARTIAL\n" if "-f" in text and ".partial" in text else ""
+            return mock.Mock(returncode=0, stdout=out, stderr="")
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(bt, "USE_SFTP", True), \
+                mock.patch.object(bt, "SSH_DIR", d), mock.patch.object(bt, "ensure_key", return_value="k"), \
+                mock.patch.object(bt.subprocess, "run", fake_run):
+            target.upload("C:\\RP\\backups\\minecraft-a\\b.tar.gz", "pc-1a2b", "minecraft-a", "b.tar.gz", "0" * 64, 10)
+            target.download("pc-1a2b", "minecraft-a", "b.tar.gz", "C:\\RP\\tmp\\b.tar.gz")
+        self.assertIn('reput "C:/RP/backups/minecraft-a/b.tar.gz" "backups/pc-1a2b/minecraft-a/b.tar.gz.partial"', batches[0])
+        self.assertIn("chmod 600", batches[0])
+        self.assertIn('get "backups/pc-1a2b/minecraft-a/b.tar.gz" "C:/RP/tmp/b.tar.gz"', batches[1])
+        sftp = next(c for c in calls if c[0] == bt.SFTP)
+        self.assertIn("-P", sftp)                     # sftp's port option
+        self.assertNotIn("-p", sftp)
+        self.assertFalse(any(c[0] == bt.RSYNC for c in calls))
+
+    def test_the_openssh_client_that_comes_with_windows(self):
+        layout = paths.windows_layout("C:\\RP", environ={"SystemRoot": "C:\\Windows"})
+        self.assertTrue(layout["SSH_PROGRAM"].replace("/", "\\").lower().endswith("system32\\openssh\\ssh.exe"))
+        self.assertTrue(layout["SFTP_PROGRAM"].lower().endswith("sftp.exe"))
 
 
 class Bedrock(unittest.TestCase):

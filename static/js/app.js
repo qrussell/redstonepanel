@@ -4694,7 +4694,6 @@ const ServerApp = {
     async loadOffsite() {
         const box = document.getElementById('offsite-box');
         if (!box || !this.activeServer) return;
-        if (this.notYet('offsite')) { box.className = 'hidden'; return; }           // not in the Windows preview yet
         const name = this.activeServer.name;
         const res = await api(`/api/servers/${encodeURIComponent(name)}/offsite`);
         if (!this.activeServer || this.activeServer.name !== name) return;
@@ -4911,7 +4910,7 @@ const ServerApp = {
             ${d.public_key ? `<details class="mb-2"><summary class="text-sm cursor-pointer text-gray-700 dark:text-gray-300">This panel's SSH key</summary>
                 <p class="${note} mt-1">For SSH storage, add this line to <span class="font-mono">~/.ssh/authorized_keys</span> of the user the panel signs in as there (one line, on that machine):</p>
                 <textarea readonly rows="2" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white mt-1">${esc(d.public_key)}</textarea>
-            </details>` : `<p class="${note} mb-2">SSH storage needs openssh-client and rsync: <span class="font-mono">sudo apt install openssh-client rsync</span></p>`}
+            </details>` : `<p class="${note} mb-2">SSH storage needs the OpenSSH client${d.tools && d.tools.uses === 'sftp' ? '' : ' and rsync'}. ${esc((d.tools && d.tools.hint) || '')}</p>`}
             ${d.tools && !d.tools.rsync ? `<p class="text-xs text-yellow-600 dark:text-yellow-500 mb-2">rsync isn't installed, so SSH copies can't run. Install it with: <span class="font-mono">sudo apt install rsync</span></p>` : ''}
             <div id="storage-form">${this.storageEdit ? this.storageFormHtml(this.storageEdit) : `<button onclick="ServerApp.editStorage(null)" class="${small}">Add storage</button>`}</div>`;
     },
@@ -4925,7 +4924,7 @@ const ServerApp = {
         const radio = (v, text) => `<label class="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300"><input type="radio" name="st-type" value="${v}" ${t.type === v ? 'checked' : ''} onchange="ServerApp.storageType(this.value)"> ${text}</label>`;
         return `<div class="border border-gray-300 dark:border-gray-600 rounded p-3">
             <p class="text-sm font-bold text-gray-900 dark:text-white mb-2">${t.id ? `Edit ${esc(t.name)}` : 'Add storage'}</p>
-            ${t.id ? '' : `<div class="flex gap-4 mb-2">${radio('ssh', 'SSH server (rsync)')}${radio('s3', 'S3-compatible')}</div>`}
+            ${t.id ? '' : `<div class="flex gap-4 mb-2">${radio('ssh', this.onWindows() ? 'SSH server (sftp)' : 'SSH server (rsync)')}${radio('s3', 'S3-compatible')}</div>`}
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <label class="${label} sm:col-span-2">Name<input id="st-name" value="${esc(t.name)}" placeholder="${s3 ? 'Backblaze B2' : 'NAS'}" class="${field}"></label>
                 ${s3 ? `
@@ -4946,7 +4945,7 @@ const ServerApp = {
                 <label class="${label} sm:col-span-2 flex items-center gap-2"><input type="checkbox" id="st-all" ${t.servers === 'all' ? 'checked' : ''}> Copy every server's backups (or choose on each server's Backups tab)</label>
             </div>
             <p class="${label} mt-2">${s3 ? 'Give the key read, write, list and delete on the bucket only. The secret is kept on this machine (root only) and never shown again.'
-                : 'The panel signs in with its own SSH key (above) and records the host key on the first connection, as ssh does. The folder is relative to that user\'s home unless it starts with /. That machine needs rsync.'}</p>
+                : 'The panel signs in with its own SSH key (above) and records the host key on the first connection, as ssh does. The folder is relative to that user\'s home unless it starts with /.' + (this.onWindows() ? ' That machine needs sha256sum (or shasum) to check copies.' : ' That machine needs rsync.')}</p>
             <p id="st-msg" class="hidden text-sm mt-2"></p>
             <div class="flex flex-wrap gap-2 mt-3">
                 <button onclick="ServerApp.saveStorage(this)" class="bg-theme hover-bg-theme text-white px-3 py-1.5 rounded font-bold text-xs">Save</button>

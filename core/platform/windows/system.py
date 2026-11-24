@@ -804,6 +804,8 @@ def fs():
 
 def hint(what, *args):
     """A sentence telling an administrator what to type or do, in this system's terms."""
+    if what == "ssh-client":
+        return "Turn on OpenSSH Client in Settings → System → Optional features."
     if what == "restart-panel":
         return "Restart it with: Restart-Service redstonepanel (in an administrator PowerShell)"
     if what == "install-tools":

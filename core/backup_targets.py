@@ -65,9 +65,11 @@ SSH_DIR = os.path.join(DATA_DIR, "ssh")
 SSH_KEY = os.path.join(SSH_DIR, "id_ed25519")
 KNOWN_HOSTS = os.path.join(SSH_DIR, "known_hosts")
 
-SSH = "ssh"                     # the commands, replaceable in tests
+SSH = paths.SSH_PROGRAM         # the commands, replaceable in tests
 RSYNC = "rsync"
-SSH_KEYGEN = "ssh-keygen"
+SSH_KEYGEN = paths.SSH_KEYGEN_PROGRAM
+SFTP = paths.SFTP_PROGRAM       # Windows (1.23): sftp instead of rsync, which Windows doesn't have
+USE_SFTP = paths.WINDOWS
 SYSTEMD_RUN = "systemd-run"
 PANEL_CMD = paths.PANEL_CMD
 
@@ -393,7 +395,7 @@ def ensure_key():
                             "-f", SSH_KEY], capture_output=True, text=True)
         if r.returncode != 0:
             raise TargetError(f"Couldn't make an SSH key: {(r.stderr or r.stdout).strip() or 'ssh-keygen failed'}. "
-                              "Is openssh-client installed? (sudo apt install openssh-client)")
+                              f"Is the OpenSSH client installed? {system.hint('ssh-client')}")
         manager.write_log("[BACKUP] Made this panel's SSH key for backup storage.")
     with open(SSH_KEY + ".pub") as f:
         return f.read().strip()
@@ -403,7 +405,14 @@ def public_key():
     try:
         return ensure_key()
     except (OSError, FileNotFoundError):
-        raise TargetError("ssh-keygen isn't installed. Install it with: sudo apt install openssh-client rsync")
+        raise TargetError(f"ssh-keygen isn't installed. {system.hint('ssh-client')}")
+
+
+def tools():
+    """What SSH storage needs here: {"ssh", "rsync" (True when copies don't need it), "sftp", "hint"}."""
+    have = lambda p: bool(shutil.which(p) or os.path.isfile(p))
+    return {"ssh": have(SSH), "rsync": True if USE_SFTP else have(RSYNC), "sftp": USE_SFTP and have(SFTP),
+            "uses": "sftp" if USE_SFTP else "rsync", "hint": system.hint("ssh-client")}
 
 
 def _known_name(t):
@@ -477,7 +486,7 @@ class SSHTarget:
         except subprocess.TimeoutExpired:
             raise TargetError(f"{self.t['host']} didn't answer in {timeout} seconds.")
         except FileNotFoundError:
-            raise TargetError("ssh isn't installed. Install it with: sudo apt install openssh-client rsync")
+            raise TargetError(f"ssh isn't installed. {system.hint('ssh-client')}")
         if r.returncode == 255:
             raise TargetError(_ssh_error(r.stderr, self.t))
         return r
@@ -512,12 +521,41 @@ class SSHTarget:
     def _rsh(self):
         return " ".join([SSH, *self._ssh_opts()])
 
-    def upload(self, path, panel, server, filename, sha, size):
-        d = self._q(self.base, panel, server)
-        self._check(self.run(f"mkdir -p {d}"), "Making the folder")
-        remote = "/".join(p for p in (self.base, panel, server, filename + ".partial") if p)
-        if remote.startswith("~/"):
-            remote = remote[2:]                  # rsync paths are relative to the home folder already
+    def _sftp(self, commands, timeout):
+        """Runs sftp commands (a batch: one per line, paths quoted) and returns the CompletedProcess."""
+        batch = os.path.join(SSH_DIR, f"batch-{secrets.token_hex(6)}.txt")
+        with open(batch, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(commands) + "\n")
+        try:
+            opts = ["-P" if o == "-p" else o for o in self._ssh_opts()]       # sftp spells the port -P
+            return subprocess.run([SFTP, "-b", batch, *opts, self._dest()], capture_output=True, text=True,
+                                  timeout=timeout)
+        except FileNotFoundError:
+            raise TargetError(f"sftp isn't installed. {system.hint('ssh-client')}")
+        finally:
+            try:
+                os.remove(batch)
+            except OSError:
+                pass
+
+    @staticmethod
+    def _sftp_path(path):
+        """A path for an sftp batch line: forward slashes, in double quotes."""
+        return '"' + path.replace("\\", "/").replace('"', '\\"') + '"'
+
+    def _send(self, path, remote):
+        """Puts path at remote (relative to the home folder): sftp on Windows, resuming a part
+        that is there already; rsync --partial elsewhere."""
+        if USE_SFTP:
+            there = self.run(f"[ -f {self._q(remote)} ] && echo PARTIAL; true", timeout=60).stdout
+            verb = "reput" if "PARTIAL" in there else "put"
+            r = self._sftp([f"{verb} {self._sftp_path(path)} {self._sftp_path(remote)}",
+                            f"chmod 600 {self._sftp_path(remote)}"], timeout=24 * 3600)
+            if r.returncode != 0:
+                err = (r.stderr or r.stdout).strip()
+                raise TargetError(_ssh_error(err, self.t) if "Connection closed" in err or "Permission denied" in err
+                                  else f"sftp failed: {err[-300:]}")
+            return
         try:
             r = subprocess.run([RSYNC, "--partial", "--inplace", "--times", "--chmod=F600", "-e", self._rsh(),
                                 path, f"{self._dest()}:{remote}"], capture_output=True, text=True, timeout=24 * 3600)
@@ -528,6 +566,14 @@ class SSHTarget:
             if "command not found" in err or r.returncode == 127:
                 err = "rsync isn't installed there. Install it on that machine (sudo apt install rsync)."
             raise TargetError(_ssh_error(err, self.t) if r.returncode == 255 else f"rsync failed: {err[-300:]}")
+
+    def upload(self, path, panel, server, filename, sha, size):
+        d = self._q(self.base, panel, server)
+        self._check(self.run(f"mkdir -p {d}"), "Making the folder")
+        remote = "/".join(p for p in (self.base, panel, server, filename + ".partial") if p)
+        if remote.startswith("~/"):
+            remote = remote[2:]                  # rsync and sftp paths are relative to the home folder already
+        self._send(path, remote)
         f, part, side = (self._q(self.base, panel, server, filename + s) for s in ("", ".partial", SHA_SUFFIX))
         check = (f"h=$( (sha256sum {part} || shasum -a 256 {part}) 2>/dev/null | cut -d' ' -f1); "
                  f"if [ \"$h\" = {sha} ]; then printf %s {sha} > {side} && mv -f {part} {f}; "
@@ -542,6 +588,11 @@ class SSHTarget:
         src = "/".join((self.base, panel, server, filename))
         if src.startswith("~/"):
             src = src[2:]
+        if USE_SFTP:
+            r = self._sftp([f"get {self._sftp_path(src)} {self._sftp_path(dest)}"], timeout=24 * 3600)
+            if r.returncode != 0:
+                raise TargetError(f"Downloading the copy failed: {(r.stderr or r.stdout).strip()[-300:]}")
+            return
         try:
             r = subprocess.run([RSYNC, "--partial", "--times", "-e", self._rsh(), f"{self._dest()}:{src}", dest],
                                capture_output=True, text=True, timeout=24 * 3600)
@@ -560,7 +611,7 @@ class SSHTarget:
         steps = []
         r = self.run("command -v rsync >/dev/null 2>&1 || echo NO-RSYNC; "
                      "(command -v sha256sum || command -v shasum) >/dev/null 2>&1 || echo NO-SHA", timeout=40)
-        if "NO-RSYNC" in r.stdout:
+        if "NO-RSYNC" in r.stdout and not USE_SFTP:
             raise TargetError("Signed in, but rsync isn't installed there. Install it on that machine "
                               "(sudo apt install rsync).")
         if "NO-SHA" in r.stdout:

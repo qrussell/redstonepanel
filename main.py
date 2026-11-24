@@ -134,7 +134,6 @@ WINDOWS_NOT_YET = (
     ("cluster", "Clusters aren't", re.compile(r"^/api/(settings/)?cluster(/|$)")),
     ("sftp", "SFTP isn't", re.compile(r"^/api/settings/sftp$")),
     ("panel-update", "Updating from the panel isn't", re.compile(r"^/api/panel/update")),
-    ("offsite", "Off-site backup storage isn't", re.compile(r"^/api/(settings/backup-storage|servers/[^/]+/offsite)(/|$)")),
 )
 
 def not_yet(method, path, windows=None):
@@ -1358,7 +1357,7 @@ def _storage_view():
     data = backup_targets.load()
     return {"targets": [backup_targets.public({**t, "id": tid}) for tid, t in sorted(data["targets"].items())],
             "panel_id": backup_targets.panel_id(), "public_key": key,
-            "tools": {"ssh": bool(shutil.which("ssh")), "rsync": bool(shutil.which("rsync"))},
+            "tools": backup_targets.tools(),
             "servers": [s["name"] for s in manager.list_servers()]}
 
 @app.get("/api/settings/backup-storage")
