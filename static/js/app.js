@@ -6528,7 +6528,8 @@ const ServerApp = {
 		const h = (this.dashData && this.dashData.host) || {};
 		if (!confirm(`Update RedstonePanel ${h.version || ''} to ${h.update || 'the newest version'}?\n\n`
 			+ `The panel restarts during the update; this page reconnects and reloads by itself, usually within a minute. `
-			+ `Game servers keep running.`)) return;
+			+ (this.onWindows() ? `Game servers stop for about a minute while the Windows installer runs, and the ones that were running start again.`
+				: `Game servers keep running.`))) return;
 		const res = await fetch('/api/panel/update', { method: 'POST' });
 		if (!res.ok) return alert(`The update didn't start: ${await this.apiError(res)}`);
 		const st = await res.json();

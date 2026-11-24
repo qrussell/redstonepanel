@@ -83,6 +83,8 @@ def _installed_version():
 def last_upgrade():
     """The last upgrade from the panel: {state: running|done|failed, from, to, actor, ...}."""
     st = _read_state()
+    if st.get("state") == "running" and st.get("installer"):
+        return _windows_outcome(st)
     if st.get("state") == "running" and not _unit_active() and time.time() - (st.get("started") or 0) > 60:
         # The unit is gone without writing a result (killed, or the machine restarted)
         if time.time() - (st.get("started") or 0) > STALE or _installed_version() != st.get("to"):
@@ -90,6 +92,32 @@ def last_upgrade():
         else:
             st = dict(st, state="done")
     return st or None
+
+
+def _windows_outcome(st):
+    """Windows: the MSI runs after `redstonepanel upgrade` has finished, in a process of its own
+    that writes the installer's exit code when it's done (core/platform/windows/panelpkg.py)."""
+    from core.platform.windows import panelpkg
+    r = panelpkg.result(since=st.get("installer") or 0)
+    if r is None:
+        if time.time() - (st.get("installer") or 0) <= STALE:
+            return st
+        st = dict(st, state="failed", error="The Windows installer didn't finish; see installer.log in the "
+                                                     "data folder's upgrade folder.")
+    else:
+        new = _installed_version()
+        if r["code"] in panelpkg.OK_CODES and new == st.get("to"):
+            st = dict(st, state="done", installed=new, finished=r.get("finished"))
+            if r["code"] != 0:
+                st["note"] = "Windows asks for a restart to finish the update."
+        else:
+            st = dict(st, state="failed", installed=new, finished=r.get("finished"),
+                      error=f"The Windows installer stopped with code {r['code']}, so {new} is still installed; "
+                            f"see installer.log in the data folder's upgrade folder.")
+    _write_state(st)
+    manager.write_log(f"[UPDATE] RedstonePanel {st.get('from')} -> {st.get('installed')}: "
+                      + ("done." if st["state"] == "done" else f"failed: {st.get('error')}"))
+    return st
 
 
 def status():
@@ -153,7 +181,8 @@ def start(actor="admin"):
         _write_state(dict(_read_state(), state="failed", finished=int(time.time()), error=err))
         raise UpdateError(f"Couldn't start the update: {err}", 500)
     manager.write_log(f"[UPDATE] {actor} is updating RedstonePanel {current} -> {available}. The panel restarts; "
-                      f"game servers keep running.")
+                      + ("game servers stop while the Windows installer runs, and start again." if paths.WINDOWS
+                         else "game servers keep running."))
     return status()
 
 
@@ -186,6 +215,13 @@ def run(echo=False):
             if code != 0:
                 error = err or f"apt-get {args[0]} exited with code {code}"
                 break
+    if code == 0 and paths.WINDOWS and _installed_version() != st.get("to"):
+        # The Windows installer now runs on its own, and restarts the panel; the new panel reads
+        # the outcome (_windows_outcome)
+        st.update(installer=int(time.time()))
+        _write_state(st)
+        manager.write_log(f"[UPDATE] RedstonePanel {st.get('from')} -> {st.get('to')}: the Windows installer started.")
+        return 0
     new = _installed_version()
     if code == 0 and st.get("to") and new != st.get("to"):
         code, error = 1, f"apt finished, but {PACKAGE} {new} is installed, not {st['to']}."

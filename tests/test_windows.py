@@ -461,10 +461,7 @@ class Preview(unittest.TestCase):
         except ImportError:
             self.skipTest("needs fastapi")
         for method, path in (("POST", "/api/settings/cluster"), ("POST", "/api/cluster/moves"),
-                             ("PUT", "/api/settings/sftp"),
-                             ("POST", "/api/panel/update"),
-                             
-                             ):
+                             ("PUT", "/api/settings/sftp")):
             self.assertIn("Windows preview", main.not_yet(method, path, windows=True) or "", f"{method} {path}")
             self.assertIsNone(main.not_yet(method, path, windows=False), f"{method} {path}")
         for method, path in (("GET", "/api/settings/cluster"), ("POST", "/api/servers/deploy"),
@@ -474,6 +471,7 @@ class Preview(unittest.TestCase):
                              ("POST", "/api/settings/backup-storage"), ("PUT", "/api/servers/minecraft-a/offsite/t1"),
                              ("POST", "/api/servers/minecraft-a/modpack/update"),
                              ("PUT", "/api/servers/minecraft-a/resources"),
+                             ("POST", "/api/panel/update"), ("POST", "/api/panel/update/check"),
                              ("POST", "/api/servers/minecraft-a/phantom/install")):
             self.assertIsNone(main.not_yet(method, path, windows=True), f"{method} {path}")
 
@@ -645,6 +643,146 @@ class Bedrock(unittest.TestCase):
                                                                                   return_value="AMD64"):
             self.assertTrue(phantom.machine_supported())
             self.assertTrue(phantom.binary_path().endswith(".exe"))
+
+
+class PanelUpdate(unittest.TestCase):
+    """1.23: the panel updates itself from the MSI on the GitHub release, checked by SHA-256."""
+    MSI = "RedstonePanel-1.23.0-x64.msi"
+
+    def release(self, **extra):
+        msi = {"name": self.MSI, "browser_download_url": f"https://github.com/qrussell/redstonepanel/releases/download/v1.23.0/{self.MSI}",
+               "size": 40 << 20}
+        msi.update(extra)
+        return {"tag_name": "v1.23.0", "html_url": "https://github.com/qrussell/redstonepanel/releases/tag/v1.23.0",
+                "assets": [{"name": "redstonepanel_1.23.0_all.deb", "browser_download_url": "https://github.com/x.deb"}, msi,
+                           {"name": self.MSI + ".sha256", "browser_download_url": msi["browser_download_url"] + ".sha256"}]}
+
+    def setUp(self):
+        from core.platform.windows import panelpkg
+        self.p = panelpkg
+        self.d = tempfile.mkdtemp(dir=TMP)
+        patcher = mock.patch.object(panelpkg, "folder", return_value=self.d)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_release_must_have_an_installer_and_its_checksum(self):
+        info = self.p.parse_release(self.release(digest="sha256:" + "AB" * 32))
+        self.assertEqual(info["version"], "1.23.0")
+        self.assertEqual(info["digest"], "ab" * 32)
+        r = self.release()
+        r["assets"] = r["assets"][:2]                       # no .sha256
+        self.assertIsNone(self.p.parse_release(r))
+        self.assertIsNone(self.p.parse_release(dict(self.release(), prerelease=True)))
+        self.assertIsNone(self.p.parse_release({"assets": [{"name": "RedstonePanel-1.23.0-x64.msi.exe"}]}))
+
+    def test_github_is_asked_once_a_day(self):
+        calls = []
+        fetch = lambda: calls.append(1) or self.release()            # noqa: E731
+        self.assertEqual(self.p.latest(fetch=fetch)["version"], "1.23.0")
+        self.assertEqual(self.p.latest(fetch=fetch)["version"], "1.23.0")
+        self.assertEqual(len(calls), 1)
+        self.p.latest(refresh=True, fetch=fetch)
+        self.assertEqual(len(calls), 2)
+
+        def down():
+            raise OSError("offline")
+        self.assertEqual(self.p.latest(fetch=down)["version"], "1.23.0")      # the saved answer
+        with self.assertRaises(OSError):
+            self.p.latest(refresh=True, fetch=down)                          # Check for updates says so
+
+    def test_checksum_lines(self):
+        h = "0123456789abcdef" * 4
+        self.assertEqual(self.p.expected_sha256(f"{h}  {self.MSI}\n", self.MSI), h)
+        self.assertEqual(self.p.expected_sha256(f"{h.upper()} *{self.MSI}", self.MSI), h)
+        self.assertIsNone(self.p.expected_sha256(f"{h}  other.msi", self.MSI))
+        self.assertIsNone(self.p.expected_sha256("not a hash", self.MSI))
+
+    def test_only_github_addresses(self):
+        for url in ("http://github.com/x.msi", "https://example.com/x.msi", "https://github.com.evil.net/x.msi"):
+            with self.assertRaises(self.p.Problem):
+                self.p._open(url)
+
+    def fake_open(self, body):
+        import hashlib
+        import io
+        good = hashlib.sha256(body).hexdigest()
+
+        class R(io.BytesIO):
+            def __enter__(self):
+                return self
+
+        def opener(sums):
+            def _open(url, timeout=60):
+                return R(sums.encode() if url.endswith(".sha256") else body)
+            return _open
+        return good, opener
+
+    def test_a_download_that_does_not_match_is_refused(self):
+        good, opener = self.fake_open(b"MSI" * 1000)
+        info = self.p.parse_release(self.release())
+        with mock.patch.object(self.p, "_open", opener(f"{'0' * 64}  {self.MSI}")):
+            with self.assertRaises(self.p.Problem):
+                self.p.download(info, out=lambda *_: None)
+        self.assertEqual(os.listdir(self.d), [])
+        with mock.patch.object(self.p, "_open", opener(f"{good}  {self.MSI}")):
+            with self.assertRaises(self.p.Problem):                         # GitHub's digest disagrees
+                self.p.download(dict(info, digest="1" * 64), out=lambda *_: None)
+            path = self.p.download(dict(info, digest=good), out=lambda *_: None)
+        self.assertEqual(os.path.basename(path), self.MSI)
+
+    def test_install_starts_the_installer_on_its_own_and_restarts_what_ran(self):
+        from core.platform.windows import packages
+        good, opener = self.fake_open(b"MSI" * 1000)
+        spawned, lines = [], []
+        with mock.patch.object(self.p, "_open", opener(f"{good}  {self.MSI}")), \
+                mock.patch.object(self.p, "latest", return_value=self.p.parse_release(self.release())), \
+                mock.patch.object(packages, "installed_version", return_value="1.22.0"):
+            self.assertTrue(self.p.install(out=lines.append, spawn=lambda argv, cwd=None: spawned.append(argv),
+                                           servers=["minecraft-java", "phantom-minecraft-bedrock"]))
+        self.assertTrue(spawned[0][0].endswith("powershell.exe"))
+        with open(spawned[0][-1], encoding="utf-8-sig") as f:
+            script = f.read()
+        self.assertIn("msiexec.exe", script)
+        self.assertIn("'/qn'", script)
+        self.assertIn(self.MSI, script)
+        self.assertIn("Start-Service -Name 'redstonepanel'", script)
+        self.assertIn("'minecraft-java', 'phantom-minecraft-bedrock'", script)
+        self.assertIn("result.json", script)
+        self.assertTrue(any(l.startswith("Setting up redstonepanel (1.23.0)") for l in lines))
+        with mock.patch.object(self.p, "latest", return_value=self.p.parse_release(self.release())), \
+                mock.patch.object(packages, "installed_version", return_value="1.23.0"):
+            self.assertFalse(self.p.install(out=lines.append, spawn=lambda *a, **k: self.fail("spawned")))
+
+    def test_the_candidate_is_the_newest_release(self):
+        from core.platform.windows import packages
+        with mock.patch.object(packages, "installed_version", return_value="1.22.0"), \
+                mock.patch.object(self.p, "candidate", return_value="1.23.0"):
+            self.assertIn("Candidate: 1.23.0", packages.policy("redstonepanel"))
+        with mock.patch.object(packages, "installed_version", return_value="1.23.1"), \
+                mock.patch.object(self.p, "candidate", return_value="1.23.0"):
+            self.assertIn("Candidate: 1.23.1", packages.policy("redstonepanel"))
+
+    def test_the_new_panel_reads_the_installers_outcome(self):
+        import json
+        import time
+        from core import selfupdate
+        now = int(time.time())
+        st = {"state": "running", "from": "1.22.0", "to": "1.23.0", "installer": now - 5, "started": now - 60}
+        with mock.patch.object(selfupdate, "_read_state", return_value=dict(st)), \
+                mock.patch.object(selfupdate, "_write_state"), mock.patch.object(selfupdate.manager, "write_log"), \
+                mock.patch.object(selfupdate, "_installed_version", return_value="1.23.0"):
+            self.assertEqual(selfupdate.last_upgrade()["state"], "running")       # still installing
+            with open(os.path.join(self.d, "result.json"), "w") as f:
+                json.dump({"code": 0, "finished": now}, f)
+            self.assertEqual(selfupdate.last_upgrade()["state"], "done")
+            with open(os.path.join(self.d, "result.json"), "w") as f:
+                json.dump({"code": 1603, "finished": now}, f)
+        with mock.patch.object(selfupdate, "_read_state", return_value=dict(st)), \
+                mock.patch.object(selfupdate, "_write_state"), mock.patch.object(selfupdate.manager, "write_log"), \
+                mock.patch.object(selfupdate, "_installed_version", return_value="1.22.0"):
+            out = selfupdate.last_upgrade()
+        self.assertEqual(out["state"], "failed")
+        self.assertIn("code 1603", out["error"])
 
 
 if __name__ == "__main__":

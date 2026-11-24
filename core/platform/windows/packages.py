@@ -94,7 +94,11 @@ def policy(package, timeout=30, env=None):
     """`apt-cache policy PACKAGE` in apt's words: Installed: and Candidate: lines."""
     if package == PANEL_PACKAGE:
         version = installed_version() or "(none)"
-        return f"{package}:\n  Installed: {version}\n  Candidate: {version}\n"
+        from core.platform.windows import panelpkg        # the newest release with a Windows installer
+        newest = panelpkg.candidate()
+        if not newest or (version != "(none)" and is_older(newest, version)):
+            newest = version
+        return f"{package}:\n  Installed: {version}\n  Candidate: {newest}\n"
     m = JAVA_PACKAGE_RE.fullmatch(package or "")
     if not m:
         return ""

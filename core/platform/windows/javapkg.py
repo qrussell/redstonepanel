@@ -27,6 +27,7 @@ if APP_DIR not in sys.path:
     sys.path.insert(0, APP_DIR)
 
 from core.platform import paths                       # noqa: E402
+from core.platform.windows import panelpkg            # noqa: E402
 
 API = "https://api.adoptium.net/v3"
 ALLOWED_HOSTS = ("api.adoptium.net", "github.com", "objects.githubusercontent.com",
@@ -160,6 +161,12 @@ def main(argv=None, out=print):
         if verb == "update":
             from core.platform.windows import packages as pk
             out("Java versions at Adoptium: " + ", ".join(str(m) for m in pk.catalog(refresh=True)))
+            release = panelpkg.latest(refresh=True)
+            out("RedstonePanel for Windows at GitHub: " + (release["version"] if release else "none"))
+            return 0
+        if verb == "install" and packages == ["redstonepanel"]:
+            if not simulate:
+                panelpkg.install(out)
             return 0
         if verb == "autoremove":
             return 0
@@ -179,7 +186,7 @@ def main(argv=None, out=print):
                     remove(major, out)
             return 0
         raise Problem(f"Invalid operation {verb or '(none)'}")
-    except Problem as e:
+    except (Problem, panelpkg.Problem) as e:
         out(f"E: {e}")
     except (OSError, ValueError, zipfile.BadZipFile) as e:
         out(f"E: {type(e).__name__}: {e}")

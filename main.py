@@ -133,7 +133,6 @@ TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
 WINDOWS_NOT_YET = (
     ("cluster", "Clusters aren't", re.compile(r"^/api/(settings/)?cluster(/|$)")),
     ("sftp", "SFTP isn't", re.compile(r"^/api/settings/sftp$")),
-    ("panel-update", "Updating from the panel isn't", re.compile(r"^/api/panel/update")),
 )
 
 def not_yet(method, path, windows=None):
