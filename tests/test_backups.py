@@ -268,6 +268,26 @@ class Backups(unittest.TestCase):
         with self.assertRaisesRegex(B.BackupError, "no world"):
             B.restore_backup("minecraft-java", os.path.basename(path))
 
+    def test_restore_refuses_a_world_name_outside_the_server_folder(self):
+        # A backup copy can come from another member or off-site storage: its own level-name
+        # must not point the world swap at /etc or above the server's folder
+        self.java_server()
+        d = B.server_backup_dir("minecraft-java")
+        os.makedirs(d, exist_ok=True)
+        victim = os.path.join(TMP, "victim")
+        os.makedirs(victim, exist_ok=True)
+        for n, level in enumerate((victim, "../victim", "world/../../victim")):
+            path = os.path.join(d, f"minecraft-java-2026110{n + 1}-040000-manual.tar.gz")
+            with tarfile.open(path, "w:gz") as t:
+                for name, data in (("server.properties", f"level-name={level}\n".encode()),
+                                   (level + "/level.dat", b"evil")):
+                    ti = tarfile.TarInfo(name)
+                    ti.size = len(data)
+                    t.addfile(ti, io.BytesIO(data))
+            with self.assertRaisesRegex(B.BackupError, "no world", msg=level):
+                B.restore_backup("minecraft-java", os.path.basename(path))
+            self.assertTrue(os.path.isdir(victim), level)
+
     # --- schedules ---
     def test_on_calendar(self):
         self.assertEqual(B.on_calendar("daily", "04:30"), "*-*-* 04:30:00")

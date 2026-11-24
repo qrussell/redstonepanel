@@ -167,6 +167,8 @@ async def access_control(request: Request, call_next):
                     detail = ("Sign in as an admin to change this." if user["source"] == "trusted"
                               else "Only admins can do this.")
                     return JSONResponse({"detail": detail}, status_code=403)
+            if _bad_server_name(request.method, path):
+                return JSONResponse({"detail": "No Minecraft server by that name on this panel."}, status_code=404)
             refused = _grant_refusal(request.method, request.scope, user)
             if refused:
                 return JSONResponse({"detail": refused}, status_code=403)
@@ -186,6 +188,15 @@ def _route_of(method, path):
             if match == Match.FULL:
                 return r.path, child.get("path_params") or {}
     return None, {}
+
+def _bad_server_name(method, path):
+    """True when the route's {server_name} can't be a game server's name. Every server name is
+    a "minecraft..." unit name with no slashes, dots-only or other path tricks, and many routes
+    build folder and file paths from it, so a bad one is refused here, for admins too, before
+    any route sees it."""
+    _template, params = _route_of(method, path)
+    name = params.get("server_name")
+    return name is not None and not manager.SERVICE_NAME_RE.fullmatch(name)
 
 def _admin_only_detail(user):
     return "Sign in as an admin to do this." if user.get("source") == "trusted" else "Only admins can do this."

@@ -1375,7 +1375,8 @@
 
             // RCON Command Processor
             function executeRconCommand(rawCmd) {
-                const cmd = rawCmd.trim();
+                // What the visitor typed is shown as text, never as HTML
+                const cmd = rawCmd.trim().replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
                 if (!cmd) return;
                 const srv = getSelectedServer();
                 const lower = cmd.toLowerCase();

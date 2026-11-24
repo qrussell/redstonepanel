@@ -519,8 +519,17 @@ def _archive_world(tar, edition):
             level = folders[0]
         level = level or "Bedrock level"
         candidates = [f"worlds/{level}"]
+    # level-name comes from inside the archive (a backup copy can come from another cluster
+    # member or off-site storage): only plain relative folders, never "/..." or "..", since the
+    # world is swapped in with os.rename as root
+    candidates = [c for c in candidates if _plain_relative(c)]
     present = [c for c in candidates if any(n == c or n.startswith(c + "/") for n in names)]
     return level, present
+
+def _plain_relative(path):
+    parts = path.split("/")
+    return bool(path) and not path.startswith("/") and "\\" not in path and "\x00" not in path \
+        and all(p not in ("", ".", "..") for p in parts)
 
 def restore_backup(server, filename):
     """Replaces the server's world with the one in the backup. Takes a pre-restore backup first,

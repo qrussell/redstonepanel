@@ -6,3 +6,5 @@ queries:
 paths-ignore:
   # Generated, minified Tailwind output
   - static/css
+  # Unit tests: stand-in servers on all interfaces, files made world-readable on purpose
+  - tests
