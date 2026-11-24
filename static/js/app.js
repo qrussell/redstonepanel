@@ -1786,7 +1786,7 @@ const ServerApp = {
 
                 <button onclick="ServerApp.executeDeploy()" class="mt-2 w-full bg-green-600 hover:bg-green-700 py-2 rounded text-white font-bold transition">Deploy Fresh Server</button>
             </div>
-            ${this.isAdmin() && !this.notYet('modpacks') ? `<hr class="border-gray-200 dark:border-gray-700 my-4" />
+            ${this.isAdmin() ? `<hr class="border-gray-200 dark:border-gray-700 my-4" />
             <div class="mb-2">
                 <label class="block text-sm text-gray-400 mb-1">From a modpack</label>
                 <p class="text-xs text-gray-500 mb-2">Pick a modpack from Modrinth, or upload a .mrpack or a CurseForge server pack.</p>
@@ -1950,11 +1950,6 @@ const ServerApp = {
         const node = this.deployNode && this.clusterNodes.find(n => n.id === this.deployNode);
         const old = !!(node && (node.cluster_api || 1) < 7);
         select.querySelectorAll('.loader-1-20').forEach(o => { o.disabled = old; });
-        // The Windows preview has no Quilt, Forge or NeoForge yet (their installers), on this panel
-        const noInstallers = !this.deployNode && this.notYet('installer-loaders');
-        if (noInstallers) select.querySelectorAll('option').forEach(o => {
-            if (['quilt', 'forge', 'neoforge'].includes(o.value)) { o.disabled = true; o.textContent = `${this.loaderName(o.value)} (not in the Windows preview yet)`; }
-        });
         if (old && select.selectedOptions[0] && select.selectedOptions[0].disabled) { select.value = 'vanilla'; this.loadDeployVersions(); }
         const note = document.getElementById('deploy-loader-note');
         const loader = select.value;

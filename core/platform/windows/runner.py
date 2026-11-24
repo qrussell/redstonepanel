@@ -579,6 +579,65 @@ class Service:
 
 
 # ---------------------------------------------------------------------------
+# runner.py service UNIT --task BLOB: one program as the server's own account
+# ---------------------------------------------------------------------------
+def read_task(blob):
+    """The task on a service command line (services.task_command): {argv, cwd, env, timeout}."""
+    import base64
+    task = json.loads(base64.urlsafe_b64decode(blob.encode("ascii")).decode("utf-8"))
+    if not (isinstance(task, dict) and isinstance(task.get("argv"), list) and task["argv"]
+            and all(isinstance(a, str) for a in task["argv"]) and isinstance(task.get("cwd"), str)
+            and isinstance(task.get("env") or {}, dict)):
+        raise ValueError("Not a task.")
+    return task
+
+
+class TaskService(Service):
+    """The server's service, pointed for one run at a task (a mod loader's installer) by the
+    panel: the program runs as the server's own account, its output goes to task-output.log and
+    its exit status to task-result.json in the unit's journal folder, and the service stops."""
+
+    def __init__(self, unit, blob):
+        super().__init__(unit)
+        self.blob = blob
+
+    def supervise(self):
+        out_path = os.path.join(self.journal.dir, "task-output.log")
+        result = {"code": 1}
+        try:
+            task = read_task(self.blob)
+            env = dict(os.environ)
+            env.update({str(k): str(v) for k, v in (task.get("env") or {}).items()})
+            timeout = float(task.get("timeout") or 3600)
+            self.report(_win.SERVICE_RUNNING)
+            job = Job()
+            with open(out_path, "wb") as out:
+                p = subprocess.Popen(_win.resolve_program(task["argv"]), cwd=task["cwd"], env=env,
+                                     stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                                     creationflags=_win.CREATE_NO_WINDOW)
+                try:
+                    job.add(p)
+                except OSError:
+                    pass
+                deadline = time.time() + timeout
+                while p.poll() is None:
+                    if self.stop_asked.is_set() or time.time() > deadline:
+                        job.kill()
+                        break
+                    time.sleep(0.5)
+                result["code"] = p.wait()
+            job.close()
+        except (OSError, ValueError) as e:
+            try:
+                with open(out_path, "a", encoding="utf-8") as out:
+                    out.write(f"\n[runner] {type(e).__name__}: {e}\n")
+            except OSError:
+                pass
+        _write_json(os.path.join(self.journal.dir, "task-result.json"), result)
+        return 0                         # the service ended as asked; the task's own status is in the file
+
+
+# ---------------------------------------------------------------------------
 # runner.py run UNIT / exec NAME -- CMD
 # ---------------------------------------------------------------------------
 def run_once(unit, argv=None, cwd=None, env=None, timeout=None, low_priority=False):
@@ -762,6 +821,9 @@ def main(argv=None):
     cmd = argv[0] if argv else ""
     if cmd == "service" and len(argv) == 2 and UNIT_RE.fullmatch(argv[1]):
         Service(argv[1]).dispatch()
+        return 0
+    if cmd == "service" and len(argv) == 4 and UNIT_RE.fullmatch(argv[1]) and argv[2] == "--task":
+        TaskService(argv[1], argv[3]).dispatch()
         return 0
     if cmd == "run" and len(argv) == 2 and UNIT_RE.fullmatch(argv[1]):
         return run_once(argv[1])

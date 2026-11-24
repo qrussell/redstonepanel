@@ -162,14 +162,25 @@ def take_for_game_account(path):
     return _grant(path)
 
 
+AS_SERVER = "<as the server's own account>"
+
+
 def as_game_account(cmd):
-    """cmd, unchanged: Windows can't start a program as a service's account from outside the
-    service. The panel refuses the few jobs that need it (mod loader installers) in the preview."""
-    return list(cmd)
+    """cmd, marked to run as the account of the server whose folder it runs in. Windows can't
+    start a program as a service's virtual account from outside the service, so run_program()
+    runs it through the server's own service, once (services.run_as_server)."""
+    return [AS_SERVER] + list(cmd)
 
 
 def can_run_as_game_account():
-    return False
+    return True
+
+
+def _changed_env(env):
+    """The variables env sets differently from the panel's own (all a task needs to be told)."""
+    if not env:
+        return {}
+    return {str(k): str(v) for k, v in env.items() if os.environ.get(k) != v}
 
 
 def is_admin():
@@ -225,25 +236,59 @@ def tail(path, lines=3000):
 
 
 def run_program(cmd, cwd=None, env=None, timeout=None):
-    """Runs a program the panel was handed and returns the CompletedProcess, output as text."""
+    """Runs a program the panel was handed and returns the CompletedProcess, output as text. A
+    command from as_game_account() runs as the account of the server whose folder cwd is in."""
+    if cmd and cmd[0] == AS_SERVER:
+        server = _server_for(cwd or "")
+        if not server:
+            return _done(1, stderr=f"{cwd} isn't in a game server's folder, so there is no account to run it as.")
+        from core.platform.windows import services as _services
+        return _services.run_as_server(server, list(cmd[1:]), cwd, _changed_env(env), timeout)
     return _win.quiet(cmd, cwd=cwd, env=env, timeout=timeout)
 
 
+def _is_link(path):
+    """A symbolic link or a junction (both are reparse points Windows follows)."""
+    return os.path.islink(path) or getattr(os.path, "isjunction", lambda p: False)(path)
+
+
+def _no_links_between(top, path):
+    """True when no folder from top down to path (path included, if it exists) is a link or a
+    junction. The panel writes into server folders as the system, so a junction the server's
+    account left there must never carry a write somewhere else (Linux does these as the game
+    account instead)."""
+    rel = os.path.relpath(path, top)
+    if rel == ".":
+        return not _is_link(top)
+    if rel.startswith(".."):
+        return False
+    here = top
+    for part in rel.split(os.sep):
+        here = os.path.join(here, part)
+        if os.path.lexists(here) and _is_link(here):
+            return False
+    return True
+
+
 def copy_into(source, dest, wrap=None):
-    """Copies everything in folder `source` over folder `dest`, replacing files that are there
-    and never following links."""
+    """Copies everything in folder `source` over folder `dest`, replacing files that are there,
+    never following links on either side (a link or junction in dest is refused)."""
     try:
         for root, dirs, files in os.walk(source):
             rel = os.path.relpath(root, source)
             target = dest if rel == "." else os.path.join(dest, rel)
+            if not _no_links_between(dest, target):
+                return _done(1, stderr=f"{target} is a link or junction; nothing more was copied.")
             os.makedirs(target, exist_ok=True)
-            dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d))]
+            dirs[:] = [d for d in dirs if not _is_link(os.path.join(root, d))]
             for name in files:
                 src, dst = os.path.join(root, name), os.path.join(target, name)
-                if os.path.islink(src):
+                if _is_link(src):
                     continue
                 if os.path.lexists(dst):
-                    _force(os.remove, dst, None)
+                    if os.path.isdir(dst) and not _is_link(dst):
+                        return _done(1, stderr=f"{dst} is a folder; nothing more was copied.")
+                    _force(os.remove, dst, None)        # a link goes, never what it points at
                 shutil.copy2(src, dst, follow_symlinks=False)
     except OSError as e:
         return _done(1, stderr=str(e))
@@ -251,14 +296,18 @@ def copy_into(source, dest, wrap=None):
 
 
 def remove_files(folder, names, wrap=None):
-    """Deletes files (paths relative to folder); ones that aren't there are skipped."""
+    """Deletes files (paths relative to folder); ones that aren't there are skipped, and so are
+    ones reached through a link or junction."""
     for name in names:
+        path = os.path.join(folder, name)
+        if not _no_links_between(folder, os.path.dirname(path)):
+            continue
         try:
-            os.remove(os.path.join(folder, name))
+            os.remove(path)
         except FileNotFoundError:
             pass
         except OSError:
-            _force(os.remove, os.path.join(folder, name), None)
+            _force(os.remove, path, None)
     return _done()
 
 

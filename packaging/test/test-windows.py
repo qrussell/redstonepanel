@@ -430,6 +430,7 @@ def main():
     limits(p, args, name, listening)
     join_and_terminal(p, name)
     bedrock(p, args)
+    loaders(p, args)
     servers_folder(p, args, body)
     found_servers(p, args)
 
@@ -546,6 +547,46 @@ def bedrock(p, args):
     if not args.keep:
         code, r = p.call("DELETE", f"/api/servers/{name}?keep_world=false", timeout=300)
         check("the Bedrock server is removed", code == 200 and wait("gone", lambda: service_state(name) is None, 60),
+              f"{code} {r}")
+
+
+def _deploy(p, body):
+    """Deploys, installing the Java the server asks for first when it asks."""
+    code, dep = p.post("/api/servers/deploy", body, timeout=1800)
+    if code == 409 and isinstance((dep or {}).get("java"), dict):
+        major = dep["java"].get("major") or dep["java"].get("required")
+        p.post("/api/java/runtimes/install", {"major": major})
+
+        def done():
+            c, j = p.get("/api/java/runtimes/job")
+            j = (j or {}).get("job") or {}
+            return j if j.get("state") not in ("running", None) else None
+        wait("java install", done, 600, every=3)
+        code, dep = p.post("/api/servers/deploy", body, timeout=1800)
+    return code, dep
+
+
+def loaders(p, args):
+    """1.23: Forge's installer runs as the new server's own account, through its service."""
+    section("A Forge server (its installer as the server's account)")
+    code, dep = _deploy(p, {"edition": "java", "loader": "forge"})
+    name = (dep or {}).get("name")
+    if not check("a Forge server is deployed", code == 200 and bool(name), f"{code} {str(dep)[:600]}"):
+        return
+    d = os.path.join(args.home, "servers", name)
+    code, out = run(["cmd", "/c", "dir", "/q", os.path.join(d, "libraries")])
+    check("the installer's files belong to the server's own account", name.lower() in out.lower(), out[-600:])
+    cmd = service_command(name) or ""
+    check("its service runs the server again, not the installer", " service " in cmd and "--task" not in cmd, cmd)
+    unit = open(os.path.join(args.home, "services", f"{name}.service"), encoding="utf-8").read()
+    check("it starts from Forge's Windows arguments file", "win_args.txt" in unit, unit[-400:])
+    journal = os.path.join(args.home, "journal", f"{name}.service", "output.log")
+    check("Forge starts (Done)", wait("forge", lambda: os.path.isfile(journal) and "Done (" in
+                                      open(journal, encoding="utf-8", errors="replace").read(), 600, every=5),
+          open(journal, encoding="utf-8", errors="replace").read()[-800:] if os.path.isfile(journal) else "no output")
+    if not args.keep:
+        code, r = p.call("DELETE", f"/api/servers/{name}?keep_world=false", timeout=300)
+        check("the Forge server is removed", code == 200 and wait("gone", lambda: service_state(name) is None, 60),
               f"{code} {r}")
 
 

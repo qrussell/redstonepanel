@@ -463,15 +463,15 @@ class Preview(unittest.TestCase):
         for method, path in (("POST", "/api/settings/cluster"), ("POST", "/api/cluster/moves"),
                              ("PUT", "/api/settings/sftp"),
                              ("POST", "/api/panel/update"), ("POST", "/api/settings/backup-storage"),
-                             ("PUT", "/api/servers/minecraft-a/offsite/t1"), ("POST", "/api/servers/modpack"),
-                             ("POST", "/api/servers/minecraft-a/modpack/update"),
+                             ("PUT", "/api/servers/minecraft-a/offsite/t1"),
                              ):
             self.assertIn("Windows preview", main.not_yet(method, path, windows=True) or "", f"{method} {path}")
             self.assertIsNone(main.not_yet(method, path, windows=False), f"{method} {path}")
         for method, path in (("GET", "/api/settings/cluster"), ("POST", "/api/servers/deploy"),
                              ("POST", "/api/servers/minecraft-a/backups"), ("PUT", "/api/settings"),
                              ("PUT", "/api/settings/notifications"), ("POST", "/api/java/runtimes/install"),
-                             ("GET", "/api/servers/minecraft-a/modpack"),
+                             ("GET", "/api/servers/minecraft-a/modpack"), ("POST", "/api/servers/modpack"),
+                             ("POST", "/api/servers/minecraft-a/modpack/update"),
                              ("PUT", "/api/servers/minecraft-a/resources"),
                              ("POST", "/api/servers/minecraft-a/phantom/install")):
             self.assertIsNone(main.not_yet(method, path, windows=True), f"{method} {path}")
@@ -482,7 +482,7 @@ class Preview(unittest.TestCase):
             for loader in ("quilt", "forge", "neoforge"):
                 with self.assertRaises(javaservers.JavaServerError) as e:
                     javaservers.list_versions(loader)
-                self.assertIn("Windows preview", str(e.exception))
+                self.assertIn("can't be run as the game account", str(e.exception))
             javaservers.require_installer_support("fabric")
             javaservers.require_installer_support("paper")
 
@@ -492,6 +492,72 @@ class Preview(unittest.TestCase):
             self.assertTrue(manager.bedrock_supported("AMD64"))
             self.assertFalse(manager.bedrock_supported("ARM64"))
             self.assertIn("x64) Windows", manager.bedrock_unsupported_message())
+
+
+class Installers(unittest.TestCase):
+    """1.23: Quilt, Forge and NeoForge installers run as the server's own account, through its
+    service, once."""
+
+    def test_a_marked_command_runs_through_the_servers_service(self):
+        from core.platform.windows import services, system
+        cmd = system.as_game_account(["java", "-jar", "installer.jar", "--installServer", "D:\\s\\minecraft-a"])
+        self.assertTrue(system.can_run_as_game_account())
+        self.assertEqual(cmd[0], system.AS_SERVER)
+        seen = {}
+
+        def fake_run(server, argv, cwd, env, timeout):
+            seen.update(server=server, argv=argv, cwd=cwd, env=env, timeout=timeout)
+            return "done"
+        with mock.patch.object(system, "_server_for", return_value="minecraft-a"), \
+                mock.patch.object(services, "run_as_server", fake_run), \
+                mock.patch.dict(os.environ, {"KEEP": "same"}):
+            r = system.run_program(cmd, cwd="D:\\s\\minecraft-a", env={"KEEP": "same", "HOME": "D:\\s\\minecraft-a"},
+                                   timeout=900)
+        self.assertEqual(r, "done")
+        self.assertEqual(seen["server"], "minecraft-a")
+        self.assertEqual(seen["argv"][:2], ["java", "-jar"])
+        self.assertEqual(seen["env"], {"HOME": "D:\\s\\minecraft-a"})       # only what differs
+        with mock.patch.object(system, "_server_for", return_value=None):
+            self.assertEqual(system.run_program(cmd, cwd="C:\\Windows").returncode, 1)
+
+    def test_the_task_rides_on_a_command_line_that_is_still_the_panels(self):
+        from core.platform.windows import runner, services
+        task = {"argv": ["java", "-jar", "x.jar"], "cwd": "D:\\s\\minecraft-a", "env": {"TEMP": "t"}, "timeout": 60}
+        line = services.task_command("minecraft-a.service", task)
+        self.assertIn(" service minecraft-a.service --task ", line)
+        self.assertTrue(_win.is_ours({"command": line}))
+        self.assertEqual(runner.read_task(line.rsplit(" ", 1)[1]), task)
+        with self.assertRaises(ValueError):
+            runner.read_task("e30=")                               # {} is not a task
+
+    def test_forge_starts_from_its_windows_arguments_file(self):
+        from core import javaservers
+        with tempfile.TemporaryDirectory() as d:
+            base = os.path.join(d, "libraries", "net", "minecraftforge", "forge", "1.21.1-52.0.1")
+            os.makedirs(base)
+            for n in ("unix_args.txt", "win_args.txt"):
+                open(os.path.join(base, n), "w").close()
+            info = {"loader": "forge", "launch": "@libraries/net/minecraftforge/forge/1.21.1-52.0.1/unix_args.txt"}
+            self.assertTrue(javaservers.launch_args(d, info).endswith("/unix_args.txt"))
+            with mock.patch.object(javaservers.paths, "WINDOWS", True):
+                self.assertTrue(javaservers.launch_args(d, info).endswith("/win_args.txt"))
+                self.assertTrue(os.path.isfile(javaservers.launch_file(d, info)))
+
+    def test_copying_as_the_system_never_goes_through_a_link(self):
+        from core.platform.windows import system
+        with tempfile.TemporaryDirectory() as t:
+            src, dest, outside = (os.path.join(t, n) for n in ("src", "dest", "outside"))
+            os.makedirs(os.path.join(src, "mods"))
+            open(os.path.join(src, "mods", "a.jar"), "w").close()
+            os.makedirs(dest)
+            os.makedirs(outside)
+            os.symlink(outside, os.path.join(dest, "mods"))
+            r = system.copy_into(src, dest)
+            self.assertEqual(r.returncode, 1)
+            self.assertEqual(os.listdir(outside), [])
+            open(os.path.join(outside, "keep.txt"), "w").close()
+            system.remove_files(dest, [os.path.join("mods", "keep.txt")])
+            self.assertTrue(os.path.exists(os.path.join(outside, "keep.txt")))
 
 
 class Bedrock(unittest.TestCase):

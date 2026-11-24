@@ -11,6 +11,7 @@ The functions and their answers are the ones the Linux side gives ("active", "in
 import datetime
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -533,6 +534,8 @@ def reload(elevate=False, quiet=False):
             cfg = _win.service_config(name)
             if not _win.is_ours(cfg):
                 continue                              # not one of ours
+            if f" {TASK_FLAG} " in (cfg.get("command") or ""):
+                continue                              # setting a new server up (run_as_server)
             _win.stop_service(name, wait=120)
             _win.delete_service(name)
         except OSError as e:
@@ -674,6 +677,87 @@ def run_detached(name, command, description=None, low_priority=False, no_block=F
     except OSError as e:
         return _done(1, stderr=str(e))
     return _done()
+
+
+# ---------------------------------------------------------------------------
+# A program as a server's own account (1.23: mod loader installers)
+# ---------------------------------------------------------------------------
+TASK_FLAG = "--task"
+
+
+def task_command(unit_name, task):
+    """The service command line that runs one task (argv, cwd, env, timeout) as the service's
+    account instead of the server. It still reads "runner.py service UNIT", so it is the panel's."""
+    import base64
+    blob = base64.urlsafe_b64encode(json.dumps(task, separators=(",", ":")).encode("utf-8")).decode("ascii")
+    return subprocess.list2cmdline(_win.runner_command("service", unit_name, TASK_FLAG, blob))
+
+
+def run_as_server(server, argv, cwd, env=None, timeout=None):
+    """Runs argv in cwd as the server's own account (NT SERVICE\\<server>) and waits for it.
+    Windows only starts a program as a virtual account through that account's service, so the
+    server's service is pointed at the task for one run (made for the occasion if the server is
+    new), started, and put back. The server must be stopped. Returns a CompletedProcess with the
+    output; raises subprocess.TimeoutExpired when it runs past timeout."""
+    unit_name = unit(server)
+    state, _pid = _win.service_status(server)
+    if state not in (None, "stopped"):
+        return _done(1, stderr=f"{server} is running; it must be stopped first.")
+    if state is not None and not _win.is_ours(_win.service_config(server)):
+        return _done(1, stderr=f"Windows has a service named {server} that RedstonePanel didn't make.")
+    journal = paths.journal_dir(unit_name)
+    os.makedirs(journal, exist_ok=True)
+    out_path, result_path = os.path.join(journal, "task-output.log"), os.path.join(journal, "task-result.json")
+    for f in (out_path, result_path):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    temp = os.path.join(cwd, ".redstonepanel-temp")
+    os.makedirs(temp, exist_ok=True)
+    env = dict(env or {}, TEMP=temp, TMP=temp)
+    task = {"argv": [str(a) for a in argv], "cwd": cwd, "env": env, "timeout": timeout}
+    _win.ensure_service(server, task_command(unit_name, task), f"RedstonePanel: {server} (setting up)",
+                        f"Setting up {server}. Managed by RedstonePanel.", _win.service_account(server))
+    sid = _win.service_sid(server)
+    _win.grant(journal, sid)
+    _win.grant(cwd, sid)
+    try:
+        _win.inherit_rights_below(cwd)
+    except (OSError, AttributeError):
+        pass
+    timed_out = False
+    try:
+        _win.start_service(server, wait=60)
+        deadline = time.time() + (timeout or 3600) + 30
+        while _win.service_status(server)[0] not in ("stopped", None):
+            if time.time() > deadline:
+                timed_out = True
+                _win.stop_service(server, wait=60)
+                break
+            time.sleep(1)
+    finally:
+        try:
+            if units.load(unit_name) is not None:
+                _register(unit_name)                     # back to running the server
+            else:
+                _win.delete_service(server)              # a new server: made again with its unit
+        except OSError as e:
+            _log(f"[WARNING] Couldn't put the service {server} back after setting it up: {e}")
+        shutil.rmtree(temp, ignore_errors=True)
+    try:
+        with open(out_path, encoding="utf-8", errors="replace") as f:
+            output = f.read()
+    except OSError:
+        output = ""
+    if timed_out:
+        raise subprocess.TimeoutExpired(argv, timeout or 0, output)
+    try:
+        with open(result_path, encoding="utf-8") as f:
+            code = int(json.load(f).get("code"))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return _done(1, stdout=output, stderr="The task didn't say how it ended.")
+    return subprocess.CompletedProcess(argv, code, output, "")
 
 
 # ---------------------------------------------------------------------------

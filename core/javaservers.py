@@ -283,11 +283,11 @@ def mojang_version(minecraft):
 
 def require_installer_support(loader):
     """Quilt, Forge and NeoForge are set up by their own installer, which is other people's code
-    and so runs as the game account. Where that can't be done (the Windows preview), they are
-    refused before anything is made."""
+    and so runs as the game account (on Windows, the server's own account). Where that can't be
+    done, they are refused before anything is made."""
     if loader in INSTALLER_LOADERS and not system.can_run_as_game_account():
-        raise JavaServerError(f"{LOADERS[loader]} servers aren't in the Windows preview yet. Vanilla, Paper, "
-                              f"Purpur and Fabric work here.")
+        raise JavaServerError(f"{LOADERS[loader]} servers can't be set up here: their installer can't be run as "
+                              f"the game account. Vanilla, Paper, Purpur and Fabric work.")
 
 
 def list_versions(loader):
@@ -619,6 +619,11 @@ def launch_args(d, info=None):
     launch = info.get("launch") if isinstance(info, dict) else None
     if info.get("loader") in INSTALLER_LOADERS and isinstance(launch, str) and LAUNCH_RE.match(launch) \
             and ".." not in launch:
+        if paths.WINDOWS and launch.endswith("/unix_args.txt"):
+            # Forge and NeoForge write both files; Windows' has ";" between classpath entries
+            win = launch[:-len("unix_args.txt")] + "win_args.txt"
+            if os.path.isfile(os.path.join(d, win[1:])):
+                return win
         return launch
     return "-jar server.jar"
 
@@ -752,7 +757,13 @@ def adopt(staging, d):
             if os.path.isdir(src) and not os.path.islink(src):
                 if os.path.isdir(dst) and not os.path.islink(dst):
                     import shutil
-                    shutil.copytree(src, dst, dirs_exist_ok=True, symlinks=True)
+                    if paths.WINDOWS:
+                        # the system writes here, not the game account: never through a junction
+                        r = system.copy_into(src, dst)
+                        if r.returncode != 0:
+                            raise JavaServerError(f"Couldn't put {name} in place: {r.stderr.strip()[-300:]}")
+                    else:
+                        shutil.copytree(src, dst, dirs_exist_ok=True, symlinks=True)
                     shutil.rmtree(src, ignore_errors=True)
                     continue
             os.replace(src, dst)
