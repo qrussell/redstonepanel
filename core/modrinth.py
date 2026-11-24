@@ -9,11 +9,12 @@ A "pick" is the build to install for a server, normalised for both sources:
      "requires": [{"source": "modrinth", "project": "..."}], "notes": []}
 """
 import json
+import os
 import urllib.parse
 
 from core.sources import SourceError, get_json
 
-API = "https://api.modrinth.com/v2"
+API = os.environ.get("RP_MODRINTH_API") or "https://api.modrinth.com/v2"      # the override is a test stand-in
 SITE = "https://modrinth.com"
 HOSTS = {"cdn.modrinth.com"}
 # What each kind of server loads (Quilt also loads Fabric mods; Purpur is Paper with extras)
