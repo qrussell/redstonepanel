@@ -1,6 +1,10 @@
 """This machine on Linux: its addresses, accounts and file ownership."""
+import contextlib
+import ctypes
+import os
 import pwd
 import subprocess
+import threading
 
 from core.platform import paths
 from core.platform.linux._run import logged, quiet, _opt
@@ -39,8 +43,9 @@ def ensure_game_account(home):
 
 
 def give_to_game_account(path):
-    """Hands a folder and everything in it to the game account."""
-    return logged(["chown", "-R", f"{GAME_ACCOUNT}:{GAME_ACCOUNT}", path])
+    """Hands a folder and everything in it to the game account. -h: a link in it changes
+    owner itself; what it points to never does."""
+    return logged(["chown", "-R", "-h", f"{GAME_ACCOUNT}:{GAME_ACCOUNT}", path])
 
 
 def java_version_text(java="java"):
@@ -54,18 +59,25 @@ def delete_tree(path):
 
 
 def make_executable(path):
-    return logged(["chmod", "+x", path])
+    """chmod +x, on the file itself: a link there is refused, not followed."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            os.fchmod(fd, os.fstat(fd).st_mode & 0o7777 | 0o111)
+        finally:
+            os.close(fd)
+    except OSError:
+        return 1
+    return 0
 
 
 def tail(path, lines=3000):
-    """The last lines of a file the game account owns. Returns (text, error)."""
-    err = ""
-    for cmd in (["sudo", "-n", "tail", "-n", str(lines), path], ["tail", "-n", str(lines), path]):
-        r = quiet(cmd)
-        if r.returncode == 0:
-            return r.stdout, ""
-        err = (r.stderr or "").strip()
-    return "", err
+    """The last lines of a file the game account owns. Returns (text, error). Read as the game
+    account, so a log replaced by a link to a root-only file shows nothing."""
+    r = quiet(as_game_account(["tail", "-n", str(lines), "--", path]))
+    if r.returncode == 0:
+        return r.stdout, ""
+    return "", (r.stderr or "").strip()
 
 
 def is_admin():
@@ -81,9 +93,83 @@ def as_game_account(cmd):
     return ["runuser", "-u", GAME_ACCOUNT, "--"] + list(cmd)
 
 
+# ---------------------------------------------------------------------------
+# Touching files in a game server's folder
+#
+# The game account owns its servers' folders, and the code it runs (the server, its plugins
+# and mods) can put a link anywhere in them: server.properties -> /etc/shadow. The panel runs
+# as root, so a plain open() there would follow the link with root's rights. Inside
+# game_files() this thread uses the game account's rights for every file operation instead
+# (Linux's per-thread filesystem user and group, setfsuid/setfsgid), so a link only reaches
+# what the game account could reach anyway, and new files belong to it. Other threads and
+# everything else about the process stay root.
+# ---------------------------------------------------------------------------
+_fs = threading.local()
+
+
+def _libc():
+    lib = getattr(_libc, "lib", None)
+    if lib is None:
+        lib = _libc.lib = ctypes.CDLL(None, use_errno=True)
+    return lib
+
+
+def _set_fs_ids(uid, gid):
+    lib = _libc()
+    # Group first, while this thread may still change it; each call returns the previous id,
+    # and asking for -1 (invalid) only reports the current one
+    lib.setfsgid(gid)
+    lib.setfsuid(uid)
+    if lib.setfsuid(-1) != uid or lib.setfsgid(-1) != gid:
+        raise OSError(f"Couldn't switch file access to uid {uid}, gid {gid}.")
+
+
+@contextlib.contextmanager
+def game_files():
+    """with game_files(): ... touches files with the game account's rights, not root's.
+    Nests; does nothing when the panel doesn't run as root or there is no game account yet
+    (then there are no game server folders either)."""
+    if getattr(_fs, "uid", None) is not None or os.geteuid() != 0:
+        yield                 # already switched, or nothing to switch from
+        return
+    try:
+        pw = pwd.getpwnam(GAME_ACCOUNT)
+    except KeyError:
+        yield
+        return
+    if os.getgroups():
+        # The root group (and any other) would still count for file access; root itself never
+        # needs them
+        os.setgroups([])
+    _set_fs_ids(pw.pw_uid, pw.pw_gid)
+    _fs.uid, _fs.gid = pw.pw_uid, pw.pw_gid
+    try:
+        yield
+    finally:
+        _fs.uid = _fs.gid = None
+        _set_fs_ids(0, 0)
+
+
+@contextlib.contextmanager
+def panel_files():
+    """Inside game_files(): back to the panel's own rights for a moment, to write its own log or
+    data. Does nothing outside game_files()."""
+    uid, gid = getattr(_fs, "uid", None), getattr(_fs, "gid", None)
+    if uid is None:
+        yield
+        return
+    _set_fs_ids(0, 0)
+    _fs.uid = _fs.gid = None
+    try:
+        yield
+    finally:
+        _set_fs_ids(uid, gid)
+        _fs.uid, _fs.gid = uid, gid
+
+
 def take_for_game_account(path):
     """give_to_game_account() without the activity log."""
-    return quiet(["chown", "-R", f"{GAME_ACCOUNT}:{GAME_ACCOUNT}", path])
+    return quiet(["chown", "-R", "-h", f"{GAME_ACCOUNT}:{GAME_ACCOUNT}", path])
 
 
 def run_program(cmd, cwd=None, env=None, timeout=None):

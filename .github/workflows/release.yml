@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies, test-offsite, test-bedrock-firewall, test-bedrock-update, test-bedrock-stop, test-port-forwarding, test-crashes, test-permissions-sftp, test-convert, test-loaders-modpacks, test-found, test-chat-commands, test-join-page, test-player-pack]
+        script: [test-cluster, test-cluster-phase2, test-move, test-backup-copies, test-offsite, test-bedrock-firewall, test-bedrock-update, test-bedrock-stop, test-port-forwarding, test-crashes, test-permissions-sftp, test-convert, test-loaders-modpacks, test-found, test-chat-commands, test-join-page, test-player-pack, test-game-files]
     name: ${{ matrix.script }}
     steps:
       - uses: actions/checkout@v7

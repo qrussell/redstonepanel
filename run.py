@@ -142,6 +142,12 @@ def main():
     # Any panel: copy backups to SSH or S3 storage (1.16.11), retrying what's missing or failed
     from core import backup_targets
     backup_targets.sweeper()
+    # Once after upgrading to 1.21.8: files the panel wrote in server folders as root go to the
+    # game account, since it now works there as that account (before anything below writes there)
+    try:
+        manager.upgrade_game_folder_owners()
+    except Exception as e:
+        manager.write_log(f"[SYSTEM] Handing server files to the game account failed: {e}")
     # Once after upgrading to 1.16.11: open TCP server-port and UDP 7551 for Bedrock servers
     # without a transport line (NetherNet by default), which only had UDP server-port
     try:

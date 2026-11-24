@@ -26,10 +26,8 @@ import io
 import json
 import os
 import re
-import shutil
 import subprocess    # noqa: F401  (unused here since 1.21; tests replace subprocess.run through this module)
 import tarfile
-import tempfile
 import time
 
 from core import manager, notify, properties, rcon
@@ -267,7 +265,10 @@ def _add_tree(tar, d, skip_dirs=(), full=False):
                 continue
             path = os.path.join(root, name)
             try:
-                tar.add(path, arcname=rel, recursive=False)
+                # Read as the game account: a file swapped for a link mid-walk can't add a
+                # root-only file to a backup anyone with access to it can download
+                with system.game_files():
+                    tar.add(path, arcname=rel, recursive=False)
             except FileNotFoundError:
                 pass          # deleted by the running server while we walked
 
@@ -316,7 +317,7 @@ def _bedrock_hold(server, d, timeout=60):
         for _ in range(10):          # the screen log is flushed every second
             time.sleep(0.5)
             try:
-                with open(log, "r", encoding="utf-8", errors="replace") as f:
+                with system.game_files(), open(log, "r", encoding="utf-8", errors="replace") as f:
                     f.seek(offset)
                     files = parse_bedrock_file_list(f.read())
             except OSError:
@@ -333,7 +334,7 @@ def _add_held_files(tar, d, files):
         info.size = size
         info.mtime = int(time.time())
         info.mode = 0o644
-        with open(full, "rb") as f:
+        with system.game_files(), open(full, "rb") as f:
             # tarfile copies exactly info.size bytes, so the part written after the hold is left out
             tar.addfile(info, f)
 
@@ -541,22 +542,25 @@ def restore_backup(server, filename):
         services.stop(server)
     try:
         pre = run_backup(server, "pre-restore")
-        staging = tempfile.mkdtemp(prefix=".redstonepanel-restore-", dir=d)
+        # The panel opens the backup (its own file); everything in the server folder is done
+        # as the game account, so a link the game left there can't move a write elsewhere
+        staging = manager.game_temp_dir(d, ".redstonepanel-restore-")
         try:
             with tarfile.open(path, "r:gz") as tar:
                 members = [m for m in tar.getmembers()
                            if any(m.name == w or m.name.startswith(w + "/") for w in worlds)]
-                tar.extractall(os.path.join(staging, "new"), members=members, filter="data")
-            old = os.path.join(staging, "old")
-            os.makedirs(old)
-            for w in worlds:
-                target = os.path.join(d, w)
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                if os.path.lexists(target):
-                    os.rename(target, os.path.join(old, w.replace("/", "_")))
-                os.rename(os.path.join(staging, "new", w), target)
+                with system.game_files():
+                    tar.extractall(os.path.join(staging, "new"), members=members, filter="data")
+                    old = os.path.join(staging, "old")
+                    os.makedirs(old)
+                    for w in worlds:
+                        target = os.path.join(d, w)
+                        os.makedirs(os.path.dirname(target), exist_ok=True)
+                        if os.path.lexists(target):
+                            os.rename(target, os.path.join(old, w.replace("/", "_")))
+                        os.rename(os.path.join(staging, "new", w), target)
         finally:
-            shutil.rmtree(staging, ignore_errors=True)
+            manager.remove_game_tree(staging)
         if manager.read_properties(d).get("level-name") != level:
             manager.write_properties(d, {"level-name": level})
         system.give_to_game_account(d)

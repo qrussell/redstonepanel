@@ -12,7 +12,10 @@ import shutil
 import stat
 import tarfile
 import tempfile
+import time
 import zipfile
+
+from core.platform import system
 
 JUNK = {"__MACOSX", ".DS_Store", "Thumbs.db"}   # added by macOS/Windows zip tools
 
@@ -113,3 +116,37 @@ def unpack(path, parent):
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
+
+
+def zip_tree(src, zip_path):
+    """Zips the folder src (a server or world folder, for a download) into zip_path.
+    The game owns these folders and can put links in them, so links are left out, never
+    followed: the zip only ever holds the folder's own files and folders."""
+    if os.path.islink(src) or not os.path.isdir(src):
+        raise ArchiveError(f"{os.path.basename(src)} isn't a folder.")
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+        for root, dirs, files in os.walk(src):
+            dirs[:] = sorted(n for n in dirs if not os.path.islink(os.path.join(root, n)))
+            rel_root = os.path.relpath(root, src)
+            if rel_root != ".":
+                z.writestr(zipfile.ZipInfo(rel_root.replace(os.sep, "/") + "/"), b"")
+            for name in sorted(files):
+                path = os.path.join(root, name)
+                try:
+                    # as the game account: the zip holds only what the game itself can read
+                    with system.game_files():
+                        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                except OSError:
+                    continue          # a link (ELOOP), unreadable, or deleted while we walked
+                with os.fdopen(fd, "rb") as f:
+                    st = os.fstat(f.fileno())
+                    if not stat.S_ISREG(st.st_mode):
+                        continue
+                    arc = os.path.join(rel_root, name) if rel_root != "." else name
+                    when = time.localtime(max(st.st_mtime, 315532800))[:6]   # zip dates start in 1980
+                    info = zipfile.ZipInfo(arc.replace(os.sep, "/"), when)
+                    info.external_attr = (st.st_mode & 0xFFFF) << 16
+                    info.compress_type = zipfile.ZIP_DEFLATED
+                    with z.open(info, "w", force_zip64=True) as out:
+                        shutil.copyfileobj(f, out, 1024 * 1024)
+    return zip_path

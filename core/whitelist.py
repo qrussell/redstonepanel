@@ -13,6 +13,7 @@ import re
 import uuid
 
 from core import backups, manager, playerlog, rcon
+from core.platform import system
 
 JAVA_NAME = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 GAMERTAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ]{0,14}[A-Za-z0-9]?(#\d{1,4})?$")
@@ -96,13 +97,9 @@ def _java_uuid(server, d, name):
 
 
 def _write(path, entries, d):
-    with open(path, "w") as f:
+    # As the game account: the file is the game's (a link there can't reach anything else)
+    with system.game_files(), open(path, "w") as f:
         json.dump(entries, f, indent=2)
-    try:
-        st = os.stat(os.path.join(d, "server.properties"))
-        os.chown(path, st.st_uid, st.st_gid)
-    except OSError:
-        pass
 
 
 def add(server, name):
