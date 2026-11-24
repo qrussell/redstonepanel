@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.21**. Version numbers are targets, not promises, and your feedback
+What's planned after **1.22**. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -19,13 +19,14 @@ show everything the panel does. It arrives in four releases:
 
 - **1.21: groundwork** *(released)*. The Linux panel is reorganised so one codebase can serve both systems.
   Nothing changes on screen.
-- **1.22: Windows preview.** An installer for Windows 11 and Windows Server 2022 or 2025, for
+- **1.22: Windows preview** *(released)*. An installer for Windows 11 and Windows Server 2022 or 2025, for
   one machine with Java servers: create, console, files, mods and plugins, backups, schedules,
   firewall, webhooks and two-factor sign-in. The first installer is unsigned, so Windows
   shows a warning; checksums are published with it.
-- **1.23: everything on one machine.** Bedrock servers with auto-update, memory and CPU
-  limits, performance history, crash explanations, off-site backups, panel updates from the
-  panel, and the port forwarding guide.
+- **1.23: everything on one machine.** Bedrock servers with auto-update, Quilt, Forge,
+  NeoForge and modpacks, memory and CPU limits, off-site backups, SFTP, the terminal, panel
+  updates from the panel, and the port forwarding guide. (Performance history and crash
+  explanations already came with 1.22.)
 - **1.24: mixed clusters.** Windows and Linux machines in one cluster, with either as the
   master, and servers and backup copies moving between them. Windows stops being a preview.
 

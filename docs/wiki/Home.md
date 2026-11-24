@@ -1,8 +1,9 @@
 # RedstonePanel wiki
 
 **RedstonePanel** is a free, self-hosted web panel for Minecraft **Java** and **Bedrock**
-servers on your own Ubuntu or Debian machine or Raspberry Pi. Every game server is a plain systemd service; the panel
-installs and updates with `apt`. Current version: **1.17.0**.
+servers on your own Ubuntu or Debian machine or Raspberry Pi, and as a preview on a Windows PC.
+Every game server is a plain systemd service (a Windows service on Windows); the panel
+installs and updates with `apt`. Latest version: see [Releases](https://github.com/qrussell/redstonepanel/releases/latest).
 
 <picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/hero.png"><img src="../guide/images/hero.png" alt="The RedstonePanel dashboard"></picture>
 
@@ -10,7 +11,7 @@ installs and updates with `apt`. Current version: **1.17.0**.
 
 | | |
 | --- | --- |
-| ⬇️ **[Installation](Installation.md)** | One command, or apt by hand, or a `.deb`. First steps after installing. |
+| ⬇️ **[Installation](Installation.md)** | One command, or apt by hand, or a `.deb`; on Windows, an installer. First steps after installing. |
 | 📖 **[User Manual](../guide/README.md)** | Every feature, step by step, with screenshots. |
 | ✨ **[What's New](Whats-New.md)** | The highlights of every release, newest first. |
 | 💬 **[Discord](Discord.md)** | Set up a Discord for your community: a private space per Minecraft server, the panel's alerts, chat bridges and voice. |
@@ -24,6 +25,10 @@ curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install
 ```
 
 Then open `http://<your-server>:8080/` and sign in with a Linux account in the `sudo` group.
+
+On Windows, download `RedstonePanel-<version>-x64.msi` from the
+[latest release](https://github.com/qrussell/redstonepanel/releases/latest) and see
+[On Windows (preview)](Installation.md#on-windows-preview).
 
 ## What it does
 
