@@ -9,6 +9,20 @@ the dashboard.
 
 ---
 
+## 1.21.6: player packs *(November 2026)*
+
+- **Player packs**: for a Fabric, Quilt, Forge or NeoForge server, the panel works out which
+  mods players need from the server's own mods folder and offers them on the join page as
+  one download (`.mrpack`) for Modrinth App, Prism Launcher and other launchers.
+- **It follows the server**: add, update or remove a mod and the pack is the new one.
+- Server-only mods are left out, mods players can do without are optional, and a mod Modrinth
+  doesn't know is named on the page.
+- A **Player pack** view in the Mods tab to overrule any line, add extras such as shaders,
+  name the pack or turn it off. Also offered as a packwiz folder. See
+  [Player packs](../guide/README.md#player-packs).
+
+[Release notes](../../release-notes/v1.21.6.md)
+
 ## 1.21.5: join pages for players *(November 2026)*
 
 - **🔗 Join pages**: a public page for each server that tells players how to join, with the
