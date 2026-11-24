@@ -426,6 +426,7 @@ def main():
     check("Restart works", code == 200 and wait("listen", listening, 300, every=5), f"{code} {r}")
     p.put("/api/settings/notifications", {"clear": True})
 
+    join_and_terminal(p, name)
     servers_folder(p, args, body)
     found_servers(p, args)
 
@@ -476,6 +477,31 @@ def after_upgrade(p, args):
     check("its backups are still there", code == 200 and len(ov.get("backups", [])) >= 1, f"{code} {str(ov)[:200]}")
     args.keep = False
     return finish(p, args, name, port)
+
+
+def join_and_terminal(p, name):
+    """1.21.5 join pages work on Windows; 1.21.10's terminal is hidden there."""
+    section("Join pages and the terminal")
+    code, r = p.put("/api/settings/join", {"enabled": True, "port": 8444})
+    listener = (r or {}).get("listener") or {}
+    check("the join pages' port is turned on", code == 200 and listener.get("running"), f"{code} {str(r)[:300]}")
+    code, r = p.put("/api/join-pages/page", {"server": name, "enabled": True})
+    check("the server's join page is turned on", code == 200, f"{code} {str(r)[:200]}")
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:8444/join/{name}", timeout=20) as resp:
+            page_code, page = resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        page_code, page = e.code, ""
+    except (urllib.error.URLError, OSError) as e:
+        page_code, page = 0, str(e)
+    check("its public page answers on port 8444", page_code == 200 and "<html" in page.lower(), f"{page_code} {page[:200]}")
+    code, out = ps("Get-NetFirewallRule -Group RedstonePanel | Get-NetFirewallPortFilter | Select-Object -ExpandProperty LocalPort")
+    check("... and the firewall lets players reach it", "8444" in out.split(), out[-300:])
+    p.put("/api/join-pages/page", {"server": name, "enabled": False})
+    code, r = p.put("/api/settings/join", {"enabled": False, "port": 8444})
+    check("the join pages' port is turned off again", code == 200, f"{code} {str(r)[:200]}")
+    code, t = p.get("/api/terminal")
+    check("the terminal says it isn't on Windows yet", code == 200 and (t or {}).get("supported") is False, f"{code} {str(t)[:200]}")
 
 
 def servers_folder(p, args, body):
