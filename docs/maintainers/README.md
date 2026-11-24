@@ -118,6 +118,13 @@ are already handled. For each one: check the code path, fix real problems in a G
 request, and dismiss the rest on GitHub with the reason ("false positive" or "used in tests")
 so the list stays useful.
 
+The panel runs as root and a game server's folder belongs to the `minecraft` account, which
+can put links in it. Since 1.21.8 every file the panel opens, writes, renames or deletes in a
+server folder is reached either through `core/files.py` (each path step opened with
+`O_NOFOLLOW`) or inside `system.game_files()` (the thread works with `minecraft`'s rights).
+Keep it that way: see the 1.21.8 entry in `docs/design/roadmap.md`, and
+`packaging/test/test-game-files.sh`.
+
 ### Notes for AI assistants
 
 - Read this page and `docs/design/roadmap.md` before changing anything; check the current

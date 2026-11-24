@@ -239,7 +239,7 @@ class LinuxCommands(unittest.TestCase):
         firewall.remove("21200:21300", "udp")
         system.give_to_game_account("/opt/minecraft-java")
         self.assertEqual(self.logged, [["ufw", "allow", "25565/tcp"], ["ufw", "delete", "allow", "21200:21300/udp"],
-                                       ["chown", "-R", "minecraft:minecraft", "/opt/minecraft-java"]])
+                                       ["chown", "-R", "-h", "minecraft:minecraft", "/opt/minecraft-java"]])
         with mock.patch("shutil.which", lambda name: f"/usr/bin/{name}"):
             console.send("minecraft-bedrock", "save hold")
         console.send("minecraft-bedrock", "stop", timeout=10, find=False)

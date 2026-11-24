@@ -1,4 +1,5 @@
 """A pretend machine."""
+import contextlib
 import json
 
 from core.platform import fake
@@ -66,6 +67,17 @@ def is_admin():
 
 def as_game_account(cmd):
     return cmd
+
+
+@contextlib.contextmanager
+def game_files(as_owner_of=None):
+    """Tests run unprivileged: nothing to switch."""
+    yield
+
+
+@contextlib.contextmanager
+def panel_files():
+    yield
 
 
 def take_for_game_account(path):

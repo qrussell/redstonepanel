@@ -1048,6 +1048,17 @@ async def java_missing(request: Request, e: manager.JavaMissing):
                                                          "package": e.package}},
                         status_code=409)
 
+@app.exception_handler(PermissionError)
+async def permission_refused(request: Request, e: PermissionError):
+    """The panel works in server folders as the game account (1.21.8): a file there that the game
+    account can't open, such as a link the server or a plugin made to a system file, is left alone."""
+    name = os.path.basename(getattr(e, "filename", "") or "") or "a file"
+    manager.write_log(f"[SECURITY] Refused {request.method} {request.url.path}: {e}")
+    return JSONResponse({"detail": f"The panel couldn't open {name} with the game account's rights, so it left "
+                                   f"it alone. Check that the file belongs to the minecraft account and "
+                                   f"isn't a link to somewhere outside the server folder."},
+                        status_code=403)
+
 class JavaChoice(BaseModel):
     major: int
 

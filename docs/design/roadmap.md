@@ -2007,6 +2007,49 @@ That run found that a text box turns Windows line endings (CRLF) into LF, which 
 editor did too; the editor now remembers a file's line endings and saves them back. The
 manual's picture uses sample data.
 
+### 1.21.8: security fixes from code scanning *(Nov 2026)*
+
+**Why.** GitHub code scanning (CodeQL), set up on 24 Nov 2026, and the review of its 212 alerts
+that Quentin asked for found real problems along with the false alarms. Quentin chose to ship
+the fixes on their own as 1.21.8 ("the best, not the quickest"), with join pages through a
+proxy moving to 1.21.9.
+
+**How.**
+- **Player names reach the console checked** (!129). Configuration → Players took any text as a
+  Bedrock player's name and, when the Xbox lookups failed, typed it into the server's console
+  with a line break in it (so it could run any command), with the server started as root.
+  Names and IDs are now checked like the whitelist's, and that lookup runs the server as
+  `minecraft`. !133 fixes a name clash in that change that cost Java players their UUID.
+- **Server names and world names** (!130). Every route with a server name in it answers 404
+  before anything else unless the name is a `minecraft*` unit name, a backup's world name must
+  be a plain path inside the server folder, and the website's demo console escapes its text.
+- **The panel works in server folders as the game account.** The panel runs as root, the game
+  account owns its servers' folders, and the server or a plugin can put a link there
+  (`server.properties` → `/etc/shadow`, `level-name=../../etc`). Plain `open()`, `rename()` and
+  `shutil` calls as root followed such links, so settings, operators, the whitelist, a server or
+  world download, a world rename, the Live Chat log and installs could read or change files
+  anywhere. `core/files.py` (Files tab, SFTP) already opened each path step with `O_NOFOLLOW`;
+  everything else now runs inside `system.game_files()`, which switches only the calling
+  thread's file-access user and group to `minecraft` (Linux `setfsuid`/`setfsgid`), so a link
+  reaches only what the game account could reach anyway and new files belong to it. The
+  panel's own log and data are written with `system.panel_files()` from inside such a block.
+  Downloads leave links out; a world outside the folder is refused; `chown -R -h` and
+  `chmod +x` no longer follow a link; staging folders for installs and updates are made by
+  the game account. On the first start of 1.21.8, files the panel wrote in server folders as
+  root before are handed to `minecraft`, or it couldn't change them any more. A file the game
+  account can't open is answered with 403 and logged as `[SECURITY]`.
+
+**As built.** `core/platform/linux/system.py` (`game_files`, `panel_files`; the fake platform
+has both, doing nothing), used in `manager`, `javaservers`, `updates`, `backups`, `convert`,
+`modpacks`, `whitelist`, `playerlog`, `transfer` and `archive.zip_tree`. New code that touches
+a server folder outside `core/files.py` must do it inside `system.game_files()`, must not start
+threads there (they would inherit the switch), and needs the folder to belong to `minecraft`
+first. Tested: `tests/test_game_files.py` (root only: links to root files are refused, new
+files belong to `minecraft`, other threads keep root), `tests/test_player_roles.py`,
+`packaging/test/test-game-files.sh` (27 checks; 16 of them fail on 1.21.7: it plants links
+as `minecraft` and checks that settings, operators, whitelist, downloads, world rename and
+Live Chat never read or change a root-only file), the install test and `test-bedrock-update.sh`.
+
 ### 2.0: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already

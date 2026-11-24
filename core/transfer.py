@@ -34,7 +34,7 @@ import uuid
 
 from core import archive, backups, manager, restarts
 from core.settings import DATA_DIR
-from core.platform import services
+from core.platform import services, system
 
 TRANSFER_DIR = os.path.join(DATA_DIR, "transfers")
 ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -274,7 +274,8 @@ def _pack_changed(tar, d, listing):
         seen[rel] = "d" if stat.S_ISDIR(st.st_mode) else "f" if stat.S_ISREG(st.st_mode) else "l"
         if unchanged(listing.get(rel), st):
             continue
-        tar.add(os.path.join(d, rel), arcname=rel, recursive=False)
+        with system.game_files():           # a file swapped for a link meanwhile can't be read as root
+            tar.add(os.path.join(d, rel), arcname=rel, recursive=False)
         sent += seen[rel] != "d"
     # deleted since, or now another kind of thing (a folder became a file): deleted, then sent again
     gone = sorted(rel for rel, old in listing.items() if seen.get(rel) is None
