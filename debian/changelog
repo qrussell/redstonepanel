@@ -1,3 +1,26 @@
+redstonepanel (1.21.10) noble; urgency=medium
+
+  * Terminal: admins can open a shell on the machine from the browser
+    (Dashboard, and each machine on the Cluster page), on a phone too, with
+    a row of extra keys. Linux only, HTTPS only, off until an admin turns it
+    on under Panel Settings -> Terminal.
+  * The shell always runs as a Linux account, never as the panel: your own
+    account if you signed in to the panel with it, otherwise the account you
+    log in with at its login: prompt. root only when allowed; accounts such
+    as minecraft that can't log in, never. User accounts get no terminal.
+  * Passwords are checked through PAM, with the panel's two-factor code when
+    it is on. Five wrong passwords in 10 minutes block for 10 minutes.
+  * Closes after 15 minutes with nothing typed, after 12 hours and on
+    sign-out. 3 per admin, 10 per machine; Open now lists them with End.
+    Every open, close and failed login is logged; what is typed is not.
+  * Clusters: a node allows a terminal from the master only when its own
+    admin turns it on. Cluster API 8.
+  * Command line: redstonepanel terminal on|off.
+  * Signing out now also stops that sign-in opening terminals.
+  * New dependency: python3-websockets.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 24 Nov 2026 15:40:00 -0000
+
 redstonepanel (1.21.9) noble; urgency=medium
 
   * Join pages: Through a proxy (HAProxy or Cloudflare). HAProxy, for
