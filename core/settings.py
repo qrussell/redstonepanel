@@ -67,6 +67,9 @@ DEFAULTS = {
     "join_proxies": [],
     "join_proxy_only": False,
     "join_url": "",
+    # join_cloudflare: Cloudflare's proxy (orange cloud) sends players here; requests from
+    # Cloudflare's own networks may name the player in CF-Connecting-IP (core/cloudflare.py).
+    "join_cloudflare": False,
 }
 JOIN_PROXIES_MAX = 8
 PANEL_NAME_MAX = 40
@@ -195,10 +198,10 @@ def validate(new):
     if s["sftp_enabled"] and s["join_enabled"] and s["sftp_port"] == s["join_port"]:
         raise SettingsError("SFTP and the join pages need different ports.")
     s["join_proxies"] = clean_join_proxies(s["join_proxies"])
-    if not isinstance(s["join_proxy_only"], bool):
-        raise SettingsError("'Only through the proxy' must be on or off.")
-    if s["join_proxy_only"] and not s["join_proxies"]:
-        raise SettingsError("Enter the proxy's address before allowing only the proxy.")
+    if not isinstance(s["join_proxy_only"], bool) or not isinstance(s["join_cloudflare"], bool):
+        raise SettingsError("The proxy settings must be on or off.")
+    if s["join_proxy_only"] and not s["join_proxies"] and not s["join_cloudflare"]:
+        raise SettingsError("Enter the proxy's address (or turn on Cloudflare) before allowing only the proxy.")
     s["join_url"] = clean_join_url(s["join_url"])
 
     s["servers_folder"] = clean_servers_folder(s["servers_folder"])

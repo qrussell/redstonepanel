@@ -26,6 +26,7 @@ import time
 from collections import deque
 from urllib.parse import quote
 
+from core import cloudflare
 from core import joinpage
 from core import manager
 from core import settings as panel_settings
@@ -358,33 +359,46 @@ def _ip(text):
 
 
 def _from_proxy(ip, proxies):
-    return ip is not None and any(ip in ipaddress.ip_network(n) for n in proxies)
+    return ip is not None and any(ip.version == ipaddress.ip_network(n).version and ip in ipaddress.ip_network(n)
+                                  for n in proxies)
 
 
-def client_ip(peer, forwarded, proxies):
-    """Who the visitor is (1.21.8). A request from one of the admin's proxies may say who it is
+def client_ip(peer, forwarded, proxies, cf_ip=None, use_cloudflare=False):
+    """Who the visitor is (1.21.8). Returns (address text, came through a proxy).
+
+    A request from one of the admin's proxies (HAProxy, a Cloudflare Tunnel) may say who it is
     forwarding for in X-Forwarded-For; the list is read from the right, skipping the proxies
-    themselves, and the first other address is the player. Anyone else's header is ignored,
-    so nobody can dodge the rate limit by writing their own. Returns (address text, via proxy)."""
+    (and Cloudflare, when it's on), and the first other address is the player. A request from
+    Cloudflare's own networks, when the admin turned Cloudflare on, names the player in
+    CF-Connecting-IP. Anyone else's headers are ignored, so nobody can dodge the rate limit by
+    writing their own."""
     ip = _ip(peer)
+    trusted = (lambda a: _from_proxy(a, proxies) or (use_cloudflare and cloudflare.contains(a)))
+    if use_cloudflare and cloudflare.contains(ip):
+        real = _ip(cf_ip)
+        return str(real or ip), True
     if not proxies or not _from_proxy(ip, proxies):
         return (str(ip) if ip else (peer or "?")), False
     for part in reversed([p for p in (forwarded or "").split(",") if p.strip()][-20:]):
-        hop = _ip(part.strip().rsplit(":", 1)[0] if part.count(":") == 1 else part)
+        part = part.strip()
+        hop = _ip(part.rsplit(":", 1)[0] if part.count(":") == 1 else part)
         if hop is None:
             break                       # a broken entry: stop trusting the list here
-        if not _from_proxy(hop, proxies):
+        if not trusted(hop):
             return str(hop), True
     return str(ip), True
 
 
-def handle(method, path, ip, forwarded=None, s=None):
+def handle(method, path, ip, forwarded=None, s=None, cf_ip=None):
     """One request -> Answer. Only GET and HEAD, only under /join. `ip` is the address the
-    connection came from, `forwarded` its X-Forwarded-For header (used only from a proxy)."""
+    connection came from; `forwarded` (X-Forwarded-For) and `cf_ip` (CF-Connecting-IP) are
+    used only from a proxy the admin named."""
     if method not in ("GET", "HEAD") or len(path) > 200:
         return not_found()
     s = s or panel_settings.load()
-    ip, via_proxy = client_ip(ip, forwarded, s.get("join_proxies") or [])
+    if s.get("join_cloudflare"):
+        cloudflare.refresh_if_old()
+    ip, via_proxy = client_ip(ip, forwarded, s.get("join_proxies") or [], cf_ip, bool(s.get("join_cloudflare")))
     if s.get("join_proxy_only") and not via_proxy:
         return not_found()
     if not allowed(ip or "?"):
@@ -462,8 +476,11 @@ async def app(scope, receive, send):
         return
     from starlette.concurrency import run_in_threadpool
     client = scope.get("client") or (None, None)
-    forwarded = ",".join(v.decode("latin-1") for k, v in scope.get("headers") or [] if k == b"x-forwarded-for")
-    answer = await run_in_threadpool(handle, scope.get("method", ""), scope.get("path", ""), client[0], forwarded)
+    headers = scope.get("headers") or []
+    forwarded = ",".join(v.decode("latin-1") for k, v in headers if k == b"x-forwarded-for")
+    cf_ip = next((v.decode("latin-1") for k, v in headers if k == b"cf-connecting-ip"), None)
+    answer = await run_in_threadpool(handle, scope.get("method", ""), scope.get("path", ""), client[0], forwarded,
+                                     None, cf_ip)
     await send({"type": "http.response.start", "status": answer.status, "headers": answer.headers()})
     await send({"type": "http.response.body", "body": b"" if scope.get("method") == "HEAD" else answer.body})
 
@@ -541,7 +558,8 @@ def haproxy_config(backend_host, s=None):
     return "\n".join([
         "# Inside your HTTPS frontend (mode http):",
         "    option forwardfor",
-        "    acl redstonepanel_join path /join or path_beg /join/",
+        "    acl redstonepanel_join path /join",
+        "    acl redstonepanel_join path_beg /join/",
         "    use_backend redstonepanel_join if redstonepanel_join",
         "",
         "backend redstonepanel_join",
@@ -549,6 +567,24 @@ def haproxy_config(backend_host, s=None):
         "    option httpchk GET /join/assets/join.css",
         f"    server panel {backend_host}:{s['join_port']} check{tls}",
     ])
+
+
+def cloudflared_config(s=None):
+    """An ingress rule for a Cloudflare Tunnel (cloudflared on this machine) that sends /join to
+    these pages (1.21.8)."""
+    s = s or panel_settings.load()
+    st = status(s)
+    from urllib.parse import urlsplit
+    host = (urlsplit(s["join_url"]).hostname if s["join_url"] else None) or "play.example.com"
+    lines = ["# In cloudflared's config.yml, above the catch-all rule:",
+             "ingress:",
+             f"  - hostname: {host}",
+             "    path: ^/join(/.*)?$",
+             f"    service: {st['scheme']}://localhost:{s['join_port']}"]
+    if st["scheme"] == "https":
+        lines += ["    originRequest:", "      noTLSVerify: true"]
+    lines += ["  - service: http_status:404"]
+    return "\n".join(lines)
 
 
 def firewall_rules(s=None):

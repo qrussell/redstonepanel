@@ -291,38 +291,24 @@ dx jpn "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recom
     || { bad "haproxy installed"; dx jpn "tail -5 /tmp/haproxy-install.log"; }
 PROXY_IP=$(dx jpn "hostname -I | awk '{print \$1}'")
 MASTER_IP=$(dx jpm "hostname -I | awk '{print \$1}'")
-dx jpn "cat > /etc/haproxy/haproxy.cfg <<'HAEOF'
-global
-    log stdout format raw local0
-defaults
-    mode http
-    timeout connect 5s
-    timeout client 30s
-    timeout server 30s
-frontend web
-    bind :80
-    option forwardfor
-    acl redstonepanel_join path /join or path_beg /join/
-    use_backend redstonepanel_join if redstonepanel_join
-    default_backend nothing
-backend nothing
-    http-request return status 404
-backend redstonepanel_join
-    option httpchk GET /join/assets/join.css
-    server panel jpm:8444 check ssl verify none
-HAEOF
-systemctl restart haproxy"
-for _ in $(seq 1 20); do [ "$(dx jpn "curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1/join/skyblock")" = 200 ] && break; sleep 1; done
-via()   { dx jpn "curl -s -m 10 -o /dev/null -w '%{http_code}' ${2:+-H 'X-Forwarded-For: $2'} http://127.0.0.1$1"; }
-burst() { dx "$1" "for i in \$(seq 1 250); do curl -s${3:+k} -m 10 -o /dev/null -w '%{http_code}\\n' ${4:+-H 'X-Forwarded-For: $4'} $2; done | sort | uniq -c | tr -s ' \\n' ' '"; }
-is "the page already loads through HAProxy, with its health check" 200 "$(via /join/skyblock)"
-is "  and its stylesheet" 200 "$(via /join/assets/join.css)"
-is "HAProxy's other paths don't reach the panel" 404 "$(via /api/join-pages)"
+# HAProxy runs on exactly the lines the panel offers to copy, around a plain frontend
 is "a proxy and an address for players are saved" 200 "$(code admin PUT /api/settings/join "{\"enabled\":true,\"port\":8444,\"proxies\":\"$PROXY_IP\",\"url\":\"play.example.org\"}")"
 V=$(api admin GET /api/join-pages)
 is "  the panel's links use that address" "https://play.example.org/join" "$(echo "$V" | json "d['public_url']")"
 is "  the proxy is stored" "$PROXY_IP" "$(echo "$V" | json "','.join(d['proxy']['addresses'])")"
 has "  the HAProxy lines to copy point at this panel over HTTPS" ":8444 check ssl verify none" "$(echo "$V" | json "d['proxy']['haproxy']")"
+has "  and there are Cloudflare Tunnel lines too" "service: https://localhost:8444" "$(echo "$V" | json "d['proxy']['cloudflared']")"
+echo "$V" | json "d['proxy']['haproxy']" | sed 's/server panel 127.0.0.1:/server panel jpm:/' > /tmp/rp-haproxy-lines
+docker cp /tmp/rp-haproxy-lines jpn:/tmp/lines >/dev/null
+dx jpn "{ printf 'global\n    log stdout format raw local0\ndefaults\n    mode http\n    timeout connect 5s\n    timeout client 30s\n    timeout server 30s\nfrontend web\n    bind :80\n'; cat /tmp/lines; } > /etc/haproxy/haproxy.cfg"
+check "HAProxy accepts the lines the panel offers" dx jpn "haproxy -c -f /etc/haproxy/haproxy.cfg"
+dx jpn "systemctl restart haproxy"
+for _ in $(seq 1 20); do [ "$(dx jpn "curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1/join/skyblock")" = 200 ] && break; sleep 1; done
+via()   { dx jpn "curl -s -m 10 -o /dev/null -w '%{http_code}' ${2:+-H 'X-Forwarded-For: $2'} http://127.0.0.1$1"; }
+burst() { dx "$1" "for i in \$(seq 1 250); do curl -s${3:+k} -m 10 -o /dev/null -w '%{http_code}\\n' ${4:+-H 'X-Forwarded-For: $4'} $2; done | sort | uniq -c | tr -s ' \\n' ' '"; }
+is "the page loads through HAProxy, past its health check" 200 "$(via /join/skyblock)"
+is "  and its stylesheet" 200 "$(via /join/assets/join.css)"
+check "HAProxy's other paths don't reach the panel" bash -c "[ \"\$(docker exec jpn curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1/api/join-pages)\" != 200 ]"
 is "a proxy of 'everyone' is refused" 400 "$(code admin PUT /api/settings/join '{"enabled":true,"port":8444,"proxies":"0.0.0.0/0"}')"
 A=$(burst jpn http://127.0.0.1/join/skyblock)
 has "one player who asks too much through HAProxy is slowed down" " 429" "$A"

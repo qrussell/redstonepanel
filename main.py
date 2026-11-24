@@ -2082,7 +2082,8 @@ def _join_view(request: Request):
     return dict(out, listener=st, lan_url=f"{st['scheme']}://{host}{port}/join",
                 public_url=f"{base}/join" if base else None,
                 proxy={"addresses": s["join_proxies"], "only": s["join_proxy_only"], "url": s["join_url"],
-                       "haproxy": joinsite.haproxy_config(host, s)})
+                       "cloudflare": s["join_cloudflare"],
+                       "haproxy": joinsite.haproxy_config(host, s), "cloudflared": joinsite.cloudflared_config(s)})
 
 @app.get("/api/join-pages")
 def join_pages_api(request: Request):
@@ -2097,6 +2098,7 @@ class JoinSettings(BaseModel):
     proxies: Optional[Union[List[str], str]] = None
     proxy_only: Optional[bool] = None
     url: Optional[str] = None
+    cloudflare: Optional[bool] = None
 
 @app.put("/api/settings/join")
 def set_join_settings_api(req: JoinSettings, request: Request):
@@ -2109,6 +2111,8 @@ def set_join_settings_api(req: JoinSettings, request: Request):
             new["join_proxy_only"] = req.proxy_only
         if req.url is not None:
             new["join_url"] = req.url
+        if req.cloudflare is not None:
+            new["join_cloudflare"] = req.cloudflare
         s = panel_settings.validate(new)
         joinsite.check_can_enable(s, old)
     except (panel_settings.SettingsError, joinpage.JoinError) as e:

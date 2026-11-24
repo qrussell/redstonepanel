@@ -6560,14 +6560,16 @@ const ServerApp = {
 			body: JSON.stringify({ enabled: l.enabled, port: l.port, index: l.index,
 			                       proxies: document.getElementById('join-proxies').value,
 			                       proxy_only: document.getElementById('join-proxy-only').checked,
-			                       url: document.getElementById('join-url').value.trim() }) });
+			                       url: document.getElementById('join-url').value.trim(),
+			                       cloudflare: document.getElementById('join-cloudflare').checked }) });
 		if (!res.ok) {
 			this.joinNote = { key: 'proxy', text: await this.apiError(res), ok: false };
 			return this.loadJoin();
 		}
 		this.joinData = await res.json();
 		const p = this.joinData.proxy;
-		this.joinNote = { key: 'proxy', ok: true, text: p.addresses.length ? `Saved. Requests from ${p.addresses.join(', ')} are treated as your proxy.` : 'Saved. No proxy is set.' };
+		const who = [...p.addresses, ...(p.cloudflare ? ['Cloudflare'] : [])];
+		this.joinNote = { key: 'proxy', ok: true, text: who.length ? `Saved. Requests from ${who.join(', ')} are treated as your proxy.` : 'Saved. No proxy is set.' };
 		this.renderJoin();
 	},
 
@@ -6642,16 +6644,20 @@ const ServerApp = {
 			<p class="${note} mt-2">The port is opened in this server's firewall. For players outside your home, forward TCP ${esc(l.port)} to this machine on your router as well.</p>
 		</div>`;
 
-		const px = d.proxy || { addresses: [], only: false, url: '', haproxy: '' };
+		const px = d.proxy || { addresses: [], only: false, url: '', cloudflare: false, haproxy: '', cloudflared: '' };
 		const proxyCard = `<div class="${card}">
-			<h3 class="${h}">Through HAProxy (optional)</h3>
-			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Already run HAProxy, for example on pfSense? Send <span class="font-mono">/join</span> on your website's address to the port above, and players get the pages on your own domain and certificate. The port above keeps working too.</p>
+			<h3 class="${h}">Through a proxy (HAProxy or Cloudflare, optional)</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Already run HAProxy (for example on pfSense) or Cloudflare? Send <span class="font-mono">/join</span> on your own domain to the port above, and players get the pages with your domain and certificate. The port above keeps working too.</p>
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 				<label class="${note}">The proxy's address<input id="join-proxies" maxlength="300" value="${esc(px.addresses.join(', '))}" placeholder="10.0.0.1" class="${field} w-full mt-1 font-mono">
-					<span class="block mt-1">The address HAProxy connects from, like pfSense's LAN address. Only requests from it may say which player they are for, so each player keeps their own limit.</span></label>
+					<span class="block mt-1">The address HAProxy or a Cloudflare Tunnel connects from: pfSense's LAN address, or 127.0.0.1 for a tunnel on this machine. Only requests from it may say which player they are for, so each player keeps their own limit.</span></label>
 				<label class="${note}">Address players open<input id="join-url" maxlength="200" value="${esc(px.url)}" placeholder="https://play.example.com" class="${field} w-full mt-1 font-mono">
 					<span class="block mt-1">Used for the links the panel shows. Empty: the address from Port forwarding with the port above.</span></label>
 			</div>
+			<label class="flex items-start gap-2 mt-3 text-sm cursor-pointer">
+				<input type="checkbox" id="join-cloudflare" ${px.cloudflare ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Cloudflare's proxy (orange cloud) sends players here</b><br><span class="${note}">For a domain proxied by Cloudflare with a port forwarded on your router (Cloudflare carries 443, 8443 or 2053, not 8444). Requests from Cloudflare's own addresses may name the player. Not needed for a Cloudflare Tunnel.</span></span>
+			</label>
 			<label class="flex items-start gap-2 mt-3 text-sm cursor-pointer">
 				<input type="checkbox" id="join-proxy-only" ${px.only ? 'checked' : ''} class="mt-1">
 				<span><b class="text-gray-900 dark:text-white">Only through the proxy</b><br><span class="${note}">The port above answers nobody but the proxy. Don't forward it on your router then.</span></span>
@@ -6663,7 +6669,12 @@ const ServerApp = {
 			<details class="mt-3"><summary class="text-sm font-bold text-gray-900 dark:text-white cursor-pointer">HAProxy settings to copy</summary>
 				<pre id="join-haproxy" class="mt-2 p-3 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-mono whitespace-pre overflow-x-auto text-gray-800 dark:text-gray-200">${esc(px.haproxy)}</pre>
 				<button onclick="ServerApp.copyJoinLink(document.getElementById('join-haproxy').innerText, this)" class="${grey} mt-2">Copy</button>
-				<p class="${note} mt-2">On pfSense: Services &gt; HAProxy. The manual's "Join pages through HAProxy" section shows each screen.</p>
+				<p class="${note} mt-2">On pfSense: Services &gt; HAProxy. The manual's "Join pages through a proxy" section shows each screen.</p>
+			</details>
+			<details class="mt-3"><summary class="text-sm font-bold text-gray-900 dark:text-white cursor-pointer">Cloudflare Tunnel settings to copy</summary>
+				<pre id="join-cloudflared" class="mt-2 p-3 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-mono whitespace-pre overflow-x-auto text-gray-800 dark:text-gray-200">${esc(px.cloudflared)}</pre>
+				<button onclick="ServerApp.copyJoinLink(document.getElementById('join-cloudflared').innerText, this)" class="${grey} mt-2">Copy</button>
+				<p class="${note} mt-2">For cloudflared on this machine. In the Cloudflare dashboard instead: add a public hostname with path <span class="font-mono">^/join</span>, the service above, and No TLS Verify on. Then enter 127.0.0.1 as the proxy's address.</p>
 			</details>
 		</div>`;
 
