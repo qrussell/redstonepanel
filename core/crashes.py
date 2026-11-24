@@ -82,10 +82,62 @@ def _wrong_api(m, ctx):
             "Turn it off, or install the version made for this server's Minecraft.")
 
 def _port(m, ctx):
+    text = ctx.get("text") or ""
+    if not GAME_PORT_RE.search(text) and GAME_DONE_RE.search(text):
+        # the game port opened (the server got to "Done"): a mod or plugin's own port was taken
+        lines = text.splitlines()
+        i = ctx.get("line_no") or 0
+        near = "\n".join(lines[max(0, i - 4):i + 1])
+        p = re.findall(r"(?i)\bport\D{0,3}(\d{2,5})\b|:(\d{2,5})\b", near)
+        num = next((a or b for a, b in reversed(p)), None)
+        where = f" (port {num})" if num else ""
+        return (f"A mod or plugin couldn't open its own network port{where}, because another program, most "
+                f"likely another server with the same mod, already uses it. The game port itself was fine.",
+                "Find that mod's config file on the Files tab and give it a port no other server uses, then "
+                "start the server.", "A mod's port is already in use")
     port = ctx.get("port")
     where = f" {port}" if port else ""
     return (f"Another program (or another server) is already using port{where}.",
             "Stop the other server, or give this one a free port in Properties (server-port), then start it.")
+
+GAME_DONE_RE = re.compile(r"\]: Done \(\d|Server started\.")
+
+# Ports that mods, plugins and the extra listeners open next to the game port. When one of these
+# can't bind, the game port itself is fine: name the port that clashed, not server-port.
+EXTRA_PORT_RE = re.compile(
+    r"Failed to run voice chat at (?P<vproto>UDP|TCP) port (?P<voice>\d+)|"
+    r"Unable to initiali[sz]e RCON on \S*?:(?P<rcon>\d+)|"
+    r"Unable to initiali[sz]e [Qq]uery system on \S*?:(?P<query>\d+)")
+
+# Lines that say the GAME port (not an extra one) couldn't be opened
+GAME_PORT_RE = re.compile(r"FAILED TO BIND TO PORT|Network port occupied|Port \[?\d+\]? may be in use")
+
+def _extra_port(m, ctx):
+    if m.group("voice"):
+        port, proto = m.group("voice"), m.group("vproto").upper()
+        others = [s for s in ctx.get("voice_users") or [] if s != ctx.get("server")]
+        who = (f"{' and '.join(others)} on this machine {'is' if len(others) == 1 else 'are'} set to the same "
+               f"voice port." if others else
+               "Most likely another server on this machine with voice chat, or an old copy of this one "
+               "that hasn't fully stopped.")
+        path = ctx.get("voice_config") or "config/voicechat/voicechat-server.properties (plugins/voicechat/ on Paper)"
+        what = (f"Simple Voice Chat couldn't open its voice port, {proto} {port}, because another program "
+                f"already uses it. {who} The game port itself was fine.")
+        moved = ctx.get("voice_moved")
+        if moved:
+            fix = (f"The panel moved this server's voice port to {moved} in {path}, so its next start works, and "
+                   f"opens {moved}/{proto.lower()} in the firewall. Forward it on your router too if players join "
+                   f"from outside.")
+        else:
+            fix = (f"Give each server its own voice port: on the Files tab change port= in {path} to a free "
+                   f"number, then start the server. The panel opens the new port in the firewall.")
+        return what, fix, "Voice chat port already in use"
+    if m.group("rcon"):
+        return (f"RCON couldn't start: port {m.group('rcon')} is already used by another program or server.",
+                "Give this server its own rcon.port in Properties, then restart it.", "RCON port already in use")
+    return (f"Query couldn't start: UDP port {m.group('query')} is already used by another program or server.",
+            "Give this server its own query.port in Properties, or turn enable-query off, then restart it.",
+            "Query port already in use")
 
 def _oom(m, ctx):
     return ("The server ran out of memory.",
@@ -117,6 +169,7 @@ CAUSES = [
                                       r"(?:.*?to run '(?P<who>[^']+)')?"), "Missing plugin dependency", _missing_plugin),
     ("wrong_version", re.compile(r"Unsupported API version (?P<api>[0-9][0-9.]*)"), "Plugin for another version",
      _wrong_api),
+    ("extra_port_in_use", EXTRA_PORT_RE, "Port already in use", _extra_port),
     ("port_in_use", re.compile(r"FAILED TO BIND TO PORT|Address already in use|Network port occupied|"
                                r"Port \[?\d+\]? may be in use"), "Port already in use", _port),
     ("out_of_memory", re.compile(r"java\.lang\.OutOfMemoryError"), "Out of memory", _oom),
@@ -236,10 +289,14 @@ def find_causes(text, ctx=None):
         for i, line in enumerate(lines):
             m = rx.search(line)
             if m:
-                what, fix = explain(m, ctx)
-                found.append({"id": cid, "title": title, "text": what, "fix": fix, "line": i})
+                ctx["line_no"] = i
+                what, fix, *named = explain(m, ctx)      # an explanation may name its own title
+                found.append({"id": cid, "title": named[0] if named else title, "text": what, "fix": fix, "line": i})
                 seen.add(cid)
                 break
+    if "extra_port_in_use" in seen and "port_in_use" in seen and not GAME_PORT_RE.search(text):
+        # the "Address already in use" was the extra port's, not the game port's
+        found = [c for c in found if c["id"] != "port_in_use"]
     if ctx.get("service_result") == "oom-kill" and "out_of_memory" not in seen:
         limit = ctx.get("memory_limit")
         found.append({"id": "out_of_memory", "title": "Out of memory",
@@ -363,11 +420,13 @@ def gather(server, base, edition=None, env=None, now=None):
         out.append((log_rel, log))                 # older: the last run's log, looked at last
     return out, bedrock
 
-def analyze_texts(server, sources, env=None, now=None, installed=None, last_update=None, port=None):
-    """The crash record (not saved) from [(source, text)], first one shown on the card."""
+def analyze_texts(server, sources, env=None, now=None, installed=None, last_update=None, port=None, voice=None):
+    """The crash record (not saved) from [(source, text)], first one shown on the card.
+    voice: what _voice_context() gives, to name the voice port to use instead."""
     now = now or time.time()
     env = env or {}
-    ctx = {"service_result": env.get("SERVICE_RESULT"), "memory_limit": env.get("memory_limit"), "port": port}
+    ctx = dict(voice or {}, server=server, service_result=env.get("SERVICE_RESULT"),
+               memory_limit=env.get("memory_limit"), port=port)
     source, text = sources[0] if sources else (None, "")
     causes = find_causes(text, ctx)
     seen = {c["id"] for c in causes}
@@ -388,11 +447,32 @@ def analyze_texts(server, sources, env=None, now=None, installed=None, last_upda
         rec["undo"] = last_update
     return rec
 
+def _voice_context(server, sources):
+    """For a Simple Voice Chat port clash: the other servers set to that voice port, this server's
+    voice config file, and the port the panel moved it to (core/modports.py, run just before)."""
+    m = next((m for _, t in sources for m in [EXTRA_PORT_RE.search(t or "")] if m and m.group("voice")), None)
+    if not m:
+        return {}
+    try:
+        from core import modports
+        all_claims = modports.claims()
+        moved = next((x for x in modports.pending(server).get(server, []) if x.get("mod") == "voicechat"), None)
+    except Exception:
+        return {}
+    port = int(m.group("voice"))
+    mine = next((c for c in all_claims.get(server, []) if c["mod"] == "voicechat"), None)
+    users = sorted(s for s, cs in all_claims.items() for c in cs if c["port"] == port and s != server)
+    if moved:
+        users = sorted(set(users) | set(moved.get("with") or []))
+    return {"voice_users": users, "voice_config": mine["path"] if mine else None,
+            "voice_moved": moved["new"] if moved and moved.get("old") == port else None}
+
 def analyze(server, base, edition=None, env=None, now=None):
     sources, bedrock = gather(server, base, edition, env, now)
     return analyze_texts(server, sources, env, now,
                          installed=None if bedrock else _installed(server),
-                         last_update=None if bedrock else _last_update(server), port=_port_from(base))
+                         last_update=None if bedrock else _last_update(server), port=_port_from(base),
+                         voice=None if bedrock else _voice_context(server, sources))
 
 def summary(rec):
     """One line for the webhook and Needs attention."""
@@ -427,10 +507,36 @@ def record(server, base, edition=None, env=None, crashed=True):
             pass
         return None
 
+RECOVERED_AFTER = 600              # running this long since the last crash: the card closes itself
+
+def _recovered(server, rec, now=None):
+    """True (and the record closed, as Dismiss would) once the server has run cleanly for
+    RECOVERED_AFTER seconds since a start after the crash: an old cause shouldn't stay on its
+    Overview and in Needs attention for a week after it was fixed."""
+    if not rec or rec.get("dismissed"):
+        return False
+    now = now or time.time()
+    try:
+        from core.platform import services
+        if services.unit_state(server) != "active":
+            return False
+        since = services.started_at(server)
+    except Exception:
+        return False
+    if not since or since <= rec.get("at", 0) or now - since < RECOVERED_AFTER:
+        return False
+    rec["dismissed"], rec["recovered"] = True, int(now)
+    try:
+        _save(server, rec)
+    except OSError:
+        pass
+    return True
+
 def get(server):
     rec = load(server)
     if rec and not (rec.get("server") == server):
         return None
+    _recovered(server, rec)
     if rec and rec.get("undo"):
         cur = _last_update(server)          # still there? (it may have been undone already)
         if not cur or cur.get("at") != rec["undo"].get("at"):
@@ -467,7 +573,7 @@ def attention(servers, now=None):
     out = []
     for name in servers:
         rec = load(name) if NAME_RE.fullmatch(name or "") else None
-        if not rec or rec.get("dismissed") or now - rec.get("at", 0) > SHOW_FOR:
+        if not rec or rec.get("dismissed") or now - rec.get("at", 0) > SHOW_FOR or _recovered(name, rec, now):
             continue
         why = summary(rec)
         verb = "crashed" if rec.get("crashed", True) else "stopped"

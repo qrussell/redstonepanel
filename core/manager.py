@@ -207,8 +207,19 @@ def upgrade_bedrock_firewall():
         f.write("done\n")
 
 
+def mod_firewall_rules(server_name):
+    """The ports a Java server's mods and plugins open (voice chat, Geyser, web maps...)."""
+    try:
+        from core import modports
+        return modports.firewall_rules(server_name)
+    except Exception:
+        return set()
+
+
 def server_firewall_rules(server_name):
-    return firewall_rules("java" if _is_java(server_name) else "bedrock", read_properties(get_server_dir(server_name)))
+    java = _is_java(server_name)
+    return firewall_rules("java" if java else "bedrock", read_properties(get_server_dir(server_name))) | \
+        (mod_firewall_rules(server_name) if java else set())
 
 
 def open_firewall_rules(rules):
@@ -296,6 +307,8 @@ def firewall_record(server_name, rules):
 def open_server_firewall(server_name, edition, d):
     """Opens the rules a server needs from its server.properties, and notes them."""
     rules = firewall_rules(edition, read_properties(d))
+    if str(edition).lower() == "java":
+        rules |= mod_firewall_rules(server_name)
     open_firewall_rules(rules)
     firewall_record(server_name, rules)
 
@@ -305,6 +318,11 @@ def sync_firewall():
     ports or transport were edited by hand gets its new rules and loses the old ones; a server
     whose unit is gone loses its rules. Rules another server or a Phantom still needs stay.
     A server seen for the first time is only noted (the dashboard names rules it lacks)."""
+    try:                                       # first, mods on two servers that share a port
+        from core import modports
+        modports.resolve()
+    except Exception as e:
+        write_log(f"[PORTS] Checking mod and plugin ports failed: {e}")
     if not firewall.installed():
         return []
     done = []
@@ -601,11 +619,19 @@ def _server_folder_names():
             continue
     return sorted(found, key=lambda rn: rn[1])
 
-def _used_ports(exclude_dir=None):
+def _used_ports(exclude_dir=None, mods=True):
     """Every port that a managed server (/opt/minecraft-*) actually opens, per its server.properties.
     Bedrock has no RCON, so an rcon.port line in a Bedrock server's file (e.g. from a Java
-    template) is ignored and never blocks a Java server from using that port."""
+    template) is ignored and never blocks a Java server from using that port.
+    mods: also the ports its mods and plugins open (core/modports.py), except exclude_dir's."""
     used = set()
+    if mods:
+        try:
+            from core import modports
+            skip_server = os.path.basename(os.path.realpath(exclude_dir)) if exclude_dir else None
+            used |= {c["port"] for s, cs in modports.claims().items() if s != skip_server for c in cs}
+        except Exception:
+            pass
     skip = os.path.realpath(exclude_dir) if exclude_dir else None
     for root, name in _server_folder_names():
         path = os.path.join(root, name)
@@ -819,7 +845,8 @@ def list_servers():
             "proxies": proxy_list,
             # ufw rules it needs: [[port spec, proto], ...]
             "firewall_rules": sorted([list(r) for r in firewall_rules(
-                "java" if "java" in exec_start else "bedrock", props)]),
+                "java" if "java" in exec_start else "bedrock", props)
+                | (mod_firewall_rules(svc) if "java" in exec_start else set())]),
         })
     return servers
 
@@ -1145,6 +1172,11 @@ def control_server(server_name, action):
         from core import transfer
         if transfer.is_moving(server_name):
             raise ServerError(f"{server_name} is being moved to another cluster member; it can't be started here.")
+        try:                                   # a mod port another server holds: move it first
+            from core import modports
+            modports.resolve(only=[server_name])
+        except Exception as e:
+            write_log(f"[PORTS] Checking {server_name}'s mod and plugin ports failed: {e}")
     services.control(services.unit(server_name), action, elevate=True)
 
 def _unit_path(server_name):
