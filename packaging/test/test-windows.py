@@ -555,7 +555,7 @@ def bedrock(p, args):
           code == 200 and wait("stopped", lambda: service_state(name) == "STOPPED", 150)
           and "Quit correctly" in open(log, encoding="utf-8", errors="replace").read()[-2000:],
           open(log, encoding="utf-8", errors="replace").read()[-400:])
-    if not args.keep:
+    if True:                                    # --keep keeps the main server only
         code, r = p.call("DELETE", f"/api/servers/{name}?keep_world=false", timeout=300)
         check("the Bedrock server is removed", code == 200 and wait("gone", lambda: service_state(name) is None, 60),
               f"{code} {r}")
@@ -669,7 +669,7 @@ def loaders(p, args):
     check("Forge starts (Done)", wait("forge", lambda: os.path.isfile(journal) and "Done (" in
                                       open(journal, encoding="utf-8", errors="replace").read(), 600, every=5),
           open(journal, encoding="utf-8", errors="replace").read()[-800:] if os.path.isfile(journal) else "no output")
-    if not args.keep:
+    if True:                                    # --keep keeps the main server only
         code, r = p.call("DELETE", f"/api/servers/{name}?keep_world=false", timeout=300)
         check("the Forge server is removed", code == 200 and wait("gone", lambda: service_state(name) is None, 60),
               f"{code} {r}")
