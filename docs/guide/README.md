@@ -1459,6 +1459,8 @@ server's own `mods` folder and hands it to players on the server's [join page](#
 as a pack their launcher installs in one go. It follows the folder: add, update or remove a
 mod and the pack players download is the new one, with a new pack number.
 
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/player-pack.png"><img src="images/player-pack.png" alt="The Player pack view of the Mods tab"></picture>
+
 For each file the panel asks Modrinth which mod it is and which side of the game it runs on:
 
 | Modrinth says | In the pack |
@@ -1478,6 +1480,8 @@ For each file the panel asks Modrinth which mod it is and which side of the game
   Modrinth: its join page then links to that pack. Choose **On** if you have added or removed
   mods since, or **Off** to hand out nothing.
 - **Download .mrpack** gives you the same file players get.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-page-pack.png"><img src="images/join-page-pack.png" alt="A join page offering the server's player pack"></picture>
 
 The pack is a Modrinth pack (`.mrpack`), which Modrinth App, Prism Launcher and most other
 launchers import. It holds no mods, only where each one is on Modrinth and its checksum, so
