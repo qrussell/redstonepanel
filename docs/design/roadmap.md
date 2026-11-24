@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.4 (23 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3) and quick commands in Live Chat (1.21.4) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.6 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3) and quick commands in Live Chat (1.21.4) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1900,6 +1900,113 @@ browser checks at 1280 and 390 pixels wide with sample data. Not tested with a r
 online: no game client was available, so player names came from the stand-in. The manual's
 two Quick commands pictures use sample data; the Live Chat pictures were retaken.
 
+### 1.21.5: join pages for players *(released 23 Nov 2026)*
+
+**Why.** Getting a friend onto a server means sending the address, the version and, for a
+modded server, which mods to install, and sending it again when any of it changes. Quentin
+asked on 23 Nov 2026 for a web page hosted by the panel for joining its servers, with links
+to the modpack that follow what the server runs. It also delivers the "read-only status page
+for players" idea: players stop asking whether the server is up.
+
+**How.** A public page per server, off by default, that shows the name, whether it's online,
+the player count, the address to type, the Minecraft version and loader, and how to join. A
+server made from a Modrinth modpack links to the exact pack version it runs; other mod
+servers show a link the admin pastes. The pages get their own port (8444) so the panel never
+has to face the internet, and that port answers nothing else. Player packs the panel builds
+itself from a hand-assembled mods folder (`.mrpack`, packwiz) came in 1.21.6.
+
+**As built.** `core/joinpage.py` holds each page's settings (`data/join-pages.json`), what
+this machine knows about a server, and `public_view()`, the fixed list of fields that may
+leave it. `core/joinsite.py` is the public side: a second, tiny web server on a thread of the
+panel (so there is no new service to install per operating system; the port is opened
+through `core.platform`). It answers only GET and HEAD under `/join`, sets no cookies, reads
+no request bodies, sends a strict Content-Security-Policy and builds every page on the server
+with every value escaped; its stylesheet and script are its own, with nothing loaded from the
+panel. It uses the panel's certificate when the panel serves HTTPS. Who is online comes from
+the game server's own status ping on this machine, reused for 30 seconds, and requests are
+limited per address. The address is only ever what an admin typed (per page, or the public
+address on the Port forwarding page). Pages can be unlisted (a random link), and a list at
+`/join` is a separate switch. Changed from the plan: no change to the cluster contract. The
+master reads a node's server through `GET /api/servers/{name}/join-info`, which is under the
+server's own routes; a node older than 1.21.5 gives the type, version and whether it runs,
+without player counts. A node's own join pages can't be set from the master. Everything on
+the admin side is admin-only. Tested: `tests/test_joinpage.py` (24 tests: the fields that
+leave, escaping, links that aren't web links, the listener starting, moving and stopping on
+real ports) and `packaging/test/test-join-page.sh`, 87 checks in systemd containers with
+stand-in servers that answer the status ping as a real one does (in the GitHub `cluster`
+job): every route the panel has, 209 of them with its files, is tried on the public port and
+gets Not found; a plugin, a modpack and a Bedrock server's page; unlisted pages; a stopped
+server; a panel restart; and a master serving a node's server over HTTPS, staying up when the
+node is unreachable. Not tested: a real player following a page from outside the home, the
+Modrinth App button on a real desktop, and the Add server button on a real phone. The
+manual's pictures are of the test container's stand-in servers.
+
+
+### 1.21.6: player packs *(released 24 Nov 2026)*
+
+**Why.** The second half of Quentin's request of 23 Nov 2026: the join page should link a
+modpack that follows the mods the server uses. A server made from a Modrinth modpack already
+links to that pack (1.21.5); a server whose mods were picked by hand had nothing to link.
+
+**How.** Hash every jar in the server's mods folder, ask Modrinth which file each is, and sort
+by the project's client side: required goes in, optional goes in marked optional, unsupported
+(server-only) stays out, and a file Modrinth doesn't know stays out and is named on the page.
+Build a `.mrpack` that points at Modrinth's own files by checksum, serve it from the join page,
+and rebuild it whenever the folder changes. Offer the same list as a packwiz folder.
+
+**As built.** `core/playerpack.py`. The admin's choices are in `data/player-packs.json`: mode
+(automatic, on, off), a name, a choice per file, and client-only extras by Modrinth project.
+`manifest()` is the whole pack as plain JSON, cached on the folder's names, sizes and times;
+its eight-character version is a hash of what players get. Added to the plan: what a required
+mod depends on (from the jars' own metadata) is required too, because Modrinth calls Fabric
+API optional on the client; and **Include** on a file Modrinth doesn't know copies the jar
+into the pack's `overrides` (64 MB together). Automatic means on unless the server came from
+a Modrinth modpack. If Modrinth can't be reached the last manifest stands. The public side is
+`/join/<link>/pack.mrpack` and `/join/<link>/packwiz/...` on the join port, under the same
+rate limit. A cluster master builds a node server's pack itself from the public part of the
+node's manifest, which rides in `join-info` and is checked field by field (file names,
+checksums, Modrinth-only download addresses); a jar the admin chose to hand out is fetched
+from the node through `GET /api/servers/{name}/player-pack/file` and checked against its
+checksum. No change to the cluster contract. The Mods tab has a third view, **Player pack**
+(Mods & plugins permission). `RP_MODRINTH_API` points the panel at a stand-in for tests.
+Tested: `tests/test_playerpack.py` (17 tests), `packaging/test/test-player-pack.sh` (55
+checks in systemd containers, in the GitHub `cluster` matrix), and the sorting against
+Modrinth's real answers for six mods. Not tested: importing the pack into Modrinth App or
+Prism Launcher on a real desktop, and packwiz-installer.
+
+### 1.21.7: a Visual Editor for settings files on the Files tab *(built, not released)*
+
+**Why.** Configuration has a Visual Editor for `server.properties`, but every other settings
+file (a plugin's `.properties` or `.cfg`, `eula.txt`, a second properties file) opened on the
+Files tab as plain text. Quentin asked on 23 Nov 2026 for a visual editor for any file that
+resembles a property file, like the one used for server properties, with a way to switch
+between it and the current editor.
+
+**How.** Nothing new on the server: the Files tab's editor already reads and saves the text
+under the **Files** permission, and the form is another view of that text. When every line of
+a file is blank, a comment, a `[section]` heading or `name=value`, a **Visual Editor** /
+**Raw Text** switch appears above it. The form uses the same cards as Configuration (now one
+shared function): True/False lists, the choices for `difficulty` and `gamemode`, number boxes,
+text boxes and a filter. A change in the form rewrites that one value in the text, so comments,
+blank lines, order, spacing and Windows line endings are kept and the two views cannot differ.
+
+**As built.** `static/js/propfile.js` (plain functions) and the editor in `app.js`; no route,
+no Python and no change to the cluster contract, so it works on nodes and on Windows as it is.
+`.properties` files are read and written with Java's escapes, as `core/properties.py` does;
+other files are plain `name=value`. A file with one line that does not fit (a value continued
+with a backslash, a name with spaces) is not offered the form, and one that stops fitting while
+you type says which line. `.yml`, `.json`, `.toml` and scripts always open as text. The form
+does not add or remove settings; Raw Text does. Tested: `tests/js/propfile.test.js` (9 Node
+tests) and `tests/test_propfile.py`, which also checks that values written by the form are read
+back the same by `core/properties.py`; 24 browser checks at 1440, 1280 and 390 pixels wide in
+both themes with sample data (form to text, text to form, save, filter, sections, a file that
+stops fitting, Configuration's own editor); and the .deb installed in a systemd container with
+a stand-in Java server, edited in a browser: `server.properties` saved with Java's escapes and
+read back by Configuration, a `.cfg` with sections, `eula.txt`, each save logged as `[FILES]`.
+That run found that a text box turns Windows line endings (CRLF) into LF, which the old text
+editor did too; the editor now remembers a file's line endings and saves them back. The
+manual's picture uses sample data.
+
 ### 2.0: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
@@ -1991,8 +2098,7 @@ until it's agreed.
 
 **For players**
 
-- **A read-only status page** (opt-in, no sign-in): each chosen server's name, address, state,
-  version and players online. Nothing else from the panel is exposed.
+- ~~**A read-only status page**~~ *(built as the join pages, 1.21.5)*.
 - **Discord two-way chat bridge** on top of the 1.8 webhooks, using a bot token stored like the
   webhook URL.
 

@@ -69,6 +69,8 @@
             <button id="btn-cluster" onclick="ServerApp.openCluster()" class="hidden w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">🌐 Cluster</button>
             <!-- Admins: what to forward on the internet router so players outside can join (1.16.14) -->
             <button id="btn-ports" onclick="ServerApp.openPorts()" class="admin-only hidden w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">🔀 Port forwarding</button>
+            <!-- Admins: a public page per server that tells players how to join (1.21.5) -->
+            <button id="btn-join" onclick="ServerApp.openJoin()" class="admin-only hidden w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">🔗 Join pages</button>
             <!-- Desktop only: a QR code that opens this panel on a phone -->
             <button id="btn-phone" onclick="ServerApp.openPhoneQr()" class="max-md:hidden w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white py-2 rounded text-sm font-bold transition mb-2">📱 Open on your phone</button>
             <div class="flex gap-2 mb-4">
@@ -442,6 +444,18 @@
         <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-4" id="ports-body"></div>
     </main>
 
+    <!-- Join pages (admins): a public page per server that tells players how to join -->
+    <main class="flex-1 flex flex-col min-h-0 min-w-0 bg-gray-50 dark:bg-gray-900 hidden" id="join-view">
+        <header class="p-4 md:p-6 md:pr-32 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+            <div class="min-w-0">
+                <h2 class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Join pages</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">A public page per server that tells players how to join. Nothing is public until you turn it on.</p>
+            </div>
+            <button onclick="ServerApp.loadJoin()" aria-label="Refresh" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-white px-4 py-2 rounded font-bold transition whitespace-nowrap shrink-0">↻<span class="max-sm:hidden"> Refresh</span></button>
+        </header>
+        <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-4" id="join-body"></div>
+    </main>
+
     <!-- Panel Settings (admins): wider than the normal modal -->
     <!-- Dialogs fill the screen on phones (rp-dialog) -->
     <div id="settings-overlay" class="fixed inset-0 bg-black bg-opacity-50 hidden flex justify-center items-center z-50 p-0 sm:p-4">
@@ -466,6 +480,7 @@
     </div>
     
     <script src="/static/js/chat-commands.js"></script>
+    <script src="/static/js/propfile.js"></script>
     <script src="/static/js/app.js"></script>
 	<div id="template-workspace" class="fixed inset-0 bg-gray-50 dark:bg-gray-900 hidden z-50 flex flex-col">
         <header class="p-4 md:p-6 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">

@@ -104,6 +104,10 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.21
 
+**Player packs** *(1.21.6)*. On a mod server, the panel works out which mods players need from the server's own mods folder and offers them on the join page as one download their launcher installs, at the versions the server runs. Change the server's mods and the pack follows. The Mods tab's **Player pack** view lets you overrule any line and add extras such as shaders. Read the [1.21.6 release notes](release-notes/v1.21.6.md).
+
+**Join pages for players** *(1.21.5)*. **🔗 Join pages** gives each server a public page that tells players how to join: the address, whether it's online, how many are playing, the Minecraft version, and for a modpack server the exact pack to install. Nothing is public until you turn it on, and the pages have a port of their own, so the panel stays off the internet. Read the [1.21.5 release notes](release-notes/v1.21.5.md).
+
 **Quick commands in Live Chat** *(1.21.4)*. Type `/` and Live Chat suggests commands, then the players online or the choices each part takes, as the game does. **Commands…** opens a form that asks only for what a command needs and shows it before **Run**, and one-click buttons cover List players, Save world, Day, Night and Clear weather. Read the [1.21.4 release notes](release-notes/v1.21.4.md).
 
 **Servers you set up yourself** *(1.21.3)*. **New server** lists Minecraft servers on the machine that were set up outside the panel under **Found on this computer**. **Manage with RedstonePanel** takes one over in place, with nothing copied or moved and the old service only turned off, and **Undo** puts it back. Read the [1.21.3 release notes](release-notes/v1.21.3.md).
@@ -269,6 +273,11 @@ and its nodes. Read the [release notes](release-notes/v1.16.0.md), or
 - a port forwarding guide for your internet router: which ports, TCP or UDP, to which
   machine's LAN address, for every server and cluster member, with pfSense steps, a check
   through your internet address, and warnings for shared ports and carrier-grade NAT
+- player packs: the mods players need, worked out from a mod server's own mods folder and
+  offered on its join page as one download that follows the server
+- join pages for players: a public page per server, off until you turn it on, with the
+  address, whether it's online, how many are playing and how to join, and for a modpack server
+  the exact pack to install; on a port of its own, so the panel stays off the internet
 - performance for each server (1.17): tick health (TPS) over RCON, memory against its limits,
   24-hour and 7-day history charts for every server and the machine, and suggestions based on
   what was measured (never applied for you); a **Memory** setting and optional hard memory and

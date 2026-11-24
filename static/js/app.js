@@ -1150,44 +1150,38 @@ const ServerApp = {
         alert("Permissions file saved. Restart server to apply.");
     },
 
+    // One card of a visual properties editor: the name on the left and, on the right, a True/False
+    // list, a list of the known choices, a number box or a text box, picked from the value.
+    // Shared by Configuration's Visual Editor and the Files tab's (PropFile.widget decides).
+    propRowHtml(key, value, inputClass, attrs) {
+        const esc = t => this.escapeHtml(String(t ?? ''));   // values go into HTML attributes (a motd may contain ")
+        const cls = `${inputClass} w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white`;
+        const w = PropFile.widget(key, value);
+        let input;
+        if (w.type === 'bool') {
+            input = `<select ${attrs} class="${cls}">${w.options.map((o, i) =>
+                `<option value="${esc(o)}" ${value === o ? 'selected' : ''}>${i ? 'False' : 'True'}</option>`).join('')}</select>`;
+        } else if (w.type === 'enum') {
+            input = `<select ${attrs} class="${cls}">${w.options.map(o =>
+                `<option value="${esc(o)}" ${value === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+        } else {
+            input = `<input type="${w.type === 'number' ? 'number' : 'text'}" ${w.type === 'number' ? 'step="any"' : ''} ${attrs} value="${esc(value)}" class="${cls}">`;
+        }
+        return `
+                <div class="prop-row bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 flex justify-between items-center gap-4 shadow-sm" data-key="${esc(key)}">
+                    <div class="flex-1 min-w-0"><label class="text-sm font-bold text-gray-700 dark:text-gray-300 break-words">${esc(key)}</label></div>
+                    <div class="w-1/2">${input}</div>
+                </div>`;
+    },
+
     async loadProperties(serverName) {
         const res = await api(`/api/servers/${serverName}/properties`);
         const props = await res.json();
         const editor = document.getElementById('properties-editor');
         editor.innerHTML = '';
 
-        const enums = {
-            'difficulty': ['peaceful', 'easy', 'normal', 'hard'],
-            'gamemode': ['survival', 'creative', 'adventure', 'spectator']
-        };
-
-        // Values go into HTML attributes, so quotes etc. must be escaped (e.g. a motd containing ")
-        const esc = t => this.escapeHtml(t);
         let html = '';
-        for (const [key, value] of Object.entries(props)) {
-            let inputHtml = '';
-            const inputClasses = 'prop-input w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white';
-
-            if (value === 'true' || value === 'false') {
-                inputHtml = `<select data-key="${esc(key)}" class="${inputClasses}">
-                                <option value="true" ${value === 'true' ? 'selected' : ''}>True</option>
-                                <option value="false" ${value === 'false' ? 'selected' : ''}>False</option>
-                            </select>`;
-            } else if (enums[key]) {
-                const options = enums[key].map(opt => `<option value="${opt}" ${value === opt ? 'selected' : ''}>${opt}</option>`).join('');
-                inputHtml = `<select data-key="${esc(key)}" class="${inputClasses}">${options}</select>`;
-            } else if (!isNaN(value) && value !== '') {
-                inputHtml = `<input type="number" data-key="${esc(key)}" value="${esc(value)}" class="${inputClasses}">`;
-            } else {
-                inputHtml = `<input type="text" data-key="${esc(key)}" value="${esc(value)}" class="${inputClasses}">`;
-            }
-
-            html += `
-                <div class="prop-row bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 flex justify-between items-center gap-4 shadow-sm" data-key="${esc(key)}">
-                    <div class="flex-1"><label class="text-sm font-bold text-gray-700 dark:text-gray-300">${esc(key)}</label></div>
-                    <div class="w-1/2">${inputHtml}</div>
-                </div>`;
-        }
+        for (const [key, value] of Object.entries(props)) html += this.propRowHtml(key, value, 'prop-input', `data-key="${this.escapeHtml(key)}"`);
         editor.innerHTML = html;
         this.filterProperties();   // keep the current search applied after a reload or save
     },
@@ -3453,8 +3447,12 @@ const ServerApp = {
             if (!res.ok) return alert(`Can't open ${path}: ${await this.apiError(res)}`);
             data = await res.json();
         }
-        this.fileEditor = { path, modified: data.modified, dirty: false };
+        // A text box turns Windows line endings (CRLF) into LF; remember them so Save writes them back
+        // (Bedrock's server.properties and many plugin files use them).
+        const lf = (data.content.match(/\n/g) || []).length, crlf = (data.content.match(/\r\n/g) || []).length;
+        this.fileEditor = { path, modified: data.modified, dirty: false, mode: 'raw', crlf: crlf > 0 && crlf * 2 >= lf };
         const esc = t => this.escapeHtml(String(t ?? ''));
+        const tab = 'px-3 py-1 text-sm rounded text-gray-600 dark:text-gray-400';
         document.getElementById('files-content').innerHTML = `
             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <div class="text-sm font-mono break-all text-gray-900 dark:text-gray-200">${esc(this.activeServer.name)}/${esc(path)}${isNew ? ' <span class="text-xs text-gray-500">(new)</span>' : ''}</div>
@@ -3464,17 +3462,127 @@ const ServerApp = {
                     <button onclick="ServerApp.closeFileEditor()" class="px-3 py-1.5 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Close</button>
                 </div>
             </div>
+            <div id="file-editor-modes" class="hidden rp-tabs flex gap-2 mb-3 bg-gray-200 dark:bg-gray-800 p-1 rounded w-max max-w-full border border-gray-300 dark:border-gray-700">
+                <button onclick="ServerApp.setFileEditorMode('visual')" id="file-mode-visual" class="${tab}">Visual Editor</button>
+                <button onclick="ServerApp.setFileEditorMode('raw')" id="file-mode-raw" class="${tab}">Raw Text</button>
+            </div>
+            <div id="file-visual" class="hidden">
+                <div class="flex items-center gap-3 mb-4">
+                    <input type="search" id="file-prop-search" placeholder="Filter settings (e.g. port, rcon)..." autocomplete="off"
+                           oninput="ServerApp.filterFileProps()" onkeydown="if (event.key === 'Escape') { this.value = ''; ServerApp.filterFileProps(); }"
+                           class="flex-1 min-w-0 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
+                    <span id="file-prop-count" class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap"></span>
+                </div>
+                <p id="file-prop-empty" class="hidden text-sm text-gray-500 dark:text-gray-400 italic mb-4">No settings match your search.</p>
+                <div id="file-props" class="grid grid-cols-1 xl:grid-cols-2 gap-4 pb-4"></div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 pb-4">Comments, blank lines and the order of the file are kept. To add or remove a setting, or to edit a comment, use <b>Raw Text</b>.</p>
+            </div>
             <textarea id="file-editor" spellcheck="false" class="w-full min-h-[400px] font-mono text-sm bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-3 text-gray-900 dark:text-gray-200 outline-none" style="height: 65vh; tab-size: 4;"></textarea>`;
         const ta = document.getElementById('file-editor');
         ta.value = data.content;
-        ta.addEventListener('input', () => {
-            this.fileEditor.dirty = true;
-            document.getElementById('file-editor-status').innerText = 'Unsaved changes';
-        });
-        ta.addEventListener('keydown', e => {
+        ta.addEventListener('input', () => this.fileEditorChanged());
+        // After typing in Raw Text, offer (or stop offering) the Visual Editor for what the file is now
+        ta.addEventListener('change', () => this.offerFileVisual());
+        const saveKey = e => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); this.saveFileEditor(); }
+        };
+        ta.addEventListener('keydown', saveKey);
+        const visual = document.getElementById('file-visual');
+        visual.addEventListener('keydown', saveKey);
+        // A change in the form is written straight into the text, so both views always agree
+        const fromForm = e => {
+            const input = e.target.closest('.file-prop-input');
+            if (!input) return;
+            const before = ta.value;
+            ta.value = PropFile.setValue(before, +input.dataset.line, input.value, this.fileEditor.path);
+            if (ta.value !== before) this.fileEditorChanged();
+        };
+        visual.addEventListener('input', fromForm);
+        visual.addEventListener('change', fromForm);
+        // Files that are a list of key=value settings open in the view used last (the form at first)
+        let last = 'visual';
+        try { last = localStorage.getItem('rp_fileEditorMode') || 'visual'; } catch (e) {}
+        if (this.offerFileVisual() && last === 'visual') this.setFileEditorMode('visual', true);
+        else ta.focus();
+    },
+
+    // The text to save, with the file's own line endings.
+    fileEditorText() {
+        const text = document.getElementById('file-editor').value;
+        return this.fileEditor.crlf ? text.replace(/\r?\n/g, '\r\n') : text;
+    },
+
+    fileEditorChanged() {
+        this.fileEditor.dirty = true;
+        document.getElementById('file-editor-status').innerText = 'Unsaved changes';
+    },
+
+    // Shows the Visual Editor / Raw Text switch when the text is a list of key=value settings.
+    offerFileVisual() {
+        const ed = this.fileEditor, modes = document.getElementById('file-editor-modes');
+        if (!ed || !modes) return false;
+        const ok = PropFile.parse(document.getElementById('file-editor').value, ed.path).ok;
+        if (ok) ed.offered = true;     // once shown it stays, and says why if the file stops fitting
+        modes.classList.toggle('hidden', !ed.offered);
+        this.markFileEditorMode();
+        return ok;
+    },
+
+    markFileEditorMode() {
+        ['visual', 'raw'].forEach(m => {
+            const b = document.getElementById(`file-mode-${m}`), on = this.fileEditor.mode === m;
+            b.classList.toggle('subtab-active', on);
+            b.classList.toggle('text-gray-600', !on);
+            b.classList.toggle('dark:text-gray-400', !on);
         });
-        ta.focus();
+    },
+
+    setFileEditorMode(mode, quiet) {
+        const ed = this.fileEditor, ta = document.getElementById('file-editor');
+        if (!ed || !ta) return;
+        if (mode === 'visual') {
+            const p = PropFile.parse(ta.value, ed.path);
+            if (!p.ok) {
+                if (!quiet) alert(`The Visual Editor can't show this file as it is now: ${p.line ? `line ${p.line}: ` : ''}${p.reason}. Fix it in Raw Text, or keep editing there.`);
+                return;
+            }
+            let html = '', at = 0;
+            const esc = t => this.escapeHtml(String(t ?? ''));
+            for (const e of p.entries) {
+                while (at < p.sections.length && p.sections[at].line < e.line) {
+                    html += `<h4 style="grid-column: 1 / -1" class="file-prop-section text-sm font-bold text-gray-900 dark:text-white mt-2">${esc(p.sections[at++].name)}</h4>`;
+                }
+                html += this.propRowHtml(e.key, e.value, 'file-prop-input', `data-line="${e.line}"`);
+            }
+            document.getElementById('file-props').innerHTML = html;
+        }
+        ed.mode = mode;
+        document.getElementById('file-visual').classList.toggle('hidden', mode !== 'visual');
+        ta.classList.toggle('hidden', mode === 'visual');
+        this.markFileEditorMode();
+        if (mode === 'visual') this.filterFileProps(); else ta.focus();
+        if (!quiet) { try { localStorage.setItem('rp_fileEditorMode', mode); } catch (e) {} }
+    },
+
+    // Live filter, as in Configuration: every word must be in the setting's name or value.
+    filterFileProps() {
+        const terms = (document.getElementById('file-prop-search').value || '').toLowerCase().split(/\s+/).filter(Boolean);
+        const rows = document.querySelectorAll('#file-props .prop-row');
+        let shown = 0;
+        rows.forEach(row => {
+            const input = row.querySelector('.file-prop-input');
+            const match = terms.every(t => `${row.dataset.key} ${input ? input.value : ''}`.toLowerCase().includes(t));
+            row.style.display = match ? '' : 'none';
+            if (match) shown++;
+        });
+        // A section heading shows only while one of its settings does
+        document.querySelectorAll('#file-props .file-prop-section').forEach(h => {
+            let n = h.nextElementSibling, any = false;
+            for (; n && !n.classList.contains('file-prop-section'); n = n.nextElementSibling) any = any || n.style.display !== 'none';
+            h.style.display = any ? '' : 'none';
+        });
+        document.getElementById('file-prop-count').innerText = terms.length ? `${shown} of ${rows.length}` : `${rows.length} settings`;
+        document.getElementById('file-prop-empty').classList.toggle('hidden', !(terms.length && rows.length && shown === 0));
     },
 
     async saveFileEditor() {
@@ -3482,7 +3590,7 @@ const ServerApp = {
         if (!ed) return;
         const res = await api(this.filesUrl('/text'), {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: ed.path, content: document.getElementById('file-editor').value, modified: ed.modified })
+            body: JSON.stringify({ path: ed.path, content: this.fileEditorText(), modified: ed.modified })
         });
         if (!res.ok) return alert(`Couldn't save: ${await this.apiError(res)}`);
         const r = await res.json();
@@ -3663,6 +3771,8 @@ const ServerApp = {
             this.addonDetail = null;
         }
         if (this.addonsView === 'browse') return this.renderAddonBrowser();
+        if (this.addonsView === 'pack' && this.MOD_KINDS.includes(this.addonsData.kind)) return this.loadPlayerPack();
+        if (this.addonsView === 'pack') this.addonsView = 'installed';
         this.renderAddons();
         if (this.isJavaAddonKind(this.addonsData.kind)) this.loadAddonUpdates();
         if (this.addonsData.kind === 'bedrock') this.loadPhantom();
@@ -3830,7 +3940,8 @@ const ServerApp = {
         if (view === 'browse') {
             if (!this.addonSearch) this.searchAddons();
             else this.renderAddonBrowser();
-        } else this.loadAddons();
+        } else if (view === 'pack') this.loadPlayerPack();
+        else this.loadAddons();
     },
 
     addonViewSwitch() {
@@ -3838,7 +3949,119 @@ const ServerApp = {
         if (!this.isJavaAddonKind(d.kind)) return '';
         const b = (v, label) => `<button onclick="ServerApp.addonView('${v}')" class="px-3 py-1.5 rounded text-sm ${this.addonsView === v
             ? 'bg-theme text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'}">${label}</button>`;
-        return `<div class="flex flex-wrap gap-2">${b('installed', 'Installed')}${b('browse', `Find ${this.addonNoun(d.kind)}`)}</div>`;
+        return `<div class="flex flex-wrap gap-2">${b('installed', 'Installed')}${b('browse', `Find ${this.addonNoun(d.kind)}`)}${this.MOD_KINDS.includes(d.kind) ? b('pack', 'Player pack') : ''}</div>`;
+    },
+
+    // --- Player pack (1.21.6): the mods players need, worked out from this server's mods folder
+    playerPackUrl(tail) {
+        return apiUrl(`/api/servers/${encodeURIComponent(this.activeServer.name)}/player-pack${tail || ''}`);
+    },
+
+    async loadPlayerPack(fresh) {
+        const box = document.getElementById('addons-content');
+        if (!this.activeServer || !box) return;
+        const server = this.activeServer.name;
+        if (!this.playerPack || this.playerPack.server !== server) {
+            this.playerPack = null;
+            this.renderPlayerPack();
+        }
+        const res = await api(this.playerPackUrl(fresh ? '?fresh=true' : ''));
+        if (!this.activeServer || this.activeServer.name !== server || this.addonsView !== 'pack') return;
+        if (!res.ok) return this.renderPlayerPack(await this.apiError(res));
+        this.playerPack = await res.json();
+        this.renderPlayerPack();
+    },
+
+    async savePlayerPack(body) {
+        const server = this.activeServer.name;
+        const res = await api(this.playerPackUrl(), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!this.activeServer || this.activeServer.name !== server) return;
+        if (!res.ok) return this.renderPlayerPack(await this.apiError(res));
+        this.playerPack = await res.json();
+        this.renderPlayerPack();
+    },
+
+    addPlayerPackExtra() {
+        const box = document.getElementById('pack-extra');
+        const name = box ? box.value.trim() : '';
+        if (name) this.savePlayerPack({ add_extra: name });
+    },
+
+    renderPlayerPack(error) {
+        const box = document.getElementById('addons-content');
+        if (!box) return;
+        const d = this.addonsData, p = this.playerPack, esc = t => this.escapeHtml(String(t ?? ''));
+        const card = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm';
+        const small = 'px-2 py-1 rounded text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+        const note = 'text-xs text-gray-500 dark:text-gray-400';
+        const field = 'px-2 py-1 rounded text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white';
+        const head = `<div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white">Player pack${d.minecraft ? ` <span class="text-sm font-normal text-gray-500">for ${esc(this.loaderName(d.kind))} ${esc(d.minecraft)}</span>` : ''}</h3>
+                ${p ? `<span class="${note}">pack ${esc(p.version)}</span>` : ''}
+            </div>
+            ${this.addonViewSwitch()}
+            ${error ? `<div class="p-3 rounded text-sm bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-800 text-gray-900 dark:text-gray-100">${esc(error)}</div>` : ''}`;
+        if (!p) {
+            box.innerHTML = head + (error ? '' : `<p class="${note}">Working out which mods players need…</p>`);
+            return;
+        }
+        const c = p.counts, given = c.in + c.optional + c.bundled;
+        const badge = { in: ['In the pack', 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200'],
+            optional: ['Optional', 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200'],
+            bundled: ['File in the pack', 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200'],
+            out: ['Left out', 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'] };
+        const choices = [['auto', 'Automatic'], ['in', 'Include'], ['optional', 'Optional'], ['out', 'Leave out']];
+        const row = (m, extra) => {
+            const b = badge[m.state] || badge.out;
+            const name = m.slug && (m.on_modrinth || extra) ? `<a href="https://modrinth.com/mod/${encodeURIComponent(m.slug)}" target="_blank" rel="noopener noreferrer" class="hover:underline">${esc(m.name)}</a>` : esc(m.name);
+            const pick = extra
+                ? `<button onclick="ServerApp.savePlayerPack({ remove_extra: ${this.jsArg(m.key)} })" class="${small}">Remove</button>`
+                : `<select aria-label="What players get of ${esc(m.name)}" onchange="ServerApp.savePlayerPack({ mods: { [${this.jsArg(m.file)}]: this.value } })" class="${field}">${choices.map(([v, label]) => `<option value="${v}"${m.choice === v ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+            return `<div class="flex flex-wrap items-start justify-between gap-3 p-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0">
+                <div class="min-w-0 flex-1">
+                    <p class="font-bold text-gray-900 dark:text-white break-words">${name} <span class="text-xs font-normal px-1.5 py-0.5 rounded ${b[1]}">${b[0]}</span></p>
+                    <p class="${note} break-all">${[m.version ? `v${esc(m.version)}` : '', extra ? '' : esc(m.file), esc(m.why)].filter(Boolean).join(' · ')}</p>
+                </div>
+                <div class="whitespace-nowrap">${pick}</div>
+            </div>`;
+        };
+        const jp = p.join_page || {};
+        const onNode = !!this.activeServer.node;
+        const where = !p.active ? ''
+            : onNode ? 'Players download it from this server\'s join page (Join pages in the sidebar of the cluster master).'
+            : jp.enabled && jp.site ? `Players download it from <a class="underline text-theme" target="_blank" rel="noopener noreferrer" href="${esc(`${jp.scheme}://${location.hostname}:${jp.port}/join/${encodeURIComponent(jp.path)}`)}">this server's join page</a>.`
+            : 'Players download it from this server\'s join page, which is off. Turn it on under <button class="underline text-theme" onclick="ServerApp.openJoin()">Join pages</button>.';
+        const state = p.active
+            ? `The player pack is <b>on</b>${p.mode === 'auto' ? ' (automatic)' : ''}: ${given} mod${given === 1 ? '' : 's'}${c.optional ? `, ${c.optional} optional` : ''}; ${c.out} left out.`
+            : p.mode === 'off' ? 'The player pack is <b>off</b>.'
+            : 'The player pack is <b>off</b> (automatic): this server was made from a Modrinth modpack, so its join page links to that pack. Turn the player pack on if you have added or removed mods since.';
+        const modes = [['auto', 'Automatic'], ['on', 'On'], ['off', 'Off']];
+        box.innerHTML = head + `
+            <div class="${card} p-4 space-y-3">
+                <p class="text-sm text-gray-800 dark:text-gray-200">${state} ${where}</p>
+                <div class="flex flex-wrap items-end gap-3">
+                    <label class="text-xs text-gray-600 dark:text-gray-300">Player pack<br>
+                        <select onchange="ServerApp.savePlayerPack({ mode: this.value })" class="${field} mt-1">${modes.map(([v, label]) => `<option value="${v}"${p.mode === v ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
+                    <label class="text-xs text-gray-600 dark:text-gray-300">Name players see<br>
+                        <input id="pack-name" maxlength="60" value="${esc(p.name)}" placeholder="The server's name" class="${field} mt-1 w-56"></label>
+                    <button onclick="ServerApp.savePlayerPack({ name: document.getElementById('pack-name').value })" class="${small}">Save name</button>
+                    <span class="flex-1"></span>
+                    ${p.active && given ? `<a href="${esc(this.playerPackUrl('/file'))}" class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white">Download .mrpack</a>` : ''}
+                    <button onclick="ServerApp.loadPlayerPack(true)" class="${small}">Check again</button>
+                </div>
+                ${(p.problems || []).map(x => `<p class="text-xs text-yellow-700 dark:text-yellow-300">⚠️ ${esc(x)}</p>`).join('')}
+                ${p.loader_version ? '' : `<p class="text-xs text-yellow-700 dark:text-yellow-300">⚠️ This server's record doesn't say which ${esc(p.loader_name)} version it runs, so the pack leaves the loader to the player's launcher.</p>`}
+            </div>
+            <div class="${card}">${p.mods.map(m => row(m, false)).join('') || `<p class="p-4 text-sm text-gray-500 dark:text-gray-400">No mods are installed yet.</p>`}</div>
+            <h3 class="text-base font-bold text-gray-900 dark:text-white pt-2">Extras for players</h3>
+            <p class="${note}">Mods the server doesn't run but players may like, such as shaders or a minimap. They go in the pack as optional.</p>
+            <div class="${card}">${p.extras.map(m => row(m, true)).join('')}
+                <div class="flex flex-wrap gap-2 p-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0">
+                    <input id="pack-extra" placeholder="A Modrinth mod, such as sodium, or its page address" class="${field} flex-1 min-w-0" onkeydown="if (event.key === 'Enter') ServerApp.addPlayerPackExtra()">
+                    <button onclick="ServerApp.addPlayerPackExtra()" class="px-3 py-1.5 rounded text-sm bg-theme hover-bg-theme text-white">Add</button>
+                </div>
+            </div>
+            <p class="${note}">The panel asks Modrinth which mod each file is and which side of the game it runs on. Mods that run only on the server are left out; a file Modrinth doesn't know is left out unless you choose Include, which copies the file itself into the pack. The pack is rebuilt whenever the mods folder changes.</p>`;
     },
 
     addonProjectUrl(u) {
@@ -6421,6 +6644,7 @@ const ServerApp = {
 	portsRouter: (() => { try { return localStorage.getItem('rp_portsRouter') || 'pfsense'; } catch (e) { return 'pfsense'; } })(),
 
 	openPorts() {
+		this.closeJoin();
 		this.hideDashboard();
 		this.closeCluster();
 		this.activeServer = null;
@@ -6434,6 +6658,199 @@ const ServerApp = {
 	closePorts() {
 		const v = document.getElementById('ports-view');
 		if (v) v.classList.add('hidden');
+		this.closeJoin();
+	},
+
+	// --- Join pages (1.21.5, admins): a public page per server that tells players how to join,
+	// served on its own port (core/joinpage.py, core/joinsite.py)
+	joinData: null,
+	joinOpen: {},          // which servers' forms are open: { 'member/server': true }
+	joinNote: null,        // { key, text, ok } shown under the form that was saved
+
+	openJoin() {
+		this.hideDashboard();
+		this.closeCluster();
+		this.activeServer = null;
+		this.renderSidebar();
+		document.getElementById('workspace').classList.add('hidden');
+		document.getElementById('join-view').classList.remove('hidden');
+		this.setMobileTitle('🔗 Join pages', this.panelName);
+		this.loadJoin();
+	},
+
+	closeJoin() {
+		const v = document.getElementById('join-view');
+		if (v) v.classList.add('hidden');
+	},
+
+	async loadJoin() {
+		const body = document.getElementById('join-body');
+		if (!this.joinData) body.innerHTML = '<p class="text-gray-500">Loading...</p>';
+		try {
+			const res = await fetch('/api/join-pages');
+			if (!res.ok) throw new Error(await this.apiError(res));
+			this.joinData = await res.json();
+		} catch (e) {
+			body.innerHTML = `<p class="text-red-500">Couldn't load the join pages: ${this.escapeHtml(e.message)}</p>`;
+			return;
+		}
+		this.renderJoin();
+	},
+
+	async saveJoinListener(button) {
+		button.disabled = true;
+		const res = await fetch('/api/settings/join', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ enabled: document.getElementById('join-on').checked,
+			                       port: parseInt(document.getElementById('join-port').value, 10) || 0,
+			                       index: document.getElementById('join-index').checked }) });
+		if (!res.ok) {
+			this.joinNote = { key: '', text: await this.apiError(res), ok: false };
+			return this.loadJoin();
+		}
+		this.joinData = await res.json();
+		const l = this.joinData.listener;
+		this.joinNote = { key: '', ok: !l.error, text: l.error || (l.enabled ? `Join pages are on, port ${l.port}.` : 'Join pages are off.') };
+		this.renderJoin();
+	},
+
+	toggleJoinForm(key) {
+		this.joinOpen[key] = !this.joinOpen[key];
+		this.renderJoin();
+	},
+
+	async saveJoinPage(member, server, button, newLink) {
+		const key = `${member}/${server}`, id = n => document.getElementById(`join-${n}-${this.joinId(key)}`);
+		button.disabled = true;
+		const res = await fetch('/api/join-pages/page', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ member, server, enabled: id('enabled').checked, slug: id('slug').value.trim(),
+				unlisted: id('unlisted').checked, new_link: !!newLink, address: id('address').value.trim(),
+				note: id('note').value, link_url: id('link-url').value.trim(), link_label: id('link-label').value.trim(),
+				pack_url: id('pack-url') ? id('pack-url').value.trim() : '', show_players: id('players').checked }) });
+		if (!res.ok) {
+			button.disabled = false;
+			const note = id('msg');
+			note.className = 'text-sm text-red-500 mt-2';
+			note.innerText = await this.apiError(res);
+			return;
+		}
+		const d = await res.json();
+		this.joinNote = { key, ok: true, text: d.page.enabled ? 'Saved. The page is public.' : 'Saved. The page is off.' };
+		this.loadJoin();
+	},
+
+	joinId(key) { return key.replace(/[^A-Za-z0-9_-]/g, '_'); },
+
+	copyJoinLink(url, button) {
+		const done = () => { const old = button.innerText; button.innerText = 'Copied'; setTimeout(() => { button.innerText = old; }, 1500); };
+		if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(url).then(done).catch(() => prompt('Copy the link:', url));
+		else prompt('Copy the link:', url);
+	},
+
+	renderJoin() {
+		const d = this.joinData, l = d.listener, esc = t => this.escapeHtml(String(t ?? ''));
+		const card = 'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4';
+		const h = 'text-lg font-bold text-gray-900 dark:text-white mb-2';
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const btn = 'px-3 py-2 rounded text-sm font-bold transition';
+		const grey = `${btn} bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white`;
+		const warn = t => `<p class="text-sm p-3 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700">${t}</p>`;
+		const msg = key => this.joinNote && this.joinNote.key === key
+			? `<p class="text-sm ${this.joinNote.ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mt-2">${esc(this.joinNote.text)}</p>` : '';
+		const base = d.public_url || d.lan_url;
+		const multi = d.members.length > 1;
+
+		const state = !l.enabled ? ''
+			: l.error ? `<p class="text-sm text-red-500 mt-2"><b>Not running.</b> ${esc(l.error)}</p>`
+			: !l.managed ? `<p class="${note} mt-2">The pages start with the panel's own service.</p>`
+			: l.running ? `<p class="${note} mt-2"><span class="text-green-600 dark:text-green-400 font-bold">Running</span> on port ${esc(l.serving_port)} (${l.scheme === 'https' ? 'HTTPS, with the panel\'s certificate' : 'HTTP'}).</p>`
+			: `<p class="text-sm text-red-500 mt-2"><b>Not running.</b> Restart the panel, or pick another port.</p>`;
+		const listenerCard = `<div class="${card}">
+			<h3 class="${h}">The public port</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Join pages have their own port, so you can forward it on your router and keep the panel itself off the internet. That port answers nothing but the join pages: no sign-in page and none of the panel.</p>
+			<label class="flex items-start gap-2 mb-2 text-sm cursor-pointer">
+				<input type="checkbox" id="join-on" ${l.enabled ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Turn join pages on</b><br><span class="${note}">Each server's page still has to be turned on below.</span></span>
+			</label>
+			<label class="flex items-start gap-2 mb-3 text-sm cursor-pointer">
+				<input type="checkbox" id="join-index" ${l.index ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Also list the public pages at /join</b><br><span class="${note}">Off: a page is found only by its own link.</span></span>
+			</label>
+			<div class="flex flex-wrap items-end gap-2">
+				<label class="${note}">Port<br><input id="join-port" type="number" min="1" max="65535" value="${esc(l.port)}" class="${field} w-28 mt-1"></label>
+				<button onclick="ServerApp.saveJoinListener(this)" class="${btn} bg-theme hover-bg-theme text-white">Save</button>
+			</div>
+			${state}${msg('')}
+			<p class="${note} mt-2">The port is opened in this server's firewall. For players outside your home, forward TCP ${esc(l.port)} to this machine on your router as well.</p>
+		</div>`;
+
+		const addressCard = d.public_address ? '' : `<div class="${card}">${warn(`No internet address is set yet, so the pages can't tell players what to type. Set it under <button onclick="ServerApp.openPorts()" class="underline font-bold">🔀 Port forwarding</button>, or type an address for each server below.`)}</div>`;
+
+		const row = (m, s) => {
+			const key = `${m.id}/${s.name}`, id = this.joinId(key), p = s.page, open = !!this.joinOpen[key];
+			const url = `${base}/${encodeURIComponent(s.path)}`;
+			const kind = [s.edition, s.loader && s.loader !== 'Vanilla' ? s.loader : '', s.minecraft].filter(Boolean).join(' · ');
+			const live = p.enabled && l.enabled;
+			const badge = p.enabled
+				? `<span class="text-xs font-bold px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">${p.unlisted ? 'Public, unlisted' : 'Public'}</span>`
+				: `<span class="text-xs font-bold px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Off</span>`;
+			const link = !p.enabled ? '' : `<div class="flex flex-wrap items-center gap-2 mt-2">
+					<a href="${esc(url)}" target="_blank" rel="noopener" class="text-sm font-mono break-all underline text-theme">${esc(url)}</a>
+					<button onclick="ServerApp.copyJoinLink('${esc(url)}', this)" class="${grey}">Copy link</button>
+				</div>${live ? '' : `<p class="${note} mt-1">The link works once join pages are turned on above.</p>`}`;
+			const form = !open ? '' : `<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-3">
+				<label class="flex items-start gap-2 text-sm cursor-pointer">
+					<input type="checkbox" id="join-enabled-${id}" ${p.enabled ? 'checked' : ''} class="mt-1">
+					<span><b class="text-gray-900 dark:text-white">Make this server's join page public</b><br><span class="${note}">Anyone with the link sees the server's name, version, whether it's online, how many are playing and how to join.</span></span>
+				</label>
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+					<label class="${note}">Link name<input id="join-slug-${id}" maxlength="40" value="${esc(p.slug)}" class="${field} w-full mt-1 font-mono">
+						<span class="block mt-1">The end of the link: /join/<b>${esc(p.slug)}</b></span></label>
+					<label class="${note}">Address players type<input id="join-address-${id}" maxlength="260" value="${esc(p.address)}" placeholder="${esc(d.public_address || 'play.example.com')}" class="${field} w-full mt-1 font-mono">
+						<span class="block mt-1">Empty: ${d.public_address ? `<b>${esc(d.public_address)}</b>, from Port forwarding,` : 'the address from Port forwarding'} with this server's port. Add <span class="font-mono">:port</span> if the router shows a different one outside.</span></label>
+				</div>
+				<label class="flex items-start gap-2 text-sm cursor-pointer">
+					<input type="checkbox" id="join-unlisted-${id}" ${p.unlisted ? 'checked' : ''} class="mt-1">
+					<span><b class="text-gray-900 dark:text-white">Unlisted: use a random link instead of the link name</b><br><span class="${note}">For a friends-only server. The page can't be guessed and never appears in the list at /join.${p.unlisted && p.enabled ? ` <button onclick="ServerApp.saveJoinPage('${esc(m.id)}', '${esc(s.name)}', this, true)" class="underline text-theme">Make a new link</button> (the old one stops working).` : ''}</span></span>
+				</label>
+				<label class="flex items-start gap-2 text-sm cursor-pointer">
+					<input type="checkbox" id="join-players-${id}" ${p.show_players ? 'checked' : ''} class="mt-1">
+					<span><b class="text-gray-900 dark:text-white">Show who is playing</b><br><span class="${note}">Off: only the number of players is shown, never their names.</span></span>
+				</label>
+				<label class="${note} block">A note for players (rules, when you play)<textarea id="join-note-${id}" rows="3" maxlength="600" class="${field} w-full mt-1">${esc(p.note)}</textarea></label>
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+					<label class="${note}">A link of your own (Discord, a website)<input id="join-link-url-${id}" maxlength="300" value="${esc(p.link_url)}" placeholder="https://discord.gg/..." class="${field} w-full mt-1"></label>
+					<label class="${note}">What the link's button says<input id="join-link-label-${id}" maxlength="40" value="${esc(p.link_label)}" placeholder="Join our Discord" class="${field} w-full mt-1"></label>
+				</div>
+				${s.mods ? `<label class="${note} block">Where players get the mods<input id="join-pack-url-${id}" maxlength="300" value="${esc(p.pack_url)}" placeholder="https://www.curseforge.com/minecraft/modpacks/..." class="${field} w-full mt-1">
+					<span class="block mt-1">A server made from a Modrinth modpack links to that exact pack by itself. For anything else, paste the pack's page here.</span></label>` : ''}
+				<div class="flex flex-wrap gap-2">
+					<button onclick="ServerApp.saveJoinPage('${esc(m.id)}', '${esc(s.name)}', this)" class="${btn} bg-theme hover-bg-theme text-white">Save page</button>
+					<button onclick="ServerApp.toggleJoinForm('${esc(key)}')" class="${grey}">Close</button>
+				</div>
+				<p id="join-msg-${id}" class="hidden"></p>
+			</div>`;
+			return `<div class="py-3 border-b border-gray-100 dark:border-gray-700/60 last:border-b-0">
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<div class="min-w-0">
+						<p class="font-bold text-gray-900 dark:text-white break-words">${esc(s.name)} ${badge}</p>
+						<p class="${note}">${esc(kind)}${multi ? ` · ${m.local ? esc(m.name) : '🌐 ' + esc(m.name)}` : ''}</p>
+					</div>
+					<button onclick="ServerApp.toggleJoinForm('${esc(key)}')" class="${grey}">${open ? 'Close' : p.enabled ? 'Change' : 'Set up'}</button>
+				</div>
+				${link}${msg(key)}${form}
+			</div>`;
+		};
+		const rows = d.members.flatMap(m => m.servers.map(s => row(m, s))).join('');
+		const down = d.members.filter(m => m.state !== 'ok').map(m => `<li>🌐 ${esc(m.name)}: couldn't be reached (${esc(m.error || m.state)}), so its servers aren't listed. Their pages show as offline meanwhile.</li>`).join('');
+		const serversCard = `<div class="${card}">
+			<h3 class="${h}">Servers</h3>
+			${rows || `<p class="text-sm text-gray-500">No servers yet.</p>`}
+			${down ? `<ul class="${note} list-disc ml-5 mt-3">${down}</ul>` : ''}
+		</div>`;
+
+		document.getElementById('join-body').innerHTML = listenerCard + addressCard + serversCard;
+		this.joinNote = null;
 	},
 
 	async loadPorts() {

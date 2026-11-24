@@ -55,6 +55,11 @@ DEFAULTS = {
     # earlier stay where they are, so every folder that was ever used is remembered.
     "servers_folder": "",
     "servers_folders_used": [],
+    # 1.21.5: public join pages for players (core/joinpage.py), on their own port so the panel
+    # itself never has to face the internet. Off until an admin turns them on.
+    "join_enabled": False,
+    "join_port": 8444,
+    "join_index": False,
 }
 PANEL_NAME_MAX = 40
 CONNECTION_KEYS = ("https_mode", "http_port", "https_port", "cert_file", "key_file")
@@ -62,6 +67,8 @@ HOSTNAME_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-
 
 # Filled in by run.py at startup: how the panel is actually being served right now
 RUNTIME = {"scheme": None, "port": None, "https_error": None}
+# The certificate the panel is serving with right now (run.py); the join pages use the same one
+TLS_FILES = {"cert": None, "key": None}
 
 _lock = threading.Lock()
 _cache = {"mtime": None, "data": None}
@@ -165,6 +172,20 @@ def validate(new):
         raise SettingsError("The SFTP port must be between 1 and 65535.")
     if s["sftp_port"] in (s["http_port"], s["https_port"]) or s["sftp_port"] == 22:
         raise SettingsError("Choose an SFTP port that isn't the panel's own port or 22 (this machine's SSH).")
+
+    for key in ("join_enabled", "join_index"):
+        if not isinstance(s[key], bool):
+            raise SettingsError("Join pages must be on or off.")
+    try:
+        s["join_port"] = int(s["join_port"])
+    except (TypeError, ValueError):
+        raise SettingsError("The join pages port must be a number.")
+    if not 1 <= s["join_port"] <= 65535:
+        raise SettingsError("The join pages port must be between 1 and 65535.")
+    if s["join_enabled"] and s["join_port"] in (s["http_port"], s["https_port"], s["sftp_port"], 22):
+        raise SettingsError("Choose a join pages port that isn't the panel's own port, the SFTP port or 22.")
+    if s["sftp_enabled"] and s["join_enabled"] and s["sftp_port"] == s["join_port"]:
+        raise SettingsError("SFTP and the join pages need different ports.")
 
     s["servers_folder"] = clean_servers_folder(s["servers_folder"])
     used = []

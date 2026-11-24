@@ -220,6 +220,11 @@ def rules_in_use(servers=None):
         needed |= sftp.firewall_rules()
     except Exception:
         pass
+    try:
+        from core import joinsite        # 1.21.5: the join pages' port, while they are on
+        needed |= joinsite.firewall_rules()
+    except Exception:
+        pass
     return needed | phantom_firewall_rules()
 
 

@@ -1,3 +1,37 @@
+redstonepanel (1.21.6) noble; urgency=medium
+
+  * Player packs: for a Fabric, Quilt, Forge or NeoForge server the panel
+    works out which mods players need from the server's own mods folder
+    and offers them on the join page as a pack (.mrpack) their launcher
+    installs in one go. Add, update or remove a mod and the pack follows.
+  * Mods that run only on the server are left out, mods that work without
+    are marked optional, and what a required mod depends on is required.
+    A mod Modrinth doesn't know is named on the page.
+  * The Mods tab gets a Player pack view: overrule any line, add extras
+    for players such as shaders, name the pack, or turn it off.
+  * The same pack as a packwiz folder, for launchers that check the
+    server's mods every time the game starts.
+  * On a cluster master the join page offers the pack of a server on any
+    node.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 24 Nov 2026 00:45:00 -0000
+
+redstonepanel (1.21.5) noble; urgency=medium
+
+  * Join pages: each server can have a public page that tells players how
+    to join, with the address, whether it's online, how many are playing
+    and the Minecraft version. Off until an admin turns it on.
+  * A server made from a Modrinth modpack links to the exact pack version
+    it runs, with steps for Modrinth App and Prism Launcher. Bedrock
+    servers and Java servers with Geyser get an Add server button.
+  * The pages have a port of their own (8444) that answers nothing but
+    the join pages, so the panel itself can stay off the internet.
+  * Pages can be unlisted (a random link), carry a note and a link of
+    your own, and show player names only if you turn that on.
+  * On a cluster master the pages cover the servers on every node.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Mon, 23 Nov 2026 22:41:20 -0000
+
 redstonepanel (1.21.4) noble; urgency=medium
 
   * Live Chat suggests as you type, like the game: type / for the

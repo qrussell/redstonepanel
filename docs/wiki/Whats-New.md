@@ -9,6 +9,36 @@ the dashboard.
 
 ---
 
+## 1.21.6: player packs *(November 2026)*
+
+- **Player packs**: for a Fabric, Quilt, Forge or NeoForge server, the panel works out which
+  mods players need from the server's own mods folder and offers them on the join page as
+  one download (`.mrpack`) for Modrinth App, Prism Launcher and other launchers.
+- **It follows the server**: add, update or remove a mod and the pack is the new one.
+- Server-only mods are left out, mods players can do without are optional, and a mod Modrinth
+  doesn't know is named on the page.
+- A **Player pack** view in the Mods tab to overrule any line, add extras such as shaders,
+  name the pack or turn it off. Also offered as a packwiz folder. See
+  [Player packs](../guide/README.md#player-packs).
+
+[Release notes](../../release-notes/v1.21.6.md)
+
+## 1.21.5: join pages for players *(November 2026)*
+
+- **🔗 Join pages**: a public page for each server that tells players how to join, with the
+  address, whether it's online, how many are playing and the Minecraft version. Off until you
+  turn it on.
+- A server made from a Modrinth modpack links to **the exact pack version it runs**, with
+  steps for Modrinth App and Prism Launcher. Bedrock servers get an **Add this server to
+  Minecraft** button.
+- The pages have **a port of their own** that answers nothing else, so the panel can stay off
+  the internet.
+- Unlisted pages with a random link, a note and a link of your own, and player names only if
+  you turn them on. On a cluster master, pages for the servers on every node. See
+  [Join pages](../guide/README.md#join-pages).
+
+[Release notes](../../release-notes/v1.21.5.md)
+
 ## 1.21.4: quick commands in Live Chat *(November 2026)*
 
 - **Live Chat suggests as you type**, like the game: commands after `/`, then the players

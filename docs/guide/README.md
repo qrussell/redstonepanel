@@ -50,6 +50,8 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.21.6 | **Player packs**: the mods players need, as one download on the join page that follows the server. | [Player packs](#player-packs) |
+| 1.21.5 | **🔗 Join pages**: a public page for each server that tells players how to join, on a port of its own. | [Join pages](#join-pages) |
 | 1.21.2 | Light and dark mode is a **sun/moon switch in the top right corner**, with a colored dot beside it for the accent color. The ⚙️ button in the sidebar is gone. | [The dashboard](#3-the-dashboard) |
 | 1.21.0 | Groundwork for the Windows version. Nothing new on screen. | [Roadmap](../wiki/Roadmap.md) |
 | 1.20.0 | **Purpur, Quilt, NeoForge and Forge** servers; **From a modpack** (Modrinth, `.mrpack`, CurseForge server packs) and pack updates. | [Create or import a server](#4-create-or-import-a-server), [Modpack](#modpack) |
@@ -416,6 +418,7 @@ The sidebar on the left holds everything that isn't about one server:
 | **📊 Dashboard** | This machine's resources, services and what needs attention (above). |
 | **🌐 Cluster** | On a cluster master: every panel's servers (see [Clusters](#18-clusters)). |
 | **🔀 Port forwarding** | Admins: what to set up on your internet router so players outside your home can join (see [Port forwarding](#port-forwarding)). |
+| **🔗 Join pages** | Admins: a public page per server that tells players how to join (see [Join pages](#join-pages)). |
 | **🖥️ Console** | The panel's live activity log. |
 | **📋 Templates** | Saved server settings to reuse. |
 | **Sort by** | Name A–Z, Z–A, or online servers first. |
@@ -475,6 +478,69 @@ looks after the firewall (`ufw`) on each machine.
   If you do forward it, use HTTPS and two-factor sign-in for every admin.
 
 Nodes older than 1.16.14 show only their game ports, with the address the master knows them by.
+
+### Join pages
+
+Telling a new player how to join usually means a message with the address, the version and,
+for a modded server, which mods to get. **🔗 Join pages** (admins) gives each server a public
+page that says all of it and keeps itself up to date: whether the server is online, how many
+are playing, the address to type, the Minecraft version, and for a modpack server the exact
+pack to install.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-page.png"><img src="images/join-page.png" alt="A server's join page, as a player sees it"></picture>
+
+Nothing is public until you turn it on, twice: the port, and then each server's page.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-pages.png"><img src="images/join-pages.png" alt="The Join pages page in the panel"></picture>
+
+- **The public port** (8444 unless you change it). Join pages have a port of their own, so you
+  can forward that one port on your router and keep the panel off the internet. The port
+  answers nothing but the join pages: there is no sign-in page on it and none of the panel.
+  It uses HTTPS with the panel's certificate when the panel does. The panel opens the port in
+  this machine's firewall; for players outside your home, forward TCP 8444 on your router too
+  (see [Port forwarding](#port-forwarding)).
+- **Also list the public pages at /join** adds a page that lists them. Off, a page is found
+  only by its own link.
+- **Servers**: press **Set up** next to a server, tick **Make this server's join page
+  public** and **Save page**. The link appears under the server, with **Copy link** to send
+  to your players.
+  - **Link name** is the end of the link, for example `/join/survival`.
+  - **Address players type**. Leave it empty to use your internet address from **🔀 Port
+    forwarding** with the server's own port. Type one here for a server with its own name, and
+    add `:port` when your router shows a different port outside. The panel never publishes an
+    address it worked out by itself: with no address anywhere, the page asks players to get it
+    from you.
+  - **Unlisted** gives the page a long random link instead of the link name, for a
+    friends-only server. It can't be guessed and never appears in the list. **Make a new
+    link** replaces it; the old link stops working.
+  - **Show who is playing** adds the players' names. Off, only the number is shown.
+  - **A note for players** and **a link of your own** (a Discord invite, a website) appear at
+    the top of the page. Only `https://` links are accepted.
+  - **Where players get the mods** (mod servers). A server made **From a modpack** on Modrinth
+    links to that exact pack version by itself, with an **Open in Modrinth App** button and
+    steps for Modrinth App and Prism Launcher. Any other mod server offers its
+    [player pack](#player-packs) *(1.21.6)*: a download made from the server's own mods. A
+    link pasted here is shown only when the player pack is off.
+
+What a page shows depends on the server:
+
+| Server | The page says |
+| --- | --- |
+| Vanilla, Paper, Purpur | The address, the Minecraft version, "No mods are needed", and how to add the server in the game. |
+| Paper or Purpur with Geyser | The same, and the address and port for Bedrock players. |
+| Fabric, Quilt, Forge, NeoForge | The loader and version, the modpack to install (see above), and how to join with a launcher that handles mods. |
+| Bedrock | The address and port, an **Add this server to Minecraft** button for phones, tablets and Windows, and the steps by hand. |
+
+<img src="images/phone-join-page.png" width="280" alt="A join page on a phone">
+
+A page never shows a LAN address, the machine's or a node's name, a folder, the panel's
+version, account names or the list of plugins. It sets no cookies and has no forms. The
+server is asked for its player count at most once every 30 seconds, however many people look.
+
+On a cluster master the list includes the servers on every node, and the master serves their
+pages; nodes open nothing. A node's own join pages belong to that node's admin and can't be
+turned on from the master. If a node can't be reached, its servers' pages stay up and say
+offline.
 
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
 (**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
@@ -1296,6 +1362,19 @@ things the other tabs don't cover: plugin and mod settings, `ops.json`, `bukkit.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/file-editor.png"><img src="images/file-editor.png" alt="Editing a plugin&#x27;s config.yml"></picture>
 
+- A file that is a list of `name=value` settings (`server.properties`, `eula.txt`, most `.cfg`,
+  `.conf` and `.ini` files, any `.properties` file) opens in a **Visual Editor** like the one
+  on [Configuration](#7-configuration-player-roles-and-the-whitelist): one card per setting, with **True**/**False** lists,
+  number boxes and a filter. **Visual Editor** and **Raw Text** above it switch between the
+  form and the plain text. They show the same file, so a change made in one is there in the
+  other, and the panel opens the next file in the view you used last.
+- The form changes only the values you change. Comments, blank lines, spacing and the order of
+  the file stay as they were. To add or remove a setting, or edit a comment, use **Raw Text**.
+- The switch appears only when every line of the file fits. `.yml`, `.json` and `.toml` files
+  have their own layout and always open as text.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/file-visual.png"><img src="images/file-visual.png" alt="server.properties in the Files tab&#x27;s Visual Editor"></picture>
+
 Most servers read their files when they start, so **Restart** after changing settings.
 Some plugins have a reload command; check the plugin's documentation.
 
@@ -1420,6 +1499,47 @@ on any other port and forwards players to it. The Add-ons tab of a Bedrock serve
   installing the panel's.
 
 Removing a server removes its Phantom as well.
+
+### Player packs
+
+*(1.21.6)* On a Fabric, Quilt, Forge or NeoForge server, players need the same mods as the
+server to join. The **Player pack** view of the Mods tab works out that list from the
+server's own `mods` folder and hands it to players on the server's [join page](#join-pages)
+as a pack their launcher installs in one go. It follows the folder: add, update or remove a
+mod and the pack players download is the new one, with a new pack number.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/player-pack.png"><img src="images/player-pack.png" alt="The Player pack view of the Mods tab"></picture>
+
+For each file the panel asks Modrinth which mod it is and which side of the game it runs on:
+
+| Modrinth says | In the pack |
+| --- | --- |
+| Players need it | **In the pack** |
+| Works without it on the player's side | **Optional**: the launcher lets the player leave it out |
+| Works without it, but a mod in the pack needs it (Fabric API, for one) | **In the pack** |
+| Runs only on the server | **Left out** |
+| Modrinth doesn't know the file | **Left out**, and named on the join page so players know to ask |
+
+- The menu on each line overrules that: **Include**, **Optional** or **Leave out**.
+  **Include** on a file Modrinth doesn't know copies the file itself into the pack (up to
+  64 MB of such files together). Only do that with mods you may hand out.
+- **Extras for players** adds mods the server doesn't run, such as shaders or a minimap, by
+  their Modrinth name or page address. They go in as optional.
+- **Player pack: Automatic** is on, unless the server was made **From a modpack** on
+  Modrinth: its join page then links to that pack. Choose **On** if you have added or removed
+  mods since, or **Off** to hand out nothing.
+- **Download .mrpack** gives you the same file players get.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-page-pack.png"><img src="images/join-page-pack.png" alt="A join page offering the server's player pack"></picture>
+
+The pack is a Modrinth pack (`.mrpack`), which Modrinth App, Prism Launcher and most other
+launchers import. It holds no mods, only where each one is on Modrinth and its checksum, so
+the launcher downloads them from Modrinth. The join page also offers the pack as a
+[packwiz](https://packwiz.infra.link) folder for players who set their launcher up to check
+the server's mods every time the game starts.
+
+The panel needs to reach Modrinth to work the list out. If it can't, the last pack it built
+stays in place.
 
 ### Finding mods and plugins
 

@@ -515,7 +515,10 @@ class RouteCoverage(unittest.TestCase):
                 ("GET", "/api/port-forwarding/local")}
     NEVER = ("/api/users", "/api/settings", "/api/auth", "/api/panel", "/api/cluster/overview",
              "/api/cluster/nodes", "/api/cluster/join", "/api/templates/", "/api/cluster/backup-copies",
-             "/api/port-forwarding/settings", "/api/port-forwarding/lookup", "/api/port-forwarding/check")
+             "/api/port-forwarding/settings", "/api/port-forwarding/lookup", "/api/port-forwarding/check",
+             # 1.21.5: a node's join pages are its own admin's; the master only reads a server's
+             # details (under the server's own routes)
+             "/api/join-pages")
 
     @staticmethod
     def _sample(path):

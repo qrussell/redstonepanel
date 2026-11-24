@@ -45,6 +45,9 @@ import core.sftp as sftp
 from core.platform import paths
 from starlette.routing import Match
 import core.modpacks as modpacks
+import core.joinpage as joinpage
+import core.joinsite as joinsite
+import core.playerpack as playerpack
 from starlette.background import BackgroundTask
 import json
 import re
@@ -77,7 +80,7 @@ def _page(name):
         with open(path, encoding="utf-8") as f:
             html = f.read()
         v = urllib.parse.quote(panel_version(), safe="")
-        for asset in ("/static/js/app.js", "/static/js/chat-commands.js", "/static/css/tailwind.css"):
+        for asset in ("/static/js/app.js", "/static/js/chat-commands.js", "/static/js/propfile.js", "/static/css/tailwind.css"):
             html = html.replace(f'"{asset}"', f'"{asset}?v={v}"')
         hit = _page_cache[name] = (mtime, html)
     return hit[1]
@@ -584,7 +587,9 @@ def update_settings_api(request: Request, new: dict = Body(...)):
     # SFTP has its own switch (PUT /api/settings/sftp); this form never changes it
     # ... and neither does it move the servers folder (PUT /api/settings/servers-folder)
     new = dict(new, sftp_enabled=old["sftp_enabled"], sftp_port=old["sftp_port"],
-               servers_folder=old["servers_folder"], servers_folders_used=old["servers_folders_used"])
+               servers_folder=old["servers_folder"], servers_folders_used=old["servers_folders_used"],
+               # ... or the join pages (PUT /api/settings/join)
+               join_enabled=old["join_enabled"], join_port=old["join_port"], join_index=old["join_index"])
     try:
         s = panel_settings.validate(new)
     except panel_settings.SettingsError as e:
@@ -1194,6 +1199,8 @@ def uninstall_server(request: Request, server_name: str, keep_world: bool = True
         raise HTTPException(status_code=400, detail=str(e))
     if not keep_world:
         playerlog.forget(server_name)
+        joinpage.forget("local", server_name)
+        playerpack.forget(server_name)
         grants.forget_server(server_name)
     return {"status": "success"}
 
@@ -2077,6 +2084,102 @@ def port_forwarding_lookup_api(request: Request):
 def port_forwarding_check_api(request: Request):
     _require_admin(request, "check port forwarding")
     return _ports_call(portforward.check, portforward.overview(actor=request.state.user["username"]))
+
+# --- 1.21.5: join pages for players (core/joinpage.py), served on their own port by
+# core/joinsite.py. Everything here is the admin's side; the public side has no /api at all.
+def _join_call(fn, *a, **kw):
+    try:
+        return fn(*a, **kw)
+    except joinpage.JoinError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+def _join_view(request: Request):
+    st = joinsite.status()
+    out = joinpage.admin_overview()
+    host = panel_settings.host_only(request.headers.get("host")) or "localhost"
+    host = f"[{host}]" if ":" in host else host
+    default = {"https": 443, "http": 80}[st["scheme"]]
+    public = out["public_address"]
+    public = f"[{public}]" if public and ":" in public else public
+    port = "" if st["port"] == default else f":{st['port']}"
+    return dict(out, listener=st, lan_url=f"{st['scheme']}://{host}{port}/join",
+                public_url=f"{st['scheme']}://{public}{port}/join" if public else None)
+
+@app.get("/api/join-pages")
+def join_pages_api(request: Request):
+    _require_admin(request, "see the join pages")
+    return _join_view(request)
+
+class JoinSettings(BaseModel):
+    enabled: bool
+    port: int
+    index: bool = False
+
+@app.put("/api/settings/join")
+def set_join_settings_api(req: JoinSettings, request: Request):
+    old = panel_settings.load()
+    try:
+        s = panel_settings.validate(dict(old, join_enabled=req.enabled, join_port=req.port, join_index=req.index))
+        joinsite.check_can_enable(s, old)
+    except (panel_settings.SettingsError, joinpage.JoinError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    panel_settings.save(s)
+    joinsite.apply(s, old, actor=request.state.user["username"])
+    return _join_view(request)
+
+@app.put("/api/join-pages/page")
+def set_join_page_api(request: Request, body: dict = Body(...)):
+    """One server's page. member: "local", or a node's id on a cluster master."""
+    _require_admin(request, "change a join page")
+    member, server = str(body.get("member") or "local"), str(body.get("server") or "")
+    if member == "local":
+        _known_server(server)
+    else:
+        if cluster.role() != "master" or not cluster.find_node(member):
+            raise HTTPException(status_code=404, detail="No such cluster member.")
+        if not manager.SERVICE_NAME_RE.fullmatch(server):
+            raise HTTPException(status_code=404, detail=f"No Minecraft server called '{server}'.")
+    cfg = _join_call(joinpage.save_page, member, server, body, request.state.user["username"])
+    return {"status": "success", "page": {k: v for k, v in cfg.items() if k != "token"}, "path": joinpage.path_of(cfg)}
+
+@app.get("/api/servers/{server_name}/join-info")
+def join_info_api(request: Request, server_name: str):
+    """What this machine knows about a server for its join page; the cluster master reads it
+    from a node. Admins only: it includes who is online."""
+    _require_admin(request, "read a server's join details")
+    _known_server(server_name)
+    return _join_call(joinpage.local_summary, server_name)
+
+# --- Player packs (1.21.6): the mods players need, worked out from the server's mods folder
+#     (core/playerpack.py). The Mods tab shows and changes it; the join page hands it out.
+def _player_pack_view(server_name: str, fresh: bool = False):
+    view = playerpack.admin_view(server_name, fresh=fresh)
+    cfg = joinpage.page(server_name)
+    st = joinsite.status()
+    view["join_page"] = {"enabled": bool(cfg["enabled"]), "site": bool(st["enabled"]),
+                         "path": joinpage.path_of(cfg) if cfg["enabled"] else None,
+                         "port": st["port"], "scheme": st["scheme"]}
+    return view
+
+@app.get("/api/servers/{server_name}/player-pack")
+def player_pack_api(request: Request, server_name: str, fresh: bool = False):
+    return _files_call(request, _player_pack_view, server_name, fresh)
+
+@app.put("/api/servers/{server_name}/player-pack")
+def set_player_pack_api(request: Request, server_name: str, body: dict = Body(...)):
+    _files_call(request, playerpack.save_config, server_name, body, actor=request.state.user["username"])
+    return _files_call(request, _player_pack_view, server_name)
+
+@app.get("/api/servers/{server_name}/player-pack/file")
+def player_pack_file_api(request: Request, server_name: str):
+    """The .mrpack itself (also what a cluster master fetches for the jars copied into it)."""
+    def build(name):
+        p, data = playerpack.local_pack(name)
+        if not p:
+            raise playerpack.PackError("This server's player pack is off.", 404)
+        return Response(content=data, media_type="application/x-modrinth-modpack+zip", headers={
+            "Content-Disposition": f'attachment; filename="{playerpack.file_name(p["name"] or name, p["version"])}"'})
+    return _files_call(request, build, server_name)
 
 # --- Master: the cluster dashboard (signed-in users; trusted-LAN visitors are refused)
 def _need_master():
