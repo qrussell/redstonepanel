@@ -4,6 +4,21 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.21.9 (2026-11-24)
+
+Release notes: release-notes/v1.21.9.md
+
+- Join pages: Through a proxy (HAProxy or Cloudflare). HAProxy, for example on pfSense, or a Cloudflare Tunnel can send /join on your own domain to the join pages. Enter the proxy's address and each player keeps their own request limit; anyone else's forwarding header is ignored.
+- Address players open: the panel's links use your own domain.
+- Cloudflare's proxy (orange cloud): requests from Cloudflare's own addresses may name the player. The list ships with the panel and is refreshed from cloudflare.com once a day.
+- Only through the proxy: the join port answers nobody but the proxy.
+- HAProxy and Cloudflare Tunnel settings to copy, filled in.
+- Mods and plugins with a port of their own (Simple Voice Chat, Geyser, BlueMap, Dynmap, Plan, NuVotifier): when two servers share one, the panel moves one to a free port, opens it in the firewall and says so. A crash caused by a taken mod port names that port and mod.
+- Upgrades leave game servers running: Ubuntu's needrestart is told not to restart Minecraft servers and their Bedrock proxies after apt upgrades something.
+- Fixed: a Last crash card closes on its own once the server has run for 10 minutes after the problem is fixed.
+- Fixed: an account added while the panel was starting got every server.
+- Fixed: a server whose service runs as another account (such as root) had its files refused since 1.21.8.
+
 ## 1.21.8 (2026-11-24)
 
 Release notes: release-notes/v1.21.8.md

@@ -59,6 +59,11 @@ def working_dir(server):
     return fake.state.servers.get(server, {}).get("working_dir", "")
 
 
+def run_as(server):
+    e = fake.state.servers.get(server)
+    return None if e is None else e.get("user", "minecraft")
+
+
 def show_many(units, props, timeout=10):
     blocks = []
     for u in units:

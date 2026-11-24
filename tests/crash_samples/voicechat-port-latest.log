@@ -1,0 +1,17 @@
+[05:08:33] [main/INFO]: Loading Minecraft 26.3 with Fabric Loader 0.20.1
+[05:08:33] [main/INFO]: Loading 16 mods:
+	- voicechat 2.6.27+26.3
+[05:08:45] [main/INFO]: [voicechat] Compatibility version 20
+[05:08:48] [Server thread/INFO]: Starting minecraft server version 26.3
+[05:08:48] [Server thread/INFO]: Starting Minecraft server on *:25566
+[05:08:49] [Server thread/INFO]: Done (0.583s)! For help, type "help"
+[05:08:49] [Server thread/INFO]: RCON running on 0.0.0.0:25577
+[05:08:49] [VoiceChatServerThread/ERROR]: [voicechat] Failed to run voice chat at UDP port 24454, make sure no other application is running at that port
+[05:08:49] [VoiceChatServerThread/ERROR]: [voicechat] Voice chat server error
+java.net.BindException: Address already in use
+	at java.base/sun.nio.ch.Net.bind0(Native Method)
+	at java.base/sun.nio.ch.DatagramChannelImpl.bind(DatagramChannelImpl.java:1215)
+	at knot//de.maxhenkel.voicechat.plugins.impl.VoicechatSocketImpl.open(VoicechatSocketImpl.java:37)
+	at knot//de.maxhenkel.voicechat.voice.server.Server.run(Server.java:125)
+[05:08:49] [VoiceChatServerThread/ERROR]: [voicechat] Shutting down server
+[05:08:49] [Server thread/INFO]: Stopping server

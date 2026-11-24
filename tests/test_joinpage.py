@@ -14,6 +14,7 @@ _TMP = tempfile.mkdtemp(prefix="rp-test-join-")
 os.environ.setdefault("RP_DATA_DIR", os.path.join(_TMP, "data"))
 os.environ.setdefault("RP_LOG_FILE", os.path.join(_TMP, "panel.log"))
 
+from core import cloudflare as CF     # noqa: E402
 from core import joinpage as J        # noqa: E402
 from core import joinsite as S        # noqa: E402
 from core import manager              # noqa: E402
@@ -44,6 +45,8 @@ class Base(unittest.TestCase):
             mock.patch.object(P, "load", lambda: dict(self.settings)),
             mock.patch.object(J, "summary", lambda key, fresh=False: self._summary(key)),
             mock.patch.object(portforward, "load", lambda: {"public_address": "play.example.org"}),
+            mock.patch.object(CF, "refresh_if_old", lambda: None),
+            mock.patch.dict(CF._state, {"nets": None, "checked": 0.0, "refreshing": False}),
         ]
         for p in patches:
             p.start()
@@ -417,3 +420,139 @@ class Pings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ThroughProxy(Base):
+    """1.21.9: join pages behind a reverse proxy such as HAProxy."""
+    PROXY = "10.0.0.1"
+
+    def via(self, path, forwarded, peer=PROXY):
+        return S.handle("GET", path, peer, forwarded)
+
+    def test_the_player_is_read_only_from_the_proxy(self):
+        proxies = ["10.0.0.1", "192.168.50.0/24"]
+        self.assertEqual(S.client_ip("10.0.0.1", "198.51.100.7", proxies), ("198.51.100.7", True))
+        # read from the right: a player can't put their own guess in front
+        self.assertEqual(S.client_ip("10.0.0.1", "1.1.1.1, 198.51.100.7", proxies), ("198.51.100.7", True))
+        # chained proxies are skipped
+        self.assertEqual(S.client_ip("10.0.0.1", "198.51.100.7, 192.168.50.3", proxies), ("198.51.100.7", True))
+        # IPv4 written as IPv6 still counts as the proxy
+        self.assertEqual(S.client_ip("::ffff:10.0.0.1", "198.51.100.7", proxies), ("198.51.100.7", True))
+        # no header, or nothing but proxies: the proxy itself
+        self.assertEqual(S.client_ip("10.0.0.1", "", proxies), ("10.0.0.1", True))
+        # a broken entry stops the walk instead of trusting what's left of it
+        self.assertEqual(S.client_ip("10.0.0.1", "198.51.100.7, junk", proxies), ("10.0.0.1", True))
+        # anyone else's header is ignored
+        self.assertEqual(S.client_ip("203.0.113.9", "198.51.100.7", proxies), ("203.0.113.9", False))
+        # and with no proxy set, everybody's is
+        self.assertEqual(S.client_ip("10.0.0.1", "198.51.100.7", []), ("10.0.0.1", False))
+
+    def test_each_player_behind_the_proxy_has_their_own_limit(self):
+        self.settings.update(join_proxies=[self.PROXY])
+        self.on()
+        for _ in range(S.RATE_MAX):
+            self.assertEqual(self.via("/join/survival", "198.51.100.7").status, 200)
+        self.assertEqual(self.via("/join/survival", "198.51.100.7").status, 429)
+        self.assertEqual(self.via("/join/survival", "198.51.100.8").status, 200)
+
+    def test_a_forged_header_does_not_dodge_the_limit(self):
+        self.settings.update(join_proxies=[self.PROXY])
+        self.on()
+        for i in range(S.RATE_MAX):
+            self.via("/join/survival", f"198.51.100.{i % 250}", peer="203.0.113.9")
+        self.assertEqual(self.via("/join/survival", "198.51.100.200", peer="203.0.113.9").status, 429)
+
+    def test_only_through_the_proxy(self):
+        self.settings.update(join_proxies=[self.PROXY], join_proxy_only=True)
+        self.on()
+        self.assertEqual(self.get("/join/survival").status, 404)
+        self.assertEqual(self.via("/join/survival", "198.51.100.7").status, 200)
+        self.assertEqual(self.via("/join/assets/join.css", "").status, 200)
+
+    def test_settings(self):
+        ok = P.validate(dict(P.DEFAULTS, join_proxies="10.0.0.1, 192.168.50.0/24\n::ffff:10.0.0.2 10.0.0.1/32",
+                             join_url="Play.Example.org/", join_proxy_only=True))
+        self.assertEqual(ok["join_proxies"], ["10.0.0.1", "192.168.50.0/24", "10.0.0.2"])
+        self.assertEqual(ok["join_url"], "https://play.example.org")
+        self.assertEqual(P.clean_join_url("http://203.0.113.5:8080/join"), "http://203.0.113.5:8080")
+        self.assertEqual(P.clean_join_url(""), "")
+        for bad in ({"join_proxies": "0.0.0.0/0"}, {"join_proxies": "::/0"}, {"join_proxies": "pfsense.lan"},
+                    {"join_proxies": [f"10.0.0.{i}" for i in range(9)]},
+                    {"join_proxy_only": True}, {"join_proxy_only": "yes", "join_proxies": ["10.0.0.1"]},
+                    {"join_url": "ftp://x.example"}, {"join_url": "https://x.example/pages"},
+                    {"join_url": "https://user@x.example"}, {"join_url": "https://x.example?a=1"},
+                    {"join_url": "https://x.example:99999"}, {"join_url": "https://<x>"}):
+            with self.assertRaises(P.SettingsError, msg=bad):
+                P.validate(dict(P.DEFAULTS, **bad))
+        self.assertEqual((P.DEFAULTS["join_proxies"], P.DEFAULTS["join_proxy_only"], P.DEFAULTS["join_url"]),
+                         ([], False, ""))
+
+    def test_haproxy_lines(self):
+        with mock.patch.object(S, "status", lambda s=None: {"scheme": "https"}):
+            text = S.haproxy_config("192.168.1.20", dict(self.settings, join_port=8444))
+        self.assertIn("server panel 192.168.1.20:8444 check ssl verify none", text)
+        self.assertIn("option forwardfor", text)
+        self.assertIn("acl redstonepanel_join path_beg /join/", text)
+        self.assertNotIn(" or ", text)
+        self.assertIn("option httpchk GET /join/assets/join.css", text)
+        with mock.patch.object(S, "status", lambda s=None: {"scheme": "http"}):
+            self.assertNotIn("ssl", S.haproxy_config("panel.lan", self.settings).split("server panel")[1])
+
+
+class BehindCloudflare(Base):
+    """1.21.9: Cloudflare's proxy (orange cloud) and Cloudflare Tunnels."""
+    CF_PEER = "104.16.5.5"            # inside Cloudflare's 104.16.0.0/13
+
+    def test_the_player_is_read_from_cloudflare_only(self):
+        self.assertEqual(S.client_ip(self.CF_PEER, "", [], "198.51.100.7", True), ("198.51.100.7", True))
+        self.assertEqual(S.client_ip("2606:4700::1", "", [], "2001:db8::7", True), ("2001:db8::7", True))
+        # without the header: Cloudflare's own address
+        self.assertEqual(S.client_ip(self.CF_PEER, "", [], None, True), (self.CF_PEER, True))
+        # from anyone else, or with Cloudflare off, the header is ignored
+        self.assertEqual(S.client_ip("203.0.113.9", "", [], "198.51.100.7", True), ("203.0.113.9", False))
+        self.assertEqual(S.client_ip(self.CF_PEER, "", [], "198.51.100.7", False), (self.CF_PEER, False))
+        # Cloudflare in front of HAProxy: Cloudflare's hop is skipped too
+        self.assertEqual(S.client_ip("10.0.0.1", f"198.51.100.7, {self.CF_PEER}", ["10.0.0.1"], None, True),
+                         ("198.51.100.7", True))
+
+    def test_each_player_has_their_own_limit_and_only_cloudflare_gets_in(self):
+        self.settings.update(join_cloudflare=True, join_proxy_only=True)
+        self.on()
+        for _ in range(S.RATE_MAX):
+            S.handle("GET", "/join/survival", self.CF_PEER, None, None, "198.51.100.7")
+        self.assertEqual(S.handle("GET", "/join/survival", self.CF_PEER, None, None, "198.51.100.7").status, 429)
+        self.assertEqual(S.handle("GET", "/join/survival", self.CF_PEER, None, None, "198.51.100.8").status, 200)
+        self.assertEqual(S.handle("GET", "/join/survival", "203.0.113.9", None, None, "198.51.100.8").status, 404)
+
+    def test_the_list_is_checked_before_it_is_used(self):
+        good = ["173.245.48.0/20\n103.21.244.0/22\n103.22.200.0/22\n104.16.0.0/13\n172.64.0.0/13\n",
+                "2400:cb00::/32\n2606:4700::/32\n2803:f800::/32\n"]
+        self.assertEqual(len(CF.parse(good)), 8)
+        for bad in (["<html>Blocked</html>"], ["0.0.0.0/0\n" + good[0], good[1]], [good[0], ""],
+                    ["10.0.0.0/8", good[1]], [good[0], "2606:4700::/8\n2400:cb00::/32\n2803:f800::/32"]):
+            self.assertIsNone(CF.parse(bad), bad)
+        self.assertTrue(all(CF.parse([" ".join(CF.BUILT_IN)])))
+
+    def test_refresh_keeps_the_last_good_list(self):
+        self.assertTrue(CF.contains(S._ip("104.16.5.5")))               # the built-in copy
+        lists = {CF.SOURCES[0]: "203.0.113.0/24 198.51.100.0/24 192.0.2.0/24 100.64.0.0/16 100.65.0.0/16",
+                 CF.SOURCES[1]: "2001:db8::/32 2001:db9::/32 2001:dba::/32"}
+        self.assertTrue(CF.refresh(fetch=lambda u: lists[u]))
+        self.assertTrue(CF.contains(S._ip("203.0.113.9")))
+        self.assertFalse(CF.contains(S._ip("104.16.5.5")))
+        self.assertFalse(CF.refresh(fetch=lambda u: "<html>"))         # a bad answer changes nothing
+        self.assertTrue(CF.contains(S._ip("203.0.113.9")))
+        CF._state["nets"] = None                                         # a restart reads the saved list
+        self.assertTrue(CF.contains(S._ip("203.0.113.9")))
+
+    def test_settings_and_tunnel_lines(self):
+        ok = P.validate(dict(P.DEFAULTS, join_cloudflare=True, join_proxy_only=True))
+        self.assertTrue(ok["join_cloudflare"])
+        with self.assertRaises(P.SettingsError):
+            P.validate(dict(P.DEFAULTS, join_cloudflare="yes"))
+        with mock.patch.object(S, "status", lambda s=None: {"scheme": "https"}):
+            text = S.cloudflared_config(dict(self.settings, join_url="https://play.example.org", join_port=8444))
+        self.assertIn("hostname: play.example.org", text)
+        self.assertIn("service: https://localhost:8444", text)
+        self.assertIn("noTLSVerify: true", text)
+        self.assertIn("http_status:404", text)

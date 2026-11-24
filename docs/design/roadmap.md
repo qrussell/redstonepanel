@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.8 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) and security fixes from code scanning (1.21.8) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.21.9 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) and join pages through a proxy (1.21.9) shipped; a native Windows version (1.22 to 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -2049,6 +2049,38 @@ files belong to `minecraft`, other threads keep root), `tests/test_player_roles.
 `packaging/test/test-game-files.sh` (27 checks; 16 of them fail on 1.21.7: it plants links
 as `minecraft` and checks that settings, operators, whitelist, downloads, world rename and
 Live Chat never read or change a root-only file), the install test and `test-bedrock-update.sh`.
+
+### 1.21.9: join pages through a proxy (HAProxy or Cloudflare) *(released 24 Nov 2026)*
+
+**Why.** Join pages (1.21.5) have a port of their own, 8444, to forward on the router. Quentin
+asked on 24 Nov 2026 to also let HAProxy (his runs on pfSense) route to them, and then
+Cloudflare. A proxy already reaches the pages, since they use relative links, but three things
+went wrong behind one: every player looked like the proxy and shared one rate limit, the panel
+showed `address:8444` links, and the port couldn't be closed to everyone but the proxy.
+He chose 1.21.8, after the visual editor and before the Windows preview; it moved to 1.21.9 when
+1.21.8 became a security-only release (24 Nov 2026).
+
+**As built.** A **Through a proxy (HAProxy or Cloudflare)** card in Join pages: the proxy's
+address (requests from it may name the player in `X-Forwarded-For`, read from the right and
+skipping proxies; anyone else's header is ignored), the address players open (used for the
+panel's links), **Cloudflare's proxy (orange cloud)** (requests from Cloudflare's published
+networks may name the player in `CF-Connecting-IP`; `core/cloudflare.py` ships the list and
+refreshes it from cloudflare.com daily, checking it before use) and **Only through the proxy**.
+It shows HAProxy and Cloudflare Tunnel lines to copy, filled in. Nothing changes on the public
+pages and the cluster contract is unchanged. Tested: unit tests for the address rules, the
+settings and the Cloudflare list; `test-join-page.sh` runs a real HAProxy on exactly the lines
+the panel offers (pages and health check through it, a separate limit per player, a forged
+header ignored, the port closed to others). Not tested: a real Cloudflare Tunnel or proxied
+domain.
+
+**Also: upgrades leave game servers running.** Upgrading the 1.21.6 test build on Quentin's
+Ubuntu 25.04 panel restarted one of his game servers: Ubuntu's `needrestart` restarts services
+that still use an old copy of a library after any apt install. The package now installs
+`/etc/needrestart/conf.d/redstonepanel.conf`, which tells needrestart to leave `minecraft*` and
+`phantom-minecraft*` services alone; they pick up new libraries at their next restart.
+`test-needrestart.sh` runs needrestart in automatic mode against a stand-in game server, a
+stand-in Phantom proxy and an ordinary service that all use a deleted library: only the
+ordinary one is restarted, and without the rule the game server would have been.
 
 ### 1.21.10: a terminal in the panel *(planned)*
 
