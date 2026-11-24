@@ -417,3 +417,78 @@ class Pings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ThroughProxy(Base):
+    """1.21.8: join pages behind a reverse proxy such as HAProxy."""
+    PROXY = "10.0.0.1"
+
+    def via(self, path, forwarded, peer=PROXY):
+        return S.handle("GET", path, peer, forwarded)
+
+    def test_the_player_is_read_only_from_the_proxy(self):
+        proxies = ["10.0.0.1", "192.168.50.0/24"]
+        self.assertEqual(S.client_ip("10.0.0.1", "198.51.100.7", proxies), ("198.51.100.7", True))
+        # read from the right: a player can't put their own guess in front
+        self.assertEqual(S.client_ip("10.0.0.1", "1.1.1.1, 198.51.100.7", proxies), ("198.51.100.7", True))
+        # chained proxies are skipped
+        self.assertEqual(S.client_ip("10.0.0.1", "198.51.100.7, 192.168.50.3", proxies), ("198.51.100.7", True))
+        # IPv4 written as IPv6 still counts as the proxy
+        self.assertEqual(S.client_ip("::ffff:10.0.0.1", "198.51.100.7", proxies), ("198.51.100.7", True))
+        # no header, or nothing but proxies: the proxy itself
+        self.assertEqual(S.client_ip("10.0.0.1", "", proxies), ("10.0.0.1", True))
+        # a broken entry stops the walk instead of trusting what's left of it
+        self.assertEqual(S.client_ip("10.0.0.1", "198.51.100.7, junk", proxies), ("10.0.0.1", True))
+        # anyone else's header is ignored
+        self.assertEqual(S.client_ip("203.0.113.9", "198.51.100.7", proxies), ("203.0.113.9", False))
+        # and with no proxy set, everybody's is
+        self.assertEqual(S.client_ip("10.0.0.1", "198.51.100.7", []), ("10.0.0.1", False))
+
+    def test_each_player_behind_the_proxy_has_their_own_limit(self):
+        self.settings.update(join_proxies=[self.PROXY])
+        self.on()
+        for _ in range(S.RATE_MAX):
+            self.assertEqual(self.via("/join/survival", "198.51.100.7").status, 200)
+        self.assertEqual(self.via("/join/survival", "198.51.100.7").status, 429)
+        self.assertEqual(self.via("/join/survival", "198.51.100.8").status, 200)
+
+    def test_a_forged_header_does_not_dodge_the_limit(self):
+        self.settings.update(join_proxies=[self.PROXY])
+        self.on()
+        for i in range(S.RATE_MAX):
+            self.via("/join/survival", f"198.51.100.{i % 250}", peer="203.0.113.9")
+        self.assertEqual(self.via("/join/survival", "198.51.100.200", peer="203.0.113.9").status, 429)
+
+    def test_only_through_the_proxy(self):
+        self.settings.update(join_proxies=[self.PROXY], join_proxy_only=True)
+        self.on()
+        self.assertEqual(self.get("/join/survival").status, 404)
+        self.assertEqual(self.via("/join/survival", "198.51.100.7").status, 200)
+        self.assertEqual(self.via("/join/assets/join.css", "").status, 200)
+
+    def test_settings(self):
+        ok = P.validate(dict(P.DEFAULTS, join_proxies="10.0.0.1, 192.168.50.0/24\n::ffff:10.0.0.2 10.0.0.1/32",
+                             join_url="Play.Example.org/", join_proxy_only=True))
+        self.assertEqual(ok["join_proxies"], ["10.0.0.1", "192.168.50.0/24", "10.0.0.2"])
+        self.assertEqual(ok["join_url"], "https://play.example.org")
+        self.assertEqual(P.clean_join_url("http://203.0.113.5:8080/join"), "http://203.0.113.5:8080")
+        self.assertEqual(P.clean_join_url(""), "")
+        for bad in ({"join_proxies": "0.0.0.0/0"}, {"join_proxies": "::/0"}, {"join_proxies": "pfsense.lan"},
+                    {"join_proxies": [f"10.0.0.{i}" for i in range(9)]},
+                    {"join_proxy_only": True}, {"join_proxy_only": "yes", "join_proxies": ["10.0.0.1"]},
+                    {"join_url": "ftp://x.example"}, {"join_url": "https://x.example/pages"},
+                    {"join_url": "https://user@x.example"}, {"join_url": "https://x.example?a=1"},
+                    {"join_url": "https://x.example:99999"}, {"join_url": "https://<x>"}):
+            with self.assertRaises(P.SettingsError, msg=bad):
+                P.validate(dict(P.DEFAULTS, **bad))
+        self.assertEqual((P.DEFAULTS["join_proxies"], P.DEFAULTS["join_proxy_only"], P.DEFAULTS["join_url"]),
+                         ([], False, ""))
+
+    def test_haproxy_lines(self):
+        with mock.patch.object(S, "status", lambda s=None: {"scheme": "https"}):
+            text = S.haproxy_config("192.168.1.20", dict(self.settings, join_port=8444))
+        self.assertIn("server panel 192.168.1.20:8444 check ssl verify none", text)
+        self.assertIn("option forwardfor", text)
+        self.assertIn("option httpchk GET /join/assets/join.css", text)
+        with mock.patch.object(S, "status", lambda s=None: {"scheme": "http"}):
+            self.assertNotIn("ssl", S.haproxy_config("panel.lan", self.settings).split("server panel")[1])

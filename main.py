@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.concurrency import run_in_threadpool
 from core.models import ServerDeployRequest, ServerActionRequest, ServerPropertiesUpdate, ServerUpdateRequest
 from pydantic import BaseModel
-from typing import Optional
+from typing import List, Optional, Union
 import core.manager as manager
 import core.files as files
 import core.mods as mods
@@ -2056,17 +2056,33 @@ def _join_call(fn, *a, **kw):
     except joinpage.JoinError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+def _join_base(request: Request, st=None):
+    """Where players open the join pages: the address set for the reverse proxy (1.21.8), else
+    the port-forwarding address with the join port. None when neither is known."""
+    s = panel_settings.load()
+    if s["join_url"]:
+        return s["join_url"]
+    st = st or joinsite.status(s)
+    public = portforward.load()["public_address"]
+    if not public:
+        return None
+    public = f"[{public}]" if ":" in public else public
+    default = {"https": 443, "http": 80}[st["scheme"]]
+    return f"{st['scheme']}://{public}" + ("" if st["port"] == default else f":{st['port']}")
+
 def _join_view(request: Request):
-    st = joinsite.status()
+    s = panel_settings.load()
+    st = joinsite.status(s)
     out = joinpage.admin_overview()
     host = panel_settings.host_only(request.headers.get("host")) or "localhost"
     host = f"[{host}]" if ":" in host else host
     default = {"https": 443, "http": 80}[st["scheme"]]
-    public = out["public_address"]
-    public = f"[{public}]" if public and ":" in public else public
     port = "" if st["port"] == default else f":{st['port']}"
+    base = _join_base(request, st)
     return dict(out, listener=st, lan_url=f"{st['scheme']}://{host}{port}/join",
-                public_url=f"{st['scheme']}://{public}{port}/join" if public else None)
+                public_url=f"{base}/join" if base else None,
+                proxy={"addresses": s["join_proxies"], "only": s["join_proxy_only"], "url": s["join_url"],
+                       "haproxy": joinsite.haproxy_config(host, s)})
 
 @app.get("/api/join-pages")
 def join_pages_api(request: Request):
@@ -2077,12 +2093,23 @@ class JoinSettings(BaseModel):
     enabled: bool
     port: int
     index: bool = False
+    # 1.21.8: a reverse proxy in front of the pages. Left out = unchanged.
+    proxies: Optional[Union[List[str], str]] = None
+    proxy_only: Optional[bool] = None
+    url: Optional[str] = None
 
 @app.put("/api/settings/join")
 def set_join_settings_api(req: JoinSettings, request: Request):
     old = panel_settings.load()
     try:
-        s = panel_settings.validate(dict(old, join_enabled=req.enabled, join_port=req.port, join_index=req.index))
+        new = dict(old, join_enabled=req.enabled, join_port=req.port, join_index=req.index)
+        if req.proxies is not None:
+            new["join_proxies"] = req.proxies
+        if req.proxy_only is not None:
+            new["join_proxy_only"] = req.proxy_only
+        if req.url is not None:
+            new["join_url"] = req.url
+        s = panel_settings.validate(new)
         joinsite.check_can_enable(s, old)
     except (panel_settings.SettingsError, joinpage.JoinError) as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -2121,7 +2148,8 @@ def _player_pack_view(server_name: str, fresh: bool = False):
     st = joinsite.status()
     view["join_page"] = {"enabled": bool(cfg["enabled"]), "site": bool(st["enabled"]),
                          "path": joinpage.path_of(cfg) if cfg["enabled"] else None,
-                         "port": st["port"], "scheme": st["scheme"]}
+                         "port": st["port"], "scheme": st["scheme"],
+                         "url": panel_settings.load()["join_url"] or None}
     return view
 
 @app.get("/api/servers/{server_name}/player-pack")

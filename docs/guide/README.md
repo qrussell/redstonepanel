@@ -507,6 +507,43 @@ pages; nodes open nothing. A node's own join pages belong to that node's admin a
 turned on from the master. If a node can't be reached, its servers' pages stay up and say
 offline.
 
+#### Join pages through HAProxy *(1.21.8)*
+
+Already run HAProxy, for example the HAProxy package on pfSense, for your website? Then players
+can open the join pages on your own domain and certificate, like
+`https://play.example.com/join/survival`, without forwarding port 8444. HAProxy sends every
+path that starts with `/join` to the panel's join port. The port itself keeps working as before.
+
+In **🔗 Join pages**, under **Through HAProxy (optional)**:
+
+- **The proxy's address**: the address HAProxy connects to the panel from. On pfSense that's
+  its LAN address, for example `10.0.0.1`. Only requests from this address may say which player
+  they are for (the `X-Forwarded-For` header). That keeps a separate request limit for each
+  player instead of one shared limit for everyone behind the proxy. Anyone else who sends the
+  header is ignored, so nobody can use it to get around the limit.
+- **Address players open**, for example `https://play.example.com`. The panel uses it for the
+  links it shows on this page and on the Mods tab. Leave it empty to keep using your Port
+  forwarding address with port 8444.
+- **Only through the proxy** makes the join port refuse everyone but HAProxy. Don't forward
+  8444 on your router then.
+- **HAProxy settings to copy** shows the lines for `haproxy.cfg`, already filled in with this
+  panel's address and port.
+
+On pfSense (**Services > HAProxy**):
+
+1. **Backend** tab, **Add**: name it `redstonepanel_join`. Under **Server list**, add a server
+   with this panel's LAN address and port `8444`. Tick **Encrypt (SSL)** when the panel uses
+   HTTPS, and leave **SSL checks** off, because the panel's own certificate is self-signed.
+   Under **Health checking**, choose **HTTP** and set **Http check URI** to
+   `/join/assets/join.css`.
+2. **Frontend** tab: open the HTTPS frontend that already serves your domain. Under **Default
+   backend, access control lists and actions**, add an ACL named `join` with **Path starts
+   with** `/join`, and an action **Use Backend** `redstonepanel_join` for the ACL `join`.
+   Make sure **Use "forwardfor" option** is ticked.
+3. **Apply Changes**, then enter pfSense's LAN address as **The proxy's address** in the panel.
+
+On a cluster, point HAProxy at the master only. It serves the pages of every node's servers.
+
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
 (**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
 **Mods**, **Plugins** or **Add-ons**.

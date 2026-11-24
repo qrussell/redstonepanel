@@ -3905,7 +3905,7 @@ const ServerApp = {
         const onNode = !!this.activeServer.node;
         const where = !p.active ? ''
             : onNode ? 'Players download it from this server\'s join page (Join pages in the sidebar of the cluster master).'
-            : jp.enabled && jp.site ? `Players download it from <a class="underline text-theme" target="_blank" rel="noopener noreferrer" href="${esc(`${jp.scheme}://${location.hostname}:${jp.port}/join/${encodeURIComponent(jp.path)}`)}">this server's join page</a>.`
+            : jp.enabled && jp.site ? `Players download it from <a class="underline text-theme" target="_blank" rel="noopener noreferrer" href="${esc(`${jp.url || `${jp.scheme}://${location.hostname}:${jp.port}`}/join/${encodeURIComponent(jp.path)}`)}">this server's join page</a>.`
             : 'Players download it from this server\'s join page, which is off. Turn it on under <button class="underline text-theme" onclick="ServerApp.openJoin()">Join pages</button>.';
         const state = p.active
             ? `The player pack is <b>on</b>${p.mode === 'auto' ? ' (automatic)' : ''}: ${given} mod${given === 1 ? '' : 's'}${c.optional ? `, ${c.optional} optional` : ''}; ${c.out} left out.`
@@ -6553,6 +6553,24 @@ const ServerApp = {
 		this.renderJoin();
 	},
 
+	async saveJoinProxy(button) {
+		button.disabled = true;
+		const l = this.joinData.listener;
+		const res = await fetch('/api/settings/join', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ enabled: l.enabled, port: l.port, index: l.index,
+			                       proxies: document.getElementById('join-proxies').value,
+			                       proxy_only: document.getElementById('join-proxy-only').checked,
+			                       url: document.getElementById('join-url').value.trim() }) });
+		if (!res.ok) {
+			this.joinNote = { key: 'proxy', text: await this.apiError(res), ok: false };
+			return this.loadJoin();
+		}
+		this.joinData = await res.json();
+		const p = this.joinData.proxy;
+		this.joinNote = { key: 'proxy', ok: true, text: p.addresses.length ? `Saved. Requests from ${p.addresses.join(', ')} are treated as your proxy.` : 'Saved. No proxy is set.' };
+		this.renderJoin();
+	},
+
 	toggleJoinForm(key) {
 		this.joinOpen[key] = !this.joinOpen[key];
 		this.renderJoin();
@@ -6624,6 +6642,31 @@ const ServerApp = {
 			<p class="${note} mt-2">The port is opened in this server's firewall. For players outside your home, forward TCP ${esc(l.port)} to this machine on your router as well.</p>
 		</div>`;
 
+		const px = d.proxy || { addresses: [], only: false, url: '', haproxy: '' };
+		const proxyCard = `<div class="${card}">
+			<h3 class="${h}">Through HAProxy (optional)</h3>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Already run HAProxy, for example on pfSense? Send <span class="font-mono">/join</span> on your website's address to the port above, and players get the pages on your own domain and certificate. The port above keeps working too.</p>
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+				<label class="${note}">The proxy's address<input id="join-proxies" maxlength="300" value="${esc(px.addresses.join(', '))}" placeholder="10.0.0.1" class="${field} w-full mt-1 font-mono">
+					<span class="block mt-1">The address HAProxy connects from, like pfSense's LAN address. Only requests from it may say which player they are for, so each player keeps their own limit.</span></label>
+				<label class="${note}">Address players open<input id="join-url" maxlength="200" value="${esc(px.url)}" placeholder="https://play.example.com" class="${field} w-full mt-1 font-mono">
+					<span class="block mt-1">Used for the links the panel shows. Empty: the address from Port forwarding with the port above.</span></label>
+			</div>
+			<label class="flex items-start gap-2 mt-3 text-sm cursor-pointer">
+				<input type="checkbox" id="join-proxy-only" ${px.only ? 'checked' : ''} class="mt-1">
+				<span><b class="text-gray-900 dark:text-white">Only through the proxy</b><br><span class="${note}">The port above answers nobody but the proxy. Don't forward it on your router then.</span></span>
+			</label>
+			<div class="flex flex-wrap gap-2 mt-3">
+				<button onclick="ServerApp.saveJoinProxy(this)" class="${btn} bg-theme hover-bg-theme text-white">Save</button>
+			</div>
+			${msg('proxy')}
+			<details class="mt-3"><summary class="text-sm font-bold text-gray-900 dark:text-white cursor-pointer">HAProxy settings to copy</summary>
+				<pre id="join-haproxy" class="mt-2 p-3 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-mono whitespace-pre overflow-x-auto text-gray-800 dark:text-gray-200">${esc(px.haproxy)}</pre>
+				<button onclick="ServerApp.copyJoinLink(document.getElementById('join-haproxy').innerText, this)" class="${grey} mt-2">Copy</button>
+				<p class="${note} mt-2">On pfSense: Services &gt; HAProxy. The manual's "Join pages through HAProxy" section shows each screen.</p>
+			</details>
+		</div>`;
+
 		const addressCard = d.public_address ? '' : `<div class="${card}">${warn(`No internet address is set yet, so the pages can't tell players what to type. Set it under <button onclick="ServerApp.openPorts()" class="underline font-bold">🔀 Port forwarding</button>, or type an address for each server below.`)}</div>`;
 
 		const row = (m, s) => {
@@ -6689,7 +6732,7 @@ const ServerApp = {
 			${down ? `<ul class="${note} list-disc ml-5 mt-3">${down}</ul>` : ''}
 		</div>`;
 
-		document.getElementById('join-body').innerHTML = listenerCard + addressCard + serversCard;
+		document.getElementById('join-body').innerHTML = listenerCard + proxyCard + addressCard + serversCard;
 		this.joinNote = null;
 	},
 

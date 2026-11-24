@@ -7,6 +7,9 @@
 #      a modpack server and a Bedrock server, with and without player names.
 #   2. a cluster (jpm master, jpn node): the master serves the page of a server on the node,
 #      over HTTPS with the panel's certificate, and the node opens nothing.
+#   3. behind HAProxy (1.21.8): a real HAProxy in jpn sends /join to jpm's join port. Each
+#      player keeps their own rate limit, a forged X-Forwarded-For from anyone else is
+#      ignored, and "only through the proxy" closes the port to everyone but HAProxy.
 # The servers are stand-ins: a small Python program at .../rp-fakejava/java that answers the
 # Minecraft server list ping with two players, and a bedrock_server that sleeps. Nothing is
 # downloaded but apt packages. Run from the repository root on a machine with Docker, after
@@ -282,6 +285,54 @@ is "plain HTTP on the public port gets no page" 000 "$(dx jpm "curl -s -m 5 -o /
 dx jpn "systemctl stop redstonepanel"
 for _ in $(seq 1 45); do [ "$(pub /join/skyblock/status.json | json "d['status']" 2>/dev/null)" = offline ] && break; sleep 1; done
 is "with the node unreachable the page stays up and says offline" "200 offline" "$(pcode /join/skyblock) $(pub /join/skyblock/status.json | json "d['status']")"
+
+echo "--- behind HAProxy (1.21.8)"
+dx jpn "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends haproxy >/tmp/haproxy-install.log 2>&1" \
+    || { bad "haproxy installed"; dx jpn "tail -5 /tmp/haproxy-install.log"; }
+PROXY_IP=$(dx jpn "hostname -I | awk '{print \$1}'")
+MASTER_IP=$(dx jpm "hostname -I | awk '{print \$1}'")
+dx jpn "cat > /etc/haproxy/haproxy.cfg <<'HAEOF'
+global
+    log stdout format raw local0
+defaults
+    mode http
+    timeout connect 5s
+    timeout client 30s
+    timeout server 30s
+frontend web
+    bind :80
+    option forwardfor
+    acl redstonepanel_join path /join or path_beg /join/
+    use_backend redstonepanel_join if redstonepanel_join
+    default_backend nothing
+backend nothing
+    http-request return status 404
+backend redstonepanel_join
+    option httpchk GET /join/assets/join.css
+    server panel jpm:8444 check ssl verify none
+HAEOF
+systemctl restart haproxy"
+for _ in $(seq 1 20); do [ "$(dx jpn "curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1/join/skyblock")" = 200 ] && break; sleep 1; done
+via()   { dx jpn "curl -s -m 10 -o /dev/null -w '%{http_code}' ${2:+-H 'X-Forwarded-For: $2'} http://127.0.0.1$1"; }
+burst() { dx "$1" "for i in \$(seq 1 250); do curl -s${3:+k} -m 10 -o /dev/null -w '%{http_code}\\n' ${4:+-H 'X-Forwarded-For: $4'} $2; done | sort | uniq -c | tr -s ' \\n' ' '"; }
+is "the page already loads through HAProxy, with its health check" 200 "$(via /join/skyblock)"
+is "  and its stylesheet" 200 "$(via /join/assets/join.css)"
+is "HAProxy's other paths don't reach the panel" 404 "$(via /api/join-pages)"
+is "a proxy and an address for players are saved" 200 "$(code admin PUT /api/settings/join "{\"enabled\":true,\"port\":8444,\"proxies\":\"$PROXY_IP\",\"url\":\"play.example.org\"}")"
+V=$(api admin GET /api/join-pages)
+is "  the panel's links use that address" "https://play.example.org/join" "$(echo "$V" | json "d['public_url']")"
+is "  the proxy is stored" "$PROXY_IP" "$(echo "$V" | json "','.join(d['proxy']['addresses'])")"
+has "  the HAProxy lines to copy point at this panel over HTTPS" ":8444 check ssl verify none" "$(echo "$V" | json "d['proxy']['haproxy']")"
+is "a proxy of 'everyone' is refused" 400 "$(code admin PUT /api/settings/join '{"enabled":true,"port":8444,"proxies":"0.0.0.0/0"}')"
+A=$(burst jpn http://127.0.0.1/join/skyblock)
+has "one player who asks too much through HAProxy is slowed down" " 429" "$A"
+is "  another player through the same HAProxy is not" 200 "$(dx jpm "curl -s -m 10 -o /dev/null -w '%{http_code}' http://$PROXY_IP/join/skyblock")"
+F=$(burst jp https://$MASTER_IP:8444/join/skyblock k "198.51.100.\$i")
+has "a forged X-Forwarded-For from someone else doesn't dodge the limit" " 429" "$F"
+is "'only through the proxy' needs the proxy's address" 400 "$(code admin PUT /api/settings/join '{"enabled":true,"port":8444,"proxies":"","proxy_only":true}')"
+is "'only through the proxy' is saved" 200 "$(code admin PUT /api/settings/join "{\"enabled\":true,\"port\":8444,\"proxies\":\"$PROXY_IP\",\"proxy_only\":true}")"
+is "  then the port refuses anyone else" 404 "$(dx jpm "curl -sk -m 10 -o /dev/null -w '%{http_code}' https://127.0.0.1:8444/join/skyblock")"
+is "  and still answers through HAProxy" 200 "$(dx jpm "curl -s -m 10 -o /dev/null -w '%{http_code}' http://$PROXY_IP/join/skyblock")"
 
 echo
 [ "$FAILS" = 0 ] && echo "ALL PASSED" || echo "$FAILS FAILED"
