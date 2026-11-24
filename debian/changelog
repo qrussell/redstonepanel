@@ -17,6 +17,8 @@ redstonepanel (1.21.9) noble; urgency=medium
   * Upgrades leave game servers running: Ubuntu's needrestart is told not
     to restart Minecraft servers and their Bedrock proxies after apt
     upgrades something.
+  * Fixed: a Last crash card closes on its own once the server has run for
+    10 minutes after the problem is fixed.
   * Fixed: an account added while the panel was starting got every server.
   * Fixed: a server whose service runs as another account (such as root)
     had its files refused since 1.21.8.
