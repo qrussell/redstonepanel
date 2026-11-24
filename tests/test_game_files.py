@@ -112,3 +112,21 @@ class GameFiles(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(sys.platform.startswith("linux"), "Linux only")
+class Helpers(unittest.TestCase):
+    """Runs anywhere on Linux: 1.22.0's release branch broke every deploy because the PAM code's
+    module variable _libc = None replaced the file-access helper _libc() when the module loaded."""
+
+    def test_file_access_helper_is_still_a_function(self):
+        self.assertTrue(callable(system._libc))
+        self.assertTrue(hasattr(system._libc(), "setfsuid"))
+
+    def test_loading_pam_leaves_it_alone(self):
+        try:
+            system._load_pam()
+        except OSError:
+            self.skipTest("no libpam here")
+        self.assertTrue(callable(system._libc))
+        self.assertTrue(hasattr(system._libc(), "setfsuid"))

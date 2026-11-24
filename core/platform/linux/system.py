@@ -275,17 +275,18 @@ class _PamConv(ctypes.Structure):
     _fields_ = [("conv", _CONV_FUNC), ("appdata_ptr", ctypes.c_void_p)]
 
 _PAM_PROMPT_ECHO_OFF, _PAM_PROMPT_ECHO_ON = 1, 2
-_libpam = _libc = None
+# Its own name: _libc above is the file-access helper
+_libpam = _pam_libc = None
 
 def _load_pam():
-    global _libpam, _libc
+    global _libpam, _pam_libc
     if _libpam is None:
         _libpam = ctypes.CDLL(ctypes.util.find_library("pam") or "libpam.so.0")
-        _libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
-        _libc.calloc.restype = ctypes.c_void_p
-        _libc.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t]
-        _libc.strdup.restype = ctypes.c_void_p
-        _libc.strdup.argtypes = [ctypes.c_char_p]
+        _pam_libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
+        _pam_libc.calloc.restype = ctypes.c_void_p
+        _pam_libc.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t]
+        _pam_libc.strdup.restype = ctypes.c_void_p
+        _pam_libc.strdup.argtypes = [ctypes.c_char_p]
         _libpam.pam_start.restype = ctypes.c_int
         _libpam.pam_start.argtypes = [ctypes.c_char_p, ctypes.c_char_p,
                                       ctypes.POINTER(_PamConv), ctypes.POINTER(_PamHandle)]
@@ -301,14 +302,14 @@ def check_system_password(username, password):
     @_CONV_FUNC
     def conv(n, messages, p_response, _appdata):
         # PAM frees these with free(), so they must come from calloc/strdup
-        addr = _libc.calloc(n, ctypes.sizeof(_PamResponse))
+        addr = _pam_libc.calloc(n, ctypes.sizeof(_PamResponse))
         if not addr:
             return 5   # PAM_BUF_ERR
         resp = ctypes.cast(addr, ctypes.POINTER(_PamResponse))
         p_response[0] = resp
         for i in range(n):
             if messages[i].contents.msg_style in (_PAM_PROMPT_ECHO_OFF, _PAM_PROMPT_ECHO_ON):
-                resp[i].resp = _libc.strdup(pw)
+                resp[i].resp = _pam_libc.strdup(pw)
                 resp[i].resp_retcode = 0
         return 0
 

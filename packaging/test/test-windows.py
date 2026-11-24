@@ -486,9 +486,10 @@ def join_and_terminal(p, name):
     listener = (r or {}).get("listener") or {}
     check("the join pages' port is turned on", code == 200 and listener.get("running"), f"{code} {str(r)[:300]}")
     code, r = p.put("/api/join-pages/page", {"server": name, "enabled": True})
-    check("the server's join page is turned on", code == 200, f"{code} {str(r)[:200]}")
+    path = (r or {}).get("path") or ""
+    check("the server's join page is turned on", code == 200 and path.startswith("/join/"), f"{code} {str(r)[:200]}")
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:8444/join/{name}", timeout=20) as resp:
+        with urllib.request.urlopen(f"http://127.0.0.1:8444{path}", timeout=20) as resp:
             page_code, page = resp.status, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         page_code, page = e.code, ""
