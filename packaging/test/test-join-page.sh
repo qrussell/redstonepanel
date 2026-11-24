@@ -7,7 +7,7 @@
 #      a modpack server and a Bedrock server, with and without player names.
 #   2. a cluster (jpm master, jpn node): the master serves the page of a server on the node,
 #      over HTTPS with the panel's certificate, and the node opens nothing.
-#   3. behind HAProxy (1.21.8): a real HAProxy in jpn sends /join to jpm's join port. Each
+#   3. behind HAProxy (1.21.9): a real HAProxy in jpn sends /join to jpm's join port. Each
 #      player keeps their own rate limit, a forged X-Forwarded-For from anyone else is
 #      ignored, and "only through the proxy" closes the port to everyone but HAProxy.
 # The servers are stand-ins: a small Python program at .../rp-fakejava/java that answers the
@@ -286,7 +286,7 @@ dx jpn "systemctl stop redstonepanel"
 for _ in $(seq 1 45); do [ "$(pub /join/skyblock/status.json | json "d['status']" 2>/dev/null)" = offline ] && break; sleep 1; done
 is "with the node unreachable the page stays up and says offline" "200 offline" "$(pcode /join/skyblock) $(pub /join/skyblock/status.json | json "d['status']")"
 
-echo "--- behind HAProxy (1.21.8)"
+echo "--- behind HAProxy (1.21.9)"
 dx jpn "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends haproxy >/tmp/haproxy-install.log 2>&1" \
     || { bad "haproxy installed"; dx jpn "tail -5 /tmp/haproxy-install.log"; }
 PROXY_IP=$(dx jpn "hostname -I | awk '{print \$1}'")

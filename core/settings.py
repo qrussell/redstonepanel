@@ -60,7 +60,7 @@ DEFAULTS = {
     "join_enabled": False,
     "join_port": 8444,
     "join_index": False,
-    # 1.21.8: join pages behind a reverse proxy such as HAProxy (on pfSense or anywhere else).
+    # 1.21.9: join pages behind a reverse proxy such as HAProxy (on pfSense or anywhere else).
     # join_proxies: the proxy's own addresses (IPs or networks); requests from them may say who
     # the player is in X-Forwarded-For. join_proxy_only: answer nobody else on the join port.
     # join_url: the address players use through the proxy ("" = the port-forwarding address).

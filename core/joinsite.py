@@ -364,7 +364,7 @@ def _from_proxy(ip, proxies):
 
 
 def client_ip(peer, forwarded, proxies, cf_ip=None, use_cloudflare=False):
-    """Who the visitor is (1.21.8). Returns (address text, came through a proxy).
+    """Who the visitor is (1.21.9). Returns (address text, came through a proxy).
 
     A request from one of the admin's proxies (HAProxy, a Cloudflare Tunnel) may say who it is
     forwarding for in X-Forwarded-For; the list is read from the right, skipping the proxies
@@ -550,7 +550,7 @@ def start(port):
 
 
 def haproxy_config(backend_host, s=None):
-    """Lines for haproxy.cfg that send /join on a shared HTTPS frontend to these pages (1.21.8).
+    """Lines for haproxy.cfg that send /join on a shared HTTPS frontend to these pages (1.21.9).
     backend_host is how the proxy reaches this machine."""
     s = s or panel_settings.load()
     st = status(s)
@@ -571,7 +571,7 @@ def haproxy_config(backend_host, s=None):
 
 def cloudflared_config(s=None):
     """An ingress rule for a Cloudflare Tunnel (cloudflared on this machine) that sends /join to
-    these pages (1.21.8)."""
+    these pages (1.21.9)."""
     s = s or panel_settings.load()
     st = status(s)
     from urllib.parse import urlsplit

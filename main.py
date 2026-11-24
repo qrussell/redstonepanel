@@ -2057,7 +2057,7 @@ def _join_call(fn, *a, **kw):
         raise HTTPException(status_code=400, detail=str(e))
 
 def _join_base(request: Request, st=None):
-    """Where players open the join pages: the address set for the reverse proxy (1.21.8), else
+    """Where players open the join pages: the address set for the reverse proxy (1.21.9), else
     the port-forwarding address with the join port. None when neither is known."""
     s = panel_settings.load()
     if s["join_url"]:
@@ -2094,7 +2094,7 @@ class JoinSettings(BaseModel):
     enabled: bool
     port: int
     index: bool = False
-    # 1.21.8: a reverse proxy in front of the pages. Left out = unchanged.
+    # 1.21.9: a reverse proxy in front of the pages. Left out = unchanged.
     proxies: Optional[Union[List[str], str]] = None
     proxy_only: Optional[bool] = None
     url: Optional[str] = None

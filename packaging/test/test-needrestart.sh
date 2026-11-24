@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end test that upgrades don't restart game servers (1.21.8). In a throwaway systemd
+# End-to-end test that upgrades don't restart game servers (1.21.9). In a throwaway systemd
 # container with the .deb from dist/ and Ubuntu's needrestart:
 #   a stand-in game server (minecraft-nrtest) and a stand-in Phantom proxy, plus an ordinary
 #   service, all run a program that uses a library which is then deleted, as an apt upgrade

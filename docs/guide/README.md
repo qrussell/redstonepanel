@@ -507,7 +507,7 @@ pages; nodes open nothing. A node's own join pages belong to that node's admin a
 turned on from the master. If a node can't be reached, its servers' pages stay up and say
 offline.
 
-#### Join pages through a proxy (HAProxy or Cloudflare) *(1.21.8)*
+#### Join pages through a proxy (HAProxy or Cloudflare) *(1.21.9)*
 
 Already run HAProxy (for example the HAProxy package on pfSense) or Cloudflare for your
 website? Then players can open the join pages on your own domain and certificate, like

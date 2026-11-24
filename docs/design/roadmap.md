@@ -2007,14 +2007,15 @@ That run found that a text box turns Windows line endings (CRLF) into LF, which 
 editor did too; the editor now remembers a file's line endings and saves them back. The
 manual's picture uses sample data.
 
-### 1.21.8: join pages through a proxy (HAProxy or Cloudflare) *(built, not released)*
+### 1.21.9: join pages through a proxy (HAProxy or Cloudflare) *(built, not released)*
 
 **Why.** Join pages (1.21.5) have a port of their own, 8444, to forward on the router. Quentin
 asked on 24 Nov 2026 to also let HAProxy (his runs on pfSense) route to them, and then
 Cloudflare. A proxy already reaches the pages, since they use relative links, but three things
 went wrong behind one: every player looked like the proxy and shared one rate limit, the panel
 showed `address:8444` links, and the port couldn't be closed to everyone but the proxy.
-He chose 1.21.8, after the visual editor and before the Windows preview.
+He chose 1.21.8, after the visual editor and before the Windows preview; it moved to 1.21.9 when
+1.21.8 became a security-only release (24 Nov 2026).
 
 **As built.** A **Through a proxy (HAProxy or Cloudflare)** card in Join pages: the proxy's
 address (requests from it may name the player in `X-Forwarded-For`, read from the right and

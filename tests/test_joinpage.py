@@ -423,7 +423,7 @@ if __name__ == "__main__":
 
 
 class ThroughProxy(Base):
-    """1.21.8: join pages behind a reverse proxy such as HAProxy."""
+    """1.21.9: join pages behind a reverse proxy such as HAProxy."""
     PROXY = "10.0.0.1"
 
     def via(self, path, forwarded, peer=PROXY):
@@ -500,7 +500,7 @@ class ThroughProxy(Base):
 
 
 class BehindCloudflare(Base):
-    """1.21.8: Cloudflare's proxy (orange cloud) and Cloudflare Tunnels."""
+    """1.21.9: Cloudflare's proxy (orange cloud) and Cloudflare Tunnels."""
     CF_PEER = "104.16.5.5"            # inside Cloudflare's 104.16.0.0/13
 
     def test_the_player_is_read_from_cloudflare_only(self):
