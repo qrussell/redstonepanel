@@ -104,7 +104,7 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.21
 
-**Join pages through a proxy** *(1.21.9)*. HAProxy (for example on pfSense) or Cloudflare can send `/join` on your own domain to the join pages, with a separate request limit for each player and the settings to copy. Upgrades also no longer let Ubuntu restart your game servers. Read the [1.21.9 release notes](release-notes/v1.21.9.md).
+**Join pages through a proxy** *(1.21.9)*. HAProxy (for example on pfSense) or Cloudflare can send `/join` on your own domain to the join pages, with a separate request limit for each player and the settings to copy. Mods such as Simple Voice Chat get a port of their own per server instead of crashing the second one. Upgrades also no longer let Ubuntu restart your game servers. Read the [1.21.9 release notes](release-notes/v1.21.9.md).
 
 **Security fixes** *(1.21.8)*. The panel works in server folders with the `minecraft` account's rights, so a link a server or plugin puts there can't make it read or change other files, and Bedrock player names are checked before they reach the console. Read the [1.21.8 release notes](release-notes/v1.21.8.md).
 

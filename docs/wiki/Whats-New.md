@@ -17,6 +17,8 @@ the dashboard.
   [Join pages through a proxy](../guide/README.md#join-pages-through-a-proxy-haproxy-or-cloudflare-1219).
 - Cloudflare-proxied domains (orange cloud), an address for the panel's links, and **Only
   through the proxy**.
+- Mods with a port of their own (Simple Voice Chat, Geyser, BlueMap and more) get a free port
+  each when two servers would share one, instead of one server crashing.
 - Fixed: upgrades no longer let Ubuntu's `needrestart` restart Minecraft servers.
 
 [Release notes](../../release-notes/v1.21.9.md)
