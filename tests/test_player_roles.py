@@ -54,6 +54,16 @@ class Roles(unittest.TestCase):
             self.assertEqual(json.load(f)[0]["name"], "Steve_1")
 
 
+class LogPlayers(unittest.TestCase):
+    def test_java_players_and_uuids_come_from_the_log(self):
+        text = ("[Server thread/INFO]: Steve joined the game\n"
+                "[User Authenticator #1/INFO]: UUID of player Alex is 069a79f4-44e9-4726-a5be-fca90e38aaf5\n")
+        with mock.patch.object(M, "_player_log_text", lambda *a: text):
+            seen = M._players_from_logs("minecraft", "/nowhere", True)
+        self.assertEqual(seen["alex"], ("Alex", "069a79f4-44e9-4726-a5be-fca90e38aaf5"))
+        self.assertIn("steve", seen)
+
+
 class XuidFallback(unittest.TestCase):
     def test_a_bad_gamertag_starts_nothing(self):
         with mock.patch.object(M.subprocess, "Popen", side_effect=AssertionError("started")), \

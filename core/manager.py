@@ -1886,7 +1886,7 @@ def get_xuid(server_name, gamertag):
     write_log(f"[SYSTEM] APIs failed. Falling back to native allowlist resolution for {gamertag}...")
     return fallback_allowlist_xuid(server_name, gamertag)
 
-JAVA_UUID_RE = re.compile(r"[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}")
+PLAYER_UUID_RE = re.compile(r"[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}")
 XUID_RE = re.compile(r"[0-9]{1,20}")
 
 def _valid_player_name(name, java):
@@ -1908,7 +1908,7 @@ def set_player_role(server_name, player_name, role, player_id=None):
     player_name = str(player_name or "").strip()
     if not _valid_player_name(player_name, is_java):
         raise PlayerError(f"'{player_name}' isn't a valid {'Java player name' if is_java else 'gamertag'}.")
-    if player_id and not (JAVA_UUID_RE if is_java else XUID_RE).fullmatch(str(player_id)):
+    if player_id and not (PLAYER_UUID_RE if is_java else XUID_RE).fullmatch(str(player_id)):
         raise PlayerError(f"'{player_id}' isn't a valid {'UUID' if is_java else 'XUID'}.")
 
     file_path = os.path.join(d, "ops.json" if is_java else "permissions.json")
