@@ -530,6 +530,11 @@ def bedrock(p, args):
     check("the update check is a scheduled task", code == 0, out[-300:])
 
     section("Phantom for the Bedrock server")
+    # Phantom relays RakNet only; a NetherNet server (the default) is refused, as on Linux
+    code, ph = p.post(f"/api/servers/{name}/phantom/install", timeout=120)
+    check("Phantom is refused for a NetherNet server", code == 400 and "NetherNet" in str(ph), f"{code} {str(ph)[:300]}")
+    code, r = p.post(f"/api/servers/{name}/properties", {"properties": {"transport": "raknet"}})
+    check("the server switches to RakNet", code == 200, f"{code} {str(r)[:300]}")
     code, ph = p.post(f"/api/servers/{name}/phantom/install", timeout=300)
     check("Phantom installs (pinned Windows build, SHA-256 checked)", code == 200 and (ph or {}).get("phantom"),
           f"{code} {str(ph)[:400]}")

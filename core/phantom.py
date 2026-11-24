@@ -188,7 +188,7 @@ def status(server):
         blocker = (f"{server} uses the NetherNet transport (Bedrock's default since 1.26.50), and Phantom only relays the "
                    f"older RakNet protocol, so it can't carry this server's players. A NetherNet server "
                    f"announces itself to consoles on your network by itself, on UDP "
-                   f"{manager.NETHERNET_LAN_PORT}, which the panel opens in ufw. If it doesn't show under "
+                   f"{manager.NETHERNET_LAN_PORT}, which the panel opens in {firewall.NAME}. If it doesn't show under "
                    f"LAN Games, check that the consoles are on the same network as this machine.")
     elif port == LAN_PORT:
         blocker = (f"{server} uses port {LAN_PORT}, so it already shows up as a LAN game and Phantom "
