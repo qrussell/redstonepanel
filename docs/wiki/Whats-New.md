@@ -17,6 +17,7 @@ the dashboard.
 - Bedrock, more loaders, modpacks, limits, off-site backups, SFTP, the terminal and clusters
   follow on Windows in 1.23 and 1.24.
 - **Found on this computer** says what it saw and can't manage, and when nothing was found.
+- A new server takes the lowest free port, also after you removed a server and kept its files.
 
 [Release notes](../../release-notes/v1.22.0.md)
 

@@ -17,7 +17,9 @@ redstonepanel (1.22.0) noble; urgency=medium
   * Found on this computer always shows for an admin: what it can take
     over, what it saw and can't manage with the reason, or that nothing
     was found.
-  * Linux: nothing else changes.
+  * A new server takes the lowest free port: a removed server whose files
+    were kept no longer holds its port (restoring it moves it to a free
+    one if needed), and the port no longer goes up with the name.
 
  -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 24 Nov 2026 17:06:44 -0000
 

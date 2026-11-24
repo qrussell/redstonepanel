@@ -12,7 +12,7 @@ Release notes: release-notes/v1.22.0.md
 - On Windows the preview runs Java servers (Vanilla, Paper, Purpur, Fabric) on one computer, with backups and restore, schedules, the console, Live Chat, the file manager, add-ons, the firewall, performance, crash explanations, webhooks, two-factor sign-in, join pages and a servers folder on any drive. Not yet on Windows: Bedrock, Quilt, Forge, NeoForge, modpacks, limits, off-site storage, SFTP, the terminal, clusters and updating from the panel; the panel leaves them out there.
 - Each game server on Windows is its own Windows service running as its own account, schedules are Task Scheduler tasks and ports are Windows Defender Firewall rules.
 - Found on this computer always shows for an admin: what it can take over, what it saw and can't manage with the reason, or that nothing was found.
-- Linux: nothing else changes.
+- A new server takes the lowest free port: a removed server whose files were kept no longer holds its port (restoring it moves it to a free one if needed), and the port no longer goes up with the name.
 
 ## 1.21.10 (2026-11-24)
 
