@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RedstonePanel — Lightweight Minecraft Server Management</title>
-    <meta name="description" content="APT-native Minecraft Java & Bedrock server management panel for Ubuntu 24.04 & 25.04 with multi-node support and OS-level resource limits.">
+    <meta name="description" content="Free, self-hosted Minecraft Java & Bedrock server panel for Ubuntu, Debian and Raspberry Pi, with a Windows installer (preview), multi-node clusters and OS-level resource limits.">
 
     <!-- Google Fonts: Silkscreen (Blocky MC Headings), JetBrains Mono (Terminal/RCON), Inter (Body) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -385,7 +385,7 @@
             <!-- Status Pill -->
             <div class="inline-flex items-center gap-2.5 mc-slot rounded-full px-4 py-1.5 mb-7">
                 <span class="w-2.5 h-2.5 rounded-sm redstone-lamp"></span>
-                <span class="text-xs font-mono text-gray-300">Ubuntu 24.04 &amp; 25.04 APT-Native &bull; Release v1.17</span>
+                <span class="text-xs font-mono text-gray-300">Ubuntu &bull; Debian &bull; Raspberry Pi &bull; Windows preview &bull; Release v1.22</span>
             </div>
 
             <!-- Main Headline -->
@@ -395,7 +395,7 @@
 
             <!-- Subheadline -->
             <p class="mt-6 text-base sm:text-lg text-gray-300 max-w-2xl mx-auto leading-relaxed">
-                APT-native control for Java &amp; Bedrock servers on Ubuntu 24.04 &amp; 25.04. Multi-node architecture, granular resource limits, and zero Docker bloat.
+                APT-native control for Java &amp; Bedrock servers on Ubuntu, Debian and Raspberry Pi, plus a Windows installer (preview). Multi-node architecture, granular resource limits, and zero Docker bloat.
             </p>
 
             <!-- Primary CTA Buttons -->
@@ -611,7 +611,7 @@
                         </div>
                         <h3 class="font-pixel text-base text-white mb-2">APT-Native Installation</h3>
                         <p class="text-sm text-gray-400 leading-relaxed flex-1">
-                            Signed <code class="text-gray-200 font-mono text-xs bg-[#101218] px-1.5 py-0.5 rounded">qrussell-repo</code> APT package for Ubuntu 24.04 &amp; 25.04. Update anytime with <code class="text-redstone-bright font-mono text-xs">sudo apt update &amp;&amp; sudo apt upgrade</code>.
+                            Signed <code class="text-gray-200 font-mono text-xs bg-[#101218] px-1.5 py-0.5 rounded">qrussell-repo</code> APT package for Ubuntu 24.04, 26.04 and 26.10, Debian 13 and Raspberry Pi OS. Update anytime with <code class="text-redstone-bright font-mono text-xs">sudo apt update &amp;&amp; sudo apt upgrade</code>.
                         </p>
                     </article>
 
@@ -721,7 +721,7 @@
                 <span class="font-pixel text-xs uppercase tracking-widest redstone-glow-text">Deploy in Seconds</span>
                 <h2 class="mt-2 font-pixel text-2xl sm:text-4xl text-white">INSTALL &amp; UPGRADE</h2>
                 <p class="mt-3 text-sm sm:text-base text-gray-400">
-                    Targeting Ubuntu 24.04 &amp; 25.04 via the official GPG-signed APT repository.
+                    Ubuntu 24.04, 26.04 and 26.10, Debian 13 and 64-bit Raspberry Pi OS through the GPG-signed APT repository, or Windows 11 and Windows Server 2022/2025 with the installer (preview).
                 </p>
             </div>
 
@@ -735,6 +735,10 @@
                     <button type="button" data-install-tab="upgrade"
                         class="install-tab mc-btn mc-btn-stone rounded-md px-4 py-2 font-pixel text-xs">
                         APT Upgrade
+                    </button>
+                    <button type="button" data-install-tab="windows"
+                        class="install-tab mc-btn mc-btn-stone rounded-md px-4 py-2 font-pixel text-xs">
+                        Windows (Preview)
                     </button>
                     <button type="button" data-install-tab="gpg"
                         class="install-tab mc-btn mc-btn-stone rounded-md px-4 py-2 font-pixel text-xs">
@@ -769,6 +773,20 @@
                         </div>
                         <p class="text-xs font-mono text-gray-500">
                             Repository URL: <span class="text-gray-300">https://qrussell.github.io/qrussell-repo/deb</span>
+                        </p>
+                    </div>
+
+                    <!-- Tab: Windows (preview) -->
+                    <div id="tab-windows" class="install-pane hidden space-y-4">
+                        <p class="text-sm text-gray-300">
+                            Windows 11 or Windows Server 2022/2025, 64-bit. Download <code class="font-mono text-xs text-white">RedstonePanel-&lt;version&gt;-x64.msi</code> from the latest release, open it, then open <code class="font-mono text-xs text-white">http://localhost:8080</code> and sign in as <code class="font-mono text-xs text-white">admin</code> with the password in <code class="font-mono text-xs text-white">first-sign-in.txt</code>.
+                        </p>
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <a href="https://github.com/qrussell/redstonepanel/releases/latest" class="mc-btn mc-btn-redstone rounded-md px-5 py-2.5 font-pixel text-xs text-center">Download the installer</a>
+                            <a href="https://github.com/qrussell/redstonepanel/wiki/Installation#on-windows-preview" class="mc-btn mc-btn-stone rounded-md px-5 py-2.5 font-pixel text-xs text-center">Windows guide</a>
+                        </div>
+                        <p class="text-xs font-mono text-gray-500">
+                            Preview: Java servers on one computer. Bedrock, modpacks, limits and clusters come to Windows in 1.23 and 1.24. The installer isn't signed yet: in SmartScreen choose <span class="text-gray-300">More info &rarr; Run anyway</span>.
                         </p>
                     </div>
 

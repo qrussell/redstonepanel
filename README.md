@@ -1,15 +1,17 @@
 <h1><picture><source media="(prefers-color-scheme: dark)" srcset="static/img/redstonepanel-logo-dark.svg"><img src="static/img/redstonepanel-logo.svg" alt="RedstonePanel" width="328" height="64"></picture></h1>
 
 **A free, self-hosted web panel for Minecraft Java and Bedrock servers on your own Ubuntu or
-Debian machine, or a Raspberry Pi.** Create servers in a couple of clicks, add mods and plugins from a catalog, keep
+Debian machine, a Raspberry Pi, or (as a preview) a Windows PC.** Create servers in a couple of clicks, add mods and plugins from a catalog, keep
 your worlds backed up, and manage several machines from one place. No Docker, no database:
 every game server is a plain systemd service, and the panel installs and updates with `apt`.
+On Windows it is one installer, and every game server is a Windows service.
 
 [![Latest release](https://img.shields.io/github/v/release/qrussell/redstonepanel?label=latest)](https://github.com/qrussell/redstonepanel/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![Ubuntu 24.04, 26.04 and 26.10](https://img.shields.io/badge/Ubuntu-24.04%20%7C%2026.04%20%7C%2026.10-E95420?logo=ubuntu&logoColor=white)
 ![Debian 13](https://img.shields.io/badge/Debian-13-A81D33?logo=debian&logoColor=white)
 ![Raspberry Pi 4 and 5](https://img.shields.io/badge/Raspberry%20Pi-4%20%7C%205%20(64--bit)-C51A4A?logo=raspberrypi&logoColor=white)
+![Windows 11 and Server 2022/2025 (preview)](https://img.shields.io/badge/Windows-11%20%7C%20Server%202022%2F2025%20(preview)-0078D4)
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/hero.png"><img src="docs/guide/images/hero.png" alt="The RedstonePanel dashboard on a cluster master"></picture>
 
@@ -20,7 +22,10 @@ every game server is a plain systemd service, and the panel installs and updates
 ## Quick start
 
 From a fresh Ubuntu, Debian or 64-bit Raspberry Pi OS machine (see
-[Supported systems](#supported-systems)) to players joining, in about five minutes:
+[Supported systems](#supported-systems)) to players joining, in about five minutes. On a
+Windows PC, download `RedstonePanel-<version>-x64.msi` from the
+[latest release](https://github.com/qrussell/redstonepanel/releases/latest) instead and follow
+[On Windows (preview)](docs/wiki/Installation.md#on-windows-preview).
 
 **1. Install the panel.**
 
@@ -330,6 +335,13 @@ curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install
 [`install.sh`](install.sh) checks that this is a [supported system](#supported-systems), adds the repository's key
 (refusing it unless its fingerprint matches the one below) and source, and installs the panel.
 It does what the next section does by hand.
+
+### On Windows (preview)
+
+Download `RedstonePanel-<version>-x64.msi` from the
+[latest release](https://github.com/qrussell/redstonepanel/releases/latest), open it, then open
+**http://localhost:8080**. The steps, what the preview does and doesn't do yet, and where
+things are kept: [On Windows (preview)](docs/wiki/Installation.md#on-windows-preview).
 
 ### Supported systems
 
