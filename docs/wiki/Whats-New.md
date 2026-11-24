@@ -9,6 +9,18 @@ the dashboard.
 
 ---
 
+## 1.21.8: security fixes *(November 2026)*
+
+- The panel now works in server folders with the `minecraft` account's rights, so a link a
+  server or plugin puts in its folder can't make the panel read or change other files.
+  Server and world downloads leave links out.
+- Bedrock player names on **Configuration → Players** are checked before they can reach the
+  server's console.
+- A world outside the server folder is refused, and unknown server names are refused up front.
+- Fixed: Java players keep their UUID on Configuration → Players.
+
+[Release notes](../../release-notes/v1.21.8.md)
+
 ## 1.21.7: a Visual Editor for settings files *(November 2026)*
 
 - **Files → Visual Editor**: `server.properties`, `eula.txt` and other `name=value` files

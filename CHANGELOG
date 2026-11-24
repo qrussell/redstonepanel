@@ -4,6 +4,15 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.21.8 (2026-11-24)
+
+Release notes: release-notes/v1.21.8.md
+
+- Security: a Bedrock player's name on Configuration > Players is checked before it can reach the server's console, and the panel's Xbox ID fallback runs the server as the minecraft account, not root.
+- Security: the panel works in server folders with the minecraft account's rights, so a link the server or a plugin puts there can't make it read or change other files (settings, operators, whitelist, downloads, world rename, Live Chat, installs, updates, restores). Downloads leave links out. On first start, files the panel wrote in server folders as root are handed to the minecraft account.
+- Security: a world outside the server folder is never downloaded, renamed or restored, and unknown server names are refused up front.
+- Fixed: Java players kept their UUID on Configuration > Players.
+
 ## 1.21.7 (2026-11-24)
 
 Release notes: release-notes/v1.21.7.md
