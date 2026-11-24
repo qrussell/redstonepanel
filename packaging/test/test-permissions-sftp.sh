@@ -206,6 +206,13 @@ is "  files stay admin-only for them, as before" 403 "$(code sam GET "/api/serve
 check "  the panel log says so" dx "grep -q 'Per-server permissions: alex, sam kept what user accounts could' /var/log/redstonepanel/panel.log"
 dx "echo '$PW_SAM-2' | redstonepanel add-user newbie --role user" >/dev/null; login newbie "$PW_SAM-2" >/dev/null
 is "an account made after the update starts with nothing" 0 "$(api newbie GET /api/servers | json 'len(d)')"
+# `redstonepanel add-user` before the panel's own start has done the one-time step (right after
+# installing, or before the restart of an update): the new account mustn't count as an old one
+dx "systemctl stop redstonepanel && rm -f /var/lib/redstonepanel/grants.json \
+    && echo '$PW_SAM-3' | redstonepanel add-user early --role user && systemctl start redstonepanel" >/dev/null; panel_up
+login early "$PW_SAM-3" >/dev/null; login sam "$PW_SAM" >/dev/null
+is "an account added before the panel's first start starts with nothing" 0 "$(api early GET /api/servers | json 'len(d)')"
+is "  while the accounts from before keep theirs" 2 "$(api sam GET /api/servers | json 'len(d)')"
 
 echo "--- without python3-paramiko"
 dx "DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq python3-paramiko >/dev/null 2>&1"
