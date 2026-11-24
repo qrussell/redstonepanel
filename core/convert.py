@@ -45,6 +45,8 @@ from core import backups, files, javaservers, manager, mods, notify
 from core.settings import DATA_DIR
 from core.platform import paths, services, system
 
+os = system.fs()          # Python's os; on Windows, the same calls made safe without dir_fd (core/platform)
+
 STATE_DIR = os.path.join(DATA_DIR, "convert")
 PREVIOUS_JAR = "server.jar.previous"
 PREVIOUS_INFO = ".redstonepanel-server.previous.json"
@@ -295,7 +297,7 @@ def _apply_moves(server, moves):
             # an empty leftover folder (checked in the plan): out of the way
             dfd, name = files._parent(server, m["to"])
             try:
-                shutil.rmtree(name, dir_fd=dfd)
+                files.rmtree_at(name, dfd)
             finally:
                 os.close(dfd)
         _rename(server, m["from"], m["to"])
@@ -539,7 +541,8 @@ def _tree_size(d):
         rel_root = os.path.relpath(root, d).replace(os.sep, "/")
         rel_root = "" if rel_root == "." else rel_root
         dirs[:] = [n for n in dirs if not backups._skipped(f"{rel_root}/{n}" if rel_root else n)
-                   and not os.path.islink(os.path.join(root, n))]
+                   and not os.path.islink(os.path.join(root, n))
+                   and not backups._is_junction(os.path.join(root, n))]
         for n in names:
             if backups._skipped(f"{rel_root}/{n}" if rel_root else n):
                 continue
@@ -556,8 +559,7 @@ def _disk(server, d):
     while probe and not os.path.isdir(probe):
         probe = os.path.dirname(probe)
     try:
-        st = os.statvfs(probe or "/")
-        free = st.f_bavail * st.f_frsize
+        free = shutil.disk_usage(probe or system.root_path()).free
     except OSError:
         free = None
     return {"needed": need, "free": free, "ok": free is None or free >= need + BACKUP_MARGIN}

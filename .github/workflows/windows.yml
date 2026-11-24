@@ -1,0 +1,210 @@
+# RedstonePanel on Windows (preview, from 1.22): the bundled-Python build, the setup and the install
+# test on GitHub's Windows runners. GitLab CI has no Windows runner, so this is where the Windows
+# side is tested; GitLab mirrors branches here.
+name: windows
+
+on:
+  push:
+    branches: [main, 'feature/windows-*']
+    tags: ['v*']
+    paths-ignore: ['docs/**', '*.md']      # words only: nothing to test, and no reason to stop a run in progress
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, windows-2025]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Stage (bundled Python, libraries, the panel)
+        shell: pwsh
+        run: |
+          wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
+          python packaging\windows\build.py stage "C:\Program Files\RedstonePanel"
+      - name: Set up
+        shell: pwsh
+        run: |
+          & "C:\Program Files\RedstonePanel\python\python.exe" -X utf8 "C:\Program Files\RedstonePanel\app\packaging\windows\setup.py" install
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          "C:\Program Files\RedstonePanel" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Install test
+        shell: pwsh
+        run: |
+          python -X utf8 packaging\test\test-windows.py 2>&1 | Tee-Object test.log
+          exit $LASTEXITCODE
+      - name: What the panel and the servers wrote
+        if: always()
+        shell: pwsh
+        run: |
+          $h = "C:\ProgramData\RedstonePanel"
+          Get-ChildItem $h -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 80 FullName | Format-Table -HideTableHeaders
+          foreach ($f in @(Get-ChildItem "$h\journal" -Recurse -Filter output.log -ErrorAction SilentlyContinue) + @(Get-Item "$h\logs\panel.log" -ErrorAction SilentlyContinue)) {
+            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 40; "::endgroup::"
+          }
+          Get-ChildItem "$h\journal" -Recurse -Filter status.json -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName; Get-Content $_.FullName }
+          "::group::event log"
+          Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='RedstonePanel'} -MaxEvents 30 -ErrorAction SilentlyContinue | ForEach-Object { "$($_.TimeCreated) $($_.Id) $($_.Message)" }
+          Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; Level=2,3} -MaxEvents 15 -ErrorAction SilentlyContinue | ForEach-Object { "$($_.TimeCreated) $($_.Id) $($_.Message)" }
+          "::endgroup::"
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          $h = "C:\ProgramData\RedstonePanel"
+          "--- panel.log"; Get-Content "$h\logs\panel.log" -Tail 45 -ErrorAction SilentlyContinue
+          "--- errors the panel printed"; Get-Content "$h\journal\redstonepanel.service\output.log" -ErrorAction SilentlyContinue | Where-Object { $_ -match "Error|Exception|core\\" } | Select-Object -Last 14 | ForEach-Object { $_.Substring([Math]::Min(48, $_.Length)) }
+          "--- events.log"; Get-Content "$h\logs\events.log" -Tail 8 -ErrorAction SilentlyContinue
+          "--- tasks"; Get-ScheduledTask -TaskPath "\RedstonePanel\" -ErrorAction SilentlyContinue | Get-ScheduledTaskInfo | ForEach-Object { "$($_.TaskName) last=$($_.LastRunTime) result=$($_.LastTaskResult) runs_missed=$($_.NumberOfMissedRuns)" }
+          (schtasks /Query /TN "\RedstonePanel\notifications" /XML 2>$null | Select-String "Subscription|Arguments|Command|Value ") | ForEach-Object { $_.Line.Trim() }
+          "--- task scheduler on the notification task"
+          Get-WinEvent -LogName "Microsoft-Windows-TaskScheduler/Operational" -MaxEvents 600 -ErrorAction SilentlyContinue | Where-Object { $_.Message -match "notifications" } | Select-Object -First 8 | ForEach-Object { "$($_.TimeCreated) $($_.Id) $($_.Message)".Substring(0, [Math]::Min(230, "$($_.TimeCreated) $($_.Id) $($_.Message)".Length)) }
+          "--- one entry as the task sees it"
+          Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='RedstonePanel'} -MaxEvents 1 -ErrorAction SilentlyContinue | ForEach-Object { $_.ToXml() }
+          "--- task output"; Get-ChildItem "$h\journal" -Directory -Filter "redstonepanel-*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name; Get-Content "$($_.FullName)\output.log" -Tail 6 -ErrorAction SilentlyContinue }
+          "--- test"
+          if (Test-Path test.log) { Get-Content test.log | Where-Object { $_ -notmatch "^\s+ok |^\s{8}|^$" } | Select-Object -Last 60 }
+      - name: Uninstall
+        if: always()
+        shell: pwsh
+        run: |
+          & "C:\Program Files\RedstonePanel\python\python.exe" -X utf8 "C:\Program Files\RedstonePanel\app\packaging\windows\setup.py" uninstall
+          sc.exe query redstonepanel; if ($LASTEXITCODE -eq 0) { "the service is still there"; exit 1 } else { exit 0 }
+
+  # The installer itself: built, installed without questions, tested, installed again over itself
+  # (what an upgrade does) and removed.
+  msi:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, windows-2025]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
+          python packaging\windows\build.py stage build\stage
+          python packaging\windows\build.py msi build\stage dist
+          Get-ChildItem dist | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RedstonePanel-msi-${{ matrix.runner }}
+          path: dist/*
+          retention-days: 7
+      - name: Install
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\*.msi).FullName
+          $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$PWD\install.log`"" -Wait -PassThru
+          "msiexec exit code $($p.ExitCode)"
+          Select-String -Path install.log -Pattern "WixQuietExec64:|Return value 3|Error 1" | Select-Object -Last 60 | ForEach-Object { $_.Line }
+          if ($p.ExitCode) { Get-Content install.log -Tail 80; exit 1 }
+          "C:\Program Files\RedstonePanel" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Install test (the server is kept for the next step)
+        shell: pwsh
+        run: |
+          python -X utf8 packaging\test\test-windows.py --keep 2>&1 | Tee-Object test.log
+          exit $LASTEXITCODE
+      - name: Install again over it; the server and the account stay
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\*.msi).FullName
+          $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$PWD\upgrade.log`"" -Wait -PassThru
+          "msiexec exit code $($p.ExitCode)"
+          Select-String -Path upgrade.log -Pattern "WixQuietExec64:|Return value 3|Error 1" | Select-Object -Last 60 | ForEach-Object { $_.Line }
+          if ($p.ExitCode) { Get-Content upgrade.log -Tail 80; exit 1 }
+          python -X utf8 packaging\test\test-windows.py --after-upgrade 2>&1 | Tee-Object -Append test.log
+          exit $LASTEXITCODE
+      - name: What the panel and the servers wrote
+        if: always()
+        shell: pwsh
+        run: |
+          $h = "C:\ProgramData\RedstonePanel"
+          foreach ($f in @(Get-ChildItem "$h\journal" -Recurse -Filter output.log -ErrorAction SilentlyContinue) + @(Get-Item "$h\logs\panel.log" -ErrorAction SilentlyContinue)) {
+            "::group::$($f.FullName)"; Get-Content $f.FullName -Tail 40; "::endgroup::"
+          }
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          $h = "C:\ProgramData\RedstonePanel"
+          "--- panel.log"; Get-Content "$h\logs\panel.log" -Tail 45 -ErrorAction SilentlyContinue
+          "--- errors the panel printed"; Get-Content "$h\journal\redstonepanel.service\output.log" -ErrorAction SilentlyContinue | Where-Object { $_ -match "Error|Exception|core\\" } | Select-Object -Last 14 | ForEach-Object { $_.Substring([Math]::Min(48, $_.Length)) }
+          "--- events.log"; Get-Content "$h\logs\events.log" -Tail 8 -ErrorAction SilentlyContinue
+          "--- tasks"; Get-ScheduledTask -TaskPath "\RedstonePanel\" -ErrorAction SilentlyContinue | Get-ScheduledTaskInfo | ForEach-Object { "$($_.TaskName) last=$($_.LastRunTime) result=$($_.LastTaskResult) runs_missed=$($_.NumberOfMissedRuns)" }
+          (schtasks /Query /TN "\RedstonePanel\notifications" /XML 2>$null | Select-String "Subscription|Arguments|Command|Value ") | ForEach-Object { $_.Line.Trim() }
+          "--- task scheduler on the notification task"
+          Get-WinEvent -LogName "Microsoft-Windows-TaskScheduler/Operational" -MaxEvents 600 -ErrorAction SilentlyContinue | Where-Object { $_.Message -match "notifications" } | Select-Object -First 8 | ForEach-Object { "$($_.TimeCreated) $($_.Id) $($_.Message)".Substring(0, [Math]::Min(230, "$($_.TimeCreated) $($_.Id) $($_.Message)".Length)) }
+          "--- one entry as the task sees it"
+          Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='RedstonePanel'} -MaxEvents 1 -ErrorAction SilentlyContinue | ForEach-Object { $_.ToXml() }
+          "--- task output"; Get-ChildItem "$h\journal" -Directory -Filter "redstonepanel-*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name; Get-Content "$($_.FullName)\output.log" -Tail 6 -ErrorAction SilentlyContinue }
+          "--- test"
+          if (Test-Path test.log) { Get-Content test.log | Where-Object { $_ -notmatch "^\s+ok |^\s{8}|^$" } | Select-Object -Last 60 }
+      - name: Remove
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\*.msi).FullName
+          $p = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn /norestart /l*v `"$PWD\remove.log`"" -Wait -PassThru
+          "msiexec exit code $($p.ExitCode)"
+          Select-String -Path remove.log -Pattern "WixQuietExec64:" | Select-Object -Last 40 | ForEach-Object { $_.Line }
+          if ($p.ExitCode) { Get-Content remove.log -Tail 80; exit 1 }
+          $left = @()
+          if (Get-Service redstonepanel -ErrorAction SilentlyContinue) { $left += "the panel's service" }
+          if (Get-Service minecraft-* -ErrorAction SilentlyContinue) { $left += "a game server's service" }
+          if (Test-Path "C:\Program Files\RedstonePanel") { $left += "the program folder: " + ((Get-ChildItem "C:\Program Files\RedstonePanel" -Recurse | Select-Object -First 10 -ExpandProperty FullName) -join ", ") }
+          if (Get-NetFirewallRule -Group "RedstonePanel panel" -ErrorAction SilentlyContinue) { $left += "the panel's firewall rule" }
+          if (-not (Test-Path "C:\ProgramData\RedstonePanel\servers")) { $left += "(the servers folder should have been kept)" }
+          if ($left) { "Left behind: " + ($left -join "; "); exit 1 } else { "Removed cleanly; worlds, backups and settings were kept." }
+      - name: What the installer carries
+        if: always()
+        shell: pwsh
+        run: Get-Content build\stage-versions.txt -ErrorAction SilentlyContinue
+
+  # For a version tag: the installer that passed on both runners goes on the GitHub release
+  # that release.yml makes for the .deb (it is made after the Linux tests, so this waits for it).
+  publish:
+    needs: [install, msi]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: RedstonePanel-msi-windows-2022
+          path: dist
+      - name: Attach the installer and its SHA-256 to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          ls -l
+          for f in *.msi; do sha256sum "$f" > "$f.sha256"; cat "$f.sha256"; done
+          for i in $(seq 1 80); do
+            if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              gh release upload "$GITHUB_REF_NAME" *.msi *.msi.sha256 --repo "$GITHUB_REPOSITORY" --clobber
+              exit 0
+            fi
+            echo "No release for $GITHUB_REF_NAME yet; waiting."
+            sleep 60
+          done
+          echo "::error::There is still no GitHub release for $GITHUB_REF_NAME, so the installer wasn't attached."
+          exit 1

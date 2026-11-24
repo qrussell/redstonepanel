@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The RedstonePanel installer for Windows (WiX Toolset 3). Built by build.py, which harvests
+     the staged files (Python, the libraries, the panel) into the PanelFiles group.
+
+     The program always goes to Program Files\RedstonePanel. The one question the installer asks
+     is where servers, backups and settings go (DATAFOLDER, by default C:\ProgramData\RedstonePanel);
+     the answer is remembered in the registry so an upgrade or repair doesn't ask again.
+     Unattended:  msiexec /i RedstonePanel-x.y.z-x64.msi /qn DATAFOLDER=D:\RedstonePanel
+
+     The work itself (folders and their rights, the service, the firewall rule, the first account)
+     is done by app\packaging\windows\setup.py, run here as the system. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <Product Id="*" Name="RedstonePanel" Language="1033" Version="$(var.Version)" Manufacturer="Quentin Russell"
+           UpgradeCode="$(var.UpgradeCode)">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
+             Description="RedstonePanel $(var.Version): a web panel for Minecraft servers (Windows preview)" />
+    <MajorUpgrade Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer RedstonePanel is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Condition Message="RedstonePanel needs 64-bit Windows 10, Windows 11, or Windows Server 2019 or newer."><![CDATA[Installed OR (VersionNT64 AND VersionNT >= 603)]]></Condition>
+
+    <Icon Id="panel.ico" SourceFile="$(var.Root)\static\img\favicon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="panel.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://redstonepanel.cielocloud.org" />
+
+    <!-- Where the data goes, and where the program went: remembered from the last install -->
+    <Property Id="DATAFOLDER">
+      <RegistrySearch Id="FindHome" Root="HKLM" Key="Software\RedstonePanel" Name="Home" Type="raw" Win64="yes" />
+    </Property>
+    <Property Id="APPFOLDER">
+      <RegistrySearch Id="FindApp" Root="HKLM" Key="Software\RedstonePanel" Name="InstallDir" Type="raw" Win64="yes" />
+    </Property>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="RedstonePanel" />
+      </Directory>
+      <Directory Id="CommonAppDataFolder">
+        <Directory Id="DATAFOLDER" Name="RedstonePanel" />
+      </Directory>
+    </Directory>
+
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="Remembered" Guid="3E0B5E63-3F0B-4A3B-9D1C-6A1C6E2D7B11" Win64="yes">
+        <RegistryKey Root="HKLM" Key="Software\RedstonePanel">
+          <RegistryValue Name="Home" Type="string" Value="[DATAFOLDER]" KeyPath="yes" />
+          <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLDIR]" />
+        </RegistryKey>
+        <!-- `redstonepanel status` and the rest from any administrator prompt -->
+        <Environment Id="OnPath" Name="PATH" Value="[INSTALLDIR]" Part="last" System="yes" Action="set" Permanent="no" />
+        <!-- What Python and setup leave next to the installed files -->
+        <util:RemoveFolderEx Id="CleanApp" On="uninstall" Property="APPFOLDER" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="Panel" Title="RedstonePanel" Level="1" Absent="disallow">
+      <ComponentGroupRef Id="PanelFiles" />
+      <ComponentRef Id="Remembered" />
+    </Feature>
+
+    <!-- setup.py does the work. Its output goes to the installer's log (msiexec /l*v file.log). -->
+    <SetProperty Id="StopPanel" Sequence="execute" Before="StopPanel"
+                 Value="&quot;[APPFOLDER]python\python.exe&quot; -X utf8 -B &quot;[APPFOLDER]app\packaging\windows\setup.py&quot; stop" />
+    <CustomAction Id="StopPanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="ignore" />
+    <SetProperty Id="RemovePanel" Sequence="execute" Before="RemovePanel"
+                 Value="&quot;[APPFOLDER]python\python.exe&quot; -X utf8 -B &quot;[APPFOLDER]app\packaging\windows\setup.py&quot; uninstall" />
+    <CustomAction Id="RemovePanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="ignore" />
+    <SetProperty Id="SetUpPanel" Sequence="execute" Before="SetUpPanel"
+                 Value="&quot;[INSTALLDIR]python\python.exe&quot; -X utf8 -B &quot;[INSTALLDIR]app\packaging\windows\setup.py&quot; install --home &quot;[DATAFOLDER].&quot;" />
+    <CustomAction Id="SetUpPanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="check" />
+    <!-- A failed install takes the service out again -->
+    <SetProperty Id="UndoPanel" Sequence="execute" Before="UndoPanel"
+                 Value="&quot;[INSTALLDIR]python\python.exe&quot; -X utf8 -B &quot;[INSTALLDIR]app\packaging\windows\setup.py&quot; uninstall" />
+    <CustomAction Id="UndoPanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="rollback" Impersonate="no" Return="ignore" />
+
+    <InstallExecuteSequence>
+      <!-- Before files are replaced or removed: stop the panel and the game servers, which run from them -->
+      <Custom Action="StopPanel" After="InstallInitialize"><![CDATA[Installed AND APPFOLDER]]></Custom>
+      <!-- A real removal (not the old version stepping aside for a new one) takes out services, tasks and rules -->
+      <Custom Action="RemovePanel" After="StopPanel"><![CDATA[Installed AND APPFOLDER AND REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE]]></Custom>
+      <Custom Action="UndoPanel" After="InstallFiles"><![CDATA[NOT Installed AND NOT WIX_UPGRADE_DETECTED]]></Custom>
+      <Custom Action="SetUpPanel" Before="InstallFinalize"><![CDATA[NOT REMOVE="ALL"]]></Custom>
+    </InstallExecuteSequence>
+
+    <Property Id="WIXUI_INSTALLDIR" Value="DATAFOLDER" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
+              Value="RedstonePanel is running. Open http://localhost:8080 in a browser on this computer. The user name is admin; the password is in the file first-sign-in.txt in the folder you chose (C:\ProgramData\RedstonePanel unless you changed it)." />
+    <UIRef Id="WixUI_InstallDir" />
+    <UIRef Id="WixUI_ErrorProgressText" />
+  </Product>
+</Wix>

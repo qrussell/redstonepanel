@@ -1,7 +1,8 @@
 # Installing RedstonePanel
 
 RedstonePanel installs in about a minute on a fresh Ubuntu or Debian server or a Raspberry Pi,
-and updates with the rest of the system through `apt`.
+and updates with the rest of the system through `apt`. On a Windows PC, see
+[On Windows (preview)](#on-windows-preview).
 
 ## What you need
 
@@ -60,6 +61,47 @@ To give a server more memory, use **Maintenance → Memory and limits** (1.17); 
 **Hard memory limit** of **Automatic** keeps one server from taking the whole Pi. A Pi 5 needs its active cooler to run all day at full speed.
 Raspberry Pi OS packages Java 21 and 25, which run Minecraft 1.17 and newer; for older versions
 the panel offers Java 21 and says that it may not start them.
+
+## On Windows (preview)
+
+From 1.22 there is a Windows installer. It is a **preview**: Java servers on one computer,
+with backups and restore, schedules, the console, the file manager, add-ons, the firewall,
+webhooks and two-factor sign-in. Bedrock servers, Quilt, Forge and NeoForge, modpacks, memory
+and CPU limits, off-site backup storage, SFTP, clusters and updating from the panel come in
+later releases; until then the panel says so instead of offering them. For those today, use
+Linux or [WSL](FAQ.md#can-i-run-it-on-windows-with-wsl).
+
+- **Windows 11, or Windows Server 2022 or 2025**, 64-bit Intel or AMD. Windows 10 installs too
+  but isn't tested, and no longer gets updates from Microsoft.
+- An administrator account for the install. Nothing else: Python comes inside the installer,
+  and Java (Eclipse Temurin) is downloaded when a server needs it.
+
+1. Download `RedstonePanel-x.y.z-x64.msi` from the
+   [latest release](https://github.com/qrussell/redstonepanel/releases/latest) and open it.
+   The preview isn't signed yet, so SmartScreen says **Windows protected your PC**: choose
+   **More info**, then **Run anyway**. The release lists the file's SHA-256 if you want to
+   check it first.
+2. The installer asks one question: **where servers, backups and settings are kept**. The
+   default is `C:\ProgramData\RedstonePanel`; pick another drive if that is where the room is.
+   The folder's name can't have a space in it.
+3. Open **http://localhost:8080** on that computer. The user name is **admin** and the password
+   is in `first-sign-in.txt` in the folder from step 2. Change the password under **Users**,
+   then delete the file.
+
+What you get is ordinary Windows: the panel is the service **RedstonePanel**, each game server
+is its own service (`minecraft-<name>`) running as its own account that can reach only its own
+folder, schedules are tasks under **RedstonePanel** in Task Scheduler, and ports are rules in
+the **RedstonePanel** group in Windows Defender Firewall. Game servers and schedules keep
+running while the panel is stopped, and start with Windows.
+
+- **Update:** run the newer installer. Game servers stop while the files are replaced and
+  start again afterwards. Worlds, backups and settings are kept.
+- **Remove:** **Settings → Apps → Installed apps → RedstonePanel → Uninstall**. The services,
+  tasks and firewall rules go; the folder from step 2 stays, with your worlds and backups in
+  it. Delete it yourself if you don't want them.
+- **Without the questions:** `msiexec /i RedstonePanel-x.y.z-x64.msi /qn DATAFOLDER=D:\RedstonePanel`
+- **From a prompt** (as administrator): `redstonepanel status`, `redstonepanel add-user NAME`,
+  `redstonepanel reset-2fa NAME`, as on Linux.
 
 ## Option 2: the apt repository, by hand
 
@@ -158,6 +200,16 @@ its own inside it), names with spaces, a disk mounted read-only or `noexec`, and
 that folder fixes it). The path also can't contain the words "java" or "bedrock".
 
 In a cluster, each machine has its own servers folder, set in that machine's own panel.
+
+**On Windows (preview)** the same setting takes a folder with its drive letter, for example
+`D:\Minecraft\servers`, so servers can live on a second disk while the panel stays on `C:`.
+A list next to the box shows this computer's drives with their free space; choosing one fills in
+`\Minecraft\servers` on that drive, so the path is the same whatever the drive letter (you can
+still change it). Leave it empty for the usual place, `C:\ProgramData\RedstonePanel\servers`. The panel refuses
+a whole drive (`D:`), paths with spaces, network shares, removable drives, drives not formatted
+as NTFS, and folders inside `C:\Windows`, `C:\Program Files` or `C:\Users`. A folder the panel
+makes is open to administrators only; each server's own account is given just its own folder
+inside it.
 
 ## Reaching the panel from outside your network
 

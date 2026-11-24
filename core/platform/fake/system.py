@@ -116,6 +116,82 @@ def remove_files(folder, names, wrap=None):
     return done()
 
 
+def can_run_as_game_account():
+    return True
+
+
+def lock(fd, wait=False):
+    if fd in fake.state.locks:
+        raise BlockingIOError("locked")
+    fake.state.locks.add(fd)
+
+
+def unlock(fd):
+    fake.state.locks.discard(fd)
+
+
+SYSTEM_ACCOUNTS = True
+ACCOUNT_KIND = "Linux"
+
+
+def check_system_password(username, password):
+    return fake.state.passwords.get(username) == password
+
+
+def system_account_exists(username):
+    return username in fake.state.passwords
+
+
+def system_account_allowed(username, groups=("sudo",)):
+    return username in fake.state.passwords
+
+
+def machine_file(name, root=None):
+    return fake.state.machine_files.get(name, "")
+
+
+def kernel():
+    return "6.8.0-fake"
+
+
+def load_average():
+    return [0.0, 0.0, 0.0]
+
+
+def filesystem(path):
+    return {"device": 1, "mount": "/", "fstype": "ext4", "total": 100 << 30, "used": 10 << 30, "free": 90 << 30}
+
+
+def root_path():
+    return "/"
+
+
+def process_alive(pid):
+    return pid in fake.state.processes
+
+
+def secure_folder(path):
+    fake.record("system.secure_folder", path)
+    return 0
+
+
+def fs():
+    import os
+    return os
+
+
+def hint(what, *args):
+    if what == "firewall-name":
+        return "ufw"
+    if what == "allow-ports":
+        return " && ".join(f"sudo ufw allow {a}" for a in args)
+    if what == "close-ports":
+        return " && ".join(f"sudo ufw delete allow {a}" for a in args)
+    if what == "install-package":
+        return f"sudo apt install {' '.join(args)}"
+    return f"({what} {' '.join(str(a) for a in args)})".replace(" )", ")")
+
+
 def check_servers_folder(folder):
     import os
     fake.record("system.check_servers_folder", folder)
@@ -131,6 +207,10 @@ def prepare_servers_folder(folder):
     fake.record("system.prepare_servers_folder", folder)
     os.makedirs(folder, exist_ok=True)
     return ""
+
+
+def servers_drives():
+    return list(getattr(fake.state, "servers_drives", []))
 
 
 def adopt_folder(path):
@@ -154,6 +234,11 @@ def game_programs(names=("java", "bedrock_server")):
             continue
         out.append(dict(p))
     return out
+
+
+def other_game_services():
+    """What the test put in fake.state.other_game_services."""
+    return [dict(s) for s in getattr(fake.state, "other_game_services", [])]
 
 
 def owner_of(path):

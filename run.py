@@ -60,9 +60,9 @@ def reset_security():
     s.update(https_mode="off", http_port=settings.DEFAULTS["http_port"], login_mode="required")
     settings.save(s)
     print(f"Security settings reset: HTTP on port {s['http_port']}, sign-in required.")
-    if os.geteuid() == 0 and services.available():
+    if system.is_admin() and services.available():
         print("Restarted redstonepanel." if services.restart_panel() == 0
-              else "Restart it with: sudo systemctl restart redstonepanel")
+              else system.hint("restart-panel"))
 
 
 def terminal_cmd(what):
@@ -264,7 +264,7 @@ def add_user(args):
 
 def _restart_service(what):
     """The panel only picks up HTTPS changes when it restarts."""
-    if os.geteuid() == 0 and services.available():
+    if system.is_admin() and services.available():
         if services.restart_panel() == 0:
             print(f"Restarted redstonepanel {what}.")
             return

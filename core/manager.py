@@ -39,9 +39,14 @@ TOOL_PACKAGES = {"java": "openjdk-25-jre-headless", "screen": "screen", "unzip":
 BEDROCK_MACHINES = ("x86_64", "amd64")
 
 def bedrock_supported(machine=None):
+    if machine is None and paths.WINDOWS:
+        return False                               # the Windows preview (1.22) runs Java servers only
     return (machine or platform.machine()).lower() in BEDROCK_MACHINES
 
 def bedrock_unsupported_message():
+    if paths.WINDOWS:
+        return ("Bedrock servers aren't in the Windows preview yet; they come in a later release. Java "
+                "servers work here, and Bedrock players can join one through Geyser.")
     return (f"Bedrock servers can't run on this machine ({platform.machine()}): Mojang only makes Bedrock "
             f"Dedicated Server for 64-bit Intel and AMD (x86-64) machines. Java servers work here, and "
             f"Bedrock players can join one through Geyser.")
@@ -954,7 +959,7 @@ def unit_java(exec_start):
 
 def unit_java_major(exec_start):
     path = unit_java(exec_start)
-    if path and os.path.realpath(path).startswith(javaservers.JVM_ROOT + "/") and \
+    if path and os.path.realpath(path).startswith(os.path.realpath(javaservers.JVM_ROOT) + os.sep) and \
             os.path.dirname(path) != os.path.dirname(paths.DEFAULT_JAVA):
         return javaservers.java_major_of(path)
     return java_major()                      # /usr/bin/java: the system default
@@ -1102,13 +1107,21 @@ def _fetch_bedrock(d):
         write_log(f"[WARNING] {e}")
         raise ServerError(str(e))
 
+def meminfo_text(path=None):
+    """This machine's memory as /proc/meminfo has it ("MemTotal: N kB" ...); on a system without
+    /proc, the same text from the platform layer. "" when it can't be read."""
+    try:
+        with open(path or os.path.join(paths.PROC, "meminfo")) as f:
+            return f.read()
+    except OSError:
+        return system.machine_file("meminfo") if path in (None, os.path.join(paths.PROC, "meminfo")) else ""
+
 def default_heap(meminfo=os.path.join(paths.PROC, "meminfo")):
     """A new Java server's heap: 1-2 GB, or 512 MB-1 GB on a machine with 3 GB of memory or less
     (a 2 GB Raspberry Pi), where 2 GB would leave nothing for the system."""
     try:
-        with open(meminfo) as f:
-            kb = int(re.search(r"^MemTotal:\s+([0-9]+) kB", f.read(), re.M).group(1))
-    except (OSError, AttributeError, ValueError):
+        kb = int(re.search(r"^MemTotal:\s+([0-9]+) kB", meminfo_text(meminfo), re.M).group(1))
+    except (AttributeError, ValueError):
         kb = 0
     return {"xms": "512M", "xmx": "1G"} if 0 < kb <= 3 * 1024 * 1024 else {"xms": "1G", "xmx": "2G"}
 
@@ -1211,7 +1224,7 @@ def _reserve_name(edition):
         while True:
             name = f"{base_name}{suffix}"
             taken = (name in _busy or find_server_folder(name) is not None
-                     or os.path.exists(_unit_path(name)))
+                     or os.path.exists(_unit_path(name)) or not services.name_free(name))
             if not taken:
                 # Check every port other servers claim (RCON included), and Bedrock's IPv6 port too
                 needed = {port, port + 1} if edition == "bedrock" else {port}
@@ -1693,9 +1706,8 @@ def _heap_fits(xmx):
     3 GB or less (as 1.17's Memory does)."""
     from core import deployopts
     try:
-        with open(os.path.join(paths.PROC, "meminfo")) as f:
-            total = int(re.search(r"^MemTotal:\s+([0-9]+) kB", f.read(), re.M).group(1)) * 1024
-    except (OSError, AttributeError, ValueError):
+        total = int(re.search(r"^MemTotal:\s+([0-9]+) kB", meminfo_text(), re.M).group(1)) * 1024
+    except (AttributeError, ValueError):
         return
     reserve = 768 * 1024 ** 2 if total <= 3 * 1024 ** 3 else 1024 ** 3
     if deployopts.heap_bytes(xmx) > total - reserve:

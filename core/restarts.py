@@ -6,7 +6,6 @@ players are warned (Java over RCON, Bedrock through its screen session) and the 
 at the time shown in the panel. A stopped server is left stopped, and a restart waits for a
 backup of the same server to finish.
 """
-import fcntl
 import json
 import os
 import re
@@ -15,7 +14,7 @@ import time
 
 from core import backups, manager, notify, rcon
 from core.settings import DATA_DIR
-from core.platform import paths, services
+from core.platform import paths, services, system
 
 SCHEDULE_FILE = os.path.join(DATA_DIR, "restarts.json")
 UNIT_DIR = backups.UNIT_DIR
@@ -210,7 +209,7 @@ def _wait_for_backup(server):
     logged = False
     while True:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            system.lock(fd)
             return fd
         except BlockingIOError:
             if time.time() > deadline:

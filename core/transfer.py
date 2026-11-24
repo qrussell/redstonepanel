@@ -244,7 +244,7 @@ def _pack_listed(tar, d):
             continue
         listed_at = time.time()
         try:
-            f = open(path, "rb", opener=lambda p, fl: os.open(p, fl | os.O_NOFOLLOW))
+            f = open(path, "rb", opener=lambda p, fl: os.open(p, fl | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)))
         except OSError:
             continue                            # gone or replaced: the second archive sends it
         with f:

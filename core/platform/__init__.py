@@ -1,8 +1,9 @@
 """The platform layer: everything the panel asks of the operating system goes through here.
 
 Until 1.21 the panel called `systemctl`, `ufw`, `screen`, `apt` and friends from wherever it
-needed them. Those calls now live in one place per system, so a second system (Windows, from
-1.22) is a second folder next to `linux/`, not a change to every feature.
+needed them. Those calls now live in one place per system, so a second system is a second folder
+next to `linux/`, not a change to every feature. `windows/` is that second system (a preview
+from 1.22).
 
     from core.platform import services, firewall, console, packages, system, certs, terminal, paths
 
@@ -30,6 +31,7 @@ Rules for code outside this package:
   * catch `CommandError` (the program is missing, timed out or couldn't be run).
 """
 import importlib
+import os
 import subprocess
 
 from core.platform import paths            # noqa: F401  (re-exported)
@@ -39,14 +41,14 @@ CommandError = (OSError, subprocess.SubprocessError)
 TimeoutExpired = subprocess.TimeoutExpired
 
 AREAS = ("services", "firewall", "console", "packages", "system", "certs", "terminal")
-SYSTEMS = ("linux", "fake")
+SYSTEMS = ("linux", "windows", "fake")
 
 _state = {"name": None, "areas": {}}
 
 
 def default_system():
-    """The system this machine runs. Only Linux has a real side so far."""
-    return "linux"
+    """The system this machine runs: "windows" (a preview from 1.22) or "linux"."""
+    return "windows" if os.name == "nt" else "linux"
 
 
 def use(name=None):
@@ -60,7 +62,7 @@ def use(name=None):
 
 
 def name():
-    """"linux" or "fake"."""
+    """"linux", "windows" or "fake"."""
     if _state["name"] is None:
         use()
     return _state["name"]

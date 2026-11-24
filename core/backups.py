@@ -21,7 +21,6 @@ either (no RCON, screen not answering) the files are copied live and the backup 
 as such.
 """
 import datetime
-import fcntl
 import io
 import json
 import os
@@ -242,6 +241,9 @@ def _skipped(rel, full=False):
         return True
     return any(rel == p or rel.startswith(p) for p in SKIP_PACK_PREFIXES)
 
+_is_junction = getattr(os.path, "isjunction", lambda path: False)
+
+
 def _add_tree(tar, d, skip_dirs=(), full=False):
     """Adds the server folder to tar, minus _skipped() paths and skip_dirs (relative)."""
     for root, dirs, files in os.walk(d):
@@ -256,6 +258,8 @@ def _add_tree(tar, d, skip_dirs=(), full=False):
             if os.path.islink(path):
                 tar.add(path, arcname=rel, recursive=False)   # the link itself, never its target
                 continue
+            if _is_junction(path):
+                continue                                      # Windows: a folder that is really somewhere else
             tar.add(path, arcname=rel, recursive=False)
             keep_dirs.append(name)
         dirs[:] = keep_dirs
@@ -264,6 +268,8 @@ def _add_tree(tar, d, skip_dirs=(), full=False):
             if _skipped(rel, full):
                 continue
             path = os.path.join(root, name)
+            if name == "session.lock" and paths.WINDOWS:
+                continue      # the running server holds it locked; Windows refuses to read it, and it means nothing in a backup
             try:
                 # Read as the game account: a file swapped for a link mid-walk can't add a
                 # root-only file to a backup anyone with access to it can download
@@ -344,7 +350,7 @@ def _lock(server):
     os.chmod(BACKUP_ROOT, 0o700)
     fd = os.open(os.path.join(d, ".lock"), os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        system.lock(fd)
     except BlockingIOError:
         os.close(fd)
         raise BackupError(f"A backup of {server} is already running.")

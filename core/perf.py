@@ -367,6 +367,8 @@ def _addon_names(d, folder):
 
 def rotational(path):
     """True if the file system holding path is on a spinning disk, None if unknown."""
+    if not hasattr(os, "major"):        # Windows: no device numbers, so not known
+        return None
     try:
         st = os.stat(path)
     except OSError:

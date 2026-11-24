@@ -26,6 +26,12 @@ def available():
     return paths.service_manager_running()
 
 
+def prepare():
+    """Called when the panel starts: whatever the service manager needs from the panel before
+    it is used. Nothing on Linux (the package installs the drop-in and systemd does the rest)."""
+    return None
+
+
 # ---------------------------------------------------------------------------
 # The raw command (for the few callers that need their own arguments)
 # ---------------------------------------------------------------------------
@@ -119,6 +125,15 @@ def queued_jobs(server, timeout=5):
         if len(parts) >= 3 and parts[1] == unit(server):
             jobs.append(parts[2])
     return jobs
+
+
+def name_free(server):
+    """False when the machine already has a service of this name that the panel didn't make."""
+    try:
+        r = systemctl("cat", unit(server), timeout=10)
+    except FileNotFoundError:
+        return True  # no systemctl (a container without systemd): no service can have the name
+    return r.returncode != 0
 
 
 def unit_files(prefix="minecraft", suffix=SUFFIX):

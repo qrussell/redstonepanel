@@ -50,8 +50,10 @@ const ServerApp = {
         }
         const ver = document.getElementById('panel-version');
         if (ver && this.currentUser.panel_version) {
-            ver.innerText = 'v' + this.currentUser.panel_version;
-            ver.title = `RedstonePanel ${this.currentUser.panel_version}`;
+            // On Windows the panel is a preview (since 1.22) and says so next to its version
+            const preview = this.currentUser.system === 'windows';
+            ver.innerText = 'v' + this.currentUser.panel_version + (preview ? ' · Windows preview' : '');
+            ver.title = `RedstonePanel ${this.currentUser.panel_version}` + (preview ? ' for Windows, a preview: Java servers on one computer' : '');
         }
 
         this.applyTheme();
@@ -70,6 +72,13 @@ const ServerApp = {
         if (sortDropdown) sortDropdown.value = this.sortOrder;
         
         await this.loadServers();
+    },
+
+    // The Windows preview doesn't do everything yet: /api/auth/me lists what under not_yet
+    // ('cluster', 'sftp', 'limits', 'offsite', 'modpacks', 'bedrock', 'installer-loaders', ...).
+    // Those parts of the page are hidden, and the API refuses them too.
+    notYet(name) {
+        return !!(this.currentUser && (this.currentUser.not_yet || []).includes(name));
     },
 
     // On a cluster master: the nodes from the last overview, [{id, name, state, error, ...}]
@@ -1773,7 +1782,7 @@ const ServerApp = {
 
                 <button onclick="ServerApp.executeDeploy()" class="mt-2 w-full bg-green-600 hover:bg-green-700 py-2 rounded text-white font-bold transition">Deploy Fresh Server</button>
             </div>
-            ${this.isAdmin() ? `<hr class="border-gray-200 dark:border-gray-700 my-4" />
+            ${this.isAdmin() && !this.notYet('modpacks') ? `<hr class="border-gray-200 dark:border-gray-700 my-4" />
             <div class="mb-2">
                 <label class="block text-sm text-gray-400 mb-1">From a modpack</label>
                 <p class="text-xs text-gray-500 mb-2">Pick a modpack from Modrinth, or upload a .mrpack or a CurseForge server pack.</p>
@@ -1937,6 +1946,11 @@ const ServerApp = {
         const node = this.deployNode && this.clusterNodes.find(n => n.id === this.deployNode);
         const old = !!(node && (node.cluster_api || 1) < 7);
         select.querySelectorAll('.loader-1-20').forEach(o => { o.disabled = old; });
+        // The Windows preview has no Quilt, Forge or NeoForge yet (their installers), on this panel
+        const noInstallers = !this.deployNode && this.notYet('installer-loaders');
+        if (noInstallers) select.querySelectorAll('option').forEach(o => {
+            if (['quilt', 'forge', 'neoforge'].includes(o.value)) { o.disabled = true; o.textContent = `${this.loaderName(o.value)} (not in the Windows preview yet)`; }
+        });
         if (old && select.selectedOptions[0] && select.selectedOptions[0].disabled) { select.value = 'vanilla'; this.loadDeployVersions(); }
         const note = document.getElementById('deploy-loader-note');
         const loader = select.value;
@@ -2050,9 +2064,10 @@ const ServerApp = {
         const ok = this.bedrockSupported(this.deployNode);
         const opt = select.querySelector('option[value="bedrock"]');
         opt.disabled = !ok;
-        opt.textContent = ok ? 'Bedrock Edition (Auto-Port)' : 'Bedrock Edition (needs an x86-64 machine)';
+        const preview = !this.deployNode && this.notYet('bedrock');
+        opt.textContent = ok ? 'Bedrock Edition (Auto-Port)' : preview ? 'Bedrock Edition (not in the Windows preview yet)' : 'Bedrock Edition (needs an x86-64 machine)';
         note.classList.toggle('hidden', ok);
-        note.innerText = ok ? '' : 'This machine is ARM64 (for example a Raspberry Pi), and Mojang only makes the Bedrock server '
+        note.innerText = ok ? '' : preview ? 'RedstonePanel on Windows is a preview that runs Java servers. Bedrock servers come in a later release; until then Bedrock players can join a Java server through Geyser.' : 'This machine is ARM64 (for example a Raspberry Pi), and Mojang only makes the Bedrock server '
             + 'for 64-bit Intel and AMD machines. Java servers work, and Bedrock players can join one through Geyser.';
         if (!ok && select.value === 'bedrock') {
             select.value = 'java';
@@ -2525,6 +2540,7 @@ const ServerApp = {
         const body = document.getElementById('resources-body');
         const srv = this.activeServer;
         if (!card || !srv) return;
+        if (this.notYet('limits')) { card.classList.add('hidden'); return; }       // not in the Windows preview yet
         card.classList.remove('hidden');
         const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/resources`);
         if (!res.ok) { body.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
@@ -4679,6 +4695,7 @@ const ServerApp = {
     async loadOffsite() {
         const box = document.getElementById('offsite-box');
         if (!box || !this.activeServer) return;
+        if (this.notYet('offsite')) { box.className = 'hidden'; return; }           // not in the Windows preview yet
         const name = this.activeServer.name;
         const res = await api(`/api/servers/${encodeURIComponent(name)}/offsite`);
         if (!this.activeServer || this.activeServer.name !== name) return;
@@ -5032,6 +5049,8 @@ const ServerApp = {
     // --- Found servers: Minecraft servers on this machine that the panel doesn't manage ---
     foundServers: [],
     takenOver: [],
+    foundNotes: [],
+    foundLooked: false,       // true once the panel has answered, so "none found" isn't shown too early
 
     async loadFoundServers(message, ok) {
         try {
@@ -5039,9 +5058,13 @@ const ServerApp = {
             const d = res.ok ? await res.json() : {};
             this.foundServers = d.servers || [];
             this.takenOver = d.taken_over || [];
+            this.foundNotes = d.noticed || [];
+            this.foundLooked = res.ok;
         } catch (e) {
             this.foundServers = [];
             this.takenOver = [];
+            this.foundNotes = [];
+            this.foundLooked = false;
         }
         const box = document.getElementById('found-servers');
         if (box) box.innerHTML = this.foundServersHtml(message, ok);
@@ -5049,7 +5072,7 @@ const ServerApp = {
     },
 
     foundServersHtml(message, ok) {
-        if (this.deployNode || !(this.foundServers.length || this.takenOver.length || message)) return '';
+        if (this.deployNode || !(this.foundLooked || this.foundServers.length || this.takenOver.length || message)) return '';
         const esc = t => this.escapeHtml(t == null ? '' : String(t));
         const button = 'px-3 py-1 rounded text-sm font-bold whitespace-nowrap disabled:opacity-50';
         const rows = this.foundServers.map((f, i) => `
@@ -5069,12 +5092,19 @@ const ServerApp = {
                     </div>
                     <button onclick="ServerApp.undoFound(${this.jsArg(t.name)}, this)" class="${button} bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Undo</button>
                 </div>`).join('');
+        const notes = this.foundNotes.map(n => `
+                <div class="p-2 mb-2 rounded border border-dashed border-gray-300 dark:border-gray-600">
+                    <div class="text-sm text-gray-700 dark:text-gray-300"><b>${esc(n.title)}</b> <span class="text-xs text-gray-500">can't be managed yet</span></div>
+                    ${n.folder ? `<div class="text-xs text-gray-500 dark:text-gray-400 font-mono break-all">${esc(n.folder)}</div>` : ''}
+                    <div class="text-xs text-gray-500 dark:text-gray-400">${esc(n.reason)}</div>
+                </div>`).join('');
+        const none = !(rows || taken || notes) ? `<p class="text-sm text-gray-500 dark:text-gray-400 mb-2">No other Minecraft servers were found running on this computer. A server has to be running to be found.</p>` : '';
         return `
             <hr class="border-gray-200 dark:border-gray-700 my-4" />
             <label class="block text-sm text-gray-400 mb-1">Found on this computer</label>
             <p class="text-xs text-gray-500 mb-2">Minecraft servers here that were set up outside RedstonePanel. Nothing about them is changed until you choose Manage. Then the panel stops the service that runs one and turns it off (it isn't deleted), and runs the server from the same folder itself; no files are copied or moved, and Undo puts it back.</p>
             ${message ? `<p class="text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-2">${esc(message)}</p>` : ''}
-            ${rows}${taken}`;
+            ${none}${rows}${taken}${notes}`;
     },
 
     async manageFound(index, button) {
@@ -5872,14 +5902,28 @@ const ServerApp = {
 		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
 		const note = 'text-xs text-gray-500 dark:text-gray-400';
 		const others = d.folders.filter(f => !f.current && f.servers);
+		// Windows: a list of this computer's drives; picking one fills in the folder the panel suggests there
+		const drives = d.drives || [], shown = typed != null ? typed : (d.is_default ? '' : d.folder);
+		const onDrive = ((shown || d.default).match(/^[A-Za-z]:/) || [''])[0].toUpperCase();
+		this.serversDrives = drives;
+		const driveList = drives.length ? `
+				<select id="set-servers-folder-drive" aria-label="Drive" onchange="ServerApp.pickServersDrive(this.value)" class="${field}" style="flex:0 0 auto;width:auto;max-width:100%">
+					${drives.some(v => v.drive === onDrive) ? '' : `<option value="" selected>${esc(onDrive || 'Drive')}</option>`}
+					${drives.map(v => `<option value="${esc(v.drive)}" ${v.drive === onDrive ? 'selected' : ''}>${esc(v.drive)}${v.label ? ' ' + esc(v.label) : ''} (${gb(v.free)} free)</option>`).join('')}
+				</select>` : '';
 		box.innerHTML = `
-			<div class="flex flex-col sm:flex-row gap-2 mb-1">
-				<input id="set-servers-folder-path" value="${esc(typed != null ? typed : (d.is_default ? '' : d.folder))}" placeholder="${esc(d.default)}" spellcheck="false" autocomplete="off" class="${field} font-mono">
+			<div class="flex flex-col sm:flex-row gap-2 mb-1">${driveList}
+				<input id="set-servers-folder-path" value="${esc(shown)}" placeholder="${esc(d.default)}" spellcheck="false" autocomplete="off" class="${field} font-mono">
 				<button onclick="ServerApp.saveServersFolder(this)" class="px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold text-sm disabled:opacity-50 whitespace-nowrap">Save folder</button>
 			</div>
 			<p id="set-servers-folder-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-1">${esc(message || '')}</p>
-			<p class="${note} mb-1">New servers are made in <b class="font-mono">${esc(d.folder)}</b>${d.folders[0] && d.folders[0].free != null ? ` (${gb(d.folders[0].free)} free of ${gb(d.folders[0].total)})` : ''}. Give the full path of a folder on the disk you want them on; leave it empty for the usual place, <span class="font-mono">${esc(d.default)}</span>. The folder is made if it isn't there.</p>
+			<p class="${note} mb-1">New servers are made in <b class="font-mono">${esc(d.folder)}</b>${d.folders[0] && d.folders[0].free != null ? ` (${gb(d.folders[0].free)} free of ${gb(d.folders[0].total)})` : ''}. ${drives.length ? `Choose a drive and the panel fills in <span class="font-mono">\\Minecraft\\servers</span> on it, the same path whatever the drive letter. You can change the path, or` : 'Give the full path of a folder on the disk you want them on;'} leave it empty for the usual place, <span class="font-mono">${esc(d.default)}</span>. The folder is made if it isn't there.</p>
 			<p class="${note}">Servers you already have stay where they are and keep working.${others.length ? ' Still in use: ' + others.map(f => `<span class="font-mono">${esc(f.folder)}</span> (${f.servers} server${f.servers === 1 ? '' : 's'})`).join(', ') + '.' : ''}</p>`;
+	},
+
+	pickServersDrive(drive) {
+		const chosen = (this.serversDrives || []).find(v => v.drive === drive);
+		if (chosen) document.getElementById('set-servers-folder-path').value = chosen.suggested;
 	},
 
 	async saveServersFolder(button) {
@@ -5933,22 +5977,30 @@ const ServerApp = {
 			<h4 id="set-section-notifications" class="font-bold text-gray-900 dark:text-white mb-2">Notifications</h4>
 			<div id="set-notifications" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
+			<div class="${this.notYet('offsite') ? 'hidden' : ''}">
 			<h4 id="set-section-storage" class="font-bold text-gray-900 dark:text-white mb-2">Backup storage</h4>
 			<div id="set-storage" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+			</div>
 
 			<h4 id="set-section-servers-folder" class="font-bold text-gray-900 dark:text-white mb-2">Servers folder</h4>
 			<div id="set-servers-folder" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
+			<div class="${this.notYet('sftp') ? 'hidden' : ''}">
 			<h4 id="set-section-sftp" class="font-bold text-gray-900 dark:text-white mb-2">SFTP</h4>
 			<div id="set-sftp" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+			</div>
 
 			<div id="set-terminal-wrap" class="hidden">
 			<h4 id="set-section-terminal" class="font-bold text-gray-900 dark:text-white mb-2">Terminal</h4>
 			<div id="set-terminal" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 			</div>
 
+			<div class="${this.notYet('cluster') ? 'hidden' : ''}">
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+			</div>
+			${this.notYet('cluster') ? `<h4 class="font-bold text-gray-900 dark:text-white mb-2">Windows preview</h4>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">RedstonePanel on Windows is a preview: Java servers (Vanilla, Paper, Purpur, Fabric) on one computer. Not here yet: Bedrock servers, Quilt, Forge, NeoForge and modpacks, memory and processor limits, off-site backup storage, SFTP, the terminal, clusters and updating from the panel. To update, run the new installer; your servers and settings stay.</p>` : ''}
 
 			<h4 id="set-section-connection" class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
 			<div class="space-y-2 mb-3">
@@ -5978,7 +6030,7 @@ const ServerApp = {
 
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Sign-in</h4>
 			<div class="space-y-2 mb-3">
-				${radio('login_mode', 'required', s.login_mode, 'Always required (recommended)', 'Everyone signs in with a Linux or panel account.')}
+				${radio('login_mode', 'required', s.login_mode, 'Always required (recommended)', this.notYet('system-accounts') ? 'Everyone signs in with a panel account.' : 'Everyone signs in with a Linux or panel account.')}
 				${radio('login_mode', 'trusted_networks', s.login_mode, 'Not required on the local network', 'Devices on the networks below can manage servers without signing in. Users and these settings still need an admin sign-in.')}
 			</div>
 			<label class="flex items-start gap-2 mb-3 text-sm cursor-pointer">
@@ -8067,7 +8119,8 @@ const ServerApp = {
 
 		content.innerHTML = `
 			<h3 class="text-xl font-bold mb-1 text-gray-900 dark:text-white">Panel Users</h3>
-			<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here (two-factor for them: <span class="font-mono">sudo redstonepanel reset-2fa NAME</span>).</p>
+			${this.notYet('system-accounts') ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">These accounts are the panel's own, not Windows accounts. Locked out of two-factor? In an administrator prompt on the server: <span class="font-mono">redstonepanel reset-2fa NAME</span>.</p>`
+			: `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here (two-factor for them: <span class="font-mono">sudo redstonepanel reset-2fa NAME</span>).</p>`}
 			<div class="max-h-72 overflow-y-auto mb-4">${rows}</div>
 			<div class="border-t border-gray-200 dark:border-gray-700 pt-4">
 				<p class="text-sm font-bold mb-2 text-gray-900 dark:text-white">Add user</p>

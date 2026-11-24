@@ -566,9 +566,8 @@ def _pack_heap():
     """The heap a modpack server gets when none is chosen: 4 GB when the machine has room for it
     (1 GB is kept for the system), else the most that fits in whole GB; None leaves the default."""
     try:
-        with open(os.path.join(paths.PROC, "meminfo")) as f:
-            total = int(re.search(r"^MemTotal:\s+([0-9]+) kB", f.read(), re.M).group(1)) * 1024
-    except (OSError, AttributeError, ValueError):
+        total = int(re.search(r"^MemTotal:\s+([0-9]+) kB", manager.meminfo_text(), re.M).group(1)) * 1024
+    except (AttributeError, ValueError):
         return None
     room = (total - 1024 ** 3) // 1024 ** 3
     return f"{min(4, room)}G" if room >= 3 else None

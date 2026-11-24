@@ -42,6 +42,7 @@ import core.crashes as crashes
 import core.grants as grants
 import core.sshkeys as sshkeys
 import core.sftp as sftp
+from core.platform import paths
 from starlette.routing import Match
 import core.modpacks as modpacks
 import core.joinpage as joinpage
@@ -126,12 +127,38 @@ STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 # An admin who must set up two-factor (Panel Settings > Sign-in) can reach only these until they do
 TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
 
+# The Windows preview (1.22) runs Java servers on one machine. What it doesn't do yet is refused
+# here in one plain sentence (changes only: reading still works), and the page hides the buttons
+# (/api/auth/me lists the names under "not_yet").
+WINDOWS_NOT_YET = (
+    ("cluster", "Clusters aren't", re.compile(r"^/api/(settings/)?cluster(/|$)")),
+    ("sftp", "SFTP isn't", re.compile(r"^/api/settings/sftp$")),
+    ("limits", "Memory and processor limits aren't", re.compile(r"^/api/servers/[^/]+/resources$")),
+    ("phantom", "Phantom isn't", re.compile(r"^/api/servers/[^/]+/phantom")),
+    ("panel-update", "Updating from the panel isn't", re.compile(r"^/api/panel/update")),
+    ("offsite", "Off-site backup storage isn't", re.compile(r"^/api/(settings/backup-storage|servers/[^/]+/offsite)(/|$)")),
+    ("modpacks", "Modpacks aren't", re.compile(r"^/api/servers/(modpack$|[^/]+/modpack/)")),
+)
+
+def not_yet(method, path, windows=None):
+    """The sentence refusing this request on the Windows preview, or None when it may go ahead."""
+    if not (paths.WINDOWS if windows is None else windows) or method not in STATE_CHANGING:
+        return None
+    for _name, what, pattern in WINDOWS_NOT_YET:
+        if pattern.match(path):
+            return (f"{what} in the Windows preview yet. To get the new installer when it is, see "
+                    f"https://redstonepanel.cielocloud.org.")
+    return None
+
 @app.middleware("http")
 async def access_control(request: Request, call_next):
     path = request.url.path
     if path.startswith("/api/"):
         if request.method in STATE_CHANGING and panel_settings.same_origin(request.headers) is False:
             return JSONResponse({"detail": "Request blocked: it came from another website."}, status_code=403)
+        refused = not_yet(request.method, path)
+        if refused:
+            return JSONResponse({"detail": refused}, status_code=400)
         if path not in PUBLIC_API:
             ip = request.client.host if request.client else None
             bearer = request.headers.get("authorization", "")
@@ -428,6 +455,11 @@ def me_api(request: Request):
     # Bedrock Dedicated Server is x86-64 only: the New Server form hides it on ARM64 (a Raspberry Pi)
     user["machine"] = platform.machine()
     user["bedrock_supported"] = manager.bedrock_supported()
+    # Which system the panel runs on. On Windows (a preview since 1.22) the page says so and hides
+    # what the preview doesn't do yet.
+    user["system"] = "windows" if paths.WINDOWS else "linux"
+    user["not_yet"] = ([n for n, _w, _p in WINDOWS_NOT_YET] + ["bedrock", "installer-loaders", "system-accounts"]
+                       if paths.WINDOWS else [])
     # Admins get told when HTTPS was requested but the panel had to fall back to HTTP
     if user["role"] == "admin":
         user["https_error"] = panel_settings.RUNTIME.get("https_error")
@@ -517,8 +549,10 @@ def _folder_view(folder, current):
 
 def _servers_folder_view():
     current = manager.servers_root()
+    from core.platform import system
     return {"folder": current, "default": manager.SERVERS_ROOT, "is_default": current == manager.SERVERS_ROOT,
-            "folders": [_folder_view(r, current) for r in manager.server_roots()]}
+            "folders": [_folder_view(r, current) for r in manager.server_roots()],
+            "drives": system.servers_drives()}        # Windows: drives to choose from; [] where paths are typed
 
 @app.get("/api/settings/servers-folder")
 def get_servers_folder_api():
@@ -1655,7 +1689,10 @@ def list_removed_servers():
 def list_found_servers(request: Request):
     _require_admin(request, "see the Minecraft servers found on this machine")
     from core import found
-    return {"servers": found.listing(), "taken_over": found.taken_over()}
+    from core.platform import system
+    programs = system.game_programs()
+    return {"servers": found.listing(programs=programs), "taken_over": found.taken_over(),
+            "noticed": found.noticed(programs)}
 
 class FoundServer(BaseModel):
     folder: str

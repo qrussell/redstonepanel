@@ -123,13 +123,13 @@ def describe(program, managed=(), panel_units=None):
             "java": program.get("exe") if edition == "Java" else None}
 
 
-def scan():
+def scan(programs=None):
     """[{"folder", "edition", "port", "version", "world", "service", "started_by", "user", "pid",
     "since", "jar", "heap", "heap_start", "java"}] for each Minecraft server running here that isn't the
-    panel's, one per folder, sorted by port."""
+    panel's, one per folder, sorted by port. programs: system.game_programs(), when the caller has it."""
     managed, units = _managed_folders(), _panel_units()
     found = {}
-    for program in system.game_programs():
+    for program in (system.game_programs() if programs is None else programs):
         info = describe(program, managed, units)
         if info and os.path.normcase(os.path.realpath(info["folder"])) not in found:
             found[os.path.normcase(os.path.realpath(info["folder"]))] = info
@@ -395,11 +395,11 @@ def _forget_seen(folder):
         _save_seen(seen)
 
 
-def listing(now=None):
+def listing(now=None, programs=None):
     """scan(), plus servers seen running within the last hour that have stopped since (each with
     "running": False), so one that had to be stopped by hand can still be handed over."""
     now = now or time.time()
-    running = scan()
+    running = scan(programs)
     seen, managed = _load_seen(), _managed_folders()
     fresh = {}
     for f in running:
@@ -416,3 +416,74 @@ def listing(now=None):
     if fresh != seen:
         _save_seen(fresh)
     return sorted(out, key=lambda f: (f["port"], f["folder"]))
+
+
+# ---------------------------------------------------------------------------
+# Noticed, but not something the panel can take over: said with the reason, never hidden
+# ---------------------------------------------------------------------------
+JAR_HINT = ("server", "minecraft", "paper", "purpur", "spigot", "bukkit", "fabric", "quilt", "forge", "folia")
+
+
+def _looks_like_minecraft(program):
+    """True when a Java program without a server.properties still looks like a Minecraft
+    server: by its jar's name, the nogui word, what is left in its folder, or its service."""
+    argv, cwd = program.get("argv") or [], program.get("cwd") or ""
+    jar = os.path.basename((_jar(argv) or "").replace("\\", "/")).lower()
+    if "nogui" in [a.lower() for a in argv] or any(h in jar for h in JAR_HINT):
+        return True
+    if "minecraft" in (program.get("service") or "").lower():
+        return True
+    if cwd and (os.path.isfile(os.path.join(cwd, "eula.txt"))
+                or (os.path.isdir(os.path.join(cwd, "libraries")) and os.path.isdir(os.path.join(cwd, "versions")))):
+        return True
+    return False
+
+
+def noticed(programs=None, found=None):
+    """[{"title", "folder", "service", "reason"}]: Minecraft servers and services on this machine
+    that the panel saw and can't hand over, each with why. Looking only.
+
+    - a running server whose folder has no server.properties (its settings and world aren't there);
+    - a running server whose folder the panel couldn't read;
+    - a service that isn't the panel's and is named for Minecraft, which is stopped, whose folder
+      is gone, or which runs something other than a game server (a proxy)."""
+    programs = system.game_programs() if programs is None else programs
+    found = scan(programs) if found is None else found
+    managed, units = _managed_folders(), _panel_units()
+    out, explained = [], {(f.get("service") or "").lower() for f in found}
+    for rec in taken_over():
+        explained.add((rec.get("service") or "").lower())
+    for p in programs:
+        cwd, service = p.get("cwd") or "", p.get("service") or ""
+        if (service and (service in units or f"{service}.service" in units)) or (cwd and any(_same(cwd, d) for d in managed)):
+            continue
+        argv = p.get("argv") or []
+        base = os.path.basename((p.get("exe") or (argv[0] if argv else "")).replace("\\", "/")).lower()
+        edition = "Bedrock" if base in BEDROCK_PROGRAMS else "Java" if base in JAVA_PROGRAMS else ""
+        if not edition or (cwd and os.path.isfile(os.path.join(cwd, "server.properties"))):
+            continue
+        if edition == "Java" and not _looks_like_minecraft(p):
+            continue
+        by = f", started by the service {service}" if service else ""
+        if cwd:
+            reason = (f"A {edition} server is running from this folder{by}, but the folder has no server.properties, "
+                      "so its settings and world aren't there. It can be handed over once those files are back.")
+        else:
+            reason = f"A {edition} server is running{by}, but the panel couldn't read which folder it runs in."
+        out.append({"title": f"{edition} server (running)", "folder": cwd, "service": service, "reason": reason})
+        explained.add(service.lower())
+    for s in system.other_game_services():
+        name, folder = s.get("service") or "", s.get("folder") or ""
+        if not name or name.lower() in explained or name in units or f"{name}.service" in units:
+            continue
+        if folder and any(_same(folder, d) for d in managed):
+            continue
+        if folder and not os.path.isdir(folder):
+            reason = f"A leftover service: its folder no longer exists. It is {'running' if s.get('running') else 'stopped'}."
+        elif not s.get("running"):
+            reason = "This service is stopped. Start it, and its server is listed here to hand over."
+        else:
+            program = os.path.basename((s.get("program") or "").replace("\\", "/"))
+            reason = "This service is running, but not a game server" + (f" (it runs {program})." if program else ".")
+        out.append({"title": f"Service {name}", "folder": folder, "service": name, "reason": reason})
+    return out

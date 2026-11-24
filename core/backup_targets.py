@@ -35,7 +35,6 @@ back to the browser. Results go to DATA_DIR/backup-targets-status.json.
 """
 import calendar
 import datetime
-import fcntl
 import hashlib
 import hmac
 import http.client
@@ -869,7 +868,7 @@ class _FileLock:
         os.makedirs(LOCK_DIR, mode=0o700, exist_ok=True)
         self.fd = os.open(os.path.join(LOCK_DIR, f"{tid}-{server}.lock"), os.O_CREAT | os.O_RDWR, 0o600)
         try:
-            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            system.lock(self.fd)
         except BlockingIOError:
             os.close(self.fd)
             raise TargetError(f"{server}'s backups are being copied already.", 409)

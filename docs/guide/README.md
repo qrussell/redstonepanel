@@ -21,7 +21,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | …? | Where |
 | --- | --- |
 | Install or update the panel | [Install](#1-install) |
-| Run it on a Windows PC | [On Windows with WSL](#on-windows-with-wsl) |
+| Run it on a Windows PC | [On Windows (preview)](#on-windows-preview), or [with WSL](#on-windows-with-wsl) |
 | Create a Java or Bedrock server | [Create or import a server](#4-create-or-import-a-server) |
 | Bring in a server I already have | [Import](#4-create-or-import-a-server) |
 | Talk to players or run a command | [Live Chat](#6-live-chat) |
@@ -83,6 +83,7 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 **Contents**
 
 1. [Install](#1-install)
+   - [On Windows (preview)](#on-windows-preview)
    - [On Windows with WSL](#on-windows-with-wsl)
 2. [Sign in](#2-sign-in)
 3. [The dashboard](#3-the-dashboard)
@@ -119,7 +120,8 @@ RedstonePanel runs on **Ubuntu 24.04, 26.04 or 26.10**, **Debian 13** and **64-b
 OS** (on a Raspberry Pi 4 or 5), on x86-64 and ARM64 machines. On ARM64, including every
 Raspberry Pi, it runs **Java servers only**, because Mojang makes Bedrock Dedicated Server for
 x86-64 only (see [On a Raspberry Pi](#on-a-raspberry-pi)). Ubuntu 25.04 and 25.10 still work
-but no longer get updates; Debian 12 and 32-bit systems aren't supported. The quickest way is
+but no longer get updates; Debian 12 and 32-bit systems aren't supported. From 1.22 there is also
+a Windows installer, as a preview (see [On Windows (preview)](#on-windows-preview)). On Linux, the quickest way is
 the installer, which adds
 the signed qrussell-repo apt repository (checking its key) and installs the panel:
 
@@ -199,9 +201,42 @@ offers Java 21, which some old versions and modpacks don't start on.
 **Cooling.** A Pi 5 needs its active cooler (or a case with a fan) to run a server all day
 without slowing itself down.
 
+### On Windows (preview)
+
+From 1.22 RedstonePanel also installs on **Windows 11** and **Windows Server 2022 or 2025**
+(64-bit Intel or AMD) with its own installer, no WSL needed. It is a **preview**: Java servers
+(Vanilla, Paper, Purpur and Fabric) on one computer, with backups and restore, schedules, the
+console, Live Chat, the file manager, add-ons, the firewall, crash explanations, webhooks and
+two-factor sign-in. Bedrock servers, Quilt, Forge and NeoForge, modpacks, memory and CPU
+limits, off-site backup storage, SFTP, clusters and updating from the panel come in later
+releases; until then the panel leaves them out instead of offering them.
+
+1. Download `RedstonePanel-x.y.z-x64.msi` from the
+   [latest release](https://github.com/qrussell/redstonepanel/releases/latest) and open it.
+   The preview isn't signed yet, so SmartScreen says **Windows protected your PC**: choose
+   **More info**, then **Run anyway**. The release lists the file's SHA-256 next to it.
+2. The installer asks where servers, backups and settings are kept. The default is
+   `C:\ProgramData\RedstonePanel`; the folder's name can't have a space in it.
+3. Open **http://localhost:8080**. The user name is **admin**, and the password is in
+   `first-sign-in.txt` in that folder (open it as an administrator). Change the password under
+   **Users**, then delete the file.
+
+Java (Eclipse Temurin) is downloaded the first time a server needs it. Each game server is a
+Windows service (`minecraft-<name>`) running as its own account that can reach only its own
+folder; schedules are tasks under **RedstonePanel** in Task Scheduler, and game ports are rules
+in the **RedstonePanel** group in Windows Defender Firewall. To update, run the newer
+installer; to remove it, use **Settings → Apps → Installed apps**. Your worlds and backups stay
+in the folder from step 2. More detail is in the wiki's
+[Installation](https://github.com/qrussell/redstonepanel/wiki/Installation#on-windows-preview)
+page.
+
+If the machine already runs Minecraft servers that something else set up, **New server** lists
+them under **Found on this computer** (see [section 4](#4-create-or-import-a-server)).
+
 ### On Windows with WSL
 
-RedstonePanel also runs in Ubuntu under WSL on Windows. Install **Ubuntu 24.04**
+For Bedrock servers, modpacks and clusters on a Windows PC before the Windows version has them,
+RedstonePanel also runs in Ubuntu under WSL. Install **Ubuntu 24.04**
 (`wsl --install -d Ubuntu-24.04` in PowerShell), open it, and run the installer above inside
 it. Ubuntu under WSL starts systemd by default, which the panel and its game servers need. If
 `ps -p 1 -o comm=` doesn't print `systemd`, add `systemd=true` under `[boot]` in

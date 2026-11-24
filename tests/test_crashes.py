@@ -156,7 +156,7 @@ class NewServerOldName(unittest.TestCase):
         self.assertIsNotNone(C.load("minecraft-java"))
         with mock.patch.object(M, "find_server_folder", return_value=None), \
              mock.patch.object(M, "_used_ports", return_value=set()), \
-             mock.patch.object(M.services, "name_free", return_value=True, create=True), \
+             mock.patch.object(M.services, "name_free", return_value=True), \
              mock.patch.object(M.os.path, "exists", return_value=False):
             name, port = M._reserve_name("java")
         M._release_name(name)

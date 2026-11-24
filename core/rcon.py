@@ -58,13 +58,18 @@ def command(host, port, password, cmd, timeout=5.0):
                 raise RconAuthError("wrong RCON password")
             _send(sock, 2, COMMAND, cmd)
             # Long outputs arrive in several packets; a second, empty "marker" command tells us
-            # when the real answer is complete (the server answers in order).
-            _send(sock, 3, COMMAND, "")
+            # when the real answer is complete (the server answers in order). The marker goes out
+            # only after the first part has come back: Minecraft reads one packet at a time and
+            # hangs up when two arrive together, which Windows makes likely.
             parts = []
+            marker_sent = False
             while True:
                 req_id, _, body = _recv(sock)
                 if req_id == 2:
                     parts.append(body)
+                    if not marker_sent:
+                        _send(sock, 3, COMMAND, "")
+                        marker_sent = True
                 elif req_id == 3:
                     break
             return COLOR_RE.sub("", "".join(parts))

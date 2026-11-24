@@ -27,6 +27,10 @@ def available():
     return fake.state.service_manager
 
 
+def prepare():
+    fake.record("services.prepare")
+
+
 def systemctl(*args, timeout=None, env=None):
     fake.record("services.systemctl", *args)
     return done()
@@ -93,6 +97,10 @@ def queued_jobs(server, timeout=5):
     return list(fake.state.servers.get(server, {}).get("jobs", []))
 
 
+def name_free(server):
+    return server not in getattr(fake.state, "foreign_services", ())
+
+
 def unit_files(prefix="minecraft", suffix=SUFFIX):
     return [unit(n) for n in fake.state.servers if unit(n).startswith(prefix) and unit(n).endswith(suffix)]
 
@@ -108,13 +116,10 @@ def control(unit_name, action, elevate=False, quiet=False):
 
 
 def other_enabled(service):
-    """True when a service the panel didn't make ("mc-survival.service") starts with the machine."""
     return unit_state(service, "is-enabled") == "enabled"
 
 
 def other_control(service, action):
-    """start, stop, enable or disable a service the panel didn't make. Only core/found.py uses
-    this, and only after an admin chose to hand that server to the panel (or back)."""
     if action not in ("start", "stop", "enable", "disable"):
         raise ValueError(action)
     return control(service, action, elevate=True)
