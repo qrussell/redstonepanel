@@ -1805,7 +1805,11 @@ def write_permissions(server_name, content):
         f.write(content)
         
 def fallback_allowlist_xuid(server_name, gamertag):
-    """Last resort: Uses the native Bedrock engine to resolve the XUID."""
+    """Last resort: Uses the native Bedrock engine to resolve the XUID.
+    The gamertag goes into the server's console, so it must be a checked gamertag (no quotes
+    or line breaks), and the server runs as the game account, never as the panel (root)."""
+    if not _valid_player_name(gamertag, java=False):
+        return None
     d = get_server_dir(server_name)
     allowlist_path = os.path.join(d, "allowlist.json")
     
@@ -1822,7 +1826,8 @@ def fallback_allowlist_xuid(server_name, gamertag):
     env["LD_LIBRARY_PATH"] = d
     
     # 3. Launch the server locally so we can pipe commands to its STDIN
-    proc = subprocess.Popen([f"{d}/bedrock_server"], cwd=d, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+    proc = subprocess.Popen(system.as_game_account([f"{d}/bedrock_server"]), cwd=d, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
     
     try:
         # Request the XUID from Xbox Live, then command the server to shut down
@@ -1846,6 +1851,7 @@ def fallback_allowlist_xuid(server_name, gamertag):
     # 5. Restore original allowlist & restart daemon
     with open(allowlist_path, "w") as f:
         f.write(existing_allowlist)
+    system.take_for_game_account(allowlist_path)
         
     services.start(server_name, elevate=True)
     return xuid
@@ -1880,6 +1886,14 @@ def get_xuid(server_name, gamertag):
     write_log(f"[SYSTEM] APIs failed. Falling back to native allowlist resolution for {gamertag}...")
     return fallback_allowlist_xuid(server_name, gamertag)
 
+JAVA_UUID_RE = re.compile(r"[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}")
+XUID_RE = re.compile(r"[0-9]{1,20}")
+
+def _valid_player_name(name, java):
+    """A Java player name or an Xbox gamertag (same rules as the whitelist)."""
+    from core import whitelist
+    return bool((whitelist.JAVA_NAME if java else whitelist.GAMERTAG).fullmatch(str(name or "")))
+
 def set_player_role(server_name, player_name, role, player_id=None):
     """Java: operator = entry in ops.json, member = no entry.
     Bedrock: operator / visitor = entry in permissions.json, member = no entry (server default).
@@ -1889,6 +1903,13 @@ def set_player_role(server_name, player_name, role, player_id=None):
     role = str(role).lower()
     if role not in (JAVA_ROLES if is_java else BEDROCK_ROLES):
         raise PlayerError(f"'{role}' is not a valid role for this edition.")
+    # The name can reach the server's console (Bedrock XUID lookup) and the ID goes into
+    # ops.json / permissions.json: only real player names and IDs.
+    player_name = str(player_name or "").strip()
+    if not _valid_player_name(player_name, is_java):
+        raise PlayerError(f"'{player_name}' isn't a valid {'Java player name' if is_java else 'gamertag'}.")
+    if player_id and not (JAVA_UUID_RE if is_java else XUID_RE).fullmatch(str(player_id)):
+        raise PlayerError(f"'{player_id}' isn't a valid {'UUID' if is_java else 'XUID'}.")
 
     file_path = os.path.join(d, "ops.json" if is_java else "permissions.json")
     id_key = "uuid" if is_java else "xuid"
