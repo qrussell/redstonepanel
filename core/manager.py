@@ -1293,9 +1293,12 @@ def list_removed_servers():
             continue
         if name in busy or os.path.exists(_unit_path(name)) or os.path.realpath(d) in in_use:
             continue
-        info = _read_removed_info(d)
-        edition = _removed_edition(d, name, info)
-        props = read_properties(d)
+        # Read with the rights of the folder's owner: the game account, or root for a folder the
+        # panel unpacked itself (an off-site backup) and hasn't handed over yet
+        with system.game_files(as_owner_of=d):
+            info = _read_removed_info(d)
+            edition = _removed_edition(d, name, info)
+            props = read_properties(d)
         binary = "bedrock_server" if edition == "bedrock" else "server.jar"
         removed_at = info.get("removed_at")
         removed.append({
