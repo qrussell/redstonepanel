@@ -77,13 +77,17 @@ class BedrockUdpPorts(unittest.TestCase):
 
     def setUp(self):
         self.opt = tempfile.mkdtemp(dir=TMP)
-        p = mock.patch.object(M, "SERVERS_ROOT", self.opt)
-        p.start()
-        self.addCleanup(p.stop)
+        self.units = tempfile.mkdtemp(dir=TMP)
+        for p in (mock.patch.object(M, "SERVERS_ROOT", self.opt),
+                  mock.patch.object(M, "_unit_path", lambda n: os.path.join(self.units, f"{n}.service"))):
+            p.start()
+            self.addCleanup(p.stop)
 
-    def server(self, name, props):
+    def server(self, name, props, unit=True):
         d = os.path.join(self.opt, name)
         os.makedirs(d)
+        if unit:
+            open(os.path.join(self.units, f"{name}.service"), "w").close()
         open(os.path.join(d, "bedrock_server"), "w").close()
         with open(os.path.join(d, "server.properties"), "w") as f:
             f.write("".join(f"{k}={v}" + chr(10) for k, v in props.items()))
@@ -104,14 +108,14 @@ class BedrockUdpPorts(unittest.TestCase):
 
     def test_restore_moves_udp_port_with_server_port(self):
         self.server("minecraft-bedrock", {"server-port": 19132, "server-portv6": 19133, "server-udp-ports": 19132})
-        d = self.server("minecraft-bedrock-2", {"server-port": 19132, "server-portv6": 19133, "server-udp-ports": 19132})
+        d = self.server("minecraft-bedrock-2", {"server-port": 19132, "server-portv6": 19133, "server-udp-ports": 19132}, unit=False)
         port, old = M._restore_ports(d, "bedrock")
         self.assertEqual((port, old), (19134, "19132"))
         self.assertEqual(M.read_properties(d)["server-udp-ports"], "19134")
 
     def test_restore_gives_a_fixed_udp_port(self):
         # An old backup without server-udp-ports: BDS would use random UDP ports no rule can match
-        d = self.server("minecraft-bedrock-2", {"server-port": 19140, "server-portv6": 19141})
+        d = self.server("minecraft-bedrock-2", {"server-port": 19140, "server-portv6": 19141}, unit=False)
         port, old = M._restore_ports(d, "bedrock")
         self.assertEqual((port, old), (19140, None))
         self.assertEqual(M.read_properties(d)["server-udp-ports"], "19140")
