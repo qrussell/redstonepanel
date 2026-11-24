@@ -33,6 +33,24 @@ is reachable at `https://gitlab-cf.cielocloud.dev` (a Cloudflare tunnel), for gi
 5. After a merge or a release tag, the mirror can take minutes. To push it now:
    `POST /api/v4/projects/lab%2Fredstonepanel/remote_mirrors/14/sync` (answers 204).
 
+### Branch and tag protection
+
+Set up on 2026-11-24. Check both places before changing how the mirror authenticates.
+
+| | Setting | Where |
+| --- | --- | --- |
+| GitLab `main` | Protected branch: push and merge for Maintainers only, force push off. Protected branches can't be deleted with git. | Settings → Repository → Protected branches |
+| GitLab `v*` tags | Protected tags: only Maintainers create them; protected tags can't be moved or deleted with git. | Settings → Repository → Protected tags |
+| GitHub `main` | Ruleset **Protect main** (active, default branch): *Restrict deletions* and *Block force pushes*. No pull request or review rules, because the mirror pushes straight to `main`. | Settings → Rules → Rulesets |
+
+The push mirror (id 14) signs in to GitHub as the repository owner `qrussell` with a personal
+access token. A personal repository can't put one user on a ruleset's bypass list, so the
+bypass entry is the **Repository admin** role, which covers the owner and so the mirror.
+That keeps mirroring working, and it also means the rule doesn't stop the owner's own account
+from force pushing. If the mirror's token ever changes to another account or a GitHub App,
+add that account to the bypass list first, or the mirror will fail whenever it has to
+overwrite `main`.
+
 ## Bringing in a GitHub pull request
 
 Contributors open pull requests on GitHub (see CONTRIBUTING.md). Review and discuss them there,
