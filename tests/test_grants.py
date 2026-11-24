@@ -246,6 +246,19 @@ class Api(unittest.TestCase):
     def give(self, grants):
         G.set_user("alex", grants)
 
+    def test_a_bad_server_name_is_refused_before_any_route(self):
+        # Routes build folder paths from {server_name}: names that aren't game servers never get there
+        trusted = {"username": "local network", "role": "user", "source": "trusted"}
+        for who in (alex("admin"), trusted):
+            self.user = who
+            for name in ("..", "%2E%2E", "etc", ".minecraft", "%20minecraft"):
+                r = self.client.get(f"/api/servers/{name}/players")
+                self.assertEqual(r.status_code, 404, f"{who['username']} {name}")
+            r = self.client.post("/api/servers/../action", json={"action": "restart"})
+            self.assertIn(r.status_code, (404, 405))
+        self.user = alex("admin")
+        self.assertEqual(self.client.post("/api/servers/minecraft-2/action", json={"action": "restart"}).status_code, 200)
+
     def test_no_grants_means_no_servers(self):
         self.assertEqual(self.client.get("/api/servers").json(), [])
         r = self.client.post("/api/servers/minecraft/action", json={"action": "restart"})
