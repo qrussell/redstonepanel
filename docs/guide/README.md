@@ -1570,6 +1570,37 @@ the server's mods every time the game starts.
 The panel needs to reach Modrinth to work the list out. If it can't, the last pack it built
 stays in place.
 
+### Mods and plugins that open their own port
+
+Some mods and plugins open a network port of their own next to the game port, with the same
+default on every server. Two servers on one machine that both run one of them would fight over
+it: the second can't open it, and Simple Voice Chat on Fabric even stops the whole server. The
+panel knows where these keep their port:
+
+| Mod or plugin | Config file | Default |
+|---|---|---|
+| Simple Voice Chat | `config/voicechat/` or `plugins/voicechat/voicechat-server.properties` (`port`) | UDP 24454 |
+| Geyser | `config.yml` in its folder (`bedrock: port`) | UDP 19132 |
+| BlueMap | `webserver.conf` (`port`) | TCP 8100 |
+| Dynmap | `configuration.txt` (`webserver-port`) | TCP 8123 |
+| Plan | `plugins/Plan/config.yml` (`Webserver: Port`) | TCP 8804 |
+| NuVotifier | `config.yml` in its folder (`port`) | TCP 8192 |
+
+- When two servers are set to the same port, or one is set to a port a server uses for the game,
+  RCON or query, the panel moves one of them to the **next free port** in its config file (a port
+  no other server uses and nothing on the machine is listening on). The server that has the port
+  now keeps it. The panel checks before it starts a server, after a server stops unexpectedly (so
+  the restart 20 seconds later works), and every two minutes. Most of these mods write their
+  config file the first time they start, so a new one is moved after that first start.
+- A server whose port moved uses the new one from its next start. **Needs attention** says which
+  port moved and where to until you restart it.
+- The panel opens these ports in the firewall (`ufw`) with the game port, and **Port
+  forwarding** lists them. Voice chat and Geyser are for players outside; the web maps, Plan and
+  NuVotifier are listed under "Only if you need them".
+- Geyser with `clone-remote-port: true` and voice chat with `port=-1` share the game port's
+  number and are left alone. Mods the panel doesn't know are never changed; if one can't open its
+  port, the **Last crash** card says a mod's port was taken, and names the port when the log does.
+
 ### Finding mods and plugins
 
 On Java servers other than Vanilla, **Find mods** (or **Find plugins**) is a catalog of

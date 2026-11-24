@@ -616,6 +616,15 @@ def _needs_attention(rep, failed, phantoms):
         if s["problems"]:
             out.append(_attention("warn", f"Players may not be able to connect to {s['name']}: see its Overview.",
                                   server=s["name"]))
+    try:                                        # mod ports the panel moved off a shared port
+        from core import modports
+        moved = modports.pending()
+    except Exception:
+        moved = {}
+    for s in rep["servers"]:
+        if moved.get(s["name"]):
+            out.append(_attention("info", modports.attention_text(s["name"], moved[s["name"]]),
+                                  server=s["name"], where="services"))
     left = rep["services"]["firewall"].get("leftover") or []
     if left:
         out.append(_attention("info", f"The firewall (ufw) still allows {', '.join(left)}, which no server on this "

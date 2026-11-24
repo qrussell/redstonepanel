@@ -112,6 +112,17 @@ dx "systemctl stop $S" >/dev/null 2>&1
 as_mc "mkdir -p logs && ln -sfn /root/rp-secret logs/latest.log"
 hidden "chat doesn't show a linked root-only log" GET /api/servers/$S/chat
 
+# --- a server that runs as root (a hand-made unit with no User=): it has root's rights itself, so
+#     the panel changes its root-owned folder as root, as before 1.21.8, instead of refusing
+dx "mkdir -p /opt/minecraft-rootsrv && printf 'server-port=25572\nmotd=hi\n' > /opt/minecraft-rootsrv/server.properties
+chmod 755 /opt/minecraft-rootsrv && chmod 644 /opt/minecraft-rootsrv/server.properties
+printf '[Service]\nWorkingDirectory=/opt/minecraft-rootsrv\nExecStart=/bin/sleep infinity\n' > /etc/systemd/system/minecraft-rootsrv.service
+systemctl daemon-reload"
+check "a root server's settings can be saved" test "$(code POST /api/servers/minecraft-rootsrv/properties/raw '{"content":"motd=saved"}')" = 200
+check "  ...and land in its file, still root's" dx "grep -q motd=saved /opt/minecraft-rootsrv/server.properties && test \"\$(stat -c %U /opt/minecraft-rootsrv/server.properties)\" = root"
+check "  ...while the minecraft server's link is still refused" test "$(as_mc 'ln -sfn /etc/rp-target server.properties' >/dev/null; code POST /api/servers/$S/properties/raw '{"content":"HACKED"}')" = 403
+good_props
+
 check "nothing was ever written to the root file" target_intact
 check "panel still running" dx "systemctl is-active --quiet redstonepanel"
 echo "=== $FAILS failed"

@@ -173,6 +173,13 @@ async def access_control(request: Request, call_next):
             if refused:
                 return JSONResponse({"detail": refused}, status_code=403)
             request.state.user = user
+        # Files in a server's folder are touched with the rights of the account that server runs
+        # as (system.game_files()): the game account, or root for a server that runs as root
+        server = _route_of(request.method, path)[1].get("server_name")
+        if server:
+            run_as = await run_in_threadpool(manager.server_run_as, server)
+            with manager.system.server_account(run_as):
+                return await call_next(request)
     return await call_next(request)
 
 # ---------------------------------------------------------------------------

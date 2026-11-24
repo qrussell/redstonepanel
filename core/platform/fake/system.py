@@ -80,6 +80,11 @@ def panel_files():
     yield
 
 
+@contextlib.contextmanager
+def server_account(user):
+    yield
+
+
 def take_for_game_account(path):
     fake.state.owned.append(path)
     return 0
