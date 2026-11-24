@@ -11,7 +11,7 @@ import os
 import time
 
 from core import manager
-from core.platform import services, system
+from core.platform import paths, services, system
 from core.settings import DATA_DIR
 
 RECORD_DIR = os.path.join(DATA_DIR, "found")          # one NAME.json per server taken over: how to undo it
@@ -180,8 +180,8 @@ def check(info):
         if "java" in folder.lower():
             raise FoundError('A Bedrock server\'s folder can\'t have "java" in its path: the panel uses that word to tell '
                              'the two kinds of server apart.')
-        if not os.path.isfile(os.path.join(folder, "bedrock_server")):
-            raise FoundError(f"There is no bedrock_server program in {folder}.")
+        if not os.path.isfile(os.path.join(folder, paths.BEDROCK_PROGRAM)):
+            raise FoundError(f"There is no {paths.BEDROCK_PROGRAM} program in {folder}.")
     else:
         jar = info.get("jar") or ""
         if not jar:
@@ -285,7 +285,7 @@ def manage(folder, actor="?"):
                 java = _java_for(info)
             else:
                 java = None
-                system.make_executable(os.path.join(folder, "bedrock_server"))
+                system.make_executable(os.path.join(folder, paths.BEDROCK_PROGRAM))
                 manager.write_screenrc(folder)
             heap = _heap_args(info)
             rec["firewall_had"] = _rules_already_open(edition, folder)

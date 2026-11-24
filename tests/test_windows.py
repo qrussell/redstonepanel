@@ -465,14 +465,15 @@ class Preview(unittest.TestCase):
                              ("POST", "/api/panel/update"), ("POST", "/api/settings/backup-storage"),
                              ("PUT", "/api/servers/minecraft-a/offsite/t1"), ("POST", "/api/servers/modpack"),
                              ("POST", "/api/servers/minecraft-a/modpack/update"),
-                             ("POST", "/api/servers/minecraft-a/phantom/install")):
+                             ):
             self.assertIn("Windows preview", main.not_yet(method, path, windows=True) or "", f"{method} {path}")
             self.assertIsNone(main.not_yet(method, path, windows=False), f"{method} {path}")
         for method, path in (("GET", "/api/settings/cluster"), ("POST", "/api/servers/deploy"),
                              ("POST", "/api/servers/minecraft-a/backups"), ("PUT", "/api/settings"),
                              ("PUT", "/api/settings/notifications"), ("POST", "/api/java/runtimes/install"),
                              ("GET", "/api/servers/minecraft-a/modpack"),
-                             ("PUT", "/api/servers/minecraft-a/resources")):
+                             ("PUT", "/api/servers/minecraft-a/resources"),
+                             ("POST", "/api/servers/minecraft-a/phantom/install")):
             self.assertIsNone(main.not_yet(method, path, windows=True), f"{method} {path}")
 
     def test_loaders_set_up_by_an_installer_are_refused_where_it_cannot_be_confined(self):
@@ -485,11 +486,62 @@ class Preview(unittest.TestCase):
             javaservers.require_installer_support("fabric")
             javaservers.require_installer_support("paper")
 
-    def test_bedrock_is_refused_on_windows(self):
+    def test_bedrock_runs_on_x64_windows_only(self):
         from core import manager
         with mock.patch.object(manager.paths, "WINDOWS", True):
-            self.assertFalse(manager.bedrock_supported())
-            self.assertIn("Windows preview", manager.bedrock_unsupported_message())
+            self.assertTrue(manager.bedrock_supported("AMD64"))
+            self.assertFalse(manager.bedrock_supported("ARM64"))
+            self.assertIn("x64) Windows", manager.bedrock_unsupported_message())
+
+
+class Bedrock(unittest.TestCase):
+    """1.23: Bedrock Dedicated Server's Windows build, from the same download-links API."""
+    LINKS = {"result": {"links": [
+        {"downloadType": "serverBedrockLinux",
+         "downloadUrl": "https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.66.1.zip"},
+        {"downloadType": "serverBedrockWindows",
+         "downloadUrl": "https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.26.66.1.zip"}]}}
+
+    def test_the_windows_download_is_picked_on_windows(self):
+        from core import updates
+        win = updates.parse_bedrock_links(self.LINKS, "serverBedrockWindows")
+        self.assertIn("/bin-win/", win["url"])
+        self.assertEqual(win["version"], "1.26.66.1")
+        self.assertIn("/bin-linux/", updates.parse_bedrock_links(self.LINKS, "serverBedrockLinux")["url"])
+        self.assertEqual(paths.windows_layout("C:\\RP")["BEDROCK_DOWNLOAD"], "serverBedrockWindows")
+        self.assertEqual(paths.windows_layout("C:\\RP")["BEDROCK_PROGRAM"], "bedrock_server.exe")
+
+    def test_a_folder_from_either_system_is_a_bedrock_server(self):
+        from core import manager
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(manager.is_bedrock_folder(d))
+            open(os.path.join(d, "bedrock_server.exe"), "w").close()
+            self.assertTrue(manager.is_bedrock_folder(d))
+            self.assertFalse(manager._java_properties(d))
+            with mock.patch.object(manager.paths, "BEDROCK_PROGRAM", "bedrock_server.exe"):
+                self.assertTrue(manager.has_bedrock_program(d))
+            self.assertFalse(manager.has_bedrock_program(d))          # Linux needs its own program
+
+    def test_the_console_is_logged_to_server_log_for_bedrock_only(self):
+        from core.platform.windows import runner
+        with tempfile.TemporaryDirectory() as d:
+            def program(exe):
+                spec = units.parse(f"[Service]\nWorkingDirectory={d}\nExecStart={os.path.join(d, exe)}\n")
+                return runner.Program("minecraft-x.service", spec, runner.Journal("minecraft-x.service", d))
+            log = program("bedrock_server.exe")._console_log()
+            self.assertIsNotNone(log)
+            log.close()
+            self.assertIsNone(program("java.exe")._console_log())
+
+    def test_phantom_has_a_pinned_windows_build(self):
+        from core import phantom
+        name, sha = phantom.WINDOWS_ASSETS["AMD64"]
+        self.assertEqual(name, "phantom-windows.exe")
+        self.assertEqual(len(sha), 64)
+        with mock.patch.object(phantom.paths, "WINDOWS", True), mock.patch.object(phantom.platform, "machine",
+                                                                                  return_value="AMD64"):
+            self.assertTrue(phantom.machine_supported())
+            self.assertTrue(phantom.binary_path().endswith(".exe"))
 
 
 if __name__ == "__main__":

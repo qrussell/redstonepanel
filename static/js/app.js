@@ -2068,10 +2068,9 @@ const ServerApp = {
         const ok = this.bedrockSupported(this.deployNode);
         const opt = select.querySelector('option[value="bedrock"]');
         opt.disabled = !ok;
-        const preview = !this.deployNode && this.notYet('bedrock');
-        opt.textContent = ok ? 'Bedrock Edition (Auto-Port)' : preview ? 'Bedrock Edition (not in the Windows preview yet)' : 'Bedrock Edition (needs an x86-64 machine)';
+        opt.textContent = ok ? 'Bedrock Edition (Auto-Port)' : 'Bedrock Edition (needs an x86-64 machine)';
         note.classList.toggle('hidden', ok);
-        note.innerText = ok ? '' : preview ? 'RedstonePanel on Windows is a preview that runs Java servers. Bedrock servers come in a later release; until then Bedrock players can join a Java server through Geyser.' : 'This machine is ARM64 (for example a Raspberry Pi), and Mojang only makes the Bedrock server '
+        note.innerText = ok ? '' : 'This machine is ARM64 (for example a Raspberry Pi), and Mojang only makes the Bedrock server '
             + 'for 64-bit Intel and AMD machines. Java servers work, and Bedrock players can join one through Geyser.';
         if (!ok && select.value === 'bedrock') {
             select.value = 'java';
@@ -6005,7 +6004,7 @@ const ServerApp = {
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 			</div>
 			${this.notYet('cluster') ? `<h4 class="font-bold text-gray-900 dark:text-white mb-2">Windows preview</h4>
-			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">RedstonePanel on Windows is a preview: Java servers (Vanilla, Paper, Purpur, Fabric) on one computer. Not here yet: Bedrock servers, Quilt, Forge, NeoForge and modpacks, memory and processor limits, off-site backup storage, SFTP, the terminal, clusters and updating from the panel. To update, run the new installer; your servers and settings stay.</p>` : ''}
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">RedstonePanel on Windows is a preview: every kind of server on one computer. Not here yet: clusters and SFTP (both come next). The terminal is Linux-only: on Windows, open a command prompt on the computer itself.</p>` : ''}
 
 			<h4 id="set-section-connection" class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
 			<div class="space-y-2 mb-3">

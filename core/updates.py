@@ -136,14 +136,16 @@ def _get(url, accept="application/json"):
 def _host(url):
     return (url.split("/") + ["?"] * 3)[2]
 
-def parse_bedrock_links(data):
-    """The Linux server's {version, url} from the download-links API answer, or None."""
+def parse_bedrock_links(data, kind=None):
+    """This system's server ({version, url}) from the download-links API answer, or None. kind:
+    the downloadType ("serverBedrockLinux", "serverBedrockWindows"); this system's by default."""
+    kind = kind or paths.BEDROCK_DOWNLOAD
     try:
         links = data["result"]["links"]
     except (KeyError, TypeError):
         return None
     for link in links if isinstance(links, list) else []:
-        if isinstance(link, dict) and link.get("downloadType") == "serverBedrockLinux":
+        if isinstance(link, dict) and link.get("downloadType") == kind:
             url = str(link.get("downloadUrl") or "")
             m = BEDROCK_ZIP_RE.search(url)
             if m and _allowed_url(url):
@@ -151,7 +153,7 @@ def parse_bedrock_links(data):
     return None
 
 def bedrock_latest():
-    """The newest Bedrock Dedicated Server release for Linux: {version, url}."""
+    """The newest Bedrock Dedicated Server release for this system (Linux or Windows): {version, url}."""
     found, err = None, None
     try:
         found = parse_bedrock_links(json.loads(_get(BEDROCK_LINKS)))
@@ -160,7 +162,8 @@ def bedrock_latest():
     if not found and not os.environ.get("RP_BEDROCK_LINKS"):
         try:
             page = _get(BEDROCK_PAGE, accept="text/html").decode("utf-8", "replace")
-            for url in re.findall(r'https://[^"\s]*/bin-linux/bedrock-server-[0-9.]+\.zip', page):
+            folder = "bin-win" if paths.WINDOWS else "bin-linux"
+            for url in re.findall(r'https://[^"\s]*/' + folder + r'/bedrock-server-[0-9.]+\.zip', page):
                 m = BEDROCK_ZIP_RE.search(url)
                 if m and _allowed_url(url):
                     found = {"version": m.group(1), "url": url}
@@ -168,7 +171,8 @@ def bedrock_latest():
         except UpdateError as e:
             err = err or e
     if not found:
-        raise UpdateError(f"Couldn't find the newest Bedrock server: {err or 'Mojang listed no Linux download'}.")
+        raise UpdateError(f"Couldn't find the newest Bedrock server: "
+                          f"{err or 'Mojang listed no ' + ('Windows' if paths.WINDOWS else 'Linux') + ' download'}.")
     return found
 
 def bedrock_installed(d):
@@ -547,8 +551,8 @@ def members(zip_path):
                     out.append((info, "/".join(parts)))
     except zipfile.BadZipFile:
         raise UpdateError("The Bedrock download isn't a zip file; nothing was changed.")
-    if not any(rel == "bedrock_server" for _, rel in out):
-        raise UpdateError("The Bedrock download has no bedrock_server; nothing was changed.")
+    if not any(rel == paths.BEDROCK_PROGRAM for _, rel in out):
+        raise UpdateError(f"The Bedrock download has no {paths.BEDROCK_PROGRAM}; nothing was changed.")
     return out
 
 def _safe_target(d, rel):
@@ -593,7 +597,7 @@ def install_files(d, zip_path, stash=None):
                 with z.open(info) as src, open(tmp, "wb") as out:
                     shutil.copyfileobj(src, out, 1 << 20)
                 mode = (info.external_attr >> 16) & 0o777
-                os.chmod(tmp, 0o755 if rel == "bedrock_server" or mode & 0o111 else 0o644)
+                os.chmod(tmp, 0o755 if rel == paths.BEDROCK_PROGRAM or mode & 0o111 else 0o644)
                 os.replace(tmp, target)
     if kept:
         manager.write_log(f"[SYSTEM] Kept the server's own {', '.join(kept)}.")

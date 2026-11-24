@@ -133,7 +133,6 @@ TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
 WINDOWS_NOT_YET = (
     ("cluster", "Clusters aren't", re.compile(r"^/api/(settings/)?cluster(/|$)")),
     ("sftp", "SFTP isn't", re.compile(r"^/api/settings/sftp$")),
-    ("phantom", "Phantom isn't", re.compile(r"^/api/servers/[^/]+/phantom")),
     ("panel-update", "Updating from the panel isn't", re.compile(r"^/api/panel/update")),
     ("offsite", "Off-site backup storage isn't", re.compile(r"^/api/(settings/backup-storage|servers/[^/]+/offsite)(/|$)")),
     ("modpacks", "Modpacks aren't", re.compile(r"^/api/servers/(modpack$|[^/]+/modpack/)")),
@@ -457,7 +456,7 @@ def me_api(request: Request):
     # Which system the panel runs on. On Windows (a preview since 1.22) the page says so and hides
     # what the preview doesn't do yet.
     user["system"] = "windows" if paths.WINDOWS else "linux"
-    user["not_yet"] = ([n for n, _w, _p in WINDOWS_NOT_YET] + ["bedrock", "installer-loaders", "system-accounts"]
+    user["not_yet"] = ([n for n, _w, _p in WINDOWS_NOT_YET] + ["installer-loaders", "system-accounts"]
                        if paths.WINDOWS else [])
     # Admins get told when HTTPS was requested but the panel had to fall back to HTTP
     if user["role"] == "admin":

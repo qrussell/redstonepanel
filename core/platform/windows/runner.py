@@ -348,10 +348,35 @@ class Program:
         threading.Thread(target=self._measure, daemon=True).start()
         return self.process.pid
 
+    def _console_log(self):
+        """Bedrock writes nothing to a log file of its own: on Linux screen keeps its console in
+        <folder>/server.log, which the panel reads (chat, backups, start-up). The runner does the
+        same here. None for other programs."""
+        argv = units.split_command(units.get(self.spec, "Service", "ExecStart", ""))
+        cwd = units.get(self.spec, "Service", "WorkingDirectory")
+        if argv and cwd and os.path.basename(argv[0]).lower() == "bedrock_server.exe":
+            try:
+                return open(os.path.join(cwd, "server.log"), "a", encoding="utf-8", errors="replace")
+            except OSError as e:
+                self.journal.write(f"[runner] Can't write server.log: {e}")
+        return None
+
     def _pump(self):
         out = self.process.stdout
-        for raw in iter(out.readline, b""):
-            self.journal.write(decode(raw))
+        log = self._console_log()
+        try:
+            for raw in iter(out.readline, b""):
+                text = decode(raw)
+                self.journal.write(text)
+                if log:
+                    try:
+                        log.write(text.rstrip("\r\n") + "\n")
+                        log.flush()
+                    except OSError:
+                        pass
+        finally:
+            if log:
+                log.close()
 
     def _measure(self):
         while self.process.poll() is None:

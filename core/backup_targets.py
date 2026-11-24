@@ -1158,7 +1158,7 @@ def import_copy(tid, panel, server, filename, actor):
 
 
 def _edition_of(root):
-    if os.path.isfile(os.path.join(root, "bedrock_server")):
+    if manager.is_bedrock_folder(root):
         return "bedrock"
     if os.path.isfile(os.path.join(root, "server.jar")) or os.path.isfile(os.path.join(root, "eula.txt")) \
             or os.path.isfile(os.path.join(root, ".redstonepanel-server.json")):

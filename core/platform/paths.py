@@ -46,6 +46,8 @@ JVM_ROOT = "/usr/lib/jvm"                            # one folder per installed 
 DEFAULT_JAVA = "/usr/bin/java"                       # the system's default Java
 JAVA_PROGRAM = "java"                                # the program's file name in a Java's bin folder
 SCREEN = "/usr/bin/screen"                           # holds the Bedrock console
+BEDROCK_PROGRAM = "bedrock_server"                   # Bedrock Dedicated Server's program in its folder
+BEDROCK_DOWNLOAD = "serverBedrockLinux"              # its downloadType in Mojang's download-links API
 
 # The machine
 PROC = "/proc"
@@ -103,6 +105,8 @@ def windows_layout(home, app_dir=APP_DIR, environ=os.environ, python=None):
         "DEFAULT_JAVA": j(home, "java", "default", "bin", "java.exe"),
         "JAVA_PROGRAM": "java.exe",
         "SCREEN": "console",
+        "BEDROCK_PROGRAM": "bedrock_server.exe",
+        "BEDROCK_DOWNLOAD": "serverBedrockWindows",
         "PROC": j(home, "run", "proc"),
         "OS_RELEASE": j(home, "run", "os-release"),
         "LOCALTIME": j(home, "run", "localtime"),

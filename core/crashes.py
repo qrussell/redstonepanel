@@ -472,7 +472,7 @@ def journal(server, env):
 def gather(server, base, edition=None, env=None, now=None):
     """[(source, text)] to look at, the one to show first: a fresh crash report, the log, the journal."""
     now = now or time.time()
-    bedrock = edition == "Bedrock" or os.path.exists(os.path.join(base, "bedrock_server"))
+    bedrock = edition == "Bedrock" or any(os.path.exists(os.path.join(base, p)) for p in ("bedrock_server", "bedrock_server.exe"))
     out = []
     if not bedrock:
         rel, text = _newest_report(base, now)

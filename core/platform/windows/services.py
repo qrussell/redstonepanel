@@ -21,6 +21,7 @@ from core.platform.windows import _win, units
 SUFFIX = ".service"
 TASK_FOLDER = "\\" + _win.GROUP + "\\"
 GAME_PREFIX = "minecraft"
+PHANTOM_PREFIX = "phantom-"
 OWNED_PREFIXES = ("minecraft", "phantom-", "redstonepanel-")       # services the panel may create and remove
 
 
@@ -371,14 +372,21 @@ def _register(unit_name, spec=None):
         return None
     name = _service_name(unit_name)
     game = name.startswith(GAME_PREFIX)
+    # Phantom (1.23) is other people's code too: its own account, which may read its program only
+    phantom = name.startswith(PHANTOM_PREFIX) and bool(units.get(spec, "Unit", "X-RedstonePanel-Server"))
     command = subprocess.list2cmdline(_win.runner_command("service", unit_name))
     description = units.get(spec, "Unit", "Description", name)
     journal = paths.journal_dir(unit_name)
     os.makedirs(journal, exist_ok=True)
-    account = _win.service_account(name) if game else None
+    account = _win.service_account(name) if game or phantom else None
     created = _win.ensure_service(name, command, f"RedstonePanel: {description}",
                                   f"{description}. Managed by RedstonePanel; described by "
                                   f"{paths.unit_file(unit_name)}.", account)
+    if phantom and created:
+        sid = _win.service_sid(name)
+        _win.grant(journal, sid)
+        if os.path.isdir(paths.PHANTOM_DIR):
+            _win.grant(paths.PHANTOM_DIR, sid, rights="RX")
     if game:
         # The server's own account: its folder and its output, nothing else
         folder = units.get(spec, "Service", "WorkingDirectory", "")
