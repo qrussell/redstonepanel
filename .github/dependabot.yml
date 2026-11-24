@@ -22,12 +22,14 @@ updates:
       prefix: "ci"
 
   # requirements-dev.txt: what the unit tests install with pip. The panel itself runs on the
-  # system's packages (apt), which Dependabot cannot see.
+  # system's packages (apt), which Dependabot cannot see. The lower bounds there follow
+  # Ubuntu 24.04 on purpose, so version-update pull requests are off (limit 0); security
+  # alerts for these packages still show under Security > Dependabot.
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     commit-message:
       prefix: "ci"

@@ -772,6 +772,13 @@ classes in `static/*.html` or `static/js/app.js`, regenerate it (needs Node.js):
 packaging/build-css.sh
 ```
 
+### Contributing
+
+Pull requests are welcome on GitHub; see [CONTRIBUTING.md](CONTRIBUTING.md). GitHub is a
+mirror, so approved pull requests are merged through GitLab. The maintainer's side of that,
+and where the security features are set up, is in
+[docs/maintainers/README.md](docs/maintainers/README.md).
+
 ### Releases
 
 Development happens on GitLab (`gitlab.cielocloud.dev/lab/redstonepanel`), which mirrors
