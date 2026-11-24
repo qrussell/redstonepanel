@@ -1141,44 +1141,38 @@ const ServerApp = {
         alert("Permissions file saved. Restart server to apply.");
     },
 
+    // One card of a visual properties editor: the name on the left and, on the right, a True/False
+    // list, a list of the known choices, a number box or a text box, picked from the value.
+    // Shared by Configuration's Visual Editor and the Files tab's (PropFile.widget decides).
+    propRowHtml(key, value, inputClass, attrs) {
+        const esc = t => this.escapeHtml(String(t ?? ''));   // values go into HTML attributes (a motd may contain ")
+        const cls = `${inputClass} w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white`;
+        const w = PropFile.widget(key, value);
+        let input;
+        if (w.type === 'bool') {
+            input = `<select ${attrs} class="${cls}">${w.options.map((o, i) =>
+                `<option value="${esc(o)}" ${value === o ? 'selected' : ''}>${i ? 'False' : 'True'}</option>`).join('')}</select>`;
+        } else if (w.type === 'enum') {
+            input = `<select ${attrs} class="${cls}">${w.options.map(o =>
+                `<option value="${esc(o)}" ${value === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+        } else {
+            input = `<input type="${w.type === 'number' ? 'number' : 'text'}" ${w.type === 'number' ? 'step="any"' : ''} ${attrs} value="${esc(value)}" class="${cls}">`;
+        }
+        return `
+                <div class="prop-row bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 flex justify-between items-center gap-4 shadow-sm" data-key="${esc(key)}">
+                    <div class="flex-1 min-w-0"><label class="text-sm font-bold text-gray-700 dark:text-gray-300 break-words">${esc(key)}</label></div>
+                    <div class="w-1/2">${input}</div>
+                </div>`;
+    },
+
     async loadProperties(serverName) {
         const res = await api(`/api/servers/${serverName}/properties`);
         const props = await res.json();
         const editor = document.getElementById('properties-editor');
         editor.innerHTML = '';
 
-        const enums = {
-            'difficulty': ['peaceful', 'easy', 'normal', 'hard'],
-            'gamemode': ['survival', 'creative', 'adventure', 'spectator']
-        };
-
-        // Values go into HTML attributes, so quotes etc. must be escaped (e.g. a motd containing ")
-        const esc = t => this.escapeHtml(t);
         let html = '';
-        for (const [key, value] of Object.entries(props)) {
-            let inputHtml = '';
-            const inputClasses = 'prop-input w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white';
-
-            if (value === 'true' || value === 'false') {
-                inputHtml = `<select data-key="${esc(key)}" class="${inputClasses}">
-                                <option value="true" ${value === 'true' ? 'selected' : ''}>True</option>
-                                <option value="false" ${value === 'false' ? 'selected' : ''}>False</option>
-                            </select>`;
-            } else if (enums[key]) {
-                const options = enums[key].map(opt => `<option value="${opt}" ${value === opt ? 'selected' : ''}>${opt}</option>`).join('');
-                inputHtml = `<select data-key="${esc(key)}" class="${inputClasses}">${options}</select>`;
-            } else if (!isNaN(value) && value !== '') {
-                inputHtml = `<input type="number" data-key="${esc(key)}" value="${esc(value)}" class="${inputClasses}">`;
-            } else {
-                inputHtml = `<input type="text" data-key="${esc(key)}" value="${esc(value)}" class="${inputClasses}">`;
-            }
-
-            html += `
-                <div class="prop-row bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 flex justify-between items-center gap-4 shadow-sm" data-key="${esc(key)}">
-                    <div class="flex-1"><label class="text-sm font-bold text-gray-700 dark:text-gray-300">${esc(key)}</label></div>
-                    <div class="w-1/2">${inputHtml}</div>
-                </div>`;
-        }
+        for (const [key, value] of Object.entries(props)) html += this.propRowHtml(key, value, 'prop-input', `data-key="${this.escapeHtml(key)}"`);
         editor.innerHTML = html;
         this.filterProperties();   // keep the current search applied after a reload or save
     },
@@ -3437,8 +3431,12 @@ const ServerApp = {
             if (!res.ok) return alert(`Can't open ${path}: ${await this.apiError(res)}`);
             data = await res.json();
         }
-        this.fileEditor = { path, modified: data.modified, dirty: false };
+        // A text box turns Windows line endings (CRLF) into LF; remember them so Save writes them back
+        // (Bedrock's server.properties and many plugin files use them).
+        const lf = (data.content.match(/\n/g) || []).length, crlf = (data.content.match(/\r\n/g) || []).length;
+        this.fileEditor = { path, modified: data.modified, dirty: false, mode: 'raw', crlf: crlf > 0 && crlf * 2 >= lf };
         const esc = t => this.escapeHtml(String(t ?? ''));
+        const tab = 'px-3 py-1 text-sm rounded text-gray-600 dark:text-gray-400';
         document.getElementById('files-content').innerHTML = `
             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <div class="text-sm font-mono break-all text-gray-900 dark:text-gray-200">${esc(this.activeServer.name)}/${esc(path)}${isNew ? ' <span class="text-xs text-gray-500">(new)</span>' : ''}</div>
@@ -3448,17 +3446,127 @@ const ServerApp = {
                     <button onclick="ServerApp.closeFileEditor()" class="px-3 py-1.5 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Close</button>
                 </div>
             </div>
+            <div id="file-editor-modes" class="hidden rp-tabs flex gap-2 mb-3 bg-gray-200 dark:bg-gray-800 p-1 rounded w-max max-w-full border border-gray-300 dark:border-gray-700">
+                <button onclick="ServerApp.setFileEditorMode('visual')" id="file-mode-visual" class="${tab}">Visual Editor</button>
+                <button onclick="ServerApp.setFileEditorMode('raw')" id="file-mode-raw" class="${tab}">Raw Text</button>
+            </div>
+            <div id="file-visual" class="hidden">
+                <div class="flex items-center gap-3 mb-4">
+                    <input type="search" id="file-prop-search" placeholder="Filter settings (e.g. port, rcon)..." autocomplete="off"
+                           oninput="ServerApp.filterFileProps()" onkeydown="if (event.key === 'Escape') { this.value = ''; ServerApp.filterFileProps(); }"
+                           class="flex-1 min-w-0 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded p-2 text-gray-900 dark:text-white">
+                    <span id="file-prop-count" class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap"></span>
+                </div>
+                <p id="file-prop-empty" class="hidden text-sm text-gray-500 dark:text-gray-400 italic mb-4">No settings match your search.</p>
+                <div id="file-props" class="grid grid-cols-1 xl:grid-cols-2 gap-4 pb-4"></div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 pb-4">Comments, blank lines and the order of the file are kept. To add or remove a setting, or to edit a comment, use <b>Raw Text</b>.</p>
+            </div>
             <textarea id="file-editor" spellcheck="false" class="w-full min-h-[400px] font-mono text-sm bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-3 text-gray-900 dark:text-gray-200 outline-none" style="height: 65vh; tab-size: 4;"></textarea>`;
         const ta = document.getElementById('file-editor');
         ta.value = data.content;
-        ta.addEventListener('input', () => {
-            this.fileEditor.dirty = true;
-            document.getElementById('file-editor-status').innerText = 'Unsaved changes';
-        });
-        ta.addEventListener('keydown', e => {
+        ta.addEventListener('input', () => this.fileEditorChanged());
+        // After typing in Raw Text, offer (or stop offering) the Visual Editor for what the file is now
+        ta.addEventListener('change', () => this.offerFileVisual());
+        const saveKey = e => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); this.saveFileEditor(); }
+        };
+        ta.addEventListener('keydown', saveKey);
+        const visual = document.getElementById('file-visual');
+        visual.addEventListener('keydown', saveKey);
+        // A change in the form is written straight into the text, so both views always agree
+        const fromForm = e => {
+            const input = e.target.closest('.file-prop-input');
+            if (!input) return;
+            const before = ta.value;
+            ta.value = PropFile.setValue(before, +input.dataset.line, input.value, this.fileEditor.path);
+            if (ta.value !== before) this.fileEditorChanged();
+        };
+        visual.addEventListener('input', fromForm);
+        visual.addEventListener('change', fromForm);
+        // Files that are a list of key=value settings open in the view used last (the form at first)
+        let last = 'visual';
+        try { last = localStorage.getItem('rp_fileEditorMode') || 'visual'; } catch (e) {}
+        if (this.offerFileVisual() && last === 'visual') this.setFileEditorMode('visual', true);
+        else ta.focus();
+    },
+
+    // The text to save, with the file's own line endings.
+    fileEditorText() {
+        const text = document.getElementById('file-editor').value;
+        return this.fileEditor.crlf ? text.replace(/\r?\n/g, '\r\n') : text;
+    },
+
+    fileEditorChanged() {
+        this.fileEditor.dirty = true;
+        document.getElementById('file-editor-status').innerText = 'Unsaved changes';
+    },
+
+    // Shows the Visual Editor / Raw Text switch when the text is a list of key=value settings.
+    offerFileVisual() {
+        const ed = this.fileEditor, modes = document.getElementById('file-editor-modes');
+        if (!ed || !modes) return false;
+        const ok = PropFile.parse(document.getElementById('file-editor').value, ed.path).ok;
+        if (ok) ed.offered = true;     // once shown it stays, and says why if the file stops fitting
+        modes.classList.toggle('hidden', !ed.offered);
+        this.markFileEditorMode();
+        return ok;
+    },
+
+    markFileEditorMode() {
+        ['visual', 'raw'].forEach(m => {
+            const b = document.getElementById(`file-mode-${m}`), on = this.fileEditor.mode === m;
+            b.classList.toggle('subtab-active', on);
+            b.classList.toggle('text-gray-600', !on);
+            b.classList.toggle('dark:text-gray-400', !on);
         });
-        ta.focus();
+    },
+
+    setFileEditorMode(mode, quiet) {
+        const ed = this.fileEditor, ta = document.getElementById('file-editor');
+        if (!ed || !ta) return;
+        if (mode === 'visual') {
+            const p = PropFile.parse(ta.value, ed.path);
+            if (!p.ok) {
+                if (!quiet) alert(`The Visual Editor can't show this file as it is now: ${p.line ? `line ${p.line}: ` : ''}${p.reason}. Fix it in Raw Text, or keep editing there.`);
+                return;
+            }
+            let html = '', at = 0;
+            const esc = t => this.escapeHtml(String(t ?? ''));
+            for (const e of p.entries) {
+                while (at < p.sections.length && p.sections[at].line < e.line) {
+                    html += `<h4 style="grid-column: 1 / -1" class="file-prop-section text-sm font-bold text-gray-900 dark:text-white mt-2">${esc(p.sections[at++].name)}</h4>`;
+                }
+                html += this.propRowHtml(e.key, e.value, 'file-prop-input', `data-line="${e.line}"`);
+            }
+            document.getElementById('file-props').innerHTML = html;
+        }
+        ed.mode = mode;
+        document.getElementById('file-visual').classList.toggle('hidden', mode !== 'visual');
+        ta.classList.toggle('hidden', mode === 'visual');
+        this.markFileEditorMode();
+        if (mode === 'visual') this.filterFileProps(); else ta.focus();
+        if (!quiet) { try { localStorage.setItem('rp_fileEditorMode', mode); } catch (e) {} }
+    },
+
+    // Live filter, as in Configuration: every word must be in the setting's name or value.
+    filterFileProps() {
+        const terms = (document.getElementById('file-prop-search').value || '').toLowerCase().split(/\s+/).filter(Boolean);
+        const rows = document.querySelectorAll('#file-props .prop-row');
+        let shown = 0;
+        rows.forEach(row => {
+            const input = row.querySelector('.file-prop-input');
+            const match = terms.every(t => `${row.dataset.key} ${input ? input.value : ''}`.toLowerCase().includes(t));
+            row.style.display = match ? '' : 'none';
+            if (match) shown++;
+        });
+        // A section heading shows only while one of its settings does
+        document.querySelectorAll('#file-props .file-prop-section').forEach(h => {
+            let n = h.nextElementSibling, any = false;
+            for (; n && !n.classList.contains('file-prop-section'); n = n.nextElementSibling) any = any || n.style.display !== 'none';
+            h.style.display = any ? '' : 'none';
+        });
+        document.getElementById('file-prop-count').innerText = terms.length ? `${shown} of ${rows.length}` : `${rows.length} settings`;
+        document.getElementById('file-prop-empty').classList.toggle('hidden', !(terms.length && rows.length && shown === 0));
     },
 
     async saveFileEditor() {
@@ -3466,7 +3574,7 @@ const ServerApp = {
         if (!ed) return;
         const res = await api(this.filesUrl('/text'), {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: ed.path, content: document.getElementById('file-editor').value, modified: ed.modified })
+            body: JSON.stringify({ path: ed.path, content: this.fileEditorText(), modified: ed.modified })
         });
         if (!res.ok) return alert(`Couldn't save: ${await this.apiError(res)}`);
         const r = await res.json();
