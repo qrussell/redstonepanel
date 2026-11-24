@@ -2050,6 +2050,38 @@ files belong to `minecraft`, other threads keep root), `tests/test_player_roles.
 as `minecraft` and checks that settings, operators, whitelist, downloads, world rename and
 Live Chat never read or change a root-only file), the install test and `test-bedrock-update.sh`.
 
+### 1.21.9: join pages through a proxy (HAProxy or Cloudflare) *(built, not released)*
+
+**Why.** Join pages (1.21.5) have a port of their own, 8444, to forward on the router. Quentin
+asked on 24 Nov 2026 to also let HAProxy (his runs on pfSense) route to them, and then
+Cloudflare. A proxy already reaches the pages, since they use relative links, but three things
+went wrong behind one: every player looked like the proxy and shared one rate limit, the panel
+showed `address:8444` links, and the port couldn't be closed to everyone but the proxy.
+He chose 1.21.8, after the visual editor and before the Windows preview; it moved to 1.21.9 when
+1.21.8 became a security-only release (24 Nov 2026).
+
+**As built.** A **Through a proxy (HAProxy or Cloudflare)** card in Join pages: the proxy's
+address (requests from it may name the player in `X-Forwarded-For`, read from the right and
+skipping proxies; anyone else's header is ignored), the address players open (used for the
+panel's links), **Cloudflare's proxy (orange cloud)** (requests from Cloudflare's published
+networks may name the player in `CF-Connecting-IP`; `core/cloudflare.py` ships the list and
+refreshes it from cloudflare.com daily, checking it before use) and **Only through the proxy**.
+It shows HAProxy and Cloudflare Tunnel lines to copy, filled in. Nothing changes on the public
+pages and the cluster contract is unchanged. Tested: unit tests for the address rules, the
+settings and the Cloudflare list; `test-join-page.sh` runs a real HAProxy on exactly the lines
+the panel offers (pages and health check through it, a separate limit per player, a forged
+header ignored, the port closed to others). Not tested: a real Cloudflare Tunnel or proxied
+domain.
+
+**Also: upgrades leave game servers running.** Upgrading the 1.21.6 test build on Quentin's
+Ubuntu 25.04 panel restarted one of his game servers: Ubuntu's `needrestart` restarts services
+that still use an old copy of a library after any apt install. The package now installs
+`/etc/needrestart/conf.d/redstonepanel.conf`, which tells needrestart to leave `minecraft*` and
+`phantom-minecraft*` services alone; they pick up new libraries at their next restart.
+`test-needrestart.sh` runs needrestart in automatic mode against a stand-in game server, a
+stand-in Phantom proxy and an ordinary service that all use a deleted library: only the
+ordinary one is restarted, and without the rule the game server would have been.
+
 ### 2.0: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already

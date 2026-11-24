@@ -507,6 +507,67 @@ pages; nodes open nothing. A node's own join pages belong to that node's admin a
 turned on from the master. If a node can't be reached, its servers' pages stay up and say
 offline.
 
+#### Join pages through a proxy (HAProxy or Cloudflare) *(1.21.9)*
+
+Already run HAProxy (for example the HAProxy package on pfSense) or Cloudflare for your
+website? Then players can open the join pages on your own domain and certificate, like
+`https://play.example.com/join/survival`. The proxy sends every path that starts with `/join` to
+the panel's join port. The port itself keeps working as before.
+
+In **🔗 Join pages**, under **Through a proxy (HAProxy or Cloudflare, optional)**:
+
+- **The proxy's address**: the address HAProxy or a Cloudflare Tunnel connects to the panel
+  from. On pfSense that's its LAN address, for example `10.0.0.1`; for `cloudflared` on the
+  panel's own machine it's `127.0.0.1`. Only requests from this address may say which player
+  they are for (the `X-Forwarded-For` header). That keeps a separate request limit for each
+  player instead of one shared limit for everyone behind the proxy. Anyone else who sends the
+  header is ignored, so nobody can use it to get around the limit.
+- **Address players open**, for example `https://play.example.com`. The panel uses it for the
+  links it shows on this page and on the Mods tab. Leave it empty to keep using your Port
+  forwarding address with port 8444.
+- **Cloudflare's proxy (orange cloud) sends players here**: for a domain proxied by Cloudflare
+  with a port forwarded on your router. Requests from Cloudflare's own addresses may then name
+  the player (the `CF-Connecting-IP` header). The panel ships Cloudflare's list of addresses and
+  refreshes it from cloudflare.com once a day. Not needed for a Cloudflare Tunnel.
+- **Only through the proxy** makes the join port refuse everyone but the proxy (and Cloudflare,
+  when that's on). With a tunnel or HAProxy, don't forward 8444 on your router then.
+- **HAProxy settings to copy** and **Cloudflare Tunnel settings to copy** show the lines to
+  paste, already filled in with this panel's address and port.
+
+**HAProxy on pfSense** (**Services > HAProxy**):
+
+1. **Backend** tab, **Add**: name it `redstonepanel_join`. Under **Server list**, add a server
+   with this panel's LAN address and port `8444`. Tick **Encrypt (SSL)** when the panel uses
+   HTTPS, and leave **SSL checks** off, because the panel's own certificate is self-signed.
+   Under **Health checking**, choose **HTTP** and set **Http check URI** to
+   `/join/assets/join.css`.
+2. **Frontend** tab: open the HTTPS frontend that already serves your domain. Under **Default
+   backend, access control lists and actions**, add an ACL named `join` with **Path starts
+   with** `/join`, and an action **Use Backend** `redstonepanel_join` for the ACL `join`.
+   Make sure **Use "forwardfor" option** is ticked.
+3. **Apply Changes**, then enter pfSense's LAN address as **The proxy's address** in the panel.
+
+**Cloudflare Tunnel** (no port forwarding at all):
+
+1. In the Cloudflare dashboard, open your tunnel (**Networks > Tunnels**) and add a **public
+   hostname**: your domain, path `^/join`, service type **HTTPS** (or **HTTP** when the panel
+   uses HTTP) and URL `localhost:8444` when `cloudflared` runs on the panel's machine, or the
+   panel's LAN address with port 8444 when it runs elsewhere. Under **Additional application
+   settings > TLS**, turn on **No TLS Verify**, because the panel's certificate is
+   self-signed. A tunnel run from a `config.yml` file takes the lines from **Cloudflare Tunnel
+   settings to copy** instead.
+2. In the panel, enter the address `cloudflared` connects from as **The proxy's address**
+   (`127.0.0.1` on the same machine), and tick **Only through the proxy**.
+
+**Cloudflare's proxy (orange cloud) with port forwarding**: Cloudflare carries only some
+ports, and 8444 isn't one of them. Forward a port it does carry, such as 8443 or 2053, on your
+router to the panel's port 8444, set the **Address players open** to
+`https://play.example.com:8443` (or leave out the port when you forward 443), and tick
+**Cloudflare's proxy (orange cloud) sends players here**. Set Cloudflare's SSL/TLS mode to
+**Full**, because the panel's certificate is self-signed.
+
+On a cluster, point the proxy at the master only. It serves the pages of every node's servers.
+
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
 (**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
 **Mods**, **Plugins** or **Add-ons**.

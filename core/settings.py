@@ -60,7 +60,18 @@ DEFAULTS = {
     "join_enabled": False,
     "join_port": 8444,
     "join_index": False,
+    # 1.21.9: join pages behind a reverse proxy such as HAProxy (on pfSense or anywhere else).
+    # join_proxies: the proxy's own addresses (IPs or networks); requests from them may say who
+    # the player is in X-Forwarded-For. join_proxy_only: answer nobody else on the join port.
+    # join_url: the address players use through the proxy ("" = the port-forwarding address).
+    "join_proxies": [],
+    "join_proxy_only": False,
+    "join_url": "",
+    # join_cloudflare: Cloudflare's proxy (orange cloud) sends players here; requests from
+    # Cloudflare's own networks may name the player in CF-Connecting-IP (core/cloudflare.py).
+    "join_cloudflare": False,
 }
+JOIN_PROXIES_MAX = 8
 PANEL_NAME_MAX = 40
 CONNECTION_KEYS = ("https_mode", "http_port", "https_port", "cert_file", "key_file")
 HOSTNAME_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*$")
@@ -186,6 +197,12 @@ def validate(new):
         raise SettingsError("Choose a join pages port that isn't the panel's own port, the SFTP port or 22.")
     if s["sftp_enabled"] and s["join_enabled"] and s["sftp_port"] == s["join_port"]:
         raise SettingsError("SFTP and the join pages need different ports.")
+    s["join_proxies"] = clean_join_proxies(s["join_proxies"])
+    if not isinstance(s["join_proxy_only"], bool) or not isinstance(s["join_cloudflare"], bool):
+        raise SettingsError("The proxy settings must be on or off.")
+    if s["join_proxy_only"] and not s["join_proxies"] and not s["join_cloudflare"]:
+        raise SettingsError("Enter the proxy's address (or turn on Cloudflare) before allowing only the proxy.")
+    s["join_url"] = clean_join_url(s["join_url"])
 
     s["servers_folder"] = clean_servers_folder(s["servers_folder"])
     used = []
@@ -194,6 +211,66 @@ def validate(new):
             used.append(raw)
     s["servers_folders_used"] = used
     return s
+
+
+def clean_join_proxies(value):
+    """The reverse proxy's addresses as a list of networks ("10.0.0.1/32" style is shortened to
+    "10.0.0.1"). Accepts a list or text separated by commas, spaces or new lines."""
+    if isinstance(value, str):
+        value = re.split(r"[\s,]+", value)
+    if not isinstance(value, list):
+        raise SettingsError("The proxy addresses must be a list.")
+    out = []
+    for raw in value:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        try:
+            net = ipaddress.ip_network(text, strict=False)
+        except ValueError:
+            raise SettingsError(f"'{text[:60]}' isn't an IP address or network (like 10.0.0.1 or 10.0.0.0/24).")
+        if net.prefixlen == 0:
+            raise SettingsError("Trusting every address as a proxy would let anyone pretend to be anyone. "
+                                "Enter only the proxy's own address.")
+        if net.num_addresses == 1 and net.version == 6 and net.network_address.ipv4_mapped:
+            net = ipaddress.ip_network(net.network_address.ipv4_mapped)
+        name = str(net.network_address) if net.num_addresses == 1 else str(net)
+        if name not in out:
+            out.append(name)
+    if len(out) > JOIN_PROXIES_MAX:
+        raise SettingsError(f"Enter at most {JOIN_PROXIES_MAX} proxy addresses.")
+    return out
+
+
+def clean_join_url(value):
+    """The address players open through the proxy, like https://play.example.com, or "".
+    Only the scheme, host and port: the pages are always under /join."""
+    url = str(value or "").strip().rstrip("/")
+    if not url:
+        return ""
+    if len(url) > 200 or any(c.isspace() or ord(c) < 32 or c in "\"'<>`\\" for c in url):
+        raise SettingsError("The join pages address isn't usable.")
+    if "://" not in url:
+        url = "https://" + url
+    u = urlsplit(url)
+    try:
+        port = u.port
+    except ValueError:
+        raise SettingsError("The port in the join pages address must be a number between 1 and 65535.")
+    if u.scheme not in ("http", "https") or not u.hostname or u.username or u.password or u.query or u.fragment:
+        raise SettingsError("Enter the join pages address like https://play.example.com.")
+    if u.path not in ("", "/join"):
+        raise SettingsError("Enter the join pages address without a path, like https://play.example.com. "
+                            "The pages are always under /join.")
+    host = u.hostname
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        if not HOSTNAME_RE.match(host):
+            raise SettingsError("Enter the join pages address like https://play.example.com.")
+    else:
+        host = f"[{host}]" if ":" in host else host
+    return f"{u.scheme}://{host.lower()}" + (f":{port}" if port else "")
 
 
 def clean_servers_folder(folder):
