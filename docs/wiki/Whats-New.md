@@ -9,6 +9,20 @@ the dashboard.
 
 ---
 
+## 1.21.9: join pages through a proxy *(November 2026)*
+
+- **🔗 Join pages → Through a proxy (HAProxy or Cloudflare)**: HAProxy (for example on
+  pfSense) or a Cloudflare Tunnel can send `/join` on your own domain to the join pages. Each
+  player keeps their own request limit, and the section shows the settings to copy. See
+  [Join pages through a proxy](../guide/README.md#join-pages-through-a-proxy-haproxy-or-cloudflare-1219).
+- Cloudflare-proxied domains (orange cloud), an address for the panel's links, and **Only
+  through the proxy**.
+- Mods with a port of their own (Simple Voice Chat, Geyser, BlueMap and more) get a free port
+  each when two servers would share one, instead of one server crashing.
+- Fixed: upgrades no longer let Ubuntu's `needrestart` restart Minecraft servers.
+
+[Release notes](../../release-notes/v1.21.9.md)
+
 ## 1.21.8: security fixes *(November 2026)*
 
 - The panel now works in server folders with the `minecraft` account's rights, so a link a

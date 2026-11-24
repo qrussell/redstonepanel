@@ -50,6 +50,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.21.9 | **🔗 Join pages** can sit behind HAProxy or Cloudflare, on your own domain. | [Join pages through a proxy](#join-pages-through-a-proxy-haproxy-or-cloudflare-1219) |
 | 1.21.6 | **Player packs**: the mods players need, as one download on the join page that follows the server. | [Player packs](#player-packs) |
 | 1.21.5 | **🔗 Join pages**: a public page for each server that tells players how to join, on a port of its own. | [Join pages](#join-pages) |
 | 1.21.2 | Light and dark mode is a **sun/moon switch in the top right corner**, with a colored dot beside it for the accent color. The ⚙️ button in the sidebar is gone. | [The dashboard](#3-the-dashboard) |
@@ -515,6 +516,8 @@ website? Then players can open the join pages on your own domain and certificate
 the panel's join port. The port itself keeps working as before.
 
 In **🔗 Join pages**, under **Through a proxy (HAProxy or Cloudflare, optional)**:
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-pages-proxy.png"><img src="images/join-pages-proxy.png" alt="The Through a proxy section of Join pages, with the HAProxy settings to copy"></picture>
 
 - **The proxy's address**: the address HAProxy or a Cloudflare Tunnel connects to the panel
   from. On pfSense that's its LAN address, for example `10.0.0.1`; for `cloudflared` on the
