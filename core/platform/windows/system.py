@@ -341,20 +341,215 @@ def unlock(fd):
 # ---------------------------------------------------------------------------
 # Accounts of the system itself (sign-in)
 # ---------------------------------------------------------------------------
-SYSTEM_ACCOUNTS = False             # the preview signs in with panel accounts only (Windows accounts: 1.23)
+# 1.23: Windows accounts sign in as they do on Linux. Who may: members of the computer's
+# Administrators group (what the sudo group is on Linux) or of a local group named RedstonePanel.
+# The password is checked by Windows itself (LogonUser, a network sign-in, so a disabled, locked
+# or expired account, or one with an empty password, is refused). Microsoft accounts sign in
+# with their email address or the computer's name for them, and their Microsoft password (not
+# a Windows Hello PIN).
+SYSTEM_ACCOUNTS = True
 ACCOUNT_KIND = "Windows"
+ADMINISTRATORS_SID = "S-1-5-32-544"
+PANEL_GROUP = "RedstonePanel"
+SID_TYPE_USER = 1
+LOGON32_LOGON_NETWORK = 3
+LOGON32_PROVIDER_DEFAULT = 0
+LG_INCLUDE_INDIRECT = 1
+_ACCOUNT_RE = re.compile(r"^(?:\.\\|[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}\\)?[^\\/\"\[\]:;|=,+*?<>@]{1,64}$|^[^\\/\s]{1,64}@[A-Za-z0-9.-]{1,190}$")
+_groups_cache = {}
+GROUPS_TTL = 30
+
+
+def _account_parts(username):
+    """(domain or None, name) for "name", ".\\name", "DOMAIN\\name" or "someone@outlook.com"."""
+    name = (username or "").strip()
+    if not name or not _ACCOUNT_RE.match(name):
+        return None
+    if "\\" in name:
+        domain, _, user = name.partition("\\")
+        return (None if domain == "." else domain), user
+    if "@" in name:
+        return "MicrosoftAccount", name
+    return None, name
+
+
+def _lookup(username):
+    """(SID string, domain, name) of a user account, or None."""
+    parts = _account_parts(username)
+    if not parts:
+        return None
+    domain, name = parts
+    full = f"{domain}\\{name}" if domain else name
+    adv = _win.dll("advapi32")
+    sid = ctypes.create_string_buffer(256)
+    cb = wintypes.DWORD(256)
+    dom = ctypes.create_unicode_buffer(256)
+    cch = wintypes.DWORD(256)
+    use = wintypes.DWORD()
+    if not adv.LookupAccountNameW(None, full, sid, ctypes.byref(cb), dom, ctypes.byref(cch), ctypes.byref(use)):
+        return None
+    if use.value != SID_TYPE_USER:
+        return None
+    text = wintypes.LPWSTR()
+    if not adv.ConvertSidToStringSidW(sid, ctypes.byref(text)):
+        return None
+    try:
+        return text.value, dom.value, name
+    finally:
+        _win.dll("kernel32").LocalFree(text)
+
+
+def _sid_name(sid_text):
+    """The (localized) name of a well-known group: S-1-5-32-544 -> "Administrators"."""
+    adv = _win.dll("advapi32")
+    sid = ctypes.c_void_p()
+    if not adv.ConvertStringSidToSidW(sid_text, ctypes.byref(sid)):
+        return None
+    try:
+        name = ctypes.create_unicode_buffer(256)
+        cch = wintypes.DWORD(256)
+        dom = ctypes.create_unicode_buffer(256)
+        cchd = wintypes.DWORD(256)
+        use = wintypes.DWORD()
+        if not adv.LookupAccountSidW(None, sid, name, ctypes.byref(cch), dom, ctypes.byref(cchd), ctypes.byref(use)):
+            return None
+        return name.value
+    finally:
+        _win.dll("kernel32").LocalFree(sid)
+
+
+def local_groups(username):
+    """The names of the computer's groups an account is in, directly or through another group."""
+    found = _lookup(username)
+    if not found:
+        return set()
+    _sid, domain, name = found
+    net = _win.dll("netapi32")
+    buf = ctypes.c_void_p()
+    read, total = wintypes.DWORD(), wintypes.DWORD()
+    who = f"{domain}\\{name}" if domain else name
+    rc = net.NetUserGetLocalGroups(None, who, 0, LG_INCLUDE_INDIRECT, ctypes.byref(buf), wintypes.DWORD(0xFFFFFFFF),
+                                   ctypes.byref(read), ctypes.byref(total))
+    if rc != 0 or not buf.value:
+        return set()
+    try:
+        names = ctypes.cast(buf, ctypes.POINTER(wintypes.LPWSTR))
+        return {names[i] for i in range(read.value) if names[i]}
+    finally:
+        net.NetApiBufferFree(buf)
+
+
+def group_member_sids(group):
+    """The SIDs of a local group's direct members (a Microsoft account is one of these)."""
+    net = _win.dll("netapi32")
+    buf = ctypes.c_void_p()
+    read, total, resume = wintypes.DWORD(), wintypes.DWORD(), ctypes.c_size_t()
+    rc = net.NetLocalGroupGetMembers(None, group, 0, ctypes.byref(buf), wintypes.DWORD(0xFFFFFFFF),
+                                     ctypes.byref(read), ctypes.byref(total), ctypes.byref(resume))
+    if rc != 0 or not buf.value:
+        return set()
+    adv, k32 = _win.dll("advapi32"), _win.dll("kernel32")
+    out = set()
+    try:
+        sids = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))
+        for i in range(read.value):
+            text = wintypes.LPWSTR()
+            if sids[i] and adv.ConvertSidToStringSidW(ctypes.c_void_p(sids[i]), ctypes.byref(text)):
+                out.add(text.value)
+                k32.LocalFree(text)
+    finally:
+        net.NetApiBufferFree(buf)
+    return out
+
+
+def allowed_groups(groups=("sudo",)):
+    """The Windows group names that stand for the panel's Linux groups: "sudo" is the
+    Administrators group (by its SID, whatever the language), "redstonepanel" is RedstonePanel."""
+    names = set()
+    for g in groups:
+        if g == "sudo":
+            names.add((_sid_name(ADMINISTRATORS_SID) or "Administrators").lower())
+        elif g == "redstonepanel":
+            names.add(PANEL_GROUP.lower())
+        else:
+            names.add(str(g).lower())
+    return names
+
+
+def canonical_account(username):
+    """The one spelling of an account that two-factor, sessions and logs key on: Windows names
+    aren't case-sensitive and an account has several ("quent", ".\\Quent", "SUPERMAN\\quent",
+    its Microsoft account's email), so the name Windows gives the account's SID back. Accounts of
+    this computer are their bare name; others keep their domain. None when there's no such account."""
+    try:
+        found = _lookup(username)
+    except (OSError, AttributeError):
+        return None
+    if not found:
+        return None
+    adv = _win.dll("advapi32")
+    sid = ctypes.c_void_p()
+    if not adv.ConvertStringSidToSidW(found[0], ctypes.byref(sid)):
+        return None
+    try:
+        name = ctypes.create_unicode_buffer(256)
+        cch = wintypes.DWORD(256)
+        dom = ctypes.create_unicode_buffer(256)
+        cchd = wintypes.DWORD(256)
+        use = wintypes.DWORD()
+        if not adv.LookupAccountSidW(None, sid, name, ctypes.byref(cch), dom, ctypes.byref(cchd), ctypes.byref(use)):
+            return None
+    finally:
+        _win.dll("kernel32").LocalFree(sid)
+    here = (os.environ.get("COMPUTERNAME") or socket.gethostname()).upper()
+    if not dom.value or dom.value.upper() == here:
+        return name.value
+    return f"{dom.value}\\{name.value}"
 
 
 def system_account_exists(username):
-    return False
+    try:
+        return _lookup(username) is not None
+    except (OSError, AttributeError):
+        return False
 
 
 def system_account_allowed(username, groups=("sudo",)):
-    return False
+    """The Windows account exists and is in the Administrators group or the RedstonePanel group.
+    Asked on every request of a signed-in session, so the answer is kept for 30 seconds."""
+    key = ((username or "").lower(), tuple(groups))
+    hit = _groups_cache.get(key)
+    if hit and time.monotonic() - hit[0] < GROUPS_TTL:
+        return hit[1]
+    try:
+        wanted = allowed_groups(groups)
+        ok = bool({g.lower() for g in local_groups(username)} & wanted)
+        if not ok:                              # a Microsoft account: a direct member, by its SID
+            found = _lookup(username)
+            ok = bool(found) and any(found[0] in group_member_sids(g) for g in wanted)
+    except (OSError, AttributeError):
+        ok = False
+    _groups_cache[key] = (time.monotonic(), ok)
+    return ok
 
 
 def check_system_password(username, password):
-    return False
+    """True when Windows accepts the password for a usable account (LogonUser, network sign-in)."""
+    parts = _account_parts(username)
+    if not parts or not password or len(password) > 256 or "\0" in password:
+        return False
+    domain, name = parts
+    adv = _win.dll("advapi32")
+    token = wintypes.HANDLE()
+    if domain == "MicrosoftAccount":
+        domain = None                           # an email address is a user principal name
+    elif domain is None:
+        domain = "."                            # this computer's own accounts
+    ok = adv.LogonUserW(name, domain, password, LOGON32_LOGON_NETWORK, LOGON32_PROVIDER_DEFAULT,
+                        ctypes.byref(token))
+    if ok and token:
+        _win.dll("kernel32").CloseHandle(token)
+    return bool(ok)
 
 
 # ---------------------------------------------------------------------------

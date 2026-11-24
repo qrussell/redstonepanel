@@ -785,5 +785,47 @@ class PanelUpdate(unittest.TestCase):
         self.assertIn("code 1603", out["error"])
 
 
+class WindowsAccounts(unittest.TestCase):
+    """1.23: Windows accounts sign in (Administrators or a RedstonePanel group), under one spelling."""
+
+    def test_account_names(self):
+        from core.platform.windows import system as w
+        self.assertEqual(w._account_parts("quent"), (None, "quent"))
+        self.assertEqual(w._account_parts(".\\quent"), (None, "quent"))
+        self.assertEqual(w._account_parts("SUPERMAN\\quent"), ("SUPERMAN", "quent"))
+        self.assertEqual(w._account_parts("someone@outlook.com"), ("MicrosoftAccount", "someone@outlook.com"))
+        for bad in ("", "a/b", "x" * 80, "A\\b\\c", "a:b", "a*"):
+            self.assertIsNone(w._account_parts(bad), bad)
+        self.assertFalse(w.check_system_password("a/b", "pw"))
+        self.assertFalse(w.check_system_password("quent", ""))
+
+    def test_the_linux_groups_stand_for_administrators_and_redstonepanel(self):
+        from core.platform.windows import system as w
+        with mock.patch.object(w, "_sid_name", return_value="Administratoren"):
+            self.assertEqual(w.allowed_groups(("sudo", "redstonepanel")), {"administratoren", "redstonepanel"})
+
+    def test_group_answers_are_kept_briefly(self):
+        from core.platform.windows import system as w
+        w._groups_cache.clear()
+        calls = []
+        with mock.patch.object(w, "allowed_groups", return_value={"administrators"}), \
+                mock.patch.object(w, "local_groups", side_effect=lambda u: calls.append(u) or {"Administrators"}):
+            self.assertTrue(w.system_account_allowed("Quent"))
+            self.assertTrue(w.system_account_allowed("quent"))
+        self.assertEqual(len(calls), 1)
+        w._groups_cache.clear()
+
+    def test_a_session_and_two_factor_key_on_one_spelling(self):
+        from core import auth
+        with mock.patch.object(auth.system, "system_account_exists", return_value=True), \
+                mock.patch.object(auth.system, "canonical_account", return_value="quent"), \
+                mock.patch.object(auth.system, "system_account_allowed", return_value=True), \
+                mock.patch.object(auth.system, "check_system_password", return_value=True), \
+                mock.patch.object(auth, "_load_users", return_value=[]):
+            who = auth.login("QUENT", "pw", "203.0.113.9")
+            self.assertEqual(who["u"], "quent")
+            self.assertEqual(auth.find_account(".\\Quent"), ("linux", "quent"))
+
+
 if __name__ == "__main__":
     unittest.main()

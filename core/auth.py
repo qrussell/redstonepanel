@@ -120,7 +120,7 @@ def create_panel_user(username, password, role):
     if not USERNAME_RE.match(username):
         raise AuthError("Username must be 2-32 characters: lowercase letters, digits, _ . - (start with a letter or _).")
     if linux_account_exists(username):
-        raise AuthError(f"'{username}' is a Linux account on this server; that person can already sign in with it.")
+        raise AuthError(f"'{username}' is a {system.ACCOUNT_KIND} account on this server; that person can already sign in with it.")
     if role not in PANEL_ROLES:
         raise AuthError("Role must be admin or user.")
     _check_password_rules(password)
@@ -292,7 +292,7 @@ def find_account(username):
     if _find(_load_users(), name.lower()):
         return "panel", name.lower()
     if name and linux_account_exists(name):
-        return "linux", name
+        return "linux", system.canonical_account(name) or name
     return None
 
 def login(username, password, client_ip):
@@ -316,8 +316,11 @@ def login(username, password, client_ip):
                     u["last_login"] = int(time.time())
                     _save_users(users)
     elif linux_account_exists(username):
-        if linux_user_allowed(username) and pam_authenticate(username, password):
-            identity = {"u": username, "src": "linux", "v": 0}
+        # One spelling per account (Windows: "Quent" and "quent" are one account), so two-factor
+        # and sessions key on the same name however it was typed
+        account = system.canonical_account(username) or username
+        if linux_user_allowed(account) and pam_authenticate(username, password):
+            identity = {"u": account, "src": "linux", "v": 0}
     else:
         verify_password(password, _DUMMY_HASH)   # same work as a real check
 

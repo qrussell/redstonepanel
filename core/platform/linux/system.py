@@ -332,6 +332,11 @@ SYSTEM_ACCOUNTS = True              # accounts of this machine can sign in to th
 ACCOUNT_KIND = "Linux"
 
 
+def canonical_account(username):
+    """The one spelling of an account (Windows has several); on Linux the name itself, if it exists."""
+    return username if system_account_exists(username) else None
+
+
 def system_account_exists(username):
     try:
         pwd.getpwnam(username)

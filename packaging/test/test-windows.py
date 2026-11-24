@@ -205,6 +205,7 @@ def main():
     check("the session works", code == 200, f"{code} {me}")
     code, info = p.get("/api/panel-info")
     print(f"        panel-info: {json.dumps(info)[:300]}")
+    windows_accounts(p)
 
     # ------------------------------------------------------------------ dashboard
     section("Dashboard")
@@ -934,6 +935,44 @@ def found_servers(p, args):
             p.post(f"/api/found-servers/{name}/undo", timeout=300)
         if not args.keep:
             run(["cmd", "/c", "rmdir", "/s", "/q", top])
+
+
+def windows_accounts(p):
+    """1.23: Windows accounts in Administrators or a RedstonePanel group sign in, as Linux ones do."""
+    section("Windows accounts")
+    pw = "Rp-" + os.urandom(6).hex() + "!a1"
+    run(["net", "user", "rptester", "/delete"])
+    run(["net", "user", "rpother", "/delete"])
+    run(["net", "localgroup", "RedstonePanel", "/delete"])
+    code, out = run(["net", "user", "rptester", pw, "/add"])
+    code2, out2 = run(["net", "user", "rpother", pw, "/add"])
+    check("two Windows test accounts", code == 0 and code2 == 0, (out + out2)[-300:])
+    q = Panel(p.base)
+    code, who = q.post("/api/auth/login", {"username": "rptester", "password": pw})
+    check("a Windows account outside both groups is refused", code == 401, f"{code} {who}")
+    run(["net", "localgroup", "RedstonePanel", "/add"])
+    code, out = run(["net", "localgroup", "RedstonePanel", "rptester", "/add"])
+    check("the RedstonePanel group", code == 0, out[-300:])
+    code, who = q.post("/api/auth/login", {"username": "RPTester", "password": "wrong-" + pw})
+    check("a wrong Windows password is refused", code == 401, f"{code} {who}")
+    code, who = q.post("/api/auth/login", {"username": "RPTester", "password": pw})
+    code, me = q.get("/api/auth/me")
+    check("a member of the RedstonePanel group signs in as an admin, under one spelling",
+          code == 200 and me.get("source") == "linux" and me.get("role") == "admin" and me.get("username") == "rptester",
+          f"{code} {str(me)[:300]}")
+    r = Panel(p.base)
+    code, who = r.post("/api/auth/login", {"username": "rpother", "password": pw})
+    check("an account in neither group still can't", code == 401, f"{code} {who}")
+    run(["net", "localgroup", "Administrators", "rpother", "/add"])
+    code, who = r.post("/api/auth/login", {"username": f".\\rpother", "password": pw})
+    check("a member of Administrators signs in", code == 200 and r.cookie, f"{code} {who}")
+    run(["net", "localgroup", "RedstonePanel", "rptester", "/delete"])
+    time.sleep(31)                                          # the panel keeps group answers for 30 seconds
+    code, me = q.get("/api/auth/me")
+    check("leaving the group ends the session", code == 401, f"{code} {str(me)[:200]}")
+    run(["net", "user", "rptester", "/delete"])
+    run(["net", "user", "rpother", "/delete"])
+    run(["net", "localgroup", "RedstonePanel", "/delete"])
 
 
 def finish(p, args, name, port=None):

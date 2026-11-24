@@ -158,15 +158,18 @@ WantedBy=multi-user.target
     note = os.path.join(home, "first-sign-in.txt")
     if first and not auth.list_panel_users():
         password = "-".join(secrets.token_hex(3) for _ in range(3))
-        auth.create_panel_user("admin", password, "admin")
+        first_name = "admin"
+        if auth.linux_account_exists(first_name):          # a Windows account is called admin already
+            first_name = "panel-admin"
+        auth.create_panel_user(first_name, password, "admin")
         with open(note, "w", encoding="utf-8", newline="\r\n") as f:
             f.write("RedstonePanel\n\n"
                     f"Open:      http://localhost:{port}\n"
-                    "User name: admin\n"
+                    f"User name: {first_name}\n"
                     f"Password:  {password}\n\n"
                     "Change the password after signing in (the Password button), then delete this file.\n"
                     "More accounts: Users in the panel, or `redstonepanel add-user NAME` in an administrator prompt.\n")
-        say(f"Account 'admin' created; its password is in {note}")
+        say(f"Account '{first_name}' created; its password is in {note}")
 
     if not args.no_firewall:
         rule = _win.ps_quote(f"RedstonePanel web panel ({port}/tcp)")

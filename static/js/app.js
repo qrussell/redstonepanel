@@ -5768,7 +5768,7 @@ const ServerApp = {
 		document.getElementById('current-user-name').innerText = trusted ? 'Local network' : u.username;
 		document.getElementById('current-user-detail').innerText = trusted
 			? 'Not signed in · user'
-			: `${u.source === 'linux' ? 'Linux account' : 'Panel account'} · ${u.role}`;
+			: `${u.source === 'linux' ? (this.onWindows() ? 'Windows account' : 'Linux account') : 'Panel account'} · ${u.role}`;
 		const signOut = document.getElementById('btn-sign-out');
 		signOut.innerText = trusted ? 'Sign in' : 'Sign out';
 		signOut.onclick = trusted ? () => window.location.assign('/static/login.html') : () => this.logout();
@@ -6028,7 +6028,7 @@ const ServerApp = {
 
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Sign-in</h4>
 			<div class="space-y-2 mb-3">
-				${radio('login_mode', 'required', s.login_mode, 'Always required (recommended)', this.notYet('system-accounts') ? 'Everyone signs in with a panel account.' : 'Everyone signs in with a Linux or panel account.')}
+				${radio('login_mode', 'required', s.login_mode, 'Always required (recommended)', this.onWindows() ? 'Everyone signs in with a Windows or panel account.' : 'Everyone signs in with a Linux or panel account.')}
 				${radio('login_mode', 'trusted_networks', s.login_mode, 'Not required on the local network', 'Devices on the networks below can manage servers without signing in. Users and these settings still need an admin sign-in.')}
 			</div>
 			<label class="flex items-start gap-2 mb-3 text-sm cursor-pointer">
@@ -7842,7 +7842,7 @@ const ServerApp = {
 			<button onclick="ServerApp.changeOwnPassword()" class="w-full px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold mb-6">Change Password</button></div>`
 			: (me.source === 'linux' && !this.accountForced ? `<div id="pw-section">
 			<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Your Account</h3>
-			<p class="text-sm text-gray-500 dark:text-gray-400 mb-6">This is a Linux account: change its password on the server with <span class="font-mono">passwd</span>.</p></div>` : '');
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-6">${this.onWindows() ? 'This is a Windows account: change its password in Windows (Ctrl+Alt+Del, then <b>Change a password</b>).' : 'This is a Linux account: change its password on the server with <span class="font-mono">passwd</span>.'}</p></div>` : '');
 		const forcedIntro = this.accountForced ? `
 			<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Set Up Two-Factor Sign-In</h3>
 			<p class="text-sm text-gray-600 dark:text-gray-300 mb-4">This panel requires a second step at sign-in for admins. Set it up now to continue.</p>` : '';
@@ -8118,7 +8118,7 @@ const ServerApp = {
 
 		content.innerHTML = `
 			<h3 class="text-xl font-bold mb-1 text-gray-900 dark:text-white">Panel Users</h3>
-			${this.notYet('system-accounts') ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">These accounts are the panel's own, not Windows accounts. Locked out of two-factor? In an administrator prompt on the server: <span class="font-mono">redstonepanel reset-2fa NAME</span>.</p>`
+			${this.onWindows() ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Windows accounts in the <b>Administrators</b> group, or in a local group named <b>RedstonePanel</b>, can also sign in (as admins) with their Windows password (not a PIN); they are managed in Windows, not here (two-factor for them: in an administrator prompt, <span class="font-mono">redstonepanel reset-2fa NAME</span>).</p>`
 			: `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here (two-factor for them: <span class="font-mono">sudo redstonepanel reset-2fa NAME</span>).</p>`}
 			<div class="max-h-72 overflow-y-auto mb-4">${rows}</div>
 			<div class="border-t border-gray-200 dark:border-gray-700 pt-4">

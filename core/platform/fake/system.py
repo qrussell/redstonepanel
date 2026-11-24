@@ -138,6 +138,10 @@ def check_system_password(username, password):
     return fake.state.passwords.get(username) == password
 
 
+def canonical_account(username):
+    return username if system_account_exists(username) else None
+
+
 def system_account_exists(username):
     return username in fake.state.passwords
 
