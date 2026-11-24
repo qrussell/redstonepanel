@@ -137,6 +137,12 @@ def create_panel_user(username, password, role):
         users = _load_users()
         if _find(users, username):
             raise AuthError(f"Panel user '{username}' already exists.")
+        # 1.18's one-time step gives `user` accounts made before per-server permissions their old
+        # rights. The panel runs it as it starts, but an account can be added before that (the
+        # `redstonepanel add-user` right after installing): run it here first, or the new account
+        # would be counted as an old one and get every server
+        from core import grants
+        grants.migrate_existing_users([u["username"] for u in users if u.get("role") == "user"])
         users.append({"username": username, "password_hash": hash_password(password), "role": role,
                       "disabled": False, "session_version": 1,
                       "created": int(time.time()), "last_login": None})

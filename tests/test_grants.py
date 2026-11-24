@@ -101,6 +101,22 @@ class Store(unittest.TestCase):
         self.assertEqual(G.migrate_existing_users(["new"]), [], "only once")
         self.assertEqual(G.get("new"), {})
 
+    def test_an_account_added_before_the_first_start_is_not_an_old_one(self):
+        # `redstonepanel add-user` right after installing can run before the panel's own start
+        # has done the one-time step: adding the account does it first
+        from core import auth
+        with mock.patch.object(auth, "USERS_FILE", os.path.join(os.path.dirname(self.file), "users.json")), \
+                mock.patch.object(auth, "linux_account_exists", return_value=False):
+            auth.create_panel_user("old", "old password 1", "user")      # before any grants file
+            self.assertEqual(G.get("old"), {}, "the first account on a new install starts with nothing")
+            os.remove(self.file)                                          # as if from before 1.18
+            G._cache.update(mtime=None, data=None)
+            auth.create_panel_user("new", "new password 1", "user")
+        self.assertEqual(G.get("old"), {"*": list(G.LEGACY)})
+        self.assertEqual(G.get("new"), {})
+        self.assertEqual(G.migrate_existing_users(["old", "new"]), [], "the panel's start does nothing more")
+        self.assertEqual(sorted(n for n in os.listdir(os.path.dirname(self.file)) if n.endswith(".tmp")), [])
+
     def test_an_unreadable_file_grants_nothing(self):
         with open(self.file, "w") as f:
             f.write("{not json")
