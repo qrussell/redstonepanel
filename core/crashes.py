@@ -507,10 +507,36 @@ def record(server, base, edition=None, env=None, crashed=True):
             pass
         return None
 
+RECOVERED_AFTER = 600              # running this long since the last crash: the card closes itself
+
+def _recovered(server, rec, now=None):
+    """True (and the record closed, as Dismiss would) once the server has run cleanly for
+    RECOVERED_AFTER seconds since a start after the crash: an old cause shouldn't stay on its
+    Overview and in Needs attention for a week after it was fixed."""
+    if not rec or rec.get("dismissed"):
+        return False
+    now = now or time.time()
+    try:
+        from core.platform import services
+        if services.unit_state(server) != "active":
+            return False
+        since = services.started_at(server)
+    except Exception:
+        return False
+    if not since or since <= rec.get("at", 0) or now - since < RECOVERED_AFTER:
+        return False
+    rec["dismissed"], rec["recovered"] = True, int(now)
+    try:
+        _save(server, rec)
+    except OSError:
+        pass
+    return True
+
 def get(server):
     rec = load(server)
     if rec and not (rec.get("server") == server):
         return None
+    _recovered(server, rec)
     if rec and rec.get("undo"):
         cur = _last_update(server)          # still there? (it may have been undone already)
         if not cur or cur.get("at") != rec["undo"].get("at"):
@@ -547,7 +573,7 @@ def attention(servers, now=None):
     out = []
     for name in servers:
         rec = load(name) if NAME_RE.fullmatch(name or "") else None
-        if not rec or rec.get("dismissed") or now - rec.get("at", 0) > SHOW_FOR:
+        if not rec or rec.get("dismissed") or now - rec.get("at", 0) > SHOW_FOR or _recovered(name, rec, now):
             continue
         why = summary(rec)
         verb = "crashed" if rec.get("crashed", True) else "stopped"

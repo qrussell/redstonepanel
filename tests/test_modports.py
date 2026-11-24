@@ -226,5 +226,36 @@ class CrashCard(unittest.TestCase):
         self.assertIn("port 25565", c[0]["text"])
 
 
+class Recovered(unittest.TestCase):
+    """A crash card closes itself once the server has run cleanly for a while after it."""
+    def setUp(self):
+        p = mock.patch.object(C, "CRASH_DIR", tempfile.mkdtemp(dir=TMP))
+        p.start()
+        self.addCleanup(p.stop)
+        C._save("minecraft-java-2", {"server": "minecraft-java-2", "at": 1000, "causes": [], "dismissed": False})
+
+    def state(self, active, since):
+        from core.platform import services
+        return (mock.patch.object(services, "unit_state", lambda s, *a, **k: "active" if active else "failed"),
+                mock.patch.object(services, "started_at", lambda s, *a, **k: since))
+
+    def run_with(self, active, since, now):
+        a, b = self.state(active, since)
+        with a, b:
+            return C.attention(["minecraft-java-2"], now=now)
+
+    def test_stays_while_crashing_or_just_restarted(self):
+        self.assertEqual(len(self.run_with(False, None, 5000)), 1)
+        self.assertEqual(len(self.run_with(True, 1020, 1020 + 60)), 1, "up for only a minute")
+        self.assertEqual(len(self.run_with(True, 900, 5000)), 1, "started before the crash")
+        self.assertFalse(C.load("minecraft-java-2")["dismissed"])
+
+    def test_closes_after_a_clean_run(self):
+        self.assertEqual(self.run_with(True, 1020, 1020 + C.RECOVERED_AFTER), [])
+        rec = C.load("minecraft-java-2")
+        self.assertTrue(rec["dismissed"])
+        self.assertEqual(rec["recovered"], 1020 + C.RECOVERED_AFTER)
+
+
 if __name__ == "__main__":
     unittest.main()
