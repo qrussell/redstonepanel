@@ -312,6 +312,11 @@ def unit_event(phase, server, env=None):
         return
     if phase == "start":
         event, message = "started", "started."
+        try:                                   # it now uses any mod port the panel moved
+            from core import modports
+            modports.started(server)
+        except Exception:
+            pass
     else:
         requested = stop_requested(server)
         event, message = describe_stop(os.environ if env is None else env, requested)
@@ -342,6 +347,11 @@ def explain_stop(server, env, crashed):
             d = line.split("=", 1)[1].strip()
     if not d or not os.path.isdir(d):
         return None
+    try:                                       # a mod port another server holds: move it before systemd restarts it
+        from core import modports
+        modports.resolve(only=[server])
+    except Exception as e:
+        _log(f"[PORTS] Checking {server}'s mod and plugin ports failed: {e}")
     rec = crashes.record(server, d, "Bedrock" if "bedrock_server" in _unit_text(server) else None,
                          dict(env), crashed=crashed)
     return crashes.summary(rec)
