@@ -718,7 +718,8 @@ the system updated.
 
 To report a security problem, please open a private
 [security advisory](https://github.com/qrussell/redstonepanel/security/advisories/new)
-rather than a public issue.
+rather than a public issue. The [security policy](SECURITY.md) says what to include and what
+to expect.
 
 ## Building from source
 

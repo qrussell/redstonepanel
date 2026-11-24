@@ -1,0 +1,33 @@
+# Dependabot on the GitHub mirror.
+#
+# GitLab (gitlab.cielocloud.dev/lab/redstonepanel) is the primary repository and GitHub is a
+# push mirror of it, so a Dependabot pull request must NOT be merged on GitHub: make the same
+# change in a GitLab merge request, and close the pull request once the mirror has it.
+#
+# There is no npm entry because the repository has no package.json (the Tailwind CLI version
+# is pinned in packaging/build-css.sh).
+version: 2
+updates:
+  # Actions used by .github/workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+
+  # requirements-dev.txt: what the unit tests install with pip. The panel itself runs on the
+  # system's packages (apt), which Dependabot cannot see.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
