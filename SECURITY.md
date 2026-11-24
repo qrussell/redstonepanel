@@ -53,6 +53,10 @@ Things that are by design, and so are not vulnerabilities on their own:
 - A panel **admin** effectively has root on the machine. That is stated in the
   [README](README.md#security-note). Getting admin rights *without* being given them is a
   vulnerability.
+- The terminal (1.21.10), when the owner turns it on, gives an admin a shell as a Linux account
+  whose password they type (or the Linux account they signed in with). Getting a shell as an
+  account without its password, as root without root being allowed, or as a helper, is a
+  vulnerability.
 - Trusted-LAN access, when the owner turns it on, lets devices on the local network in without
   signing in (never as an admin).
 - Problems in Minecraft itself, in server software (Paper, Fabric, Forge and so on), or in

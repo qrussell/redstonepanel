@@ -2082,6 +2082,55 @@ that still use an old copy of a library after any apt install. The package now i
 stand-in Phantom proxy and an ordinary service that all use a deleted library: only the
 ordinary one is restarted, and without the rule the game server would have been.
 
+### 1.21.10: a terminal in the panel *(planned)*
+
+**Why.** Quentin asked on 24 Nov 2026 for a terminal inside the panel, so an admin can fix
+something on the machine without a separate SSH program, from any browser or phone. It has to
+work without giving anyone the panel's own root. Placed after 1.21.9 (join pages through a
+proxy) and before 1.22 (Windows preview), at Quentin's choice: it is Linux-only, so it doesn't
+wait for Windows.
+
+**How.**
+- **Who.** A **⌨️ Terminal** button on the Dashboard (and on each member of the Cluster page)
+  for panel **admins**, only on a Linux machine and only when **Panel Settings → Terminal** is
+  on (off by default). `user` accounts and trusted-LAN visitors never get one, and the API
+  refuses them (`core/grants.py`: admin rules).
+- **As which account.** The shell runs as a Linux account, never as the panel. An admin who
+  signed in **with their Linux account** gets a shell as that account, with no prompt while the
+  sign-in is recent (**Skip the password for**, 15 minutes by default) and that account's
+  password after that. A **panel-only admin** gets a `login:` prompt and types a Linux account
+  and its password. Accounts are never linked by matching names: any admin can create a panel
+  account, so a name match would let them become any Linux user. `root` only when **Allow
+  logging in as root** is on; `nologin` accounts (such as `minecraft`) never.
+- **Checks.** The password is checked through PAM (as the panel's sign-in does) and never
+  reaches the shell or a log. With panel two-factor on, the code is asked after the password.
+  Wrong passwords count per account and per address in the sign-in failure store: 5 in 10
+  minutes blocks for 10 minutes, with 2 seconds after each.
+- **The shell.** `login -f -h <address> <account>` on a new pseudo-terminal (the
+  `core/platform` area `terminal`), so the account gets its own groups, home, limits, PAM
+  session (in the system log) and logind session, like a console login. The panel checks that the foreground process
+  runs as that account and closes it otherwise.
+- **The browser.** xterm.js 5.5 (MIT, vendored in `static/vendor/xterm`, loaded only when a
+  terminal opens) over a websocket. `POST /api/terminal/ticket` gives a one-use ticket for 30
+  seconds (cross-site checks apply); the websocket checks the ticket, the session cookie and its
+  Origin. HTTPS only, except from the machine itself. A phone gets a key row (Esc, Tab, Ctrl,
+  arrows).
+- **Limits.** Closes after N minutes with nothing typed (15 by default, warning a minute
+  before), after 12 hours, when the admin signs out (sign-out now also stops that cookie
+  opening terminals) or stops being an admin, and when the terminal is turned off. 3 per
+  admin, 10 per machine. **Open now** in Panel Settings lists them with **End**.
+- **Logging.** `[TERMINAL]` lines for every open, close (with why) and failed login; what is
+  typed is never recorded.
+- **Never on the join port.** The join pages' server has no `/api` and accepts no websocket.
+- **Clusters.** A node allows a terminal from the master only when its own admin turns on
+  **Allow a terminal from the cluster master** (the master can't change a node's settings). The
+  master copies bytes between the browser and the node's `/api/terminal/node-ws` (its token);
+  the node shows its own prompt and checks its own passwords. `CLUSTER_API` 8.
+- **Command line.** `redstonepanel terminal on|off`.
+
+**Size.** About 1.18's: one feature, one new dependency (`python3-websockets`, in Ubuntu's and
+Debian's archives; uvicorn needs it for websockets), one vendored library.
+
 ### 2.0: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already

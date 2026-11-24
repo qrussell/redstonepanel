@@ -70,8 +70,17 @@ DEFAULTS = {
     # join_cloudflare: Cloudflare's proxy (orange cloud) sends players here; requests from
     # Cloudflare's own networks may name the player in CF-Connecting-IP (core/cloudflare.py).
     "join_cloudflare": False,
+    # 1.21.10: the terminal (core/terminal.py): a shell as a Linux account, for admins. Off until
+    # an admin turns it on under Panel Settings > Terminal.
+    "terminal_enabled": False,
+    "terminal_idle_minutes": 15,          # closes after this long with nothing typed
+    "terminal_recent_minutes": 15,        # a Linux sign-in opens with no password for this long
+    "terminal_allow_root": False,         # typing root at the login prompt
+    "terminal_from_master": False,        # on a cluster node: the master may open terminals here
 }
 JOIN_PROXIES_MAX = 8
+TERMINAL_KEYS = ("terminal_enabled", "terminal_idle_minutes", "terminal_recent_minutes", "terminal_allow_root",
+                 "terminal_from_master")
 PANEL_NAME_MAX = 40
 CONNECTION_KEYS = ("https_mode", "http_port", "https_port", "cert_file", "key_file")
 HOSTNAME_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*$")
@@ -203,6 +212,18 @@ def validate(new):
     if s["join_proxy_only"] and not s["join_proxies"] and not s["join_cloudflare"]:
         raise SettingsError("Enter the proxy's address (or turn on Cloudflare) before allowing only the proxy.")
     s["join_url"] = clean_join_url(s["join_url"])
+
+    for key in ("terminal_enabled", "terminal_allow_root", "terminal_from_master"):
+        if not isinstance(s[key], bool):
+            raise SettingsError("Terminal settings must be on or off.")
+    for key, low, high, what in (("terminal_idle_minutes", 5, 120, "Close after"),
+                                 ("terminal_recent_minutes", 0, 60, "Skip the password for")):
+        try:
+            s[key] = int(s[key])
+        except (TypeError, ValueError):
+            raise SettingsError(f"{what} must be a number of minutes.")
+        if not low <= s[key] <= high:
+            raise SettingsError(f"{what} must be {low} to {high} minutes.")
 
     s["servers_folder"] = clean_servers_folder(s["servers_folder"])
     used = []

@@ -247,6 +247,10 @@ signed   GET     /api/auth/ssh-keys
 signed   POST    /api/auth/ssh-keys
 signed   DELETE  /api/auth/ssh-keys/{{fingerprint}}
 user     GET     /api/sftp
+user     GET     /api/terminal
+admin    POST    /api/terminal/ticket
+admin    GET     /api/terminal/sessions
+admin    DELETE  /api/terminal/sessions/{{sid}}
 user     GET     /api/servers
 user     GET     /api/host
 user     GET     /api/host/history

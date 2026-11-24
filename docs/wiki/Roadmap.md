@@ -10,6 +10,14 @@ with the reasoning behind each item, is in [docs/design/roadmap.md](../design/ro
 
 ## Next up
 
+### 1.21.10: a terminal in the panel
+
+A **Terminal** button on the Dashboard opens a shell on the machine in your browser, for
+admins only, on Linux. It runs as a Linux account, never as the panel: your own account if you
+signed in with it, or the account you log in with at its `login:` prompt. Off until an admin
+turns it on, HTTPS only, closed when idle, and every terminal is logged. In a cluster, a node's
+own admin decides whether the master may open one there.
+
 ### 1.21 to 1.24: RedstonePanel on Windows
 
 A native Windows version with every feature of the Linux one: the same panel in your browser,

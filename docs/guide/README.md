@@ -42,6 +42,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Get a Discord message when a server crashes | [Notifications](#notifications) |
 | Give a friend access to only some servers | [What a helper may do](#what-a-helper-may-do) |
 | Move files with FileZilla or WinSCP | [SFTP](#sftp-filezilla-winscp) |
+| Open a shell on the machine in the browser | [Terminal](#terminal) |
 | Turn on HTTPS | [Panel Settings](#17-panel-settings-name-https-sign-in) |
 | Manage servers on several machines | [Clusters](#18-clusters) |
 | Fix "players can't connect" or a lock-out | [Troubleshooting](#20-troubleshooting) |
@@ -574,6 +575,52 @@ On a cluster, point the proxy at the master only. It serves the pages of every n
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
 (**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
 **Mods**, **Plugins** or **Add-ons**.
+
+### Terminal
+
+Admins can open a shell on the machine from the browser: **⌨️ Terminal** at the top of the
+Dashboard, or on a machine's card on the Cluster page. It is a full terminal (colours, `htop`,
+`nano`, `sudo`), on a phone too, with a row of keys a phone keyboard doesn't have (Esc, Tab,
+Ctrl, arrows).
+
+It is **off** until an admin turns it on under **🛡️ Settings → Terminal**, and it only works
+over HTTPS, so what you type can't be read on your network.
+
+**Which account the shell runs as.** Never the panel's own (root). It is always a Linux account
+on that machine:
+
+- If you signed in to the panel **with your Linux account**, the terminal opens as that account.
+  For 15 minutes after signing in it opens straight away; after that it asks for that account's
+  password once (**Skip the password for** changes the 15 minutes; 0 always asks).
+- If you signed in with a **panel account**, the terminal shows a `login:` prompt. Type a Linux
+  account on that machine and its password, as you would over SSH. A panel account named like a
+  Linux account is not that account.
+- With [two-factor sign-in](#two-factor-sign-in) on, the terminal asks for a code after the
+  password.
+- `root` can't log in unless you tick **Allow logging in as root**: log in as yourself and use
+  `sudo`. Accounts that can't log in at all, like `minecraft`, can't log in here either.
+
+**Who can't.** User accounts (helpers) never get a terminal, whatever they're allowed to do on
+their servers, and neither do visitors let in by **trusted networks**. The join pages' port
+has no terminal.
+
+Good to know:
+
+- A terminal closes after 15 minutes with nothing typed (a minute's warning first; **Close
+  after** changes it), after 12 hours, when you sign out, and when the terminal is turned off.
+  Restarting or updating the panel closes open terminals too.
+- Each admin can have 3 open, and a machine 10. **Settings → Terminal → Open now** lists them
+  with an **End** button.
+- Five wrong passwords in 10 minutes block that account and your address for 10 minutes.
+- Every terminal that opens or closes, and every wrong password, is in the activity log
+  (`[TERMINAL] alex opened a shell as alex from 192.168.1.20`). What you type is never recorded.
+  The logins are also in the system's own log (`journalctl`, or `/var/log/auth.log`), as
+  `session opened for user alex`.
+- **On a cluster**, the master can open a terminal on a node only when that node's own admin
+  ticks **Allow a terminal from the cluster master** in the node's settings. You log in with an
+  account of the node; your password passes through the master, encrypted on both legs.
+- In an emergency, `sudo redstonepanel terminal off` turns it off from SSH.
+- Not on Windows yet: the button doesn't appear on a Windows machine.
 
 ## 4. Create or import a server
 
@@ -2046,6 +2093,7 @@ Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 | `redstonepanel set-name "NAME"` | Set the panel name (`""` = host name). |
 | `redstonepanel reset-security` | Back to plain HTTP on 8080 with sign-in required. |
 | `redstonepanel reset-2fa NAME` | Turn off two-factor sign-in for an account that lost its phone and recovery codes. |
+| `redstonepanel terminal on\|off` | Turn the [terminal](#terminal) on or off; off closes open terminals within a minute. |
 | `redstonepanel removed` | List servers uninstalled with Keep World. |
 | `redstonepanel restore NAME` | Restore a removed server. |
 | `redstonepanel backup NAME` | Back up a server now. |
