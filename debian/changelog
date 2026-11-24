@@ -1,3 +1,20 @@
+redstonepanel (1.21.8) noble; urgency=medium
+
+  * Security: a Bedrock player's name on Configuration > Players is checked
+    before it can reach the server's console, and the panel's Xbox ID
+    fallback runs the server as the minecraft account, not root.
+  * Security: the panel works in server folders with the minecraft
+    account's rights, so a link the server or a plugin puts there can't
+    make it read or change other files (settings, operators, whitelist,
+    downloads, world rename, Live Chat, installs, updates, restores).
+    Downloads leave links out. On first start, files the panel wrote in
+    server folders as root are handed to the minecraft account.
+  * Security: a world outside the server folder is never downloaded,
+    renamed or restored, and unknown server names are refused up front.
+  * Fixed: Java players kept their UUID on Configuration > Players.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Tue, 24 Nov 2026 04:31:29 -0000
+
 redstonepanel (1.21.7) noble; urgency=medium
 
   * Files tab: a file that is a list of name=value settings
