@@ -1,3 +1,29 @@
+redstonepanel (1.23.0) noble; urgency=medium
+
+  * Windows: Bedrock servers (Mojang's Windows build) with automatic
+    updates, and Phantom for LAN play.
+  * Windows: Quilt, Forge and NeoForge servers and modpacks; their
+    installers run as the new server's own account.
+  * Windows: hard memory and processor limits (Job Objects), performance
+    history, and crash explanations with Windows causes (a reserved port,
+    a locked file, a missing Visual C++ runtime, the memory limit).
+  * Windows: off-site backup copies to SSH storage (OpenSSH's sftp) and S3.
+  * Windows: Update now updates the panel from its GitHub release, SHA-256
+    checked; game servers stop for about a minute and start again.
+  * Windows: sign in with a Windows account in Administrators or a local
+    RedstonePanel group; one spelling per account.
+  * Windows: the Port forwarding page knows the router, and Needs attention
+    names ports Hyper-V, WSL or Docker reserved, a PC set to sleep and a
+    pending Windows Update restart.
+  * Windows: the panel's firewall rule also opens the HTTPS port when HTTPS
+    is on.
+  * The terminal stays Linux-only by design; clusters and SFTP come to
+    Windows in 1.24.
+  * A new Bedrock server skips 19132/19133 when another program holds them,
+    and Geyser's port is read on NeoForge and BungeeCord too.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Wed, 25 Nov 2026 04:45:00 -0000
+
 redstonepanel (1.22.0) noble; urgency=medium
 
   * Windows preview: a Windows installer (RedstonePanel-1.22.0-x64.msi)

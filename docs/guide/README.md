@@ -51,6 +51,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.23.0 | **🪟 Windows, the whole machine**: Bedrock, more loaders and modpacks, limits, off-site backups, **Update now** and Windows account sign-in. | [On Windows (preview)](#on-windows-preview) |
 | 1.21.10 | **⌨️ Terminal**: a shell on the machine in your browser, for admins, as a Linux account. | [Terminal](#terminal) |
 | 1.21.9 | **🔗 Join pages** can sit behind HAProxy or Cloudflare, on your own domain. | [Join pages through a proxy](#join-pages-through-a-proxy-haproxy-or-cloudflare-1219) |
 | 1.21.6 | **Player packs**: the mods players need, as one download on the join page that follows the server. | [Player packs](#player-packs) |
@@ -204,12 +205,12 @@ without slowing itself down.
 ### On Windows (preview)
 
 From 1.22 RedstonePanel also installs on **Windows 11** and **Windows Server 2022 or 2025**
-(64-bit Intel or AMD) with its own installer, no WSL needed. It is a **preview**: Java servers
-(Vanilla, Paper, Purpur and Fabric) on one computer, with backups and restore, schedules, the
-console, Live Chat, the file manager, add-ons, the firewall, crash explanations, webhooks and
-two-factor sign-in. Bedrock servers, Quilt, Forge and NeoForge, modpacks, memory and CPU
-limits, off-site backup storage, SFTP, clusters and updating from the panel come in later
-releases; until then the panel leaves them out instead of offering them.
+(64-bit Intel or AMD) with its own installer, no WSL needed. From 1.23 it runs everything one
+computer needs: Java servers of every type and Bedrock servers, with backups and off-site
+copies, schedules, the console, Live Chat, the file manager, add-ons, the firewall, memory and
+processor limits, crash explanations, webhooks, two-factor sign-in and **Update now**. It stays
+a **preview** until clusters and SFTP arrive in 1.24; until then the panel leaves those out.
+The [terminal](#terminal) is Linux-only by design: on Windows, open a command prompt on the PC.
 
 1. Download `RedstonePanel-x.y.z-x64.msi` from the
    [latest release](https://github.com/qrussell/redstonepanel/releases/latest) and open it.
@@ -219,13 +220,17 @@ releases; until then the panel leaves them out instead of offering them.
    `C:\ProgramData\RedstonePanel`; the folder's name can't have a space in it.
 3. Open **http://localhost:8080**. The user name is **admin**, and the password is in
    `first-sign-in.txt` in that folder (open it as an administrator). Change the password under
-   **Users**, then delete the file.
+   **Users**, then delete the file. You can also sign in with your own Windows account if it is
+   in **Administrators** (an admin), or in a local group named **RedstonePanel** that you make
+   for the people you want to let in.
 
 Java (Eclipse Temurin) is downloaded the first time a server needs it. Each game server is a
 Windows service (`minecraft-<name>`) running as its own account that can reach only its own
 folder; schedules are tasks under **RedstonePanel** in Task Scheduler, and game ports are rules
-in the **RedstonePanel** group in Windows Defender Firewall. To update, run the newer
-installer; to remove it, use **Settings → Apps → Installed apps**. Your worlds and backups stay
+in the **RedstonePanel** group in Windows Defender Firewall. To update, click **Update now** on
+the dashboard (from 1.23; game servers stop for about a minute), or run the newer installer.
+Needs attention also warns when the PC is set to sleep, when Windows Update waits to restart it,
+and when a server's port is in a range Hyper-V, WSL or Docker Desktop reserved. To remove it, use **Settings → Apps → Installed apps**. Your worlds and backups stay
 in the folder from step 2. More detail is in the wiki's
 [Installation](https://github.com/qrussell/redstonepanel/wiki/Installation#on-windows-preview)
 page.
