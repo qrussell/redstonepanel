@@ -1822,6 +1822,30 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     through a Windows client, and 1.18's SFTP and permissions confirmed on Windows. The
     preview label comes off. **Size:** medium.
 
+    **As built (1.24):** as planned, with `CLUSTER_API` 9. Members report `platform`; the
+    Cluster page and Panel Settings say *Linux* or *Windows*, and join codes come with a command
+    for each system. The Windows certificate code (the `cryptography` library standing in for
+    `openssl`) gained `req -verify`, `x509 -ext subjectAltName`, `verify -attime` and `enc` in
+    OpenSSL's own format, so cluster CAs, node certificates and encrypted cluster backups work
+    across systems. The name check is `core/winnames.py`: the source refuses before it stops
+    the server (the master asks with `for_windows`), and a Windows panel checks every archive,
+    pre-copy and restore too. Bedrock gets this system's program of the version it ran
+    (`updates.same_version`) or the newest, and the other system's program goes. SFTP runs on
+    Windows as `redstonepanel-sftp` (paramiko in the MSI). "HTTPS with my own certificate"
+    restarts the panel when certbot or win-acme renews the files. Added after testing: a server
+    moved away and back keeps its name, numbered (`minecraft-survival-2`); start, stop and
+    restart on a node wait up to 3 minutes for its answer; and, asked by Quentin, the installer's
+    Finish page opens the panel and the Start menu gets **RedstonePanel** (both open
+    `RedstonePanel.url`, which the panel rewrites on every start). Not possible: a Docker Desktop
+    container can't join a Windows master on the same PC (the master sees the PC's own address),
+    so that direction was tested with the roles swapped and in CI. Tests: 1,149 unit tests; the
+    Windows install and MSI tests on Server 2022 and 2025 (SFTP, a Windows master with an
+    encrypted backup read back, archives with bad names refused); the Linux release workflow;
+    and a real mixed cluster on Quentin's PC (a Linux master in Docker Desktop, the Windows panel
+    as its node): Java and Bedrock moves both ways with pre-copy, the name refusal, backup copies
+    both ways with a restore across, the cluster backup read by `openssl` on both systems, and
+    SFTP on the node, all passing.
+
 **Alongside 1.18 to 1.20:** new code that runs `systemctl`, `ufw`, `apt` or a shell tool goes
 in a small helper function, with no new hard-coded `/opt` or `/var` paths, so the port doesn't
 grow. A runner prototype on a Windows PC (start a Paper server as a service, send it `stop`,
