@@ -339,12 +339,9 @@ def parse_kv(text):
 
 
 def cgroup_stats(server):
-    """CPU throttling and memory-limit counters of a running server's cgroup (cgroup v2)."""
-    base = os.path.join(CGROUP_ROOT, f"{server}.service")
-    cpu = parse_kv(host._read(os.path.join(base, "cpu.stat")))
-    mem = parse_kv(host._read(os.path.join(base, "memory.events")))
-    return {"throttled_usec": cpu.get("throttled_usec"), "memory_max_events": mem.get("max"),
-            "oom_kills": mem.get("oom_kill")}
+    """CPU throttling and memory-limit counters of a running server (the cgroup's on Linux, the
+    Job Object's on Windows)."""
+    return services.limit_counters(server)
 
 
 def addon_count(d, loader):
@@ -912,6 +909,8 @@ def server_perf(server, rng="day"):
         held_back.append(f"Its CPU limit held it back {held['throttled_percent']:.0f} % of the last minute.")
     if view["memory_max"] and unit["memory"] and unit["memory"] >= 0.95 * view["memory_max"]:
         held_back.append("It's at its hard memory limit.")
+    elif online and view["memory_max"] and (cgroup_stats(server).get("memory_max_events") or 0) > 0:
+        held_back.append("It has reached its hard memory limit since it started.")
     if unit.get("Result") == "oom-kill":
         held_back.append("It was stopped for going over its hard memory limit.")
     return {

@@ -332,6 +332,11 @@ SYSTEM_ACCOUNTS = True              # accounts of this machine can sign in to th
 ACCOUNT_KIND = "Linux"
 
 
+def canonical_account(username):
+    """The one spelling of an account (Windows has several); on Linux the name itself, if it exists."""
+    return username if system_account_exists(username) else None
+
+
 def system_account_exists(username):
     try:
         pwd.getpwnam(username)
@@ -422,8 +427,36 @@ def fs():
     return os
 
 
+def default_gateway():
+    """The IPv4 default gateway from /proc/net/route, or None."""
+    import socket
+    import struct
+    try:
+        with open(os.path.join(paths.PROC, "net/route")) as f:
+            for line in f.readlines()[1:]:
+                p = line.split()
+                if len(p) > 3 and p[1] == "00000000" and int(p[3], 16) & 2:
+                    return socket.inet_ntoa(struct.pack("<L", int(p[2], 16)))
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def reserved_ports():
+    """Port ranges the system keeps for itself, [(proto, start, end)]: none on Linux (Windows:
+    Hyper-V, WSL and Docker Desktop reserve some)."""
+    return []
+
+
+def machine_notes():
+    """Needs attention notes about the machine itself (Windows: sleep, a pending Windows Update restart)."""
+    return []
+
+
 def hint(what, *args):
     """A sentence telling an administrator what to type or do, in this system's terms."""
+    if what == "ssh-client":
+        return "Install it with: sudo apt install openssh-client rsync"
     if what == "restart-panel":
         return "Restart it with: sudo systemctl restart redstonepanel"
     if what == "install-tools":

@@ -37,6 +37,9 @@ ASSETS = {      # machine -> (release file, sha256)
     "aarch64": ("phantom-linux-arm8", "86ef4ad5f9313d5a1f7e8c73c954dfc066076141eb55844693d54d501248fe85"),
     "armv7l": ("phantom-linux-arm7", "d04f4522e2dd8b693b7f6d9713f7490f8f6f09fecdfcc7d95adea174bd550db6"),
 }
+WINDOWS_ASSETS = {      # Windows (1.23): platform.machine() says AMD64 there
+    "AMD64": ("phantom-windows.exe", "3fda71e00b452d8bfe0f3670fc716ec1c15dad06ad94e1faa039031d216adc04"),
+}
 HOSTS = {"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
 BIN_DIR = paths.PHANTOM_DIR
 UNIT_DIR = proxies.UNIT_DIR
@@ -60,8 +63,12 @@ def unit_name(server):
     return f"phantom-{server}.service"
 
 
+def _assets():
+    return WINDOWS_ASSETS if paths.WINDOWS else ASSETS
+
+
 def binary_path():
-    return os.path.join(BIN_DIR, f"phantom-{VERSION}")
+    return os.path.join(BIN_DIR, f"phantom-{VERSION}" + (".exe" if paths.WINDOWS else ""))
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +188,7 @@ def status(server):
         blocker = (f"{server} uses the NetherNet transport (Bedrock's default since 1.26.50), and Phantom only relays the "
                    f"older RakNet protocol, so it can't carry this server's players. A NetherNet server "
                    f"announces itself to consoles on your network by itself, on UDP "
-                   f"{manager.NETHERNET_LAN_PORT}, which the panel opens in ufw. If it doesn't show under "
+                   f"{manager.NETHERNET_LAN_PORT}, which the panel opens in {firewall.NAME}. If it doesn't show under "
                    f"LAN Games, check that the consoles are on the same network as this machine.")
     elif port == LAN_PORT:
         blocker = (f"{server} uses port {LAN_PORT}, so it already shows up as a LAN game and Phantom "
@@ -203,7 +210,7 @@ def status(server):
 
 
 def machine_supported():
-    return platform.machine() in ASSETS
+    return platform.machine() in _assets()
 
 
 # ---------------------------------------------------------------------------
@@ -215,9 +222,9 @@ def ensure_binary():
     if os.path.isfile(path) and os.access(path, os.X_OK):
         return path
     arch = platform.machine()
-    if arch not in ASSETS:
+    if arch not in _assets():
         raise PhantomError(f"Phantom has no build for this machine ({arch}).")
-    name, sha256 = ASSETS[arch]
+    name, sha256 = _assets()[arch]
     from core import sources
     f = sources.download(f"{RELEASE}/{name}", HOSTS, "sha256", sha256)
     try:

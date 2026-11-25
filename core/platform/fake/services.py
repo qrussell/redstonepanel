@@ -229,3 +229,8 @@ def run_log(server, invocation=None, lines=300, timeout=10):
 
 
 assert paths      # the fake keeps the real path names; tests point them at temp folders
+
+
+def limit_counters(server):
+    return dict(fake.state.servers.get(server, {}).get("limit_counters")
+                or {"throttled_usec": None, "memory_max_events": None, "oom_kills": None})

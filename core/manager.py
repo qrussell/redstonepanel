@@ -38,15 +38,27 @@ TOOL_PACKAGES = {"java": "openjdk-25-jre-headless", "screen": "screen", "unzip":
 # Pi, an ARM VPS) run Java servers only.
 BEDROCK_MACHINES = ("x86_64", "amd64")
 
+# The program's file name: bedrock_server on Linux, bedrock_server.exe on Windows (1.23). A folder
+# with either is a Bedrock server's; a folder from the other system gets this system's program
+# downloaded before it runs here.
+BEDROCK_PROGRAMS = ("bedrock_server", "bedrock_server.exe")
+
 def bedrock_supported(machine=None):
-    if machine is None and paths.WINDOWS:
-        return False                               # the Windows preview (1.22) runs Java servers only
     return (machine or platform.machine()).lower() in BEDROCK_MACHINES
+
+def is_bedrock_folder(d):
+    """True when the folder holds Bedrock Dedicated Server (this system's program or the other's)."""
+    return any(os.path.isfile(os.path.join(d, p)) for p in BEDROCK_PROGRAMS)
+
+def has_bedrock_program(d):
+    """True when the folder holds the Bedrock program that runs on this system."""
+    return os.path.isfile(os.path.join(d, paths.BEDROCK_PROGRAM))
 
 def bedrock_unsupported_message():
     if paths.WINDOWS:
-        return ("Bedrock servers aren't in the Windows preview yet; they come in a later release. Java "
-                "servers work here, and Bedrock players can join one through Geyser.")
+        return (f"Bedrock servers can't run on this computer ({platform.machine()}): Mojang only makes Bedrock "
+                f"Dedicated Server for 64-bit Intel and AMD (x64) Windows. Java servers work here, and Bedrock "
+                f"players can join one through Geyser.")
     return (f"Bedrock servers can't run on this machine ({platform.machine()}): Mojang only makes Bedrock "
             f"Dedicated Server for 64-bit Intel and AMD (x86-64) machines. Java servers work here, and "
             f"Bedrock players can join one through Geyser.")
@@ -60,6 +72,11 @@ def require_tools(*tools):
     if missing:
         pkgs = " ".join(TOOL_PACKAGES.get(t, t) for t in missing)
         raise DependencyError(f"Missing {', '.join(missing)}. Install with: sudo apt install {pkgs}")
+
+def require_console():
+    """Bedrock has no RCON: its console is held by screen on Linux (the runner on Windows)."""
+    if not console.available():
+        require_tools("screen")
 
 def ensure_minecraft_user(home):
     """The .deb creates the 'minecraft' system user; older/manual installs create it on first deploy."""
@@ -544,7 +561,7 @@ def get_server_dir(svc_name):
 
 def _java_properties(dir_path):
     """Java Edition escapes server.properties like java.util.Properties; Bedrock doesn't."""
-    return not os.path.exists(os.path.join(dir_path, "bedrock_server"))
+    return not is_bedrock_folder(dir_path)
 
 def _read_text(path):
     if not os.path.exists(path):
@@ -654,7 +671,7 @@ def _used_ports(exclude_dir=None, mods=True):
         if name not in busy and not os.path.exists(_unit_path(name)) and os.path.realpath(path) not in in_use:
             continue
         props = read_properties(path)
-        is_bedrock = os.path.exists(os.path.join(path, "bedrock_server"))
+        is_bedrock = is_bedrock_folder(path)
         for k in PORT_KEYS:
             if is_bedrock and k == "rcon.port":
                 continue
@@ -669,6 +686,17 @@ def _port_bindable(port):
     """True if nothing else on the host is listening on this TCP port right now."""
     import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("0.0.0.0", port))
+            return True
+        except OSError:
+            return False
+
+def _udp_port_bindable(port):
+    """True if nothing else on the host holds this UDP port right now (a Bedrock server outside
+    the panel, or Geyser in a server the panel doesn't know)."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         try:
             s.bind(("0.0.0.0", port))
             return True
@@ -1108,6 +1136,15 @@ def java_for_folder(d):
     except javaservers.MissingJavaError as e:
         raise JavaMissing(e)
 
+def _bedrock_program_for_this_system(d):
+    """An imported or moved Bedrock folder made on the other system (bedrock_server on Windows,
+    bedrock_server.exe on Linux) gets this system's program downloaded; the world, packs and
+    settings stay."""
+    if not has_bedrock_program(d):
+        write_log(f"[SYSTEM] {os.path.basename(d)} has no {paths.BEDROCK_PROGRAM}; downloading the latest Bedrock release.")
+        _fetch_bedrock(d)
+    system.make_executable(os.path.join(d, paths.BEDROCK_PROGRAM))
+
 def _fetch_bedrock(d):
     """Downloads the latest Bedrock Dedicated Server and unpacks it into d, keeping the folder's
     own server.properties, permissions.json and allowlist.json (see core/updates.py)."""
@@ -1146,7 +1183,7 @@ def _write_unit(svc_name, mc_dir, edition, xms=None, xmx=None, java=paths.DEFAUL
         heap = default_heap()
         xms, xmx = xms or heap["xms"], xmx or heap["xmx"]
     if edition == "bedrock":
-        exec_start = console.start_command(svc_name, mc_dir, "./bedrock_server", paths.SCREEN)
+        exec_start = console.start_command(svc_name, mc_dir, "./" + paths.BEDROCK_PROGRAM, paths.SCREEN)
         env_vars = "Environment=\"LD_LIBRARY_PATH=.\""
     else:
         if jvm is not None:
@@ -1241,7 +1278,8 @@ def _reserve_name(edition):
         used = _used_ports()
         port, step = (25565, 1) if edition == "java" else (19132, 2)
         while (({port, port + 1} if edition == "bedrock" else {port}) & used
-               or (edition == "java" and not _port_bindable(port))):
+               or (edition == "java" and not _port_bindable(port))
+               or (edition == "bedrock" and not (_udp_port_bindable(port) and _udp_port_bindable(port + 1)))):
             port += step
         _busy.add(name)
         _busy_ports[name] = {port, port + 1} if edition == "bedrock" else {port}
@@ -1339,7 +1377,7 @@ def _unit_dirs():
 
 def _removed_edition(d, name, info):
     """'java', 'bedrock' or None, from the files first and the folder's name last."""
-    if os.path.isfile(os.path.join(d, "bedrock_server")):
+    if is_bedrock_folder(d):
         return "bedrock"
     if javaservers.is_java_folder(d):
         return "java"
@@ -1375,7 +1413,7 @@ def list_removed_servers():
             info = _read_removed_info(d)
             edition = _removed_edition(d, name, info)
             props = read_properties(d)
-        binary = "bedrock_server" if edition == "bedrock" else "server.jar"
+        binary = paths.BEDROCK_PROGRAM if edition == "bedrock" else "server.jar"
         removed_at = info.get("removed_at")
         removed.append({
             "name": name,
@@ -1449,7 +1487,7 @@ def restore_server(name, same_version=False):
         write_log(f"[RESTORE] Restoring {name} from {d}.")
         if edition != "java":                     # Java itself is checked below, per Minecraft version
             require_bedrock_machine()
-            require_tools("screen")
+            require_console()
         # The game account owns everything in the folder before the panel writes in it (as
         # the game account, so a link in the folder can't send a write elsewhere)
         ensure_minecraft_user(d)
@@ -1560,7 +1598,7 @@ def _import_unpacked(staging, root):
         write_log(f"[IMPORT] Backup was wrapped in the folder '{os.path.basename(root)}'; using its contents.")
 
     # Detect Edition from the files themselves
-    if os.path.isfile(os.path.join(root, "bedrock_server")):
+    if is_bedrock_folder(root):
         edition = "bedrock"
     elif javaservers.is_java_folder(root) or os.path.isfile(os.path.join(root, "server.properties")):
         edition = "java"
@@ -1600,7 +1638,7 @@ def _import_unpacked(staging, root):
 
         java = None
         if edition == "bedrock":
-            system.make_executable(f"{mc_dir}/bedrock_server")
+            _bedrock_program_for_this_system(mc_dir)
             write_screenrc(mc_dir)
         else:
             try:
@@ -1651,7 +1689,7 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
                 os.remove(os.path.join(mc_dir, REMOVED_INFO))
         port, old_port = _restore_ports(mc_dir, edition)
         if edition == "bedrock":
-            system.make_executable(f"{mc_dir}/bedrock_server")
+            _bedrock_program_for_this_system(mc_dir)
             write_screenrc(mc_dir)
         else:
             java = java or java_for_folder(mc_dir)
@@ -1822,7 +1860,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
         get_checked_template(template_id, edition)   # fail before downloading anything
     if edition == "bedrock":
         require_bedrock_machine()
-        require_tools("screen")
+        require_console()
 
     if plan.get("name") or plan.get("port"):
         svc_name, port = _reserve_chosen(edition, plan.get("name"), plan.get("port"))
@@ -1940,6 +1978,8 @@ def fallback_allowlist_xuid(server_name, gamertag):
     or line breaks), and the server runs as the game account, never as the panel (root)."""
     if not _valid_player_name(gamertag, java=False):
         return None
+    if paths.WINDOWS:
+        return None                  # the server's own account can't be borrowed for a quick run there
     d = get_server_dir(server_name)
     allowlist_path = os.path.join(d, "allowlist.json")
     
@@ -2364,6 +2404,8 @@ world.afterEvents.chatSend.subscribe((ev) => {
 '''
 
 def write_screenrc(mc_dir):
+    if paths.WINDOWS:
+        return                       # the runner keeps server.log itself
     with system.game_files(), open(os.path.join(mc_dir, "screenrc"), "w") as f:
         f.write("logfile flush 1\nlogfile " + os.path.join(mc_dir, "server.log") + "\n")
 

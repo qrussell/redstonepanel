@@ -93,7 +93,7 @@ def install(args):
         json.dump({"home": home}, f)
     load_panel(home)
     from core.platform import paths
-    from core.platform.windows import _win, services
+    from core.platform.windows import _win, firewall, services
 
     # Folders: the home is the panel's (administrators and the system); the units and Java are
     # readable by everyone, because each game server's own account has to read them
@@ -158,24 +158,26 @@ WantedBy=multi-user.target
     note = os.path.join(home, "first-sign-in.txt")
     if first and not auth.list_panel_users():
         password = "-".join(secrets.token_hex(3) for _ in range(3))
-        auth.create_panel_user("admin", password, "admin")
+        first_name = "admin"
+        if auth.linux_account_exists(first_name):          # a Windows account is called admin already
+            first_name = "panel-admin"
+        auth.create_panel_user(first_name, password, "admin")
         with open(note, "w", encoding="utf-8", newline="\r\n") as f:
             f.write("RedstonePanel\n\n"
                     f"Open:      http://localhost:{port}\n"
-                    "User name: admin\n"
+                    f"User name: {first_name}\n"
                     f"Password:  {password}\n\n"
                     "Change the password after signing in (the Password button), then delete this file.\n"
                     "More accounts: Users in the panel, or `redstonepanel add-user NAME` in an administrator prompt.\n")
-        say(f"Account 'admin' created; its password is in {note}")
+        say(f"Account '{first_name}' created; its password is in {note}")
 
-    if not args.no_firewall:
-        rule = _win.ps_quote(f"RedstonePanel web panel ({port}/tcp)")
-        r = _win.powershell(
-            f"Get-NetFirewallRule -Group 'RedstonePanel panel' -ErrorAction SilentlyContinue | Remove-NetFirewallRule; "
-            f"New-NetFirewallRule -DisplayName {rule} -Group 'RedstonePanel panel' -Direction Inbound -Action Allow "
-            f"-Protocol TCP -LocalPort {port} -Profile Any | Out-Null", timeout=120)
-        say(f"Firewall: port {port} open for the panel" if r.returncode == 0
-            else f"Couldn't open port {port} in the firewall: {(r.stderr or r.stdout).strip()[:200]}")
+    if not args.no_firewall:                        # HTTP, and HTTPS when it was turned on before an upgrade
+        st = settings.load()
+        ports = [port] + ([st.get("https_port") or 8443] if st.get("https_mode", "off") != "off" else [])
+        r = _win.powershell(firewall.panel_rule_script(ports, only_if_present=False), timeout=120)
+        shown = ", ".join(str(p) for p in ports)
+        say(f"Firewall: port{'s' if len(ports) > 1 else ''} {shown} open for the panel" if r.returncode == 0
+            else f"Couldn't open port {shown} in the firewall: {(r.stderr or r.stdout).strip()[:200]}")
 
     services.prepare()                               # the drop-in, the notification task, game servers' services
     # Game servers that started with Windows before an uninstall or upgrade do so again
@@ -202,7 +204,10 @@ WantedBy=multi-user.target
                     _win.start_service(svc)
             except OSError:
                 pass
-    say(f"RedstonePanel is installed. Open http://localhost:{port}")
+    st = settings.load()                             # HTTPS turned on since: say where the panel really is
+    url = (f"https://localhost:{st.get('https_port') or 8443}" if st.get("https_mode", "off") != "off"
+           else f"http://localhost:{port}")
+    say(f"RedstonePanel is installed. Open {url}")
     return 0
 
 

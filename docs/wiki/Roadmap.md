@@ -23,10 +23,13 @@ show everything the panel does. It arrives in four releases:
   one machine with Java servers: create, console, files, mods and plugins, backups, schedules,
   firewall, webhooks and two-factor sign-in. The first installer is unsigned, so Windows
   shows a warning; checksums are published with it.
-- **1.23: everything on one machine.** Bedrock servers with auto-update, Quilt, Forge,
-  NeoForge and modpacks, memory and CPU limits, off-site backups, SFTP, the terminal, panel
-  updates from the panel, and the port forwarding guide. (Performance history and crash
-  explanations already came with 1.22.)
+- **1.23: everything on one machine.** Bedrock servers with auto-update and Phantom, Quilt,
+  Forge, NeoForge and modpacks, hard memory and CPU limits, crash explanations for Windows
+  causes, off-site backups (SSH storage and S3), panel updates from the panel, signing in with
+  a Windows account, and Needs attention notes for ports Hyper-V or WSL reserved, a PC set to
+  sleep and a pending Windows Update restart. The terminal stays Linux-only by design: on
+  Windows the owner is usually at that computer and can open a command prompt there. SFTP
+  comes with 1.24.
 - **1.24: mixed clusters.** Windows and Linux machines in one cluster, with either as the
   master, and servers and backup copies moving between them. Windows stops being a preview.
 

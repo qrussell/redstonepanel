@@ -33,7 +33,7 @@ from urllib.parse import urlsplit, urljoin
 from core import bedrock_net
 from core import manager
 from core import settings as panel_settings
-from core.platform import paths
+from core.platform import paths, system
 
 DATA_FILE = "port-forwarding.json"
 NETHERNET_LAN_PORT = manager.NETHERNET_LAN_PORT
@@ -133,6 +133,24 @@ def overlaps(a, b):
     return a1 <= b2 and b1 <= a2
 
 
+def reserved_clash(spec, proto, reserved):
+    """The (start, end) of a range the system keeps for itself that spec/proto falls in, or None.
+    reserved: system.reserved_ports() ([(proto, start, end)]; Windows: Hyper-V, WSL, Docker)."""
+    for rproto, a, b in reserved or []:
+        if rproto == proto and overlaps(spec, f"{a}:{b}"):
+            return a, b
+    return None
+
+
+def reserved_text(spec, proto, rng):
+    a, b = rng
+    span = f"{a}" if a == b else f"{a}–{b}"
+    return (f"Windows keeps port{'s' if a != b else ''} {span} for itself (Hyper-V, WSL or Docker Desktop reserve "
+            f"them at start-up), and that includes {spec.replace(':', '-')}/{proto}: nothing can listen there, even "
+            f"with the port free. Give the server a port outside that range, or restart Windows and start the "
+            f"server before WSL or Docker.")
+
+
 def _row(port, proto, kind, what, note="", inside=None, check=None):
     return {"port": str(port), "inside": str(inside or port), "proto": proto, "kind": kind,
             "what": what, "note": note, "check": check}
@@ -142,7 +160,8 @@ def _row(port, proto, kind, what, note="", inside=None, check=None):
 # Java extras: Query, RCON, Geyser, Simple Voice Chat
 # ---------------------------------------------------------------------------
 GEYSER_CONFIGS = ("plugins/Geyser-Spigot/config.yml", "plugins/Geyser-Velocity/config.yml",
-                  "config/Geyser-Fabric/config.yml", "config/geyser/config.yml", "plugins/geyser/config.yml")
+                  "config/Geyser-Fabric/config.yml", "config/Geyser-NeoForge/config.yml",
+                  "plugins/Geyser-BungeeCord/config.yml", "config/geyser/config.yml", "plugins/geyser/config.yml")
 VOICE_CONFIGS = ("plugins/voicechat/voicechat-server.properties", "config/voicechat/voicechat-server.properties")
 
 
@@ -298,16 +317,8 @@ def _from_firewall_rules(s):
 # This machine
 # ---------------------------------------------------------------------------
 def default_gateway():
-    """The IPv4 default gateway from /proc/net/route, or None."""
-    try:
-        with open(os.path.join(paths.PROC, "net/route")) as f:
-            for line in f.readlines()[1:]:
-                p = line.split()
-                if len(p) > 3 and p[1] == "00000000" and int(p[3], 16) & 2:
-                    return socket.inet_ntoa(struct.pack("<L", int(p[2], 16)))
-    except (OSError, ValueError):
-        pass
-    return None
+    """The IPv4 default gateway (the router), or None."""
+    return system.default_gateway()
 
 
 def primary_ip(gateway=None):
@@ -354,6 +365,7 @@ def local_report(list_servers=None):
     servers = (list_servers or manager.list_servers)()
     fw = host.firewall()
     active = fw.get("active")
+    reserved = system.reserved_ports()
     out = []
     for s in servers:
         try:
@@ -362,6 +374,9 @@ def local_report(list_servers=None):
             rows, issues = _from_firewall_rules(s), [f"Couldn't read its settings: {e}"]
         for r in rows:
             r["ufw"] = host.ufw_allows_spec(fw["rules"], r["inside"], r["proto"]) if active else None
+            clash = reserved_clash(r["inside"], r["proto"], reserved) if r["kind"] != "never" else None
+            if clash:
+                issues = list(issues) + [reserved_text(r["inside"], r["proto"], clash)]
         out.append({"name": s["name"], "edition": s.get("edition"), "status": s.get("status"),
                     "motd": s.get("motd"), "port": s.get("port"), "transport": s.get("transport"),
                     "rows": rows, "issues": issues})
@@ -376,7 +391,8 @@ def local_report(list_servers=None):
     return {"name": panel_settings.display_name(), "lan_ip": primary_ip(gw), "lan_ips": lan_ips(), "gateway": gw,
             "ufw": {"installed": fw.get("installed"), "active": active},
             "web": {"port": web, "scheme": scheme},
-            "servers": out, "machine": machine}
+            "servers": out, "machine": machine,
+            "reserved": [{"proto": q, "start": a, "end": b} for q, a, b in reserved]}
 
 
 # ---------------------------------------------------------------------------

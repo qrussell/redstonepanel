@@ -11,6 +11,7 @@ The functions and their answers are the ones the Linux side gives ("active", "in
 import datetime
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -21,6 +22,7 @@ from core.platform.windows import _win, units
 SUFFIX = ".service"
 TASK_FOLDER = "\\" + _win.GROUP + "\\"
 GAME_PREFIX = "minecraft"
+PHANTOM_PREFIX = "phantom-"
 OWNED_PREFIXES = ("minecraft", "phantom-", "redstonepanel-")       # services the panel may create and remove
 
 
@@ -231,6 +233,11 @@ def _properties(unit_name):
              "MemoryCurrent": "[not set]", "CPUUsageNSec": "[not set]", "MemoryMax": "infinity",
              "CPUQuotaPerSecUSec": "infinity", "ActiveEnterTimestampMonotonic": "0",
              "ActiveEnterTimestamp": "", "NextElapseUSecRealtime": "", "LastTriggerUSec": ""}
+    if spec is not None:
+        from core.platform.windows import jobs
+        memory, cores = jobs.limits_from_spec(spec, units.get)
+        props["MemoryMax"] = str(memory) if memory else "infinity"
+        props["CPUQuotaPerSecUSec"] = jobs.systemd_quota(cores)
     if active == "active":
         usage = _json(unit_name, "usage.json")
         if usage and time.time() - float(usage.get("at", 0) or 0) < 30:
@@ -366,14 +373,21 @@ def _register(unit_name, spec=None):
         return None
     name = _service_name(unit_name)
     game = name.startswith(GAME_PREFIX)
+    # Phantom (1.23) is other people's code too: its own account, which may read its program only
+    phantom = name.startswith(PHANTOM_PREFIX) and bool(units.get(spec, "Unit", "X-RedstonePanel-Server"))
     command = subprocess.list2cmdline(_win.runner_command("service", unit_name))
     description = units.get(spec, "Unit", "Description", name)
     journal = paths.journal_dir(unit_name)
     os.makedirs(journal, exist_ok=True)
-    account = _win.service_account(name) if game else None
+    account = _win.service_account(name) if game or phantom else None
     created = _win.ensure_service(name, command, f"RedstonePanel: {description}",
                                   f"{description}. Managed by RedstonePanel; described by "
                                   f"{paths.unit_file(unit_name)}.", account)
+    if phantom and created:
+        sid = _win.service_sid(name)
+        _win.grant(journal, sid)
+        if os.path.isdir(paths.PHANTOM_DIR):
+            _win.grant(paths.PHANTOM_DIR, sid, rights="RX")
     if game:
         # The server's own account: its folder and its output, nothing else
         folder = units.get(spec, "Service", "WorkingDirectory", "")
@@ -520,6 +534,8 @@ def reload(elevate=False, quiet=False):
             cfg = _win.service_config(name)
             if not _win.is_ours(cfg):
                 continue                              # not one of ours
+            if f" {TASK_FLAG} " in (cfg.get("command") or ""):
+                continue                              # setting a new server up (run_as_server)
             _win.stop_service(name, wait=120)
             _win.delete_service(name)
         except OSError as e:
@@ -664,11 +680,115 @@ def run_detached(name, command, description=None, low_priority=False, no_block=F
 
 
 # ---------------------------------------------------------------------------
+# A program as a server's own account (1.23: mod loader installers)
+# ---------------------------------------------------------------------------
+TASK_FLAG = "--task"
+
+
+def task_command(unit_name, task):
+    """The service command line that runs one task (argv, cwd, env, timeout) as the service's
+    account instead of the server. It still reads "runner.py service UNIT", so it is the panel's."""
+    import base64
+    blob = base64.urlsafe_b64encode(json.dumps(task, separators=(",", ":")).encode("utf-8")).decode("ascii")
+    return subprocess.list2cmdline(_win.runner_command("service", unit_name, TASK_FLAG, blob))
+
+
+def run_as_server(server, argv, cwd, env=None, timeout=None):
+    """Runs argv in cwd as the server's own account (NT SERVICE\\<server>) and waits for it.
+    Windows only starts a program as a virtual account through that account's service, so the
+    server's service is pointed at the task for one run (made for the occasion if the server is
+    new), started, and put back. The server must be stopped. Returns a CompletedProcess with the
+    output; raises subprocess.TimeoutExpired when it runs past timeout."""
+    unit_name = unit(server)
+    state, _pid = _win.service_status(server)
+    if state not in (None, "stopped"):
+        return _done(1, stderr=f"{server} is running; it must be stopped first.")
+    if state is not None and not _win.is_ours(_win.service_config(server)):
+        return _done(1, stderr=f"Windows has a service named {server} that RedstonePanel didn't make.")
+    journal = paths.journal_dir(unit_name)
+    os.makedirs(journal, exist_ok=True)
+    out_path, result_path = os.path.join(journal, "task-output.log"), os.path.join(journal, "task-result.json")
+    for f in (out_path, result_path):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    temp = os.path.join(cwd, ".redstonepanel-temp")
+    os.makedirs(temp, exist_ok=True)
+    env = dict(env or {}, TEMP=temp, TMP=temp)
+    task = {"argv": [str(a) for a in argv], "cwd": cwd, "env": env, "timeout": timeout}
+    _win.ensure_service(server, task_command(unit_name, task), f"RedstonePanel: {server} (setting up)",
+                        f"Setting up {server}. Managed by RedstonePanel.", _win.service_account(server))
+    sid = _win.service_sid(server)
+    _win.grant(journal, sid)
+    _win.grant(cwd, sid)
+    try:
+        _win.inherit_rights_below(cwd)
+    except (OSError, AttributeError):
+        pass
+    timed_out = False
+    try:
+        _win.start_service(server, wait=60)
+        deadline = time.time() + (timeout or 3600) + 30
+        while _win.service_status(server)[0] not in ("stopped", None):
+            if time.time() > deadline:
+                timed_out = True
+                _win.stop_service(server, wait=60)
+                break
+            time.sleep(1)
+    finally:
+        try:
+            if units.load(unit_name) is not None:
+                _register(unit_name)                     # back to running the server
+            else:
+                _win.delete_service(server)              # a new server: made again with its unit
+        except OSError as e:
+            _log(f"[WARNING] Couldn't put the service {server} back after setting it up: {e}")
+        shutil.rmtree(temp, ignore_errors=True)
+    try:
+        with open(out_path, encoding="utf-8", errors="replace") as f:
+            output = f.read()
+    except OSError:
+        output = ""
+    if timed_out:
+        raise subprocess.TimeoutExpired(argv, timeout or 0, output)
+    try:
+        with open(result_path, encoding="utf-8") as f:
+            code = int(json.load(f).get("code"))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return _done(1, stdout=output, stderr="The task didn't say how it ended.")
+    return subprocess.CompletedProcess(argv, code, output, "")
+
+
+# ---------------------------------------------------------------------------
 # Limits
 # ---------------------------------------------------------------------------
 def set_runtime_limits(server, memory_max=None, cpu=None):
-    """Not in the Windows preview: limits on a running server come with 1.23 (Job Objects)."""
-    return _done(1, stderr="Limits on a running server aren't in the Windows preview yet.")
+    """Applies a memory cap (bytes) and processor share (cores, e.g. 1.5) to a running server now,
+    without a restart: the runner's Job Object, opened by its name (jobs.py). None lifts that
+    limit. The drop-in (core/perf.py) is what the next start reads."""
+    from core.platform.windows import jobs
+    h = jobs.open_named(unit(server))
+    if not h:
+        return _done(0, stdout="not running")           # the drop-in applies when it starts
+    try:
+        jobs.set_limits(h, memory_max, cpu)
+    except OSError as e:
+        return _done(1, stderr=str(e))
+    finally:
+        jobs.close(h)
+    _log(f"{unit(server)}: limits now memory={memory_max or 'none'} cpu={cpu or 'none'}")
+    return _done()
+
+
+def limit_counters(server):
+    """How the server's hard limits held it back while running: {"throttled_usec": None (Windows
+    doesn't count time held back by its processor cap), "memory_max_events": times it reached its
+    memory limit (0 or 1 per run), "oom_kills": None}."""
+    usage = _json(unit(server), "usage.json") or {}
+    hits = usage.get("memory_limit_hits")
+    return {"throttled_usec": None, "memory_max_events": int(hits) if isinstance(hits, (int, float)) else None,
+            "oom_kills": None}
 
 
 # ---------------------------------------------------------------------------

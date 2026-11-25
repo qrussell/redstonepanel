@@ -397,6 +397,61 @@ class NoUnixOnlyCalls(unittest.TestCase):
         self.assertTrue(major is not None)
 
 
+class Limits(unittest.TestCase):
+    """1.23: hard limits are Job Object limits read from the same drop-in systemd reads."""
+
+    def test_the_drop_in_values(self):
+        from core.platform.windows import jobs
+        self.assertEqual(jobs.memory_bytes("3221225472"), 3 << 30)
+        self.assertEqual(jobs.memory_bytes("3G"), 3 << 30)
+        self.assertEqual(jobs.memory_bytes("1536M"), 1536 << 20)
+        self.assertIsNone(jobs.memory_bytes("infinity"))
+        self.assertIsNone(jobs.memory_bytes(""))
+        self.assertEqual(jobs.cpu_cores("150%"), 1.5)
+        self.assertIsNone(jobs.cpu_cores(""))
+        self.assertIsNone(jobs.cpu_cores("0%"))
+
+    def test_processor_rate_is_a_share_of_the_whole_machine(self):
+        from core.platform.windows import jobs
+        self.assertEqual(jobs.cpu_rate(1.5, 4), 3750)
+        self.assertEqual(jobs.cpu_rate(0.01, 64), 2)
+        self.assertEqual(jobs.cpu_rate(0.0001, 64), 1)
+        self.assertIsNone(jobs.cpu_rate(4, 4))          # the whole machine: no cap
+        self.assertIsNone(jobs.cpu_rate(None, 4))
+        self.assertEqual(jobs.systemd_quota(1.5), "1.500000s")
+        self.assertEqual(jobs.systemd_quota(None), "infinity")
+
+    def test_the_runner_reads_them_from_the_limits_drop_in(self):
+        from core import perf
+        from core.platform.windows import jobs
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "minecraft-java.service"), "w") as f:
+                f.write("[Service]\nExecStart=java -jar server.jar\n")
+            os.makedirs(os.path.join(d, "minecraft-java.service.d"))
+            with open(os.path.join(d, "minecraft-java.service.d", perf.DROPIN_NAME), "w") as f:
+                f.write(perf.dropin_text(3 << 30, 1.5))
+            spec = units.load("minecraft-java.service", d)
+            self.assertEqual(jobs.limits_from_spec(spec, units.get), (3 << 30, 1.5))
+
+    def test_a_job_is_named_for_its_server_and_closed_to_the_game(self):
+        from core.platform.windows import jobs
+        self.assertEqual(jobs.job_name("minecraft-java.service"), "Global\\RedstonePanel.job.minecraft-java")
+        self.assertEqual(jobs.JOB_SDDL, "D:P(A;;GA;;;SY)(A;;GA;;;BA)")    # the system and administrators only
+
+    def test_reaching_the_limit(self):
+        from core.platform.windows import jobs
+        self.assertTrue(jobs.at_limit(1 << 30, (1 << 30) - (1 << 20)))
+        self.assertFalse(jobs.at_limit(1 << 30, 512 << 20))
+        self.assertFalse(jobs.at_limit(None, 1 << 30))
+
+    def test_a_stop_at_the_limit_is_news_the_notification_task_takes(self):
+        from core.platform.windows import runner
+        ok = {"kind": "stop", "requested": "0", "result": "oom-kill", "code": "exited", "status": "1",
+              "invocation": "a" * 32}
+        self.assertTrue(runner._valid_event(ok))
+        self.assertFalse(runner._valid_event(dict(ok, result="whatever")))
+
+
 class Preview(unittest.TestCase):
     """What the Windows preview doesn't do yet is refused in one sentence; reading still works."""
 
@@ -406,17 +461,18 @@ class Preview(unittest.TestCase):
         except ImportError:
             self.skipTest("needs fastapi")
         for method, path in (("POST", "/api/settings/cluster"), ("POST", "/api/cluster/moves"),
-                             ("PUT", "/api/settings/sftp"), ("PUT", "/api/servers/minecraft-a/resources"),
-                             ("POST", "/api/panel/update"), ("POST", "/api/settings/backup-storage"),
-                             ("PUT", "/api/servers/minecraft-a/offsite/t1"), ("POST", "/api/servers/modpack"),
-                             ("POST", "/api/servers/minecraft-a/modpack/update"),
-                             ("POST", "/api/servers/minecraft-a/phantom/install")):
+                             ("PUT", "/api/settings/sftp")):
             self.assertIn("Windows preview", main.not_yet(method, path, windows=True) or "", f"{method} {path}")
             self.assertIsNone(main.not_yet(method, path, windows=False), f"{method} {path}")
         for method, path in (("GET", "/api/settings/cluster"), ("POST", "/api/servers/deploy"),
                              ("POST", "/api/servers/minecraft-a/backups"), ("PUT", "/api/settings"),
                              ("PUT", "/api/settings/notifications"), ("POST", "/api/java/runtimes/install"),
-                             ("GET", "/api/servers/minecraft-a/modpack")):
+                             ("GET", "/api/servers/minecraft-a/modpack"), ("POST", "/api/servers/modpack"),
+                             ("POST", "/api/settings/backup-storage"), ("PUT", "/api/servers/minecraft-a/offsite/t1"),
+                             ("POST", "/api/servers/minecraft-a/modpack/update"),
+                             ("PUT", "/api/servers/minecraft-a/resources"),
+                             ("POST", "/api/panel/update"), ("POST", "/api/panel/update/check"),
+                             ("POST", "/api/servers/minecraft-a/phantom/install")):
             self.assertIsNone(main.not_yet(method, path, windows=True), f"{method} {path}")
 
     def test_loaders_set_up_by_an_installer_are_refused_where_it_cannot_be_confined(self):
@@ -425,15 +481,434 @@ class Preview(unittest.TestCase):
             for loader in ("quilt", "forge", "neoforge"):
                 with self.assertRaises(javaservers.JavaServerError) as e:
                     javaservers.list_versions(loader)
-                self.assertIn("Windows preview", str(e.exception))
+                self.assertIn("can't be run as the game account", str(e.exception))
             javaservers.require_installer_support("fabric")
             javaservers.require_installer_support("paper")
 
-    def test_bedrock_is_refused_on_windows(self):
+    def test_bedrock_runs_on_x64_windows_only(self):
         from core import manager
         with mock.patch.object(manager.paths, "WINDOWS", True):
-            self.assertFalse(manager.bedrock_supported())
-            self.assertIn("Windows preview", manager.bedrock_unsupported_message())
+            self.assertTrue(manager.bedrock_supported("AMD64"))
+            self.assertFalse(manager.bedrock_supported("ARM64"))
+            self.assertIn("x64) Windows", manager.bedrock_unsupported_message())
+
+
+class Installers(unittest.TestCase):
+    """1.23: Quilt, Forge and NeoForge installers run as the server's own account, through its
+    service, once."""
+
+    def test_a_marked_command_runs_through_the_servers_service(self):
+        from core.platform.windows import services, system
+        cmd = system.as_game_account(["java", "-jar", "installer.jar", "--installServer", "D:\\s\\minecraft-a"])
+        self.assertTrue(system.can_run_as_game_account())
+        self.assertEqual(cmd[0], system.AS_SERVER)
+        seen = {}
+
+        def fake_run(server, argv, cwd, env, timeout):
+            seen.update(server=server, argv=argv, cwd=cwd, env=env, timeout=timeout)
+            return "done"
+        with mock.patch.object(system, "_server_for", return_value="minecraft-a"), \
+                mock.patch.object(services, "run_as_server", fake_run), \
+                mock.patch.dict(os.environ, {"KEEP": "same"}):
+            r = system.run_program(cmd, cwd="D:\\s\\minecraft-a", env={"KEEP": "same", "HOME": "D:\\s\\minecraft-a"},
+                                   timeout=900)
+        self.assertEqual(r, "done")
+        self.assertEqual(seen["server"], "minecraft-a")
+        self.assertEqual(seen["argv"][:2], ["java", "-jar"])
+        self.assertEqual(seen["env"], {"HOME": "D:\\s\\minecraft-a"})       # only what differs
+        with mock.patch.object(system, "_server_for", return_value=None):
+            self.assertEqual(system.run_program(cmd, cwd="C:\\Windows").returncode, 1)
+
+    def test_the_task_rides_on_a_command_line_that_is_still_the_panels(self):
+        from core.platform.windows import runner, services
+        task = {"argv": ["java", "-jar", "x.jar"], "cwd": "D:\\s\\minecraft-a", "env": {"TEMP": "t"}, "timeout": 60}
+        line = services.task_command("minecraft-a.service", task)
+        self.assertIn(" service minecraft-a.service --task ", line)
+        self.assertTrue(_win.is_ours({"command": line}))
+        self.assertEqual(runner.read_task(line.rsplit(" ", 1)[1]), task)
+        with self.assertRaises(ValueError):
+            runner.read_task("e30=")                               # {} is not a task
+
+    def test_forge_starts_from_its_windows_arguments_file(self):
+        from core import javaservers
+        with tempfile.TemporaryDirectory() as d:
+            base = os.path.join(d, "libraries", "net", "minecraftforge", "forge", "1.21.1-52.0.1")
+            os.makedirs(base)
+            for n in ("unix_args.txt", "win_args.txt"):
+                open(os.path.join(base, n), "w").close()
+            info = {"loader": "forge", "launch": "@libraries/net/minecraftforge/forge/1.21.1-52.0.1/unix_args.txt"}
+            self.assertTrue(javaservers.launch_args(d, info).endswith("/unix_args.txt"))
+            with mock.patch.object(javaservers.paths, "WINDOWS", True):
+                self.assertTrue(javaservers.launch_args(d, info).endswith("/win_args.txt"))
+                self.assertTrue(os.path.isfile(javaservers.launch_file(d, info)))
+
+    def test_copying_as_the_system_never_goes_through_a_link(self):
+        from core.platform.windows import system
+        with tempfile.TemporaryDirectory() as t:
+            src, dest, outside = (os.path.join(t, n) for n in ("src", "dest", "outside"))
+            os.makedirs(os.path.join(src, "mods"))
+            open(os.path.join(src, "mods", "a.jar"), "w").close()
+            os.makedirs(dest)
+            os.makedirs(outside)
+            os.symlink(outside, os.path.join(dest, "mods"))
+            r = system.copy_into(src, dest)
+            self.assertEqual(r.returncode, 1)
+            self.assertEqual(os.listdir(outside), [])
+            open(os.path.join(outside, "keep.txt"), "w").close()
+            system.remove_files(dest, [os.path.join("mods", "keep.txt")])
+            self.assertTrue(os.path.exists(os.path.join(outside, "keep.txt")))
+
+
+class OffsiteOverSftp(unittest.TestCase):
+    """1.23: SSH storage from Windows uses sftp (Windows has ssh and sftp, not rsync)."""
+
+    def test_upload_resumes_a_part_with_reput_and_download_uses_get(self):
+        from core import backup_targets as bt
+        t = {"type": "ssh", "host": "nas.lan", "port": 2222, "user": "rp", "folder": "~/backups"}
+        target, batches, calls = bt.SSHTarget(t), [], []
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            if cmd[0] == bt.SFTP:
+                with open(cmd[cmd.index("-b") + 1]) as f:
+                    batches.append(f.read())
+                return mock.Mock(returncode=0, stdout="", stderr="")
+            text = cmd[-1]
+            out = "PARTIAL\n" if "-f" in text and ".partial" in text else ""
+            return mock.Mock(returncode=0, stdout=out, stderr="")
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(bt, "USE_SFTP", True), \
+                mock.patch.object(bt, "SSH_DIR", d), mock.patch.object(bt, "ensure_key", return_value="k"), \
+                mock.patch.object(bt.subprocess, "run", fake_run):
+            target.upload("C:\\RP\\backups\\minecraft-a\\b.tar.gz", "pc-1a2b", "minecraft-a", "b.tar.gz", "0" * 64, 10)
+            target.download("pc-1a2b", "minecraft-a", "b.tar.gz", "C:\\RP\\tmp\\b.tar.gz")
+        self.assertIn('reput "C:/RP/backups/minecraft-a/b.tar.gz" "backups/pc-1a2b/minecraft-a/b.tar.gz.partial"', batches[0])
+        self.assertIn("chmod 600", batches[0])
+        self.assertIn('get "backups/pc-1a2b/minecraft-a/b.tar.gz" "C:/RP/tmp/b.tar.gz"', batches[1])
+        sftp = next(c for c in calls if c[0] == bt.SFTP)
+        self.assertIn("-P", sftp)                     # sftp's port option
+        self.assertNotIn("-p", sftp)
+        self.assertFalse(any(c[0] == bt.RSYNC for c in calls))
+
+    def test_the_openssh_client_that_comes_with_windows(self):
+        layout = paths.windows_layout("C:\\RP", environ={"SystemRoot": "C:\\Windows"})
+        self.assertTrue(layout["SSH_PROGRAM"].replace("/", "\\").lower().endswith("system32\\openssh\\ssh.exe"))
+        self.assertTrue(layout["SFTP_PROGRAM"].lower().endswith("sftp.exe"))
+
+
+class Bedrock(unittest.TestCase):
+    """1.23: Bedrock Dedicated Server's Windows build, from the same download-links API."""
+    LINKS = {"result": {"links": [
+        {"downloadType": "serverBedrockLinux",
+         "downloadUrl": "https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.66.1.zip"},
+        {"downloadType": "serverBedrockWindows",
+         "downloadUrl": "https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.26.66.1.zip"}]}}
+
+    def test_the_windows_download_is_picked_on_windows(self):
+        from core import updates
+        win = updates.parse_bedrock_links(self.LINKS, "serverBedrockWindows")
+        self.assertIn("/bin-win/", win["url"])
+        self.assertEqual(win["version"], "1.26.66.1")
+        self.assertIn("/bin-linux/", updates.parse_bedrock_links(self.LINKS, "serverBedrockLinux")["url"])
+        self.assertEqual(paths.windows_layout("C:\\RP")["BEDROCK_DOWNLOAD"], "serverBedrockWindows")
+        self.assertEqual(paths.windows_layout("C:\\RP")["BEDROCK_PROGRAM"], "bedrock_server.exe")
+
+    def test_a_folder_from_either_system_is_a_bedrock_server(self):
+        from core import manager
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(manager.is_bedrock_folder(d))
+            open(os.path.join(d, "bedrock_server.exe"), "w").close()
+            self.assertTrue(manager.is_bedrock_folder(d))
+            self.assertFalse(manager._java_properties(d))
+            with mock.patch.object(manager.paths, "BEDROCK_PROGRAM", "bedrock_server.exe"):
+                self.assertTrue(manager.has_bedrock_program(d))
+            self.assertFalse(manager.has_bedrock_program(d))          # Linux needs its own program
+
+    def test_the_console_is_logged_to_server_log_for_bedrock_only(self):
+        from core.platform.windows import runner
+        with tempfile.TemporaryDirectory() as d:
+            def program(exe):
+                spec = units.parse(f"[Service]\nWorkingDirectory={d}\nExecStart={os.path.join(d, exe)}\n")
+                return runner.Program("minecraft-x.service", spec, runner.Journal("minecraft-x.service", d))
+            log = program("bedrock_server.exe")._console_log()
+            self.assertIsNotNone(log)
+            log.close()
+            self.assertIsNone(program("java.exe")._console_log())
+
+    def test_phantom_has_a_pinned_windows_build(self):
+        from core import phantom
+        name, sha = phantom.WINDOWS_ASSETS["AMD64"]
+        self.assertEqual(name, "phantom-windows.exe")
+        self.assertEqual(len(sha), 64)
+        with mock.patch.object(phantom.paths, "WINDOWS", True), mock.patch.object(phantom.platform, "machine",
+                                                                                  return_value="AMD64"):
+            self.assertTrue(phantom.machine_supported())
+            self.assertTrue(phantom.binary_path().endswith(".exe"))
+
+
+class PanelUpdate(unittest.TestCase):
+    """1.23: the panel updates itself from the MSI on the GitHub release, checked by SHA-256."""
+    MSI = "RedstonePanel-1.23.0-x64.msi"
+
+    def release(self, **extra):
+        msi = {"name": self.MSI, "browser_download_url": f"https://github.com/qrussell/redstonepanel/releases/download/v1.23.0/{self.MSI}",
+               "size": 40 << 20}
+        msi.update(extra)
+        return {"tag_name": "v1.23.0", "html_url": "https://github.com/qrussell/redstonepanel/releases/tag/v1.23.0",
+                "assets": [{"name": "redstonepanel_1.23.0_all.deb", "browser_download_url": "https://github.com/x.deb"}, msi,
+                           {"name": self.MSI + ".sha256", "browser_download_url": msi["browser_download_url"] + ".sha256"}]}
+
+    def setUp(self):
+        from core.platform.windows import panelpkg
+        self.p = panelpkg
+        self.d = tempfile.mkdtemp(dir=TMP)
+        patcher = mock.patch.object(panelpkg, "folder", return_value=self.d)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_release_must_have_an_installer_and_its_checksum(self):
+        info = self.p.parse_release(self.release(digest="sha256:" + "AB" * 32))
+        self.assertEqual(info["version"], "1.23.0")
+        self.assertEqual(info["digest"], "ab" * 32)
+        r = self.release()
+        r["assets"] = r["assets"][:2]                       # no .sha256
+        self.assertIsNone(self.p.parse_release(r))
+        self.assertIsNone(self.p.parse_release(dict(self.release(), prerelease=True)))
+        self.assertIsNone(self.p.parse_release({"assets": [{"name": "RedstonePanel-1.23.0-x64.msi.exe"}]}))
+
+    def test_github_is_asked_once_a_day(self):
+        calls = []
+        fetch = lambda: calls.append(1) or self.release()            # noqa: E731
+        self.assertEqual(self.p.latest(fetch=fetch)["version"], "1.23.0")
+        self.assertEqual(self.p.latest(fetch=fetch)["version"], "1.23.0")
+        self.assertEqual(len(calls), 1)
+        self.p.latest(refresh=True, fetch=fetch)
+        self.assertEqual(len(calls), 2)
+
+        def down():
+            raise OSError("offline")
+        self.assertEqual(self.p.latest(fetch=down)["version"], "1.23.0")      # the saved answer
+        with self.assertRaises(OSError):
+            self.p.latest(refresh=True, fetch=down)                          # Check for updates says so
+
+    def test_checksum_lines(self):
+        h = "0123456789abcdef" * 4
+        self.assertEqual(self.p.expected_sha256(f"{h}  {self.MSI}\n", self.MSI), h)
+        self.assertEqual(self.p.expected_sha256(f"{h.upper()} *{self.MSI}", self.MSI), h)
+        self.assertIsNone(self.p.expected_sha256(f"{h}  other.msi", self.MSI))
+        self.assertIsNone(self.p.expected_sha256("not a hash", self.MSI))
+
+    def test_only_github_addresses(self):
+        for url in ("http://github.com/x.msi", "https://example.com/x.msi", "https://github.com.evil.net/x.msi"):
+            with self.assertRaises(self.p.Problem):
+                self.p._open(url)
+
+    def fake_open(self, body):
+        import hashlib
+        import io
+        good = hashlib.sha256(body).hexdigest()
+
+        class R(io.BytesIO):
+            def __enter__(self):
+                return self
+
+        def opener(sums):
+            def _open(url, timeout=60):
+                return R(sums.encode() if url.endswith(".sha256") else body)
+            return _open
+        return good, opener
+
+    def test_a_download_that_does_not_match_is_refused(self):
+        good, opener = self.fake_open(b"MSI" * 1000)
+        info = self.p.parse_release(self.release())
+        with mock.patch.object(self.p, "_open", opener(f"{'0' * 64}  {self.MSI}")):
+            with self.assertRaises(self.p.Problem):
+                self.p.download(info, out=lambda *_: None)
+        self.assertEqual(os.listdir(self.d), [])
+        with mock.patch.object(self.p, "_open", opener(f"{good}  {self.MSI}")):
+            with self.assertRaises(self.p.Problem):                         # GitHub's digest disagrees
+                self.p.download(dict(info, digest="1" * 64), out=lambda *_: None)
+            path = self.p.download(dict(info, digest=good), out=lambda *_: None)
+        self.assertEqual(os.path.basename(path), self.MSI)
+
+    def test_install_starts_the_installer_on_its_own_and_restarts_what_ran(self):
+        from core.platform.windows import packages
+        good, opener = self.fake_open(b"MSI" * 1000)
+        spawned, lines = [], []
+        with mock.patch.object(self.p, "_open", opener(f"{good}  {self.MSI}")), \
+                mock.patch.object(self.p, "latest", return_value=self.p.parse_release(self.release())), \
+                mock.patch.object(packages, "installed_version", return_value="1.22.0"):
+            self.assertTrue(self.p.install(out=lines.append, spawn=lambda argv, cwd=None: spawned.append(argv),
+                                           servers=["minecraft-java", "phantom-minecraft-bedrock"]))
+        self.assertTrue(spawned[0][0].endswith("powershell.exe"))
+        with open(spawned[0][-1], encoding="utf-8-sig") as f:
+            script = f.read()
+        self.assertIn("msiexec.exe", script)
+        self.assertIn("'/qn'", script)
+        self.assertIn(self.MSI, script)
+        self.assertIn("Start-Service -Name 'redstonepanel'", script)
+        self.assertIn("'minecraft-java', 'phantom-minecraft-bedrock'", script)
+        self.assertIn("result.json", script)
+        self.assertTrue(any(l.startswith("Setting up redstonepanel (1.23.0)") for l in lines))
+        with mock.patch.object(self.p, "latest", return_value=self.p.parse_release(self.release())), \
+                mock.patch.object(packages, "installed_version", return_value="1.23.0"):
+            self.assertFalse(self.p.install(out=lines.append, spawn=lambda *a, **k: self.fail("spawned")))
+
+    def test_the_candidate_is_the_newest_release(self):
+        from core.platform.windows import packages
+        with mock.patch.object(packages, "installed_version", return_value="1.22.0"), \
+                mock.patch.object(self.p, "candidate", return_value="1.23.0"):
+            self.assertIn("Candidate: 1.23.0", packages.policy("redstonepanel"))
+        with mock.patch.object(packages, "installed_version", return_value="1.23.1"), \
+                mock.patch.object(self.p, "candidate", return_value="1.23.0"):
+            self.assertIn("Candidate: 1.23.1", packages.policy("redstonepanel"))
+
+    def test_the_new_panel_reads_the_installers_outcome(self):
+        import json
+        import time
+        from core import selfupdate
+        now = int(time.time())
+        st = {"state": "running", "from": "1.22.0", "to": "1.23.0", "installer": now - 5, "started": now - 60}
+        with mock.patch.object(selfupdate, "_read_state", return_value=dict(st)), \
+                mock.patch.object(selfupdate, "_write_state"), mock.patch.object(selfupdate.manager, "write_log"), \
+                mock.patch.object(selfupdate, "_installed_version", return_value="1.23.0"):
+            self.assertEqual(selfupdate.last_upgrade()["state"], "running")       # still installing
+            with open(os.path.join(self.d, "result.json"), "w") as f:
+                json.dump({"code": 0, "finished": now}, f)
+            self.assertEqual(selfupdate.last_upgrade()["state"], "done")
+            with open(os.path.join(self.d, "result.json"), "w") as f:
+                json.dump({"code": 1603, "finished": now}, f)
+        with mock.patch.object(selfupdate, "_read_state", return_value=dict(st)), \
+                mock.patch.object(selfupdate, "_write_state"), mock.patch.object(selfupdate.manager, "write_log"), \
+                mock.patch.object(selfupdate, "_installed_version", return_value="1.22.0"):
+            out = selfupdate.last_upgrade()
+        self.assertEqual(out["state"], "failed")
+        self.assertIn("code 1603", out["error"])
+
+
+class WindowsAccounts(unittest.TestCase):
+    """1.23: Windows accounts sign in (Administrators or a RedstonePanel group), under one spelling."""
+
+    def test_account_names(self):
+        from core.platform.windows import system as w
+        self.assertEqual(w._account_parts("quent"), (None, "quent"))
+        self.assertEqual(w._account_parts(".\\quent"), (None, "quent"))
+        self.assertEqual(w._account_parts("SUPERMAN\\quent"), ("SUPERMAN", "quent"))
+        self.assertEqual(w._account_parts("someone@outlook.com"), ("MicrosoftAccount", "someone@outlook.com"))
+        for bad in ("", "a/b", "x" * 80, "A\\b\\c", "a:b", "a*"):
+            self.assertIsNone(w._account_parts(bad), bad)
+        self.assertFalse(w.check_system_password("a/b", "pw"))
+        self.assertFalse(w.check_system_password("quent", ""))
+
+    def test_the_linux_groups_stand_for_administrators_and_redstonepanel(self):
+        from core.platform.windows import system as w
+        with mock.patch.object(w, "_sid_name", return_value="Administratoren"):
+            self.assertEqual(w.allowed_groups(("sudo", "redstonepanel")), {"administratoren", "redstonepanel"})
+
+    def test_group_answers_are_kept_briefly(self):
+        from core.platform.windows import system as w
+        w._groups_cache.clear()
+        calls = []
+        with mock.patch.object(w, "allowed_groups", return_value={"administrators"}), \
+                mock.patch.object(w, "local_groups", side_effect=lambda u: calls.append(u) or {"Administrators"}):
+            self.assertTrue(w.system_account_allowed("Quent"))
+            self.assertTrue(w.system_account_allowed("quent"))
+        self.assertEqual(len(calls), 1)
+        w._groups_cache.clear()
+        with mock.patch.object(w, "allowed_groups", return_value={"administrators"}), \
+                mock.patch.object(w, "_lookup", return_value=None), \
+                mock.patch.object(w, "local_groups", side_effect=lambda u: calls.append(u) or set()):
+            self.assertFalse(w.system_account_allowed("new"))
+            self.assertFalse(w.system_account_allowed("new"))      # a no is asked again
+        self.assertEqual(len(calls), 3)
+        w._groups_cache.clear()
+
+    def test_a_session_and_two_factor_key_on_one_spelling(self):
+        from core import auth
+        with mock.patch.object(auth.system, "system_account_exists", return_value=True), \
+                mock.patch.object(auth.system, "canonical_account", return_value="quent"), \
+                mock.patch.object(auth.system, "system_account_allowed", return_value=True), \
+                mock.patch.object(auth.system, "check_system_password", return_value=True), \
+                mock.patch.object(auth, "_load_users", return_value=[]):
+            who = auth.login("QUENT", "pw", "203.0.113.9")
+            self.assertEqual(who["u"], "quent")
+            self.assertEqual(auth.find_account(".\\Quent"), ("linux", "quent"))
+
+
+class RouterAndPanelRule(unittest.TestCase):
+    """1.23, found on a real PC: the router's address on Windows, and the panel's firewall rule
+    covering HTTPS."""
+
+    def test_the_default_route_with_the_lowest_metric(self):
+        from core.platform.windows import system as w
+        rows = [("10.0.0.0", "255.255.255.0", "0.0.0.0", 25), ("0.0.0.0", "0.0.0.0", "10.0.0.1", 35),
+                ("0.0.0.0", "0.0.0.0", "192.168.56.1", 281), ("0.0.0.0", "0.0.0.0", "0.0.0.0", 5)]
+        self.assertEqual(w.pick_gateway(rows), "10.0.0.1")
+        self.assertIsNone(w.pick_gateway([("10.0.0.0", "255.255.255.0", "0.0.0.0", 25)]))
+
+    def test_portforward_asks_the_platform(self):
+        from core import portforward
+        with mock.patch.object(platform.area("system"), "default_gateway", lambda: "10.0.0.1", create=True):
+            self.assertEqual(portforward.default_gateway(), "10.0.0.1")
+
+    def test_the_panel_rule_opens_http_and_https(self):
+        script = firewall.panel_rule_script([8080, 8443])
+        self.assertIn("-LocalPort 8080,8443", script)
+        self.assertIn("'RedstonePanel web panel (8080, 8443/tcp)'", script)
+        self.assertTrue(script.startswith("if (Get-NetFirewallRule -Group 'RedstonePanel panel'"))
+        self.assertNotIn("if (", firewall.panel_rule_script([8080], only_if_present=False))
+
+    def test_setup_and_settings_use_it(self):
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(here, "packaging", "windows", "setup.py"), encoding="utf-8") as f:
+            self.assertIn("firewall.panel_rule_script(ports, only_if_present=False)", f.read())
+        with open(os.path.join(here, "main.py"), encoding="utf-8") as f:
+            self.assertIn("firewall.panel_ports(", f.read())
+
+
+class MachineNotes(unittest.TestCase):
+    """1.23: reserved port ranges (Hyper-V, WSL, Docker), PC sleep and a pending Windows Update restart."""
+    NETSH = """
+Protocol tcp Port Exclusion Ranges
+
+Start Port    End Port
+----------    --------
+      5357        5357
+     50000       50059     *
+     25500       25599
+
+* - Administered port exclusions.
+"""
+    POWERCFG = """    Power Setting GUID: 29f6c1db-86da-48c5-9fdb-f2b67b1f44da  (Sleep after)
+      Current AC Power Setting Index: 0x00000708
+      Current DC Power Setting Index: 0x00000384
+"""
+
+    def test_reading_netsh_and_powercfg(self):
+        from core.platform.windows import system as w
+        self.assertEqual(w.parse_excluded_ranges(self.NETSH), [(5357, 5357), (50000, 50059), (25500, 25599)])
+        self.assertEqual(w.parse_powercfg_minutes(self.POWERCFG), (30, 15))
+        self.assertEqual(w.parse_powercfg_minutes(""), (None, None))
+
+    def test_a_port_inside_a_reserved_range(self):
+        from core import portforward
+        reserved = [("tcp", 25500, 25599), ("udp", 19100, 19199)]
+        self.assertEqual(portforward.reserved_clash("25565", "tcp", reserved), (25500, 25599))
+        self.assertIsNone(portforward.reserved_clash("25565", "udp", reserved))
+        self.assertEqual(portforward.reserved_clash("19000:19132", "udp", reserved), (19100, 19199))
+        self.assertIsNone(portforward.reserved_clash("25600", "tcp", reserved))
+        self.assertIn("25500–25599", portforward.reserved_text("25565", "tcp", (25500, 25599)))
+
+    def test_sleep_and_a_pending_restart_need_attention(self):
+        from core.platform.windows import system as w
+        w._machine_cache.clear()
+        with mock.patch.object(w, "_sleep_minutes", return_value=30), mock.patch.object(w, "_restart_pending", return_value=True):
+            notes = w.machine_notes()
+        self.assertEqual([n["where"] for n in notes], ["power", "windows-update"])
+        self.assertIn("after 30 minutes", notes[0]["text"])
+        w._machine_cache.clear()
+        with mock.patch.object(w, "_sleep_minutes", return_value=0), mock.patch.object(w, "_restart_pending", return_value=False):
+            self.assertEqual(w.machine_notes(), [])
+        w._machine_cache.clear()
 
 
 if __name__ == "__main__":

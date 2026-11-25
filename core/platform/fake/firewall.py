@@ -30,3 +30,8 @@ def status_text(timeout=10):
 
 def is_active(text):
     return "Status: active" in (text or "")
+
+
+def panel_ports(ports, only_if_present=True):
+    fake.record("firewall.panel_ports", sorted(set(int(p) for p in ports)))
+    return 0

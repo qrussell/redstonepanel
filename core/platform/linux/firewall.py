@@ -28,3 +28,9 @@ def status_text(timeout=10):
 def is_active(text):
     return "Status: active" in (text or "")
 
+
+
+def panel_ports(ports, only_if_present=True):
+    """The panel's own web ports: left to the administrator on Linux (ufw is optional and off by
+    default). Windows keeps a rule for them."""
+    return 0

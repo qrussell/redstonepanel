@@ -138,6 +138,10 @@ def check_system_password(username, password):
     return fake.state.passwords.get(username) == password
 
 
+def canonical_account(username):
+    return username if system_account_exists(username) else None
+
+
 def system_account_exists(username):
     return username in fake.state.passwords
 
@@ -178,6 +182,21 @@ def secure_folder(path):
 def fs():
     import os
     return os
+
+
+def default_gateway():
+    return getattr(fake.state, "gateway", None)
+
+
+def reserved_ports():
+    """Port ranges the system keeps for itself, [(proto, start, end)]: none on Linux (Windows:
+    Hyper-V, WSL and Docker Desktop reserve some)."""
+    return []
+
+
+def machine_notes():
+    """Needs attention notes about the machine itself (Windows: sleep, a pending Windows Update restart)."""
+    return []
 
 
 def hint(what, *args):

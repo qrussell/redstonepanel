@@ -127,6 +127,33 @@ class Causes(unittest.TestCase):
         self.assertEqual(c[0]["id"], "out_of_memory")
         self.assertIn("hard limit is 3G", c[0]["text"])
 
+    def test_memory_limit_on_windows(self):
+        c = C.find_causes("", {"service_result": "oom-kill", "memory_limit": "3G", "windows": True})
+        self.assertEqual(c[0]["id"], "out_of_memory")
+        self.assertIn("Windows refused it more memory", c[0]["text"])
+
+    def test_windows_causes(self):
+        reserved = "java.net.BindException: Permission denied: bind\n"
+        c = C.find_causes(reserved, {"windows": True, "port": "50000"})
+        self.assertEqual([x["id"] for x in c], ["port_refused"])
+        self.assertIn("Hyper-V, WSL and Docker Desktop reserve", c[0]["text"])
+        self.assertIn("below 1024", C.find_causes(reserved, {"windows": False})[0]["text"])
+        locked = ("java.nio.file.FileSystemException: world\\region\\r.0.0.mca: The process cannot access the file "
+                  "because it is being used by another process\n")
+        self.assertEqual(ids(locked), ["file_locked"])
+        denied = "java.nio.file.AccessDeniedException: world\\level.dat\n"
+        c = C.find_causes(denied, {"windows": True})
+        self.assertEqual(c[0]["id"], "access_denied")
+        self.assertIn("world\\level.dat", c[0]["text"])
+        self.assertIn("Enable inheritance", c[0]["fix"])
+
+    def test_windows_exit_statuses(self):
+        self.assertEqual(C.find_causes("", {"exit_status": "3221225781"})[0]["id"], "missing_library")
+        self.assertEqual(C.find_causes("", {"exit_status": "-1073741515"})[0]["id"], "missing_library")
+        self.assertEqual(C.find_causes("", {"exit_status": "3221225477"})[0]["id"], "program_crash")
+        self.assertEqual(C.find_causes("", {"exit_status": "1"}), [])
+        self.assertEqual(C.find_causes(EULA, {"exit_status": "3221225477"})[0]["id"], "eula")   # the log knows better
+
     def test_suspects(self):
         self.assertEqual([i["file"] for i in C.match_installed(C.suspects_named(CRASH_REPORT), ITEMS["items"])],
                          ["sodium-fabric-0.6.5.jar"])

@@ -53,7 +53,7 @@ const ServerApp = {
             // On Windows the panel is a preview (since 1.22) and says so next to its version
             const preview = this.currentUser.system === 'windows';
             ver.innerText = 'v' + this.currentUser.panel_version + (preview ? ' · Windows preview' : '');
-            ver.title = `RedstonePanel ${this.currentUser.panel_version}` + (preview ? ' for Windows, a preview: Java servers on one computer' : '');
+            ver.title = `RedstonePanel ${this.currentUser.panel_version}` + (preview ? ' for Windows, a preview: one computer, clusters come later' : '');
         }
 
         this.applyTheme();
@@ -75,10 +75,14 @@ const ServerApp = {
     },
 
     // The Windows preview doesn't do everything yet: /api/auth/me lists what under not_yet
-    // ('cluster', 'sftp', 'limits', 'offsite', 'modpacks', 'bedrock', 'installer-loaders', ...).
+    // ('cluster', 'sftp', ...).
     // Those parts of the page are hidden, and the API refuses them too.
     notYet(name) {
         return !!(this.currentUser && (this.currentUser.not_yet || []).includes(name));
+    },
+
+    onWindows() {
+        return !!(this.currentUser && this.currentUser.system === 'windows');
     },
 
     // On a cluster master: the nodes from the last overview, [{id, name, state, error, ...}]
@@ -1782,7 +1786,7 @@ const ServerApp = {
 
                 <button onclick="ServerApp.executeDeploy()" class="mt-2 w-full bg-green-600 hover:bg-green-700 py-2 rounded text-white font-bold transition">Deploy Fresh Server</button>
             </div>
-            ${this.isAdmin() && !this.notYet('modpacks') ? `<hr class="border-gray-200 dark:border-gray-700 my-4" />
+            ${this.isAdmin() ? `<hr class="border-gray-200 dark:border-gray-700 my-4" />
             <div class="mb-2">
                 <label class="block text-sm text-gray-400 mb-1">From a modpack</label>
                 <p class="text-xs text-gray-500 mb-2">Pick a modpack from Modrinth, or upload a .mrpack or a CurseForge server pack.</p>
@@ -1946,11 +1950,6 @@ const ServerApp = {
         const node = this.deployNode && this.clusterNodes.find(n => n.id === this.deployNode);
         const old = !!(node && (node.cluster_api || 1) < 7);
         select.querySelectorAll('.loader-1-20').forEach(o => { o.disabled = old; });
-        // The Windows preview has no Quilt, Forge or NeoForge yet (their installers), on this panel
-        const noInstallers = !this.deployNode && this.notYet('installer-loaders');
-        if (noInstallers) select.querySelectorAll('option').forEach(o => {
-            if (['quilt', 'forge', 'neoforge'].includes(o.value)) { o.disabled = true; o.textContent = `${this.loaderName(o.value)} (not in the Windows preview yet)`; }
-        });
         if (old && select.selectedOptions[0] && select.selectedOptions[0].disabled) { select.value = 'vanilla'; this.loadDeployVersions(); }
         const note = document.getElementById('deploy-loader-note');
         const loader = select.value;
@@ -2064,10 +2063,9 @@ const ServerApp = {
         const ok = this.bedrockSupported(this.deployNode);
         const opt = select.querySelector('option[value="bedrock"]');
         opt.disabled = !ok;
-        const preview = !this.deployNode && this.notYet('bedrock');
-        opt.textContent = ok ? 'Bedrock Edition (Auto-Port)' : preview ? 'Bedrock Edition (not in the Windows preview yet)' : 'Bedrock Edition (needs an x86-64 machine)';
+        opt.textContent = ok ? 'Bedrock Edition (Auto-Port)' : 'Bedrock Edition (needs an x86-64 machine)';
         note.classList.toggle('hidden', ok);
-        note.innerText = ok ? '' : preview ? 'RedstonePanel on Windows is a preview that runs Java servers. Bedrock servers come in a later release; until then Bedrock players can join a Java server through Geyser.' : 'This machine is ARM64 (for example a Raspberry Pi), and Mojang only makes the Bedrock server '
+        note.innerText = ok ? '' : 'This machine is ARM64 (for example a Raspberry Pi), and Mojang only makes the Bedrock server '
             + 'for 64-bit Intel and AMD machines. Java servers work, and Bedrock players can join one through Geyser.';
         if (!ok && select.value === 'bedrock') {
             select.value = 'java';
@@ -2540,7 +2538,6 @@ const ServerApp = {
         const body = document.getElementById('resources-body');
         const srv = this.activeServer;
         if (!card || !srv) return;
-        if (this.notYet('limits')) { card.classList.add('hidden'); return; }       // not in the Windows preview yet
         card.classList.remove('hidden');
         const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/resources`);
         if (!res.ok) { body.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
@@ -2591,7 +2588,9 @@ const ServerApp = {
                 </select>
                 <input id="res-limit" class="${input} w-24" value="${custom ? esc(this.heapText(r.memory_limit)) : ''}" placeholder="3G" autocomplete="off">
             </div>
-            <p class="${note} mt-1">systemd stops the server if its whole process goes over this, so one runaway server can't starve the others.${r.java ? ' Automatic is its memory plus half again, for what Java uses outside the heap.' : ''}</p>
+            <p class="${note} mt-1">${this.onWindows()
+                ? "Windows refuses the server more memory than this, so Java runs out of memory and stops instead of starving the others; the Last crash card on the Overview says when that happened."
+                : "systemd stops the server if its whole process goes over this, so one runaway server can't starve the others."}${r.java ? ' Automatic is its memory plus half again, for what Java uses outside the heap.' : ''}</p>
             <p class="text-sm font-bold text-gray-900 dark:text-white mt-4">CPU limit</p>
             <label class="flex flex-wrap items-center gap-2 mt-1 text-sm text-gray-700 dark:text-gray-300">
                 <input id="res-cpu" type="number" min="0" max="${esc(r.cores)}" step="0.5" class="${input} w-24" value="${r.cpu_limit || 0}"> cores (0 = no limit)
@@ -4695,7 +4694,6 @@ const ServerApp = {
     async loadOffsite() {
         const box = document.getElementById('offsite-box');
         if (!box || !this.activeServer) return;
-        if (this.notYet('offsite')) { box.className = 'hidden'; return; }           // not in the Windows preview yet
         const name = this.activeServer.name;
         const res = await api(`/api/servers/${encodeURIComponent(name)}/offsite`);
         if (!this.activeServer || this.activeServer.name !== name) return;
@@ -4912,7 +4910,7 @@ const ServerApp = {
             ${d.public_key ? `<details class="mb-2"><summary class="text-sm cursor-pointer text-gray-700 dark:text-gray-300">This panel's SSH key</summary>
                 <p class="${note} mt-1">For SSH storage, add this line to <span class="font-mono">~/.ssh/authorized_keys</span> of the user the panel signs in as there (one line, on that machine):</p>
                 <textarea readonly rows="2" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white mt-1">${esc(d.public_key)}</textarea>
-            </details>` : `<p class="${note} mb-2">SSH storage needs openssh-client and rsync: <span class="font-mono">sudo apt install openssh-client rsync</span></p>`}
+            </details>` : `<p class="${note} mb-2">SSH storage needs the OpenSSH client${d.tools && d.tools.uses === 'sftp' ? '' : ' and rsync'}. ${esc((d.tools && d.tools.hint) || '')}</p>`}
             ${d.tools && !d.tools.rsync ? `<p class="text-xs text-yellow-600 dark:text-yellow-500 mb-2">rsync isn't installed, so SSH copies can't run. Install it with: <span class="font-mono">sudo apt install rsync</span></p>` : ''}
             <div id="storage-form">${this.storageEdit ? this.storageFormHtml(this.storageEdit) : `<button onclick="ServerApp.editStorage(null)" class="${small}">Add storage</button>`}</div>`;
     },
@@ -4926,7 +4924,7 @@ const ServerApp = {
         const radio = (v, text) => `<label class="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300"><input type="radio" name="st-type" value="${v}" ${t.type === v ? 'checked' : ''} onchange="ServerApp.storageType(this.value)"> ${text}</label>`;
         return `<div class="border border-gray-300 dark:border-gray-600 rounded p-3">
             <p class="text-sm font-bold text-gray-900 dark:text-white mb-2">${t.id ? `Edit ${esc(t.name)}` : 'Add storage'}</p>
-            ${t.id ? '' : `<div class="flex gap-4 mb-2">${radio('ssh', 'SSH server (rsync)')}${radio('s3', 'S3-compatible')}</div>`}
+            ${t.id ? '' : `<div class="flex gap-4 mb-2">${radio('ssh', this.onWindows() ? 'SSH server (sftp)' : 'SSH server (rsync)')}${radio('s3', 'S3-compatible')}</div>`}
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <label class="${label} sm:col-span-2">Name<input id="st-name" value="${esc(t.name)}" placeholder="${s3 ? 'Backblaze B2' : 'NAS'}" class="${field}"></label>
                 ${s3 ? `
@@ -4947,7 +4945,7 @@ const ServerApp = {
                 <label class="${label} sm:col-span-2 flex items-center gap-2"><input type="checkbox" id="st-all" ${t.servers === 'all' ? 'checked' : ''}> Copy every server's backups (or choose on each server's Backups tab)</label>
             </div>
             <p class="${label} mt-2">${s3 ? 'Give the key read, write, list and delete on the bucket only. The secret is kept on this machine (root only) and never shown again.'
-                : 'The panel signs in with its own SSH key (above) and records the host key on the first connection, as ssh does. The folder is relative to that user\'s home unless it starts with /. That machine needs rsync.'}</p>
+                : 'The panel signs in with its own SSH key (above) and records the host key on the first connection, as ssh does. The folder is relative to that user\'s home unless it starts with /.' + (this.onWindows() ? ' That machine needs sha256sum (or shasum) to check copies.' : ' That machine needs rsync.')}</p>
             <p id="st-msg" class="hidden text-sm mt-2"></p>
             <div class="flex flex-wrap gap-2 mt-3">
                 <button onclick="ServerApp.saveStorage(this)" class="bg-theme hover-bg-theme text-white px-3 py-1.5 rounded font-bold text-xs">Save</button>
@@ -5770,7 +5768,7 @@ const ServerApp = {
 		document.getElementById('current-user-name').innerText = trusted ? 'Local network' : u.username;
 		document.getElementById('current-user-detail').innerText = trusted
 			? 'Not signed in · user'
-			: `${u.source === 'linux' ? 'Linux account' : 'Panel account'} · ${u.role}`;
+			: `${u.source === 'linux' ? (this.onWindows() ? 'Windows account' : 'Linux account') : 'Panel account'} · ${u.role}`;
 		const signOut = document.getElementById('btn-sign-out');
 		signOut.innerText = trusted ? 'Sign in' : 'Sign out';
 		signOut.onclick = trusted ? () => window.location.assign('/static/login.html') : () => this.logout();
@@ -6000,7 +5998,7 @@ const ServerApp = {
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 			</div>
 			${this.notYet('cluster') ? `<h4 class="font-bold text-gray-900 dark:text-white mb-2">Windows preview</h4>
-			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">RedstonePanel on Windows is a preview: Java servers (Vanilla, Paper, Purpur, Fabric) on one computer. Not here yet: Bedrock servers, Quilt, Forge, NeoForge and modpacks, memory and processor limits, off-site backup storage, SFTP, the terminal, clusters and updating from the panel. To update, run the new installer; your servers and settings stay.</p>` : ''}
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">RedstonePanel on Windows is a preview: every kind of server on one computer. Not here yet: clusters and SFTP (both come next). The terminal is Linux-only: on Windows, open a command prompt on the computer itself.</p>` : ''}
 
 			<h4 id="set-section-connection" class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
 			<div class="space-y-2 mb-3">
@@ -6030,7 +6028,7 @@ const ServerApp = {
 
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Sign-in</h4>
 			<div class="space-y-2 mb-3">
-				${radio('login_mode', 'required', s.login_mode, 'Always required (recommended)', this.notYet('system-accounts') ? 'Everyone signs in with a panel account.' : 'Everyone signs in with a Linux or panel account.')}
+				${radio('login_mode', 'required', s.login_mode, 'Always required (recommended)', this.onWindows() ? 'Everyone signs in with a Windows or panel account.' : 'Everyone signs in with a Linux or panel account.')}
 				${radio('login_mode', 'trusted_networks', s.login_mode, 'Not required on the local network', 'Devices on the networks below can manage servers without signing in. Users and these settings still need an admin sign-in.')}
 			</div>
 			<label class="flex items-start gap-2 mb-3 text-sm cursor-pointer">
@@ -6530,7 +6528,8 @@ const ServerApp = {
 		const h = (this.dashData && this.dashData.host) || {};
 		if (!confirm(`Update RedstonePanel ${h.version || ''} to ${h.update || 'the newest version'}?\n\n`
 			+ `The panel restarts during the update; this page reconnects and reloads by itself, usually within a minute. `
-			+ `Game servers keep running.`)) return;
+			+ (this.onWindows() ? `Game servers stop for about a minute while the Windows installer runs, and the ones that were running start again.`
+				: `Game servers keep running.`))) return;
 		const res = await fetch('/api/panel/update', { method: 'POST' });
 		if (!res.ok) return alert(`The update didn't start: ${await this.apiError(res)}`);
 		const st = await res.json();
@@ -7156,6 +7155,9 @@ const ServerApp = {
 
 		// 3. What to forward
 		const issues = d.members.flatMap(m => (m.servers || []).flatMap(s => (s.issues || []).map(i => `<li><b>${esc(s.name)}</b>${multi ? ' on ' + memberLabel(m) : ''}: ${esc(i)}</li>`))).join('');
+		// Windows: port ranges Hyper-V, WSL or Docker Desktop reserved (nothing can listen there)
+		const reserved = d.members.flatMap(m => (m.reserved || []).map(r => `<span class="font-mono whitespace-nowrap">${r.start === r.end ? r.start : `${r.start}–${r.end}`}/${esc(r.proto)}</span>`));
+		const reservedNote = reserved.length ? `<p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Ports Windows keeps for itself right now (Hyper-V, WSL or Docker Desktop reserve them when they start; no server can use them): ${reserved.join(', ')}.</p>` : '';
 		const memberNotes = d.members.map(m => {
 			if (m.state !== 'ok') return `<li>${memberLabel(m)}: couldn't be reached (${esc(m.error || m.state)}), so its servers aren't listed.</li>`;
 			if (m.old) return `<li>${memberLabel(m)} runs an older RedstonePanel: only its game ports are listed, and its address comes from the cluster (${esc(m.url_host)}). Update it for the full list.</li>`;
@@ -7171,7 +7173,7 @@ const ServerApp = {
 				<td data-label="${closed ? 'Port' : 'Outside port'}" class="py-2 pr-3 font-mono">${port(x.r.port)}</td>
 				<td data-label="Protocol" class="py-2 pr-3 font-mono">${proto(x.r.proto)}</td>
 				<td data-label="${closed ? 'Machine' : 'Forward to'}" class="py-2 pr-3 font-mono">${closed ? esc(x.ip) : `${esc(x.ip)}:${port(x.r.inside)}`}</td>
-				<td data-label="For" class="py-2 pr-3">${esc(x.r.what)}${x.r.note ? `<div class="text-xs text-gray-500">${esc(x.r.note)}</div>` : ''}${x.r.ufw === false ? '<div class="text-xs text-yellow-700 dark:text-yellow-300">ufw on this machine doesn\'t allow it yet.</div>' : ''}</td>
+				<td data-label="For" class="py-2 pr-3">${esc(x.r.what)}${x.r.note ? `<div class="text-xs text-gray-500">${esc(x.r.note)}</div>` : ''}${x.r.ufw === false ? `<div class="text-xs text-yellow-700 dark:text-yellow-300">${this.onWindows() ? 'Windows Defender Firewall' : 'ufw'} on this machine doesn't allow it yet.</div>` : ''}</td>
 				${checks ? `<td data-label="From here" class="py-2 pr-3">${this.portsCheckCell(x)}</td>` : ''}
 			</tr>`).join('')}</tbody></table></div>`; };
 		const joins = d.members.flatMap(m => (m.servers || []).map(s => ({ s, a: this.portsJoinAddress(s, rows) })))
@@ -7187,6 +7189,7 @@ const ServerApp = {
 			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">One port forward per line, from your internet address to the machine the server runs on. Keep the outside port the same as the inside port unless you have a reason not to (Bedrock needs them the same).</p>
 			${fwd.length ? table(fwd) : '<p class="text-sm text-gray-500">No servers yet, so there\'s nothing to forward.</p>'}
 			${issues ? `<div class="mt-3">${warn('<b>Fix these first</b><ul class="list-disc ml-5 mt-1">' + issues + '</ul>')}</div>` : ''}
+			${reservedNote}
 			${memberNotes ? `<ul class="list-disc ml-5 mt-3 text-sm text-gray-600 dark:text-gray-300">${memberNotes}</ul>` : ''}
 			${this.portsCheck ? `<p class="text-xs text-gray-500 mt-3">Checked ${esc(new Date(this.portsCheck.checked * 1000).toLocaleTimeString())} by connecting from ${esc(d.members[0].name)} to ${esc(this.portsCheck.address)}. This only works when the router loops connections back to the inside (pfSense: NAT reflection). “No answer” doesn't prove the forward is wrong: the surest test is a phone on mobile data, with Wi-Fi off.</p>` : ''}
 			${joins ? `<p class="text-sm font-bold text-gray-900 dark:text-white mt-4">Players outside join with</p><ul class="list-disc ml-5 text-sm text-gray-700 dark:text-gray-300">${joins}</ul>` : ''}
@@ -7843,7 +7846,7 @@ const ServerApp = {
 			<button onclick="ServerApp.changeOwnPassword()" class="w-full px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold mb-6">Change Password</button></div>`
 			: (me.source === 'linux' && !this.accountForced ? `<div id="pw-section">
 			<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Your Account</h3>
-			<p class="text-sm text-gray-500 dark:text-gray-400 mb-6">This is a Linux account: change its password on the server with <span class="font-mono">passwd</span>.</p></div>` : '');
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-6">${this.onWindows() ? 'This is a Windows account: change its password in Windows (Ctrl+Alt+Del, then <b>Change a password</b>).' : 'This is a Linux account: change its password on the server with <span class="font-mono">passwd</span>.'}</p></div>` : '');
 		const forcedIntro = this.accountForced ? `
 			<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Set Up Two-Factor Sign-In</h3>
 			<p class="text-sm text-gray-600 dark:text-gray-300 mb-4">This panel requires a second step at sign-in for admins. Set it up now to continue.</p>` : '';
@@ -8119,7 +8122,7 @@ const ServerApp = {
 
 		content.innerHTML = `
 			<h3 class="text-xl font-bold mb-1 text-gray-900 dark:text-white">Panel Users</h3>
-			${this.notYet('system-accounts') ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">These accounts are the panel's own, not Windows accounts. Locked out of two-factor? In an administrator prompt on the server: <span class="font-mono">redstonepanel reset-2fa NAME</span>.</p>`
+			${this.onWindows() ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Windows accounts in the <b>Administrators</b> group, or in a local group named <b>RedstonePanel</b>, can also sign in (as admins) with their Windows password (not a PIN); they are managed in Windows, not here (two-factor for them: in an administrator prompt, <span class="font-mono">redstonepanel reset-2fa NAME</span>).</p>`
 			: `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here (two-factor for them: <span class="font-mono">sudo redstonepanel reset-2fa NAME</span>).</p>`}
 			<div class="max-h-72 overflow-y-auto mb-4">${rows}</div>
 			<div class="border-t border-gray-200 dark:border-gray-700 pt-4">

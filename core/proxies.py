@@ -23,7 +23,7 @@ def parse_exec_start(unit_text):
         if line.startswith("ExecStart=") and line[len("ExecStart="):].strip():
             cmd = line[len("ExecStart="):].strip().lstrip("-@:+!")
             try:
-                return shlex.split(cmd)
+                return shlex.split(cmd.replace("\\", "/"))      # a Windows path: only its last part matters
             except ValueError:
                 return cmd.split()
     return None

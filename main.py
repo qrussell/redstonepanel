@@ -133,11 +133,6 @@ TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
 WINDOWS_NOT_YET = (
     ("cluster", "Clusters aren't", re.compile(r"^/api/(settings/)?cluster(/|$)")),
     ("sftp", "SFTP isn't", re.compile(r"^/api/settings/sftp$")),
-    ("limits", "Memory and processor limits aren't", re.compile(r"^/api/servers/[^/]+/resources$")),
-    ("phantom", "Phantom isn't", re.compile(r"^/api/servers/[^/]+/phantom")),
-    ("panel-update", "Updating from the panel isn't", re.compile(r"^/api/panel/update")),
-    ("offsite", "Off-site backup storage isn't", re.compile(r"^/api/(settings/backup-storage|servers/[^/]+/offsite)(/|$)")),
-    ("modpacks", "Modpacks aren't", re.compile(r"^/api/servers/(modpack$|[^/]+/modpack/)")),
 )
 
 def not_yet(method, path, windows=None):
@@ -458,8 +453,7 @@ def me_api(request: Request):
     # Which system the panel runs on. On Windows (a preview since 1.22) the page says so and hides
     # what the preview doesn't do yet.
     user["system"] = "windows" if paths.WINDOWS else "linux"
-    user["not_yet"] = ([n for n, _w, _p in WINDOWS_NOT_YET] + ["bedrock", "installer-loaders", "system-accounts"]
-                       if paths.WINDOWS else [])
+    user["not_yet"] = [n for n, _w, _p in WINDOWS_NOT_YET] if paths.WINDOWS else []
     # Admins get told when HTTPS was requested but the panel had to fall back to HTTP
     if user["role"] == "admin":
         user["https_error"] = panel_settings.RUNTIME.get("https_error")
@@ -657,6 +651,12 @@ def update_settings_api(request: Request, new: dict = Body(...)):
         raise HTTPException(status_code=400, detail="Set up two-factor sign-in for your own account first "
                                                     "(Password button), so this doesn't lock you out.")
     panel_settings.save(s)
+    if restart:                                      # Windows: the panel's firewall rule follows its ports
+        from core.platform import firewall, CommandError
+        try:
+            firewall.panel_ports([s["http_port"]] + ([s["https_port"]] if s["https_mode"] != "off" else []))
+        except CommandError:
+            pass
     me = request.state.user["username"]
     manager.write_log(f"[SETTINGS] {me} changed panel settings: HTTPS={s['https_mode']}, "
                       f"ports {s['http_port']}/{s['https_port']}, sign-in={s['login_mode']}, "
@@ -683,7 +683,8 @@ class PasswordChange(BaseModel):
 def change_password_api(req: PasswordChange, request: Request, response: Response):
     user = request.state.user
     if user["source"] != "panel":
-        raise HTTPException(status_code=400, detail="Linux accounts change their password on the server (passwd).")
+        raise HTTPException(status_code=400, detail=("Windows accounts change their password in Windows." if paths.WINDOWS
+                                                    else "Linux accounts change their password on the server (passwd)."))
     try:
         auth.change_own_password(user["username"], req.current_password, req.new_password)
     except auth.AuthError as e:
@@ -1361,7 +1362,7 @@ def _storage_view():
     data = backup_targets.load()
     return {"targets": [backup_targets.public({**t, "id": tid}) for tid, t in sorted(data["targets"].items())],
             "panel_id": backup_targets.panel_id(), "public_key": key,
-            "tools": {"ssh": bool(shutil.which("ssh")), "rsync": bool(shutil.which("rsync"))},
+            "tools": backup_targets.tools(),
             "servers": [s["name"] for s in manager.list_servers()]}
 
 @app.get("/api/settings/backup-storage")

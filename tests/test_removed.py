@@ -181,6 +181,13 @@ class RemovedServers(unittest.TestCase):
         M._release_name(name)
         self.assertEqual((name, port), ("minecraft-java", 25566))
 
+    def test_a_new_bedrock_server_skips_a_udp_port_something_else_holds(self):
+        # Geyser in a server the panel doesn't know, or a Bedrock server outside the panel
+        with mock.patch.object(M, "_udp_port_bindable", side_effect=lambda p: p != 19132):
+            name, port = M._reserve_name("bedrock")
+        M._release_name(name)
+        self.assertEqual((name, port), ("minecraft-bedrock", 19134))
+
     def test_restoring_after_a_new_server_took_its_port_moves_it(self):
         d = self.server("minecraft-java", {"server.jar": ""}, {"server-port": 25565})
         self.server("minecraft-java-2", {"server.jar": ""}, {"server-port": 25565}, unit=True)

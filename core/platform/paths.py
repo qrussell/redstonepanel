@@ -46,12 +46,17 @@ JVM_ROOT = "/usr/lib/jvm"                            # one folder per installed 
 DEFAULT_JAVA = "/usr/bin/java"                       # the system's default Java
 JAVA_PROGRAM = "java"                                # the program's file name in a Java's bin folder
 SCREEN = "/usr/bin/screen"                           # holds the Bedrock console
+BEDROCK_PROGRAM = "bedrock_server"                   # Bedrock Dedicated Server's program in its folder
+BEDROCK_DOWNLOAD = "serverBedrockLinux"              # its downloadType in Mojang's download-links API
 
 # The machine
 PROC = "/proc"
 OS_RELEASE = "/etc/os-release"
 LOCALTIME = "/etc/localtime"
 BLOCK_DEVICES = "/sys/dev/block"
+SSH_PROGRAM = "ssh"                                  # off-site backups (OpenSSH client)
+SSH_KEYGEN_PROGRAM = "ssh-keygen"
+SFTP_PROGRAM = "sftp"
 LOGIN_SHELL = "/bin/bash"                            # the minecraft account's shell
 LOGIN = "/bin/login"                                 # 1.21.10: starts a terminal's login session
 SHELLS_FILE = "/etc/shells"                          # the login shells this machine allows
@@ -103,11 +108,17 @@ def windows_layout(home, app_dir=APP_DIR, environ=os.environ, python=None):
         "DEFAULT_JAVA": j(home, "java", "default", "bin", "java.exe"),
         "JAVA_PROGRAM": "java.exe",
         "SCREEN": "console",
+        "BEDROCK_PROGRAM": "bedrock_server.exe",
+        "BEDROCK_DOWNLOAD": "serverBedrockWindows",
         "PROC": j(home, "run", "proc"),
         "OS_RELEASE": j(home, "run", "os-release"),
         "LOCALTIME": j(home, "run", "localtime"),
         "BLOCK_DEVICES": j(home, "run", "block"),
         "LOGIN_SHELL": j(windir, "System32", "cmd.exe"),
+        # The OpenSSH client that comes with Windows (Settings > System > Optional features)
+        "SSH_PROGRAM": j(windir, "System32", "OpenSSH", "ssh.exe"),
+        "SSH_KEYGEN_PROGRAM": j(windir, "System32", "OpenSSH", "ssh-keygen.exe"),
+        "SFTP_PROGRAM": j(windir, "System32", "OpenSSH", "sftp.exe"),
     }
 
 

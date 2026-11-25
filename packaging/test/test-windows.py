@@ -43,6 +43,16 @@ class Panel:
     def __init__(self, base):
         self.base, self.cookie = base, None
 
+    def context(self):
+        """For https: one that takes the panel's own self-signed certificate."""
+        if not self.base.startswith("https://"):
+            return None
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
     def call(self, method, path, body=None, timeout=120, raw=False):
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method)
@@ -51,7 +61,7 @@ class Panel:
         if self.cookie:
             req.add_header("Cookie", self.cookie)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with urllib.request.urlopen(req, timeout=timeout, context=self.context()) as r:
                 for h in r.headers.get_all("Set-Cookie") or []:
                     if h.startswith("rp_session="):
                         self.cookie = h.split(";", 1)[0]
@@ -149,6 +159,50 @@ def neighbour_after(before):
     del NEIGHBOUR_MADE[:]
 
 
+def service_pid(name):
+    code, out = run(["sc", "queryex", name])
+    for line in out.splitlines():
+        if line.strip().startswith("PID"):
+            v = line.split(":", 1)[1].strip()
+            return int(v) if v.isdigit() and v != "0" else None
+    return None
+
+
+def server_java_pids(name):
+    """The java.exe processes the server's own service started: nothing else on the PC."""
+    parent = service_pid(name)
+    if not parent:
+        return []
+    code, out = ps(f"Get-CimInstance Win32_Process -Filter \"Name='java.exe' AND ParentProcessId={parent}\" | "
+                   "Select-Object -ExpandProperty ProcessId")
+    return [x for x in out.split() if x.isdigit()]
+
+
+def _read_bytes(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def restore_notifications(p, args):
+    """Puts back the webhook the PC's owner had before the test (or none)."""
+    if getattr(args, "notifications_restored", False):
+        return
+    args.notifications_restored = True
+    saved = getattr(args, "saved_notifications", None)
+    p.put("/api/settings/notifications", {"clear": True})
+    if saved is None:
+        return
+    with open(os.path.join(args.home, "data", "notifications.json"), "r+b") as f:   # in place: keeps its permissions
+        f.write(saved)
+        f.truncate()
+    code, n = p.get("/api/settings/notifications")
+    check("the owner's own webhook is back as it was", code == 200 and _read_bytes(
+        os.path.join(args.home, "data", "notifications.json")) == saved, f"{code} {n}")
+
+
 class Hook(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace")
@@ -163,6 +217,8 @@ class Hook(http.server.BaseHTTPRequestHandler):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8080)
+    ap.add_argument("--url", help="the panel's address when it isn't http://127.0.0.1:PORT, e.g. https://127.0.0.1:8443 "
+                                  "on a PC where HTTPS is on (its self-signed certificate is accepted)")
     ap.add_argument("--home", default=os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "RedstonePanel"))
     ap.add_argument("--keep", action="store_true", help="leave the test server in place")
     ap.add_argument("--loader", default="vanilla")
@@ -170,7 +226,7 @@ def main():
                     help="after installing again over a run with --keep: the account and the server are still there")
     args = ap.parse_args()
     home = args.home
-    p = Panel(f"http://127.0.0.1:{args.port}")
+    p = Panel(args.url or f"http://127.0.0.1:{args.port}")
     if args.after_upgrade:
         return after_upgrade(p, args)
 
@@ -205,6 +261,14 @@ def main():
     check("the session works", code == 200, f"{code} {me}")
     code, info = p.get("/api/panel-info")
     print(f"        panel-info: {json.dumps(info)[:300]}")
+    windows_accounts(p)
+    # Where new servers go: <home>\servers, or the folder the owner chose in Panel Settings
+    code, view = p.get("/api/settings/servers-folder")
+    args.servers_dir = (view or {}).get("folder") or os.path.join(home, "servers")
+    args.servers_setting = "" if (view or {}).get("is_default", True) else args.servers_dir
+    print(f"        new servers go to {args.servers_dir}" + ("" if (view or {}).get("is_default", True) else " (chosen by the owner)"))
+    # The owner's webhook, put back at the end (the test sets its own)
+    args.saved_notifications = _read_bytes(os.path.join(home, "data", "notifications.json"))
 
     # ------------------------------------------------------------------ dashboard
     section("Dashboard")
@@ -226,6 +290,15 @@ def main():
         code, host2 = p.get("/api/host")
         check("processor use is measured", code == 200 and (host2.get("cpu") or {}).get("percent") is not None,
               str((host2 or {}).get("cpu")))
+
+    section("Port forwarding guide and the panel's firewall rule")
+    code, pf = p.get("/api/port-forwarding/local")
+    check("the guide knows this PC's router (default gateway)", code == 200 and bool((pf or {}).get("gateway"))
+          and bool((pf or {}).get("lan_ip")), f"{code} {str(pf)[:300]}")
+    web = int(((pf or {}).get("web") or {}).get("port") or 0)
+    code, out = ps("Get-NetFirewallRule -Group 'RedstonePanel panel' | Get-NetFirewallPortFilter | "
+                   "Select-Object -ExpandProperty LocalPort")
+    check(f"the panel's firewall rule opens the port it answers on ({web})", str(web) in out.replace(",", " ").split(), out[-300:])
 
     # ------------------------------------------------------------------ Java and a server
     section("Java from Adoptium and a new server")
@@ -257,7 +330,7 @@ def main():
     check("... under a name no other Windows service has", name != NEIGHBOUR, str(name))
     if not name:
         return finish(p, args, None)
-    d = os.path.join(home, "servers", name)
+    d = os.path.join(args.servers_dir, name)
     unit = os.path.join(home, "services", f"{name}.service")
     check("its unit file is written (the same file as on Linux)", os.path.isfile(unit))
     if os.path.isfile(unit):
@@ -392,10 +465,8 @@ def main():
     check("a webhook is saved", code == 200, f"{code} {n}")
     code, out = run(["schtasks", "/Query", "/TN", "\\RedstonePanel\\notifications"])
     check("the notification task exists", code == 0, out[-300:])
-    # Only the Java the panel installed for this server: other Minecraft servers on the machine are left alone
-    code, out = ps("Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | Where-Object { $_.ExecutablePath -like '"
-                   + os.path.join(args.home, "java") + "\\*' } | Select-Object -ExpandProperty ProcessId")
-    pids = [x for x in out.split() if x.isdigit()]
+    # Only this server's java.exe (a child of its service's process): the PC's other servers are left alone
+    pids = server_java_pids(name)
     print(f"        killing java.exe {pids}")
     for pid in pids:
         run(["taskkill", "/F", "/PID", pid])
@@ -425,9 +496,13 @@ def main():
     check("Minecraft is listening again", wait("listen", listening, 300, every=5))
     code, r = p.post(f"/api/servers/{name}/action", {"action": "restart"}, timeout=300)
     check("Restart works", code == 200 and wait("listen", listening, 300, every=5), f"{code} {r}")
-    p.put("/api/settings/notifications", {"clear": True})
+    restore_notifications(p, args)
 
+    limits(p, args, name, listening)
+    offsite_s3(p, args, name)
     join_and_terminal(p, name)
+    bedrock(p, args)
+    loaders(p, args)
     servers_folder(p, args, body)
     found_servers(p, args)
 
@@ -437,6 +512,237 @@ def main():
     check("`redstonepanel status` runs from a prompt", code == 0 and "admin" in out, out[-400:])
 
     return finish(p, args, name, port)
+
+
+def _usage(home, name):
+    try:
+        with open(os.path.join(home, "journal", f"{name}.service", "usage.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def limits(p, args, name, listening):
+    """1.23: Maintenance > Memory and limits, as Job Object limits."""
+    section("Memory and processor limits (Job Objects)")
+    code, r = p.get(f"/api/servers/{name}/resources")
+    check("Memory and limits loads", code == 200 and r.get("cores"), f"{code} {str(r)[:300]}")
+    code, r = p.put(f"/api/servers/{name}/resources", {"memory": "auto", "cpu": 1})
+    check("an automatic memory limit and a 1-core CPU limit are saved", code == 200, f"{code} {str(r)[:300]}")
+    dropin = os.path.join(args.home, "services", f"{name}.service.d", "redstonepanel-limits.conf")
+    text = open(dropin, encoding="utf-8").read() if os.path.isfile(dropin) else ""
+    check("they are written in the same drop-in as on Linux", "MemoryMax=" in text and "CPUQuota=100%" in text, text)
+    want = (r or {}).get("memory_max") or 0
+    check("the running server's job has the limit at once (no restart)",
+          wait("job limit", lambda: _usage(args.home, name).get("memory_max") == want and want, 30),
+          f"want {want} have {_usage(args.home, name)}")
+    code, r = p.post(f"/api/servers/{name}/action", {"action": "restart"}, timeout=300)
+    check("after a restart the server runs inside its limits",
+          code == 200 and wait("listen", listening, 300, every=5)
+          and wait("job limit", lambda: _usage(args.home, name).get("memory_max") == want, 30),
+          f"{code} {_usage(args.home, name)}")
+    code, out = ps("$h = [Runtime.InteropServices.Marshal]; "
+                   "Add-Type -Namespace RP -Name J -MemberDefinition '[DllImport(\"kernel32.dll\", SetLastError=true)] "
+                   "public static extern IntPtr OpenJobObjectW(uint a, bool i, [MarshalAs(UnmanagedType.LPWStr)] string n);'; "
+                   f"[RP.J]::OpenJobObjectW(4, $false, 'Global\\RedstonePanel.job.{name}')")
+    check("an administrator can open the server's job by its name", out.strip() not in ("", "0"), out[-200:])
+    code, pf = p.get(f"/api/servers/{name}/perf")
+    check("the Performance card shows the limit", code == 200 and (pf.get("memory") or {}).get("limit") == want,
+          f"{code} {str(pf)[:300]}")
+    code, r = p.put(f"/api/servers/{name}/resources", {"memory": "off", "cpu": 0})
+    check("turning the limits off works", code == 200 and not os.path.exists(dropin)
+          and wait("job limit", lambda: not _usage(args.home, name).get("memory_max"), 30),
+          f"{code} {_usage(args.home, name)}")
+
+
+def bedrock(p, args):
+    """1.23: a Bedrock server: the Windows build, its console, its firewall rules, a clean stop,
+    automatic updates and Phantom."""
+    section("A Bedrock server")
+    code, dep = p.post("/api/servers/deploy", {"edition": "bedrock"}, timeout=900)
+    name = (dep or {}).get("name")
+    if not check("a Bedrock server is deployed", code == 200 and bool(name), f"{code} {dep}"):
+        return
+    d = os.path.join(args.servers_dir, name)
+    check("it has Mojang's Windows program", os.path.isfile(os.path.join(d, "bedrock_server.exe")))
+    check("its service runs as its own account",
+          wait("svc", lambda: service_state(name) == "RUNNING", 60)
+          and f"NT SERVICE\\{name}".lower() in run(["sc", "qc", name])[1].lower())
+    log = os.path.join(d, "server.log")
+
+    def started():
+        return os.path.isfile(log) and "Server started." in open(log, encoding="utf-8", errors="replace").read()
+    check("it starts, and its console is kept in server.log", wait("bedrock start", started, 180, every=3),
+          open(log, encoding="utf-8", errors="replace").read()[-500:] if os.path.isfile(log) else "no server.log")
+
+    def srv():
+        c, lst = p.get("/api/servers")
+        return next((s for s in (lst if isinstance(lst, list) else lst.get("servers", [])) if s.get("name") == name), {})
+    s = wait("online", lambda: srv().get("status") == "online" and srv(), 60) or srv()
+    port = int(s.get("port") or 19132)
+    check("the panel lists it as a Bedrock server, online, with its version",
+          s.get("edition") == "Bedrock" and s.get("status") == "online" and bool(s.get("version")), str(s)[:300])
+    code, out = ps(f"@(Get-NetFirewallRule -Group RedstonePanel | Get-NetFirewallPortFilter | "
+                   f"Where-Object {{ $_.LocalPort -eq '{port}' }}).Protocol -join ','")
+    check(f"Defender Firewall has rules for port {port}", "TCP" in out.upper() or "UDP" in out.upper(), out[-200:])
+    size = os.path.getsize(log)
+    code, r = p.post(f"/api/servers/{name}/chat", {"message": "/list"}, timeout=60)
+    check("a console command reaches the server",
+          code == 200 and wait("list", lambda: "players online" in open(log, encoding="utf-8", errors="replace").read()[size:], 30),
+          f"{code} {r}")
+    code, b = p.post(f"/api/servers/{name}/backups", timeout=300)
+    check("Back up now works while it runs (save hold / query / resume)", code == 200 and b.get("file"), f"{code} {str(b)[:300]}")
+    code, u = p.get(f"/api/servers/{name}/updates")
+    check("Maintenance shows its Bedrock version and the newest", code == 200 and (u or {}).get("current"),
+          f"{code} {str(u)[:300]}")
+    code, u = p.put(f"/api/servers/{name}/updates", {"enabled": True})
+    check("automatic updates can be turned on", code == 200 and (u or {}).get("auto"), f"{code} {str(u)[:300]}")
+    code, out = run(["schtasks", "/Query", "/TN", "\\RedstonePanel\\redstonepanel-updates"])
+    check("the update check is a scheduled task", code == 0, out[-300:])
+
+    section("Phantom for the Bedrock server")
+    # Phantom relays RakNet only; a NetherNet server (the default) is refused, as on Linux
+    code, ph = p.post(f"/api/servers/{name}/phantom/install", timeout=120)
+    check("Phantom is refused for a NetherNet server", code == 400 and "NetherNet" in str(ph), f"{code} {str(ph)[:300]}")
+    # ... and so is one on 19132, which already shows as a LAN game: Phantom is for other ports
+    code, r = p.post(f"/api/servers/{name}/properties", {"properties": {"transport": "raknet", "server-port": "19140"}})
+    check("the server switches to RakNet on port 19140", code == 200, f"{code} {str(r)[:300]}")
+    code, r = p.post(f"/api/servers/{name}/action", {"action": "restart"}, timeout=300)
+    check("it restarts on the new port", code == 200 and wait("running", lambda: service_state(name) == "RUNNING", 120),
+          f"{code} {str(r)[:200]}")
+    code, ph = p.post(f"/api/servers/{name}/phantom/install", timeout=300)
+    check("Phantom installs (pinned Windows build, SHA-256 checked)", code == 200 and (ph or {}).get("phantom"),
+          f"{code} {str(ph)[:400]}")
+    unit = f"phantom-{name}"
+    check("Phantom runs as its own service and account",
+          wait("phantom", lambda: service_state(unit) == "RUNNING", 60)
+          and f"NT SERVICE\\{unit}".lower() in run(["sc", "qc", unit])[1].lower(), run(["sc", "qc", unit])[1][-300:])
+    code, ph = p.post(f"/api/servers/{name}/phantom-remove", {"unit": f"{unit}.service"}, timeout=120)
+    check("Phantom is removed", code == 200 and wait("gone", lambda: service_state(unit) is None, 60), f"{code} {ph}")
+
+    code, r = p.post(f"/api/servers/{name}/action", {"action": "stop"}, timeout=300)
+    check("Stop saves the world: Bedrock quits cleanly",
+          code == 200 and wait("stopped", lambda: service_state(name) == "STOPPED", 150)
+          and "Quit correctly" in open(log, encoding="utf-8", errors="replace").read()[-2000:],
+          open(log, encoding="utf-8", errors="replace").read()[-400:])
+    if True:                                    # --keep keeps the main server only
+        code, r = p.call("DELETE", f"/api/servers/{name}?keep_world=false", timeout=300)
+        check("the Bedrock server is removed", code == 200 and wait("gone", lambda: service_state(name) is None, 60),
+              f"{code} {r}")
+
+
+S3_KEY, S3_SECRET = "rptestaccess", "rptest-secret-key-123"
+WEED_URL = "https://github.com/seaweedfs/seaweedfs/releases/download/3.80/windows_amd64.zip"
+
+
+def offsite_s3(p, args, name):
+    """1.23: backup copies to S3-compatible storage from Windows. SeaweedFS's S3 server (it checks
+    request signatures as real S3 does) runs next to the panel."""
+    section("Off-site backup copies to S3 storage")
+    import tempfile
+    import zipfile
+    top = tempfile.mkdtemp(prefix="rp-s3-")
+    try:
+        urllib.request.urlretrieve(WEED_URL, os.path.join(top, "weed.zip"))
+        with zipfile.ZipFile(os.path.join(top, "weed.zip")) as z:
+            z.extractall(top)
+    except (OSError, zipfile.BadZipFile) as e:
+        check("SeaweedFS (the S3 stand-in) downloads", False, str(e))
+        return
+    weed = next((os.path.join(r, f) for r, _d, fs in os.walk(top) for f in fs if f.lower() == "weed.exe"), None)
+    conf = os.path.join(top, "s3.json")
+    with open(conf, "w") as f:
+        json.dump({"identities": [{"name": "rp", "credentials": [{"accessKey": S3_KEY, "secretKey": S3_SECRET}],
+                                   "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}, f)
+    os.makedirs(os.path.join(top, "data"))
+    proc = subprocess.Popen([weed, "server", "-s3", f"-s3.config={conf}", "-dir=" + os.path.join(top, "data"),
+                             "-ip=127.0.0.1", "-master.port=19333", "-volume.port=18080", "-filer.port=18888",
+                             "-s3.port=8333"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        def up():
+            try:
+                urllib.request.urlopen("http://127.0.0.1:8333/", timeout=3)
+            except urllib.error.HTTPError:
+                return True
+            except OSError:
+                return False
+            return True
+        if not check("the S3 stand-in answers", wait("s3", up, 120, every=2)):
+            return
+        target = {"type": "s3", "name": "Bucket", "endpoint": "http://127.0.0.1:8333", "bucket": "rp-backups",
+                  "prefix": "mc", "region": "us-east-1", "access_key": S3_KEY, "secret_key": S3_SECRET}
+        app = os.path.join(r"C:\Program Files\RedstonePanel", "app")
+        py = os.path.join(r"C:\Program Files\RedstonePanel", "python", "python.exe")
+        code, out = run([py, "-X", "utf8", "-c",
+                         "import sys; sys.path.insert(0, sys.argv[1]); from core import backup_targets as T; "
+                         "T.S3Target({'endpoint': 'http://127.0.0.1:8333', 'bucket': 'rp-backups', 'prefix': '', "
+                         f"'region': 'us-east-1', 'access_key': '{S3_KEY}', 'secret_key': '{S3_SECRET}'}}).request('PUT', '')",
+                         app])
+        check("the bucket is made with the panel's own S3 client", code == 0, out[-400:])
+        code, st = p.post("/api/settings/backup-storage", target)
+        tid = next((t["id"] for t in (st or {}).get("targets", []) if t.get("name") == "Bucket"), None)
+        check("S3 storage is added", code == 200 and tid, f"{code} {str(st)[:300]}")
+        check("the secret is never sent back", S3_SECRET not in json.dumps(st))
+        code, t = p.post("/api/settings/backup-storage/test", {"id": tid})
+        check("Test writes, lists and deletes", code == 200 and (t or {}).get("ok"), f"{code} {t}")
+        code, r = p.put(f"/api/servers/{name}/offsite/{tid}", {"enabled": True})
+        check("the server's backups are copied there", code == 200, f"{code} {r}")
+        code, b = p.post(f"/api/servers/{name}/backups", timeout=300)
+        newest = (b or {}).get("file")
+
+        def copied():
+            c, v = p.get(f"/api/servers/{name}/offsite")
+            return any(c2.get("file") == newest for t2 in (v or {}).get("targets", []) if t2.get("id") == tid
+                       for c2 in t2.get("copies", []))
+        check("Back up now is copied to S3, checked", newest and wait("copy", copied, 240, every=4), str(newest))
+        os.remove(os.path.join(args.home, "backups", name, newest))
+        code, f = p.post(f"/api/servers/{name}/offsite/{tid}/fetch", {"file": newest}, timeout=300)
+        check("... and comes back from S3", code == 200 and (f or {}).get("file") == newest
+              and os.path.isfile(os.path.join(args.home, "backups", name, newest)), f"{code} {f}")
+        p.put(f"/api/servers/{name}/offsite/{tid}", {"enabled": False})
+        p.call("DELETE", f"/api/settings/backup-storage/{tid}")
+    finally:
+        proc.kill()
+
+
+def _deploy(p, body):
+    """Deploys, installing the Java the server asks for first when it asks."""
+    code, dep = p.post("/api/servers/deploy", body, timeout=1800)
+    if code == 409 and isinstance((dep or {}).get("java"), dict):
+        major = dep["java"].get("major") or dep["java"].get("required")
+        p.post("/api/java/runtimes/install", {"major": major})
+
+        def done():
+            c, j = p.get("/api/java/runtimes/job")
+            j = (j or {}).get("job") or {}
+            return j if j.get("state") not in ("running", None) else None
+        wait("java install", done, 600, every=3)
+        code, dep = p.post("/api/servers/deploy", body, timeout=1800)
+    return code, dep
+
+
+def loaders(p, args):
+    """1.23: Forge's installer runs as the new server's own account, through its service."""
+    section("A Forge server (its installer as the server's account)")
+    code, dep = _deploy(p, {"edition": "java", "loader": "forge"})
+    name = (dep or {}).get("name")
+    if not check("a Forge server is deployed", code == 200 and bool(name), f"{code} {str(dep)[:600]}"):
+        return
+    d = os.path.join(args.servers_dir, name)
+    code, out = run(["cmd", "/c", "dir", "/q", os.path.join(d, "libraries")])
+    check("the installer's files belong to the server's own account", name.lower() in out.lower(), out[-600:])
+    cmd = service_command(name) or ""
+    check("its service runs the server again, not the installer", " service " in cmd and "--task" not in cmd, cmd)
+    unit = open(os.path.join(args.home, "services", f"{name}.service"), encoding="utf-8").read()
+    check("it starts from Forge's Windows arguments file", "win_args.txt" in unit, unit[-400:])
+    journal = os.path.join(args.home, "journal", f"{name}.service", "output.log")
+    check("Forge starts (Done)", wait("forge", lambda: os.path.isfile(journal) and "Done (" in
+                                      open(journal, encoding="utf-8", errors="replace").read(), 600, every=5),
+          open(journal, encoding="utf-8", errors="replace").read()[-800:] if os.path.isfile(journal) else "no output")
+    if True:                                    # --keep keeps the main server only
+        code, r = p.call("DELETE", f"/api/servers/{name}?keep_world=false", timeout=300)
+        check("the Forge server is removed", code == 200 and wait("gone", lambda: service_state(name) is None, 60),
+              f"{code} {r}")
 
 
 def read_password(home):
@@ -490,7 +796,9 @@ def join_and_terminal(p, name):
     path = (r or {}).get("path") or ""
     check("the server's join page is turned on", code == 200 and bool(path), f"{code} {str(r)[:200]}")
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:8444/join/{urllib.parse.quote(path)}", timeout=20) as resp:
+        scheme = "https" if p.base.startswith("https:") else "http"     # join pages follow the panel's HTTPS
+        with urllib.request.urlopen(f"{scheme}://127.0.0.1:8444/join/{urllib.parse.quote(path)}", timeout=20,
+                                    context=p.context()) as resp:
             page_code, page = resp.status, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         page_code, page = e.code, ""
@@ -512,8 +820,14 @@ def servers_folder(p, args, body):
     home = args.home
     code, view = p.get("/api/settings/servers-folder")
     usual = os.path.join(home, "servers")
-    check("the usual place is the servers folder in the panel's home", code == 200 and view.get("is_default")
-          and os.path.normcase(view.get("folder", "")) == os.path.normcase(usual), f"{code} {view}")
+    if args.servers_setting:
+        print(f"        this PC's owner chose {args.servers_setting}; it is put back at the end")
+        check("the panel shows the folder the owner chose", code == 200 and not view.get("is_default")
+              and os.path.normcase(view.get("folder", "")) == os.path.normcase(args.servers_setting), f"{code} {view}")
+        usual = args.servers_setting
+    else:
+        check("the usual place is the servers folder in the panel's home", code == 200 and view.get("is_default")
+              and os.path.normcase(view.get("folder", "")) == os.path.normcase(usual), f"{code} {view}")
     drive = os.path.splitdrive(os.path.abspath(home))[0]
     drives = {v.get("drive"): v for v in view.get("drives") or []}
     check("the drives to choose from include the panel's own, which suggests the usual place",
@@ -552,8 +866,9 @@ def servers_folder(p, args, body):
         code, lst = p.get("/api/servers")
         names = [s.get("name") for s in (lst if isinstance(lst, list) else lst.get("servers", []))]
         check("the panel lists servers from both folders", name in names and len(names) >= 2, str(names))
-        code, view = p.put("/api/settings/servers-folder", {"folder": ""})
-        check("back to the usual place; the other folder is still looked in", code == 200 and view.get("is_default")
+        code, view = p.put("/api/settings/servers-folder", {"folder": args.servers_setting})
+        check("back to the folder before; the other folder is still looked in",
+              code == 200 and bool(view.get("is_default")) == (not args.servers_setting)
               and any(os.path.normcase(f.get("folder", "")) == os.path.normcase(other) for f in view.get("folders", [])), f"{code} {view}")
         code, lst = p.get("/api/servers")
         names = [s.get("name") for s in (lst if isinstance(lst, list) else lst.get("servers", []))]
@@ -566,7 +881,7 @@ def servers_folder(p, args, body):
             check("removing it deletes its folder there", code == 200 and wait("gone", lambda: not os.path.exists(os.path.join(other, name)), 60),
                   f"{code} {r}")
             check("... and its Windows service", wait("gone", lambda: service_state(name) is None, 60), str(service_state(name)))
-        p.put("/api/settings/servers-folder", {"folder": ""})
+        p.put("/api/settings/servers-folder", {"folder": args.servers_setting})
         if not args.keep:
             run(["cmd", "/c", "rmdir", "/s", "/q", top])
 
@@ -678,7 +993,7 @@ def found_servers(p, args):
         check("the panel's service runs it from the same folder", wait("svc", lambda: service_state(name) == "RUNNING", 60)
               and wait("port", listening, 90), str(service_state(name)))
         check("the jar has the name the panel uses; nothing was copied", os.path.isfile(os.path.join(d, "server.jar"))
-              and not os.path.exists(os.path.join(d, jar)) and not os.path.exists(os.path.join(args.home, "servers", name)))
+              and not os.path.exists(os.path.join(d, jar)) and not os.path.exists(os.path.join(args.servers_dir, name)))
         code, out = run(["icacls", d])
         check("the server's own account can change the folder", f"NT SERVICE\\{name}".lower() in out.lower(), out[:500])
         code, lst = p.get("/api/servers")
@@ -705,6 +1020,53 @@ def found_servers(p, args):
             run(["cmd", "/c", "rmdir", "/s", "/q", top])
 
 
+def windows_accounts(p):
+    """1.23: Windows accounts in Administrators or a RedstonePanel group sign in, as Linux ones do."""
+    section("Windows accounts")
+    pw = "Rp-" + os.urandom(4).hex() + "!a"           # 13 characters: `net user` asks a question above 14
+    run(["net", "user", "rptester", "/delete"])
+    run(["net", "user", "rpother", "/delete"])
+    run(["net", "localgroup", "RedstonePanel", "/delete"])
+    code, out = run(["net", "user", "rptester", pw, "/add"])
+    code2, out2 = run(["net", "user", "rpother", pw, "/add"])
+    check("two Windows test accounts", code == 0 and code2 == 0, (out + out2)[-300:])
+    q = Panel(p.base)
+    code, who = q.post("/api/auth/login", {"username": "rptester", "password": pw})
+    check("a Windows account outside both groups is refused", code == 401, f"{code} {who}")
+    run(["net", "localgroup", "RedstonePanel", "/add"])
+    code, out = run(["net", "localgroup", "RedstonePanel", "rptester", "/add"])
+    check("the RedstonePanel group", code == 0, out[-300:])
+    code, who = q.post("/api/auth/login", {"username": "RPTester", "password": "wrong-" + pw})
+    check("a wrong Windows password is refused", code == 401, f"{code} {who}")
+    code, who = q.post("/api/auth/login", {"username": "RPTester", "password": pw})
+    code, me = q.get("/api/auth/me")
+    if not check("a member of the RedstonePanel group signs in as an admin, under one spelling",
+                 code == 200 and me.get("source") == "linux" and me.get("role") == "admin"
+                 and me.get("username") == "rptester", f"{code} {str(me)[:300]}"):
+        app = os.path.join(r"C:\Program Files\RedstonePanel", "app")
+        py = os.path.join(r"C:\Program Files\RedstonePanel", "python", "python.exe")
+        _c, out = run([py, "-X", "utf8", "-c",
+                       "import sys; sys.path.insert(0, sys.argv[1]); from core.platform.windows import system as w; "
+                       "n, pw = sys.argv[2], sys.argv[3]; print('lookup', w._lookup(n)); print('canonical', w.canonical_account(n)); "
+                       "print('groups', w.local_groups(n)); print('allowed', w.allowed_groups(('sudo', 'redstonepanel'))); "
+                       "print('password', w.check_system_password(n, pw)); import ctypes; print('err', ctypes.GetLastError())",
+                       app, "RPTester", pw])
+        print("   diag " + out.replace("\n", " | ")[-1200:])
+    r = Panel(p.base)
+    code, who = r.post("/api/auth/login", {"username": "rpother", "password": pw})
+    check("an account in neither group still can't", code == 401, f"{code} {who}")
+    run(["net", "localgroup", "Administrators", "rpother", "/add"])
+    code, who = r.post("/api/auth/login", {"username": f".\\rpother", "password": pw})
+    check("a member of Administrators signs in", code == 200 and r.cookie, f"{code} {who}")
+    run(["net", "localgroup", "RedstonePanel", "rptester", "/delete"])
+    time.sleep(31)                                          # the panel keeps group answers for 30 seconds
+    code, me = q.get("/api/auth/me")
+    check("leaving the group ends the session", code == 401, f"{code} {str(me)[:200]}")
+    run(["net", "user", "rptester", "/delete"])
+    run(["net", "user", "rpother", "/delete"])
+    run(["net", "localgroup", "RedstonePanel", "/delete"])
+
+
 def finish(p, args, name, port=None):
     if name and not args.keep:
         section("Removing the server")
@@ -715,14 +1077,17 @@ def finish(p, args, name, port=None):
         check("the server is removed", code == 200, f"{code} {r}")
         check("its Windows service is gone", wait("gone", lambda: service_state(name) is None, 60), str(service_state(name)))
         left = []
-        for root, dirs, files in os.walk(os.path.join(home, "servers", name)):
+        folder = os.path.join(getattr(args, "servers_dir", None) or os.path.join(home, "servers"), name)
+        for root, dirs, files in os.walk(folder):
             left += [os.path.join(root, n) for n in files + dirs]
-        check("its folder is gone", not os.path.exists(os.path.join(home, "servers", name)), f"{r} left: {left[:12]}")
+        check("its folder is gone", not os.path.exists(folder), f"{r} left: {left[:12]}")
         if port:
             code, out = ps(f"@(Get-NetFirewallRule -DisplayName 'RedstonePanel {port}/tcp' -ErrorAction SilentlyContinue).Count")
             check("its firewall rule is gone", out.strip().endswith("0"), out[-200:])
         code, out = run(["schtasks", "/Query", "/TN", f"\\RedstonePanel\\redstonepanel-restart@{name}"])
         check("its scheduled tasks are gone", code != 0, out[-200:])
+    if hasattr(args, "saved_notifications"):
+        restore_notifications(p, args)
     if getattr(args, "neighbour", None):
         neighbour_after(args.neighbour)
     print(f"\n{len(PASSED)} passed, {len(FAILED)} failed")

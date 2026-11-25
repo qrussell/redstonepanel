@@ -61,6 +61,7 @@ MAX_KEEP_DAYS = 3650
 
 # Not worth backing up: downloaded again by Update, regenerated, or logs.
 SKIP_TOP = {"server.jar", "server.jar.previous", "bedrock_server", "bedrock_server_symbols.debug", "bedrock-server.zip",
+            "bedrock_server.exe", "bedrock_server.pdb",
             "libraries", "versions", "logs", "crash-reports", "debug", "server.log",
             manager.REMOVED_INFO}
 SKIP_TOP_PREFIXES = (".redstonepanel-",)
@@ -222,7 +223,7 @@ def _is_active(server):
     return services.is_active(server)
 
 def _edition(server, d):
-    if os.path.isfile(os.path.join(d, "bedrock_server")):
+    if manager.is_bedrock_folder(d):
         return "bedrock"
     from core import javaservers
     return "java" if manager._is_java(server) or javaservers.is_java_folder(d) else "bedrock"
