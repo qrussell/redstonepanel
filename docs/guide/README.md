@@ -21,7 +21,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | …? | Where |
 | --- | --- |
 | Install or update the panel | [Install](#1-install) |
-| Run it on a Windows PC | [On Windows (preview)](#on-windows-preview), or [with WSL](#on-windows-with-wsl) |
+| Run it on a Windows PC | [On Windows](#on-windows), or [with WSL](#on-windows-with-wsl) |
 | Create a Java or Bedrock server | [Create or import a server](#4-create-or-import-a-server) |
 | Bring in a server I already have | [Import](#4-create-or-import-a-server) |
 | Talk to players or run a command | [Live Chat](#6-live-chat) |
@@ -51,7 +51,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
-| 1.23.0 | **🪟 Windows, the whole machine**: Bedrock, more loaders and modpacks, limits, off-site backups, **Update now** and Windows account sign-in. | [On Windows (preview)](#on-windows-preview) |
+| 1.23.0 | **🪟 Windows, the whole machine**: Bedrock, more loaders and modpacks, limits, off-site backups, **Update now** and Windows account sign-in. | [On Windows](#on-windows) |
 | 1.21.10 | **⌨️ Terminal**: a shell on the machine in your browser, for admins, as a Linux account. | [Terminal](#terminal) |
 | 1.21.9 | **🔗 Join pages** can sit behind HAProxy or Cloudflare, on your own domain. | [Join pages through a proxy](#join-pages-through-a-proxy-haproxy-or-cloudflare-1219) |
 | 1.21.6 | **Player packs**: the mods players need, as one download on the join page that follows the server. | [Player packs](#player-packs) |
@@ -84,7 +84,7 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 **Contents**
 
 1. [Install](#1-install)
-   - [On Windows (preview)](#on-windows-preview)
+   - [On Windows](#on-windows)
    - [On Windows with WSL](#on-windows-with-wsl)
 2. [Sign in](#2-sign-in)
 3. [The dashboard](#3-the-dashboard)
@@ -122,7 +122,7 @@ RedstonePanel runs on **Ubuntu 24.04, 26.04 or 26.10**, **Linux Mint 22 or 23**,
 Raspberry Pi, it runs **Java servers only**, because Mojang makes Bedrock Dedicated Server for
 x86-64 only (see [On a Raspberry Pi](#on-a-raspberry-pi)). Ubuntu 25.04 and 25.10 still work
 but no longer get updates; Debian 12, Linux Mint 21 and 32-bit systems aren't supported. From 1.22 there is also
-a Windows installer, as a preview (see [On Windows (preview)](#on-windows-preview)). On Linux, the quickest way is
+a Windows installer (see [On Windows](#on-windows)). On Linux, the quickest way is
 the installer, which adds
 the signed qrussell-repo apt repository (checking its key) and installs the panel:
 
@@ -202,19 +202,21 @@ offers Java 21, which some old versions and modpacks don't start on.
 **Cooling.** A Pi 5 needs its active cooler (or a case with a fan) to run a server all day
 without slowing itself down.
 
-### On Windows (preview)
+### On Windows
 
 From 1.22 RedstonePanel also installs on **Windows 11** and **Windows Server 2022 or 2025**
 (64-bit Intel or AMD) with its own installer, no WSL needed. From 1.23 it runs everything one
 computer needs: Java servers of every type and Bedrock servers, with backups and off-site
 copies, schedules, the console, Live Chat, the file manager, add-ons, the firewall, memory and
-processor limits, crash explanations, webhooks, two-factor sign-in and **Update now**. It stays
-a **preview** until clusters and SFTP arrive in 1.24; until then the panel leaves those out.
-The [terminal](#terminal) is Linux-only by design: on Windows, open a command prompt on the PC.
+processor limits, crash explanations, webhooks, two-factor sign-in and **Update now**. From 1.24
+it is no longer a preview: a Windows PC can be a cluster's master or one of its nodes, next to
+Linux machines (see [Clusters](#18-clusters)), and [SFTP](#sftp-filezilla-winscp) works there
+too. The [terminal](#terminal) is Linux-only by design: on Windows, open a command prompt on
+the PC.
 
 1. Download `RedstonePanel-x.y.z-x64.msi` from the
    [latest release](https://github.com/qrussell/redstonepanel/releases/latest) and open it.
-   The preview isn't signed yet, so SmartScreen says **Windows protected your PC**: choose
+   The installer isn't signed yet, so SmartScreen says **Windows protected your PC**: choose
    **More info**, then **Run anyway**. The release lists the file's SHA-256 next to it.
 2. The installer asks where servers, backups and settings are kept. The default is
    `C:\ProgramData\RedstonePanel`; the folder's name can't have a space in it.
@@ -232,7 +234,7 @@ the dashboard (from 1.23; game servers stop for about a minute), or run the newe
 Needs attention also warns when the PC is set to sleep, when Windows Update waits to restart it,
 and when a server's port is in a range Hyper-V, WSL or Docker Desktop reserved. To remove it, use **Settings → Apps → Installed apps**. Your worlds and backups stay
 in the folder from step 2. More detail is in the wiki's
-[Installation](https://github.com/qrussell/redstonepanel/wiki/Installation#on-windows-preview)
+[Installation](https://github.com/qrussell/redstonepanel/wiki/Installation#on-windows)
 page.
 
 If the machine already runs Minecraft servers that something else set up, **New server** lists
@@ -1595,7 +1597,7 @@ instead of the browser. SFTP is **off** until an admin turns it on under
   program with them filled in, and **Copy** copies the `sftp://` address.
 - **Username**: your account, a dot, and the server, such as `alex.minecraft-java`. Each
   sign-in reaches one server's folder and nothing else.
-- **Password**: your panel password (or Linux password, for a Linux account).
+- **Password**: your panel password (or Linux or Windows password, for such an account).
 - Admins reach every server. A user account needs **Files** on the server
   (see [What a helper may do](#what-a-helper-may-do)); taking it away ends their open session
   within 30 seconds.
@@ -1612,13 +1614,17 @@ Good to know:
 
 - It is SFTP only: no shell, no commands, no port forwarding. Files go through the same
   safety checks as the Files tab (nothing outside the folder, symlinks never followed) and
-  belong to the `minecraft` user.
+  belong to the `minecraft` user. On Windows they get the server's own account's rights, and
+  names Windows can't hold (`CON`, `a:b`, a name ending in a dot) are refused.
 - Uploads, deletes and renames are in the activity log (`[SFTP] alex uploaded …`), and wrong
   passwords count towards the same limit as the sign-in page (5 in 10 minutes).
-- Turning SFTP on opens its port in this machine's firewall (ufw); turning it off closes it.
-  For people outside your home, forward the port on your router too.
-- It needs the `python3-paramiko` package, which is installed with the panel unless you
-  installed without recommended packages; the setting tells you if it is missing.
+- Turning SFTP on opens its port in this machine's firewall (ufw, or Windows Defender
+  Firewall); turning it off closes it. For people outside your home, forward the port on your
+  router too.
+- On Linux it needs the `python3-paramiko` package, which is installed with the panel unless
+  you installed without recommended packages; the setting tells you if it is missing. On
+  Windows (from 1.24) the installer carries it, and SFTP runs as the Windows service
+  **redstonepanel-sftp**.
 - **On a cluster**, each machine serves SFTP for its own servers. For a server on a node, turn
   SFTP on in that node's own panel and sign in with an account of that panel; the master's
   accounts don't reach node servers over SFTP.
@@ -1965,7 +1971,10 @@ dashboard** or **Hide it** (see [The dashboard](#3-the-dashboard)).
   Download its CA certificate from here and install it on your devices once to get rid of
   the browser warning.
 - **HTTPS with my own certificate**: point it at a certificate and key you already have, for
-  example from certbot.
+  example from certbot on Linux or [win-acme](https://www.win-acme.com) on Windows (choose to
+  store the certificate as **PEM files**, then give the `-chain.pem` and `-key.pem` files here).
+  When the certificate is renewed, the panel notices within ten minutes and restarts itself to
+  serve the new one *(1.24)*; no hook script is needed.
 
 In a cluster, the choices are different (as in the screenshot): a node always uses the
 cluster's HTTPS, and a master chooses between **HTTPS from the cluster** and **HTTPS with my
@@ -2125,8 +2134,28 @@ to the node.
 
    <picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster-find.png"><img src="images/cluster-find.png" alt="Find panels on your network"></picture>
 3. On each node: paste the code under **Settings → Cluster → Join a cluster**, and click
-   **Join**.
+   **Join**. Or run the command shown with the code: `sudo redstonepanel join '…'` on Linux, or
+   `redstonepanel join …` in a command prompt opened as administrator on Windows.
 4. Download the cluster CA from **Settings → Cluster** and install it on your devices once.
+
+**Linux and Windows together** *(1.24)*: a cluster can mix Ubuntu, Debian, Raspberry Pi and
+Windows machines, and any of them can be the master. Each member says which system it runs
+(**Settings → Cluster** and the **🌐 Cluster** page show *Linux* or *Windows*). Everything above
+works between them, including moves, copies and backup copies:
+
+- **Java servers** move both ways as they are. A Forge or NeoForge server starts with the
+  arguments file for the system it lands on.
+- **Bedrock servers** get the new machine's own Bedrock program, of the version they ran when
+  minecraft.net still offers it (else the newest), downloaded during the move; worlds, packs and
+  settings come along, and the other system's program is removed.
+- **File names Windows can't hold.** Linux allows names Windows refuses or reads differently:
+  device names (`CON`, `NUL`, `COM1`, also as `con.txt`), a colon or `< > " | ? *`, a name ending
+  in a dot or space, and two names that differ only in upper and lower case. Before a server
+  moves or is copied to a Windows machine, the old machine checks its folder and the move is
+  refused with the list, before anything is stopped. Rename or remove them (in **Files**) and
+  try again. A Windows panel checks the same when it restores a backup or imports an archive.
+- Both machines need RedstonePanel 1.24 or later for a Windows member; Linux members on 1.16 or
+  later still move servers between themselves.
 
 **Creating a server on a node:** in **New Server**, pick the node under **Where**. A template
 you choose is copied to the node first, ports are picked on the node, and if the node doesn't have
@@ -2178,7 +2207,8 @@ with the master user's name, e.g. `[CLUSTER] alex@Main: …`. The master can nev
 users, settings or HTTPS, or erase a server's files.
 
 **Certificates:** the master renews the nodes' certificates, and its own, 30 days before they
-expire. A master on the internet can serve its own certificate (certbot) to browsers: **Settings →
+expire. A master on the internet can serve its own certificate (certbot, or win-acme on Windows)
+to browsers: **Settings →
 Connection → HTTPS with my own certificate**. A node with its own public certificate can join too;
 under **Settings → Cluster** it shows as checked with "the system's trust store".
 
@@ -2189,10 +2219,12 @@ plus join codes, the cluster backup and **Nightly backups**.
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/panel-settings.png"><img src="images/panel-settings.png" alt="Cluster settings on the master: the node list"></picture>
 
 **Nightly backups** write an encrypted cluster backup after 3:00 every night to
-`/var/lib/redstonepanel/cluster/backups/` and keep the last 7. Turning them on asks for a
+`/var/lib/redstonepanel/cluster/backups/` (on Windows, `data\cluster\backups` in the panel's
+folder) and keep the last 7. Turning them on asks for a
 passphrase, which is stored on the master (readable only by root) so the backup can run
 unattended; turning them off forgets it. Download one now and then and keep it off the master:
-it's what lets `sudo redstonepanel cluster promote FILE` make another panel the master.
+it's what lets `sudo redstonepanel cluster promote FILE` make another panel the master (Linux or
+Windows: a backup made on one opens on the other).
 Below them, **Connection** lets a master choose between the cluster's HTTPS and its own
 certificate.
 

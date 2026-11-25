@@ -51,7 +51,7 @@ the dashboard.
 
 - **A Windows installer** for Windows 11 and Windows Server 2022 or 2025, no WSL needed: Java
   servers on one computer, with nearly everything the Linux panel has. See
-  [On Windows (preview)](Installation.md#on-windows-preview).
+  [On Windows](Installation.md#on-windows).
 - Bedrock, more loaders, modpacks, limits, off-site backups, SFTP, the terminal and clusters
   follow on Windows in 1.23 and 1.24.
 - **Found on this computer** says what it saw and can't manage, and when nothing was found.

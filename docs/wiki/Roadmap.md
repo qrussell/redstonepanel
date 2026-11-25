@@ -41,9 +41,12 @@ show everything the panel does. It arrives in four releases:
   and keep its files, keep it running, or delete it) before removing the panel, so no server is
   left running with nothing to manage it by accident.
 - **1.24: mixed clusters.** Windows and Linux machines in one cluster, with either as the
-  master, and servers and backup copies moving between them. Windows stops being a preview.
+  master, and servers and backup copies moving between them. Bedrock servers get the new
+  machine's program; a move to Windows is refused, with the list, when the folder holds file
+  names Windows can't (checked before anything stops). SFTP on Windows, and Let's Encrypt
+  through win-acme (a renewed certificate is picked up by itself). Windows stops being a preview.
 
-A few things work differently on Windows and are documented: Let's Encrypt comes with 1.24, Windows accounts without a password can't sign in to the panel (panel accounts
+A few things work differently on Windows and are documented: Windows accounts without a password can't sign in to the panel (panel accounts
 can), and Windows 10 installs with an end-of-support note. Windows on ARM comes later.
 
 ### 2.0: an API for scripts and bots
