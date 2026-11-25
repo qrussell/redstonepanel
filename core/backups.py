@@ -29,7 +29,7 @@ import subprocess    # noqa: F401  (unused here since 1.21; tests replace subpro
 import tarfile
 import time
 
-from core import manager, notify, properties, rcon
+from core import manager, notify, properties, rcon, winnames
 from core.settings import DATA_DIR
 from core.platform import console, paths, services, system
 
@@ -547,6 +547,13 @@ def restore_backup(server, filename):
     edition = _edition(server, d)
     with tarfile.open(path, "r:gz") as tar:
         level, worlds = _archive_world(tar, edition)
+        if paths.WINDOWS:
+            # 1.24: a backup made on Linux (a copy from another member) can hold names Windows
+            # can't; say which before anything is stopped or changed
+            found = winnames.problems(m.name for m in tar.getmembers()
+                                      if any(m.name == w or m.name.startswith(w + "/") for w in worlds))
+            if found:
+                raise BackupError(f"{filename} can't be restored here. " + winnames.describe(found, "Windows"))
     if not worlds:
         raise BackupError(f"{filename} has no world folder ('{level}') to restore.")
     if edition == "java":

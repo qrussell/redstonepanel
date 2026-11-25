@@ -13,7 +13,7 @@
   <Product Id="*" Name="RedstonePanel" Language="1033" Version="$(var.Version)" Manufacturer="Quentin Russell"
            UpgradeCode="$(var.UpgradeCode)">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
-             Description="RedstonePanel $(var.Version): a web panel for Minecraft servers (Windows preview)" />
+             Description="RedstonePanel $(var.Version): a web panel for Minecraft servers" />
     <MajorUpgrade Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes"
                   DowngradeErrorMessage="A newer RedstonePanel is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />

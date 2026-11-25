@@ -1,4 +1,4 @@
-# RedstonePanel on Windows (preview, from 1.22): the bundled-Python build, the setup and the install
+# RedstonePanel on Windows (from 1.22): the bundled-Python build, the setup and the install
 # test on GitHub's Windows runners. GitLab CI has no Windows runner, so this is where the Windows
 # side is tested; GitLab mirrors branches here.
 name: windows

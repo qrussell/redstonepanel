@@ -244,6 +244,8 @@ def _hello_fields(node):
         out["cert_expires"] = h["cert_expires"]
     if cluster.clean_machine(h.get("machine")):
         out["machine"] = h["machine"]
+    if h.get("platform"):
+        out["platform"] = cluster.clean_system(h.get("platform"))
     out["terminal"] = cluster.clean_terminal(h.get("terminal"))      # None from a node before 1.21.10
     return out
 

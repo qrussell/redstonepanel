@@ -1,4 +1,4 @@
-"""The Windows side of the platform layer (a preview from 1.22): Windows services hosted by the
+"""The Windows side of the platform layer (from 1.22): Windows services hosted by the
 panel's runner, Task Scheduler, Defender Firewall and Java from Adoptium.
 
 The panel describes servers and schedules in the same unit files as on Linux; this side reads

@@ -58,6 +58,31 @@ def available():
     return importlib.util.find_spec("paramiko") is not None
 
 
+def _missing():
+    if paths.WINDOWS:
+        return "SFTP needs the paramiko library, which the installer carries. Install RedstonePanel again to repair it."
+    return f"SFTP needs the {PACKAGE} package. Install it with: sudo apt install {PACKAGE}"
+
+
+# Reading and writing at an offset. Windows has no os.pread/os.pwrite (1.24): there each open file
+# has its own descriptor and SFTP handles one request at a time per file, so a seek then a read
+# under the handle's lock does the same.
+def _pread(fd, length, offset, lock):
+    if hasattr(os, "pread"):
+        return os.pread(fd, length, offset)
+    with lock:
+        os.lseek(fd, offset, os.SEEK_SET)
+        return os.read(fd, length)
+
+
+def _pwrite(fd, data, offset, lock):
+    if hasattr(os, "pwrite"):
+        return os.pwrite(fd, data, offset)
+    with lock:
+        os.lseek(fd, offset, os.SEEK_SET)
+        return os.write(fd, data)
+
+
 def _systemctl(*args):
     try:
         return services.systemctl(*args, timeout=30)
@@ -105,6 +130,23 @@ def parse_login(name):
 
 
 def _unit_text():
+    if paths.WINDOWS:
+        # 1.24: the runner hosts it as the Windows service redstonepanel-sftp, as the system account
+        # like the panel (it checks Windows passwords and writes into every server's folder).
+        # "redstonepanel" is the word the runner turns into the panel's own Python and run.py.
+        return """[Unit]
+Description=RedstonePanel SFTP - server files for panel accounts (Panel Settings > SFTP)
+
+[Service]
+Type=simple
+ExecStart=redstonepanel sftp-serve
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+"""
     return f"""[Unit]
 Description=RedstonePanel SFTP - server files for panel accounts (Panel Settings > SFTP)
 Wants=network-online.target
@@ -177,7 +219,7 @@ def check_can_enable(s, old):
     if not s["sftp_enabled"]:
         return
     if not available():
-        raise SftpError(f"SFTP needs the {PACKAGE} package. Install it with: sudo apt install {PACKAGE}")
+        raise SftpError(_missing())
     moving = not old.get("sftp_enabled") or old.get("sftp_port") != s["sftp_port"] or not running()
     if moving and not panel_settings.port_free(s["sftp_port"]):
         raise SftpError(f"Port {s['sftp_port']} is already in use on this server.")
@@ -321,12 +363,13 @@ def _classes():
             super().__init__(flags)
             self.session, self.path, self.fd, self.created = session, path, fd, created
             self.wrote = False
+            self.lock = threading.Lock()
 
         def read(self, offset, length):
             if not self.session.allowed():
                 return SFTP_PERMISSION_DENIED
             try:
-                return os.pread(self.fd, min(length, 1 << 20), offset)
+                return _pread(self.fd, min(length, 1 << 20), offset, self.lock)
             except OSError as e:
                 return fail(e)
 
@@ -336,7 +379,7 @@ def _classes():
             try:
                 view = memoryview(data)
                 while view:
-                    n = os.pwrite(self.fd, view, offset)
+                    n = _pwrite(self.fd, view, offset, self.lock)
                     view, offset = view[n:], offset + n
                 self.wrote = True
                 return SFTP_OK
@@ -353,7 +396,10 @@ def _classes():
             # Times are kept (uploads keep their dates); owner and mode stay the folder's
             try:
                 if attr.st_mtime is not None:
-                    os.utime(self.fd, (attr.st_atime or attr.st_mtime, attr.st_mtime))
+                    if os.utime in os.supports_fd:
+                        os.utime(self.fd, (attr.st_atime or attr.st_mtime, attr.st_mtime))
+                    else:                   # Windows: by name, through the file manager's checks
+                        files.set_mtime(self.session.server, self.path, attr.st_mtime, attr.st_atime)
                 if attr.st_size is not None:
                     os.ftruncate(self.fd, attr.st_size)
                     self.wrote = True
@@ -578,7 +624,7 @@ def serve(port=None, ready=None):
             return 0
         port = s["sftp_port"]
     if not available():
-        print(f"SFTP needs the {PACKAGE} package: sudo apt install {PACKAGE}")
+        print(_missing())
         return 1
     import logging
     logging.getLogger("paramiko").setLevel(logging.CRITICAL)     # scanners make it noisy

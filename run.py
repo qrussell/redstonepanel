@@ -61,7 +61,7 @@ os.chdir(APP_DIR)
 sys.path.insert(0, APP_DIR)
 
 from core import settings  # noqa: E402
-from core.platform import services, system  # noqa: E402
+from core.platform import paths, services, system  # noqa: E402
 
 
 def reset_security():
@@ -157,6 +157,11 @@ def main():
     from core import cluster_client, manager
     import main as main_module
     cluster_client.maintenance(manager.write_log, main_module._restart_soon)
+    # 1.24: "HTTPS with my own certificate" renewed by certbot or win-acme: restart to serve it
+    if ssl_args and s["https_mode"] == "custom":
+        from core import tls
+        tls.watch_own_certificate(ssl_args["ssl_certfile"], ssl_args["ssl_keyfile"], manager.write_log,
+                                  main_module._restart_soon)
     # Cluster masters: copy backups to the member chosen on each server's Backups tab (1.16.8)
     from core import backup_copies
     backup_copies.sweeper()
@@ -283,7 +288,8 @@ def _restart_service(what):
         if services.restart_panel() == 0:
             print(f"Restarted redstonepanel {what}.")
             return
-    print("Restart the panel to apply it: sudo systemctl restart redstonepanel")
+    print("Restart the panel to apply it: " + ("Restart-Service redstonepanel (PowerShell as administrator)"
+                                               if paths.WINDOWS else "sudo systemctl restart redstonepanel"))
 
 
 def _log(msg):
@@ -292,6 +298,8 @@ def _log(msg):
 
 
 def _actor():
+    if paths.WINDOWS:
+        return f"{os.environ.get('USERNAME') or 'administrator'} (command line)"
     return f"{os.environ.get('SUDO_USER') or 'root'} (command line)"
 
 
@@ -317,7 +325,7 @@ def cluster_cmd(args):
             st = cluster.create_cluster(args[1], _actor())
             _log(f"{_actor()} created cluster '{st['name']}'; this panel is its master.")
             print(f"Created cluster '{st['name']}'. This panel is its master and now uses cluster HTTPS.")
-            print("Add nodes with: sudo redstonepanel cluster join-code")
+            print("Add nodes with: " + ("" if paths.WINDOWS else "sudo ") + "redstonepanel cluster join-code")
             _restart_service("with cluster HTTPS")
         elif args == ["status"]:
             st = cluster.state()
@@ -345,8 +353,10 @@ def cluster_cmd(args):
             _log(f"{_actor()} made a join code ({j['id']}), valid for one hour.")
             print(f"Join code (single use, valid until {_when(j['expires'])}). Keep it secret.\n")
             print(j["code"] + "\n")
-            print("On the new server (Ubuntu with RedstonePanel installed), run:\n")
-            print("  " + j["command"])
+            print("On the new server (with RedstonePanel installed), run on Linux:\n")
+            print("  " + j["command"] + "\n")
+            print("or on Windows, in a command prompt opened as administrator:\n")
+            print("  " + j["windows_command"])
         elif args[:1] == ["backup"] and len(args) == 2:
             data = cluster.make_backup(_passphrase(confirm=True), _actor())
             fd = os.open(args[1], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

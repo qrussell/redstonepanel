@@ -11,6 +11,7 @@ import secrets
 import time
 import threading
 
+import stat
 import tempfile
 from core.settings import DATA_DIR, LOG_FILE
 from core import properties, rcon, proxies, bedrock_net, javaservers
@@ -1138,21 +1139,46 @@ def java_for_folder(d):
     except javaservers.MissingJavaError as e:
         raise JavaMissing(e)
 
+# Each system's Bedrock program files (1.24: a folder moved across leaves the other one's behind)
+BEDROCK_PROGRAM_FILES = {"linux": ("bedrock_server", "bedrock_server_symbols.debug"),
+                         "windows": ("bedrock_server.exe", "bedrock_server.pdb")}
+
 def _bedrock_program_for_this_system(d):
     """An imported or moved Bedrock folder made on the other system (bedrock_server on Windows,
-    bedrock_server.exe on Linux) gets this system's program downloaded; the world, packs and
-    settings stay."""
+    bedrock_server.exe on Linux) gets this system's program downloaded, of the version it ran
+    when minecraft.net still has it (1.24); the world, packs and settings stay, and the other
+    system's program is removed."""
     if not has_bedrock_program(d):
-        write_log(f"[SYSTEM] {os.path.basename(d)} has no {paths.BEDROCK_PROGRAM}; downloading the latest Bedrock release.")
-        _fetch_bedrock(d)
+        from core import updates
+        ran = updates.bedrock_installed(d)
+        write_log(f"[SYSTEM] {os.path.basename(d)} has no {paths.BEDROCK_PROGRAM}; downloading "
+                  + (f"Bedrock {ran} for this system." if ran else "the latest Bedrock release."))
+        _fetch_bedrock(d, prefer=ran) if ran else _fetch_bedrock(d)
+    _remove_other_bedrock_program(d)
     system.make_executable(os.path.join(d, paths.BEDROCK_PROGRAM))
 
-def _fetch_bedrock(d):
-    """Downloads the latest Bedrock Dedicated Server and unpacks it into d, keeping the folder's
-    own server.properties, permissions.json and allowlist.json (see core/updates.py)."""
+def _remove_other_bedrock_program(d):
+    other = BEDROCK_PROGRAM_FILES["linux" if paths.WINDOWS else "windows"]
+    gone = []
+    with system.game_files():
+        for name in other:
+            p = os.path.join(d, name)
+            try:
+                if stat.S_ISREG(os.lstat(p).st_mode):
+                    os.remove(p)
+                    gone.append(name)
+            except OSError:
+                pass
+    if gone:
+        write_log(f"[SYSTEM] Removed the other system's Bedrock program from {os.path.basename(d)}: {', '.join(gone)}.")
+
+def _fetch_bedrock(d, prefer=None):
+    """Downloads the latest Bedrock Dedicated Server (or `prefer`, see updates.fetch_bedrock) and
+    unpacks it into d, keeping the folder's own server.properties, permissions.json and
+    allowlist.json (see core/updates.py)."""
     from core import updates
     try:
-        updates.fetch_bedrock(d)
+        updates.fetch_bedrock(d, prefer=prefer)
     except updates.UpdateError as e:
         write_log(f"[WARNING] {e}")
         raise ServerError(str(e))

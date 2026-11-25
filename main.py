@@ -128,33 +128,12 @@ STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 # An admin who must set up two-factor (Panel Settings > Sign-in) can reach only these until they do
 TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
 
-# The Windows preview (1.22) runs Java servers on one machine. What it doesn't do yet is refused
-# here in one plain sentence (changes only: reading still works), and the page hides the buttons
-# (/api/auth/me lists the names under "not_yet").
-WINDOWS_NOT_YET = (
-    ("cluster", "Clusters aren't", re.compile(r"^/api/(settings/)?cluster(/|$)")),
-    ("sftp", "SFTP isn't", re.compile(r"^/api/settings/sftp$")),
-)
-
-def not_yet(method, path, windows=None):
-    """The sentence refusing this request on the Windows preview, or None when it may go ahead."""
-    if not (paths.WINDOWS if windows is None else windows) or method not in STATE_CHANGING:
-        return None
-    for _name, what, pattern in WINDOWS_NOT_YET:
-        if pattern.match(path):
-            return (f"{what} in the Windows preview yet. To get the new installer when it is, see "
-                    f"https://redstonepanel.cielocloud.org.")
-    return None
-
 @app.middleware("http")
 async def access_control(request: Request, call_next):
     path = request.url.path
     if path.startswith("/api/"):
         if request.method in STATE_CHANGING and panel_settings.same_origin(request.headers) is False:
             return JSONResponse({"detail": "Request blocked: it came from another website."}, status_code=403)
-        refused = not_yet(request.method, path)
-        if refused:
-            return JSONResponse({"detail": refused}, status_code=400)
         if path not in PUBLIC_API:
             ip = request.client.host if request.client else None
             bearer = request.headers.get("authorization", "")
@@ -451,10 +430,9 @@ def me_api(request: Request):
     # Bedrock Dedicated Server is x86-64 only: the New Server form hides it on ARM64 (a Raspberry Pi)
     user["machine"] = platform.machine()
     user["bedrock_supported"] = manager.bedrock_supported()
-    # Which system the panel runs on. On Windows (a preview since 1.22) the page says so and hides
-    # what the preview doesn't do yet.
+    # Which system the panel runs on (Windows since 1.22; everything works there since 1.24, except
+    # the terminal, which is Linux-only by design)
     user["system"] = "windows" if paths.WINDOWS else "linux"
-    user["not_yet"] = [n for n, _w, _p in WINDOWS_NOT_YET] if paths.WINDOWS else []
     # Admins get told when HTTPS was requested but the panel had to fall back to HTTP
     if user["role"] == "admin":
         user["https_error"] = panel_settings.RUNTIME.get("https_error")
@@ -2744,6 +2722,7 @@ class TransferExport(BaseModel):
     stop: bool
     precopy: bool = False                   # 1.16.13: pack it while it runs, listing every file
     base: Optional[str] = None              # 1.16.13: only what changed since that pre-copy
+    for_windows: bool = False               # 1.24: the target is Windows; refuse names it can't hold
 
 class TransferImport(BaseModel):
     size: int
@@ -2762,7 +2741,7 @@ class TransferInstall(BaseModel):
 
 @app.post("/api/cluster/transfers/export")
 def transfer_export_api(req: TransferExport, request: Request):
-    return _transfer_call(request, transfer.export, req.server, req.stop, req.precopy, req.base)
+    return _transfer_call(request, transfer.export, req.server, req.stop, req.precopy, req.base, req.for_windows)
 
 @app.get("/api/cluster/transfers/{tid}/archive")
 def transfer_archive_api(tid: str, request: Request):

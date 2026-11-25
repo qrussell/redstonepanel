@@ -452,28 +452,22 @@ class Limits(unittest.TestCase):
         self.assertFalse(runner._valid_event(dict(ok, result="whatever")))
 
 
-class Preview(unittest.TestCase):
-    """What the Windows preview doesn't do yet is refused in one sentence; reading still works."""
+class NotAPreview(unittest.TestCase):
+    """1.24: clusters and SFTP came to Windows, so nothing is refused there any more for being a
+    preview (the terminal is Linux-only by design, through terminal.supported())."""
 
-    def test_changes_outside_the_preview_are_refused_on_windows_only(self):
+    def test_nothing_is_refused_as_not_yet(self):
         try:
             import main
         except ImportError:
             self.skipTest("needs fastapi")
-        for method, path in (("POST", "/api/settings/cluster"), ("POST", "/api/cluster/moves"),
-                             ("PUT", "/api/settings/sftp")):
-            self.assertIn("Windows preview", main.not_yet(method, path, windows=True) or "", f"{method} {path}")
-            self.assertIsNone(main.not_yet(method, path, windows=False), f"{method} {path}")
-        for method, path in (("GET", "/api/settings/cluster"), ("POST", "/api/servers/deploy"),
-                             ("POST", "/api/servers/minecraft-a/backups"), ("PUT", "/api/settings"),
-                             ("PUT", "/api/settings/notifications"), ("POST", "/api/java/runtimes/install"),
-                             ("GET", "/api/servers/minecraft-a/modpack"), ("POST", "/api/servers/modpack"),
-                             ("POST", "/api/settings/backup-storage"), ("PUT", "/api/servers/minecraft-a/offsite/t1"),
-                             ("POST", "/api/servers/minecraft-a/modpack/update"),
-                             ("PUT", "/api/servers/minecraft-a/resources"),
-                             ("POST", "/api/panel/update"), ("POST", "/api/panel/update/check"),
-                             ("POST", "/api/servers/minecraft-a/phantom/install")):
-            self.assertIsNone(main.not_yet(method, path, windows=True), f"{method} {path}")
+        self.assertFalse(hasattr(main, "WINDOWS_NOT_YET"))
+        self.assertFalse(hasattr(main, "not_yet"))
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "js",
+                               "app.js"), encoding="utf-8") as f:
+            page = f.read()
+        self.assertNotIn("notYet(", page)
+        self.assertNotIn("Windows preview", page)
 
     def test_loaders_set_up_by_an_installer_are_refused_where_it_cannot_be_confined(self):
         from core import javaservers

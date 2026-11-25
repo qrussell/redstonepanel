@@ -623,18 +623,38 @@ def _write_version(d, version):
     with system.game_files(), open(os.path.join(d, VERSION_FILE), "w") as f:
         json.dump({"version": version, "installed": int(time.time())}, f)
 
-def fetch_bedrock(d):
-    """New or binary-less servers (deploy, restore, import): the newest release into d."""
+def same_version(latest, version):
+    """{version, url} for an older release in the same place as the newest one, or None."""
+    if not isinstance(version, str) or not re.fullmatch(r"[0-9]+(\.[0-9]+){1,4}", version) \
+            or version == latest["version"] or version_key(version) > version_key(latest["version"]):
+        return None
+    url = BEDROCK_ZIP_RE.sub(f"bedrock-server-{version}.zip", latest["url"])
+    return {"version": version, "url": url} if _allowed_url(url) else None
+
+
+def fetch_bedrock(d, prefer=None):
+    """New or binary-less servers (deploy, restore, import): the newest release into d. prefer:
+    a version to install instead while minecraft.net still has it (1.24: a server moved from the
+    other system gets this system's program of the version it ran), else the newest."""
     latest = bedrock_latest()
     os.makedirs(d, exist_ok=True)
     staging = manager.game_temp_dir(d, ".redstonepanel-update-")
     try:
-        install_files(d, download_bedrock(latest, staging))
+        chosen, zip_path = latest, None
+        older = same_version(latest, prefer)
+        if older:
+            try:
+                zip_path = download_bedrock(older, staging)
+                chosen = older
+            except UpdateError as e:
+                manager.write_log(f"[UPDATE] Bedrock {older['version']} isn't available for this system ({e}); "
+                                  f"installing {latest['version']} instead.")
+        install_files(d, zip_path or download_bedrock(latest, staging))
     finally:
         manager.remove_game_tree(staging)
-    _write_version(d, latest["version"])
-    manager.write_log(f"[SYSTEM] Installed Bedrock {latest['version']}.")
-    return latest["version"]
+    _write_version(d, chosen["version"])
+    manager.write_log(f"[SYSTEM] Installed Bedrock {chosen['version']}.")
+    return chosen["version"]
 
 
 # ---------------------------------------------------------------------------

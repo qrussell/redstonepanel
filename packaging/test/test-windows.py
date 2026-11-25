@@ -255,6 +255,7 @@ def main():
     check("the API refuses a visitor who isn't signed in", code == 401, f"{code} {me}")
     code, who = p.post("/api/auth/login", {"username": "admin", "password": "wrong-password"})
     check("a wrong password is refused", code == 401, f"{code}")
+    args.password = password
     code, who = p.post("/api/auth/login", {"username": "admin", "password": password})
     check("admin signs in with the password from first-sign-in.txt", code == 200 and p.cookie, f"{code} {who}")
     code, me = p.get("/api/auth/me")
@@ -505,6 +506,9 @@ def main():
     loaders(p, args)
     servers_folder(p, args, body)
     found_servers(p, args)
+    sftp(p, args, name)
+    windows_names(p)
+    cluster_alone(p, args)
 
     # ------------------------------------------------------------------ the command line
     port = port_check(p, name, port) or port
@@ -1114,6 +1118,197 @@ def windows_accounts(p):
     run(["net", "user", "rptester", "/delete"])
     run(["net", "user", "rpother", "/delete"])
     run(["net", "localgroup", "RedstonePanel", "/delete"])
+
+
+PROGRAM = r"C:\Program Files\RedstonePanel"
+
+
+def panel_python(code, *argv, timeout=180):
+    """Runs Python code with the panel's own Python and its libraries (paramiko, cryptography)."""
+    py = os.path.join(PROGRAM, "python", "python.exe")
+    return run([py, "-X", "utf8", "-c", "import sys; sys.path.insert(0, sys.argv[1]); " + code,
+                os.path.join(PROGRAM, "app"), *argv], timeout)
+
+
+SFTP_CLIENT = """
+import paramiko, io, stat as S
+host, port, user, pw = sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
+t = paramiko.Transport((host, port)); t.connect(username=user, password=pw)
+c = paramiko.SFTPClient.from_transport(t)
+print('LIST', sorted(c.listdir('/')))
+c.putfo(io.BytesIO(b'hello from sftp' * 1000), '/sftp-test.txt')
+c.posix_rename('/sftp-test.txt', '/sftp-moved.txt')
+print('SIZE', c.stat('/sftp-moved.txt').st_size)
+with c.open('/sftp-moved.txt', 'rb') as f:
+    f.seek(5); print('READ', f.read(10))
+c.mkdir('/sftp-dir')
+for bad in ('/aux.txt', '/x:y'):
+    try:
+        c.putfo(io.BytesIO(b'x'), bad); print('MADE', bad)
+    except IOError as e:
+        print('REFUSED', bad)
+try:
+    print('UP', 'server.properties' in c.listdir('/../..'))
+except IOError:
+    print('UP refused')
+c.rmdir('/sftp-dir')
+c.close(); t.close()
+print('DONE')
+"""
+
+
+def sftp(p, args, name):
+    """1.24: SFTP on Windows, as the service redstonepanel-sftp run as the system account."""
+    section("SFTP")
+    if not name:
+        return
+    port = 2022
+    code, r = p.put("/api/settings/sftp", {"enabled": True, "port": port})
+    check("SFTP turns on", code == 200, f"{code} {r}")
+    check("its Windows service runs", wait("sftp", lambda: service_state("redstonepanel-sftp") == "RUNNING", 60),
+          str(service_state("redstonepanel-sftp")))
+    code, out = run(["sc", "qc", "redstonepanel-sftp"])
+    check("as the system account, like the panel", "LocalSystem" in out, out[-300:])
+    code, out = ps(f"@(Get-NetFirewallRule -DisplayName 'RedstonePanel {port}/tcp' -ErrorAction SilentlyContinue).Count")
+    check("its port has a firewall rule", out.strip().endswith("1"), out[-200:])
+    wait("listening", lambda: socket.create_connection(("127.0.0.1", port), 3).close() or True, 30)
+    code, out = panel_python(SFTP_CLIENT, "127.0.0.1", str(port), f"admin.{name}", args.password)
+    print("        " + out.strip().replace("\n", " | ")[-900:])
+    check("an admin signs in with ACCOUNT.SERVER and the panel password, and sees the server's folder",
+          code == 0 and "LIST" in out and "server.properties" in out, out[-500:])
+    check("uploads, renames and reads at an offset", "SIZE 15000" in out and "READ b'from sftp '" in out, out[-500:])
+    check("names Windows can't hold are refused", "REFUSED /aux.txt" in out and "REFUSED /x:y" in out, out[-500:])
+    check("the session can't leave the server's folder ('/../..' is its own folder)", "UP True" in out, out[-300:])
+    folder = os.path.join(args.servers_dir, name)
+    moved = os.path.join(folder, "sftp-moved.txt")
+    check("the file is in the server's folder", os.path.isfile(moved) and os.path.getsize(moved) == 15000)
+    code, out = run(["icacls", moved])
+    check("and the server's account can change it (inherited rights)", f"NT SERVICE\\{name}".lower() in out.lower()
+          and "(I)" in out, out[-400:])
+    code, out = panel_python(SFTP_CLIENT, "127.0.0.1", str(port), f"admin.{name}", "wrong-password")
+    check("a wrong password is refused", code != 0 and "Authentication failed" in out, out[-300:])
+    code, log = p.get("/api/logs?lines=400")
+    text = json.dumps(log)
+    check("uploads are in the panel log with who did them", f"[SFTP] admin uploaded {name}/sftp-test.txt" in text,
+          text[-400:])
+    try:
+        os.remove(moved)
+    except OSError:
+        pass
+    code, r = p.put("/api/settings/sftp", {"enabled": False, "port": port})
+    check("SFTP turns off", code == 200, f"{code} {r}")
+    check("its service is gone", wait("gone", lambda: service_state("redstonepanel-sftp") is None, 60),
+          str(service_state("redstonepanel-sftp")))
+    code, out = ps(f"@(Get-NetFirewallRule -DisplayName 'RedstonePanel {port}/tcp' -ErrorAction SilentlyContinue).Count")
+    check("and its firewall rule", out.strip().endswith("0"), out[-200:])
+
+
+def windows_names(p):
+    """1.24: an archive from Linux with names Windows can't hold is refused with the list."""
+    section("File names Windows can't hold")
+    import io
+    import tarfile
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as t:
+        for n in ("server.properties", "world/level.dat", "plugins/aux.yml", "world/Level.dat", "notes:1.txt"):
+            info = tarfile.TarInfo(n)
+            info.size = 1
+            t.addfile(info, io.BytesIO(b"x"))
+    boundary = "rpboundary" + os.urandom(6).hex()
+    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"edition\"\r\n\r\njava\r\n"
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"linux.tar.gz\"\r\n"
+            f"Content-Type: application/gzip\r\n\r\n").encode() + buf.getvalue() + f"\r\n--{boundary}--\r\n".encode()
+    req = urllib.request.Request(p.base + "/api/servers/import", data=body, method="POST")
+    req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+    req.add_header("Cookie", p.cookie or "")
+    try:
+        with urllib.request.urlopen(req, timeout=120, context=p.context()) as r:
+            code, out = r.status, r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        code, out = e.code, e.read().decode("utf-8", "replace")
+    check("importing a Linux archive with such names is refused, listing them",
+          code == 400 and "plugins/aux.yml" in out and "notes:1.txt" in out and "world/Level.dat" in out, f"{code} {out[:400]}")
+
+
+def _reconnect(p, base, password, seconds=120):
+    """After the panel restarted itself: the new address, signed in again if needed."""
+    p.base = base
+    if not wait("restarted", lambda: p.get("/api/health", timeout=5)[0] == 200, seconds, every=3):
+        return False
+    if p.get("/api/auth/me")[0] != 200:
+        p.post("/api/auth/login", {"username": "admin", "password": password})
+    return p.get("/api/auth/me")[0] == 200
+
+
+def cluster_alone(p, args):
+    """1.24: a Windows panel becomes a cluster master (the cluster CA and certificates made with
+    the cryptography library), makes join codes for both systems and an encrypted cluster backup,
+    then goes back to how it was. Joining needs a second machine: Quentin's PC with Linux nodes."""
+    section("A cluster master on Windows")
+    code, view = p.get("/api/settings")
+    old = (view or {}).get("settings") or {}
+    old_base = p.base
+    code, r = p.post("/api/settings/cluster", {"name": "Windows CI"})
+    if not check("a cluster is created", code == 200 and r.get("restart"), f"{code} {r}"):
+        return
+    time.sleep(4)
+    https = f"https://127.0.0.1:{old.get('https_port') or 8443}"
+    check("the panel comes back with cluster HTTPS", _reconnect(p, https, args.password), p.base)
+    code, cl = p.get("/api/settings/cluster")
+    check("it is the master", code == 200 and (cl or {}).get("role") == "master", f"{code} {str(cl)[:300]}")
+    import ssl
+    try:
+        pem = ssl.get_server_certificate(("127.0.0.1", int(old.get("https_port") or 8443)))
+    except OSError as e:
+        pem = str(e)
+    ca = os.path.join(args.home, "data", "cluster", "ca.crt")
+    code, out = panel_python(
+        "from cryptography import x509; c = x509.load_pem_x509_certificate(sys.argv[2].encode()); "
+        "ca = x509.load_pem_x509_certificate(open(sys.argv[3], 'rb').read()); "
+        "print('ISSUER', c.issuer == ca.subject); "
+        "print('NC', ca.extensions.get_extension_for_class(x509.NameConstraints).critical); "
+        "print('SAN', c.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.IPAddress))",
+        pem, ca)
+    check("it serves a certificate from its own cluster CA, which has name constraints",
+          "ISSUER True" in out and "NC True" in out and "SAN [" in out, out[-400:])
+    code, j = p.post("/api/settings/cluster/joins", {"url": cl.get("join_url") if cl else ""})
+    check("a join code says how to join from Linux and from Windows",
+          code == 200 and j.get("command", "").startswith("sudo redstonepanel join '")
+          and j.get("windows_command", "").startswith("redstonepanel join rpjoin1:"), f"{code} {str(j)[:300]}")
+    code, out = run(["cmd", "/c", "redstonepanel", "cluster", "join-code"])
+    check("`redstonepanel cluster join-code` prints both", code == 0 and "on Windows" in out and "redstonepanel join rpjoin1:" in out,
+          out[-400:])
+    code, data = p.call("POST", "/api/settings/cluster/backup", {"passphrase": "a long test passphrase"}, raw=True)
+    check("an encrypted cluster backup downloads", code == 200 and isinstance(data, bytes) and data[:8] == b"Salted__",
+          f"{code} {str(data)[:100]}")
+    if code == 200 and isinstance(data, bytes):
+        backup = os.path.join(args.home, "run", "test-cluster.rpbackup")
+        with open(backup, "wb") as f:
+            f.write(data)
+        code, out = panel_python(
+            "from core import cluster; m, files = cluster.read_backup(open(sys.argv[2], 'rb').read(), sys.argv[3]); "
+            "print('CLUSTER', m['cluster']); print('KEY', b'PRIVATE KEY' in files['cluster/ca.key'])",
+            backup, "a long test passphrase")
+        check("it opens with the passphrase (OpenSSL's format, as on Linux)", "CLUSTER Windows CI" in out and "KEY True" in out,
+              out[-400:])
+        os.remove(backup)
+    code, r = p.post("/api/settings/cluster/leave")
+    check("the cluster is dissolved", code == 200 and r.get("restart"), f"{code} {r}")
+    time.sleep(4)
+    check("the panel comes back standalone", _reconnect(p, https, args.password), p.base)
+    code, cl = p.get("/api/settings/cluster")
+    check("standalone again", code == 200 and (cl or {}).get("role") == "standalone", f"{code} {str(cl)[:200]}")
+    # Back to how the panel was before (plain HTTP on the runner; HTTPS on a PC that had it)
+    if old.get("https_mode") and old["https_mode"] != "self_signed":
+        code, view = p.get("/api/settings")
+        now = (view or {}).get("settings") or {}
+        code, r = p.put("/api/settings", dict(now, https_mode=old["https_mode"], cert_file=old.get("cert_file", ""),
+                                              key_file=old.get("key_file", "")))
+        time.sleep(4)
+        check("the panel's own connection settings are put back", code == 200 and _reconnect(p, old_base, args.password),
+              f"{code} {r}")
+    else:
+        _reconnect(p, old_base if old_base.startswith("https") else https, args.password)
 
 
 def finish(p, args, name, port=None):
