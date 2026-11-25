@@ -9,6 +9,19 @@ the dashboard.
 
 ---
 
+## 1.23.1: a port check *(November 2026)*
+
+- **Port check** on the Port forwarding page finds port conflicts the panel can't prevent:
+  another program on a server's port, servers edited onto one port, unknown mods, a server on
+  the panel's own port. It names the other program (process, path, service or Docker container)
+  and never touches it.
+- RCON, Query and mod ports move by themselves; **Move to a free port** moves a game port on a
+  click. A server whose port another program holds isn't started.
+- **Check the router** compares your router's forwards (UPnP) with the servers. Also in Needs
+  attention, `redstonepanel ports` and the `port_conflict` webhook. Linux and Windows.
+
+[Release notes](../../release-notes/v1.23.1.md)
+
 ## 1.23: the whole single machine on Windows *(November 2026)*
 
 - **Bedrock servers on Windows**, with automatic updates and Phantom.

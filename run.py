@@ -24,6 +24,9 @@
     redstonepanel check-updates       look for newer server versions and update the Bedrock servers
                                       set to update automatically (its timer runs this every 6 hours)
     redstonepanel notify-test         send a test message to the notification webhook
+    redstonepanel ports               the Port check: which program holds each port the servers and
+                                      the panel need, and the conflicts found (works while the
+                                      panel itself is stopped)
     redstonepanel sftp-serve          run the SFTP server (its service, redstonepanel-sftp.service,
                                       runs this while SFTP is on under Panel Settings > SFTP)
     redstonepanel upgrade             update the redstonepanel package (apt), as the panel's Update button does
@@ -486,6 +489,11 @@ def restart_server_cmd(name):
     print(f"{name}: {result}.")
 
 
+def ports_cmd():
+    from core import portaudit
+    print(portaudit.text_report())
+
+
 def check_updates_cmd():
     from core import updates
     try:
@@ -673,6 +681,8 @@ if __name__ == "__main__":
         restart_server_cmd(rest[0])
     elif cmd == "check-updates" and not rest:
         check_updates_cmd()
+    elif cmd == "ports" and not rest:
+        ports_cmd()
     elif cmd == "notify-test" and not rest:
         notify_test_cmd()
     elif cmd == "sftp-serve" and not rest:

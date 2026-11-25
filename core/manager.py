@@ -340,11 +340,11 @@ def sync_firewall():
     ports or transport were edited by hand gets its new rules and loses the old ones; a server
     whose unit is gone loses its rules. Rules another server or a Phantom still needs stay.
     A server seen for the first time is only noted (the dashboard names rules it lacks)."""
-    try:                                       # first, mods on two servers that share a port
-        from core import modports
-        modports.resolve()
+    try:                                       # first, the Port check: ports that clash (1.23.1)
+        from core import portaudit
+        portaudit.sweep()
     except Exception as e:
-        write_log(f"[PORTS] Checking mod and plugin ports failed: {e}")
+        write_log(f"[PORTS] Checking ports failed: {e}")
     if not firewall.installed():
         return []
     done = []
@@ -652,6 +652,8 @@ def _used_ports(exclude_dir=None, mods=True):
             from core import modports
             skip_server = os.path.basename(os.path.realpath(exclude_dir)) if exclude_dir else None
             used |= {c["port"] for s, cs in modports.claims().items() if s != skip_server for c in cs}
+            from core import portaudit         # ports mods the panel doesn't know opened (1.23.1)
+            used |= portaudit.learned_ports(exclude=skip_server)
         except Exception:
             pass
     skip = os.path.realpath(exclude_dir) if exclude_dir else None
@@ -1233,11 +1235,13 @@ def control_server(server_name, action):
         from core import transfer
         if transfer.is_moving(server_name):
             raise ServerError(f"{server_name} is being moved to another cluster member; it can't be started here.")
-        try:                                   # a mod port another server holds: move it first
-            from core import modports
-            modports.resolve(only=[server_name])
+        from core import portaudit             # 1.23.1: move what may move, refuse a taken game port
+        try:
+            portaudit.start_check(server_name)
+        except ServerError:
+            raise
         except Exception as e:
-            write_log(f"[PORTS] Checking {server_name}'s mod and plugin ports failed: {e}")
+            write_log(f"[PORTS] Checking {server_name}'s ports failed: {e}")
     services.control(services.unit(server_name), action, elevate=True)
 
 def _unit_path(server_name):

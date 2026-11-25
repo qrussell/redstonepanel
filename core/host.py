@@ -625,6 +625,12 @@ def _needs_attention(rep, failed, phantoms):
         if s["problems"]:
             out.append(_attention("warn", f"Players may not be able to connect to {s['name']}: see its Overview.",
                                   server=s["name"]))
+    try:                                        # 1.23.1: the Port check (other programs, clashes)
+        from core import portaudit
+        for level, text, server in portaudit.attention():
+            out.append(_attention(level, text, server=server, where="ports"))
+    except Exception:
+        pass
     try:                                        # mod ports the panel moved off a shared port
         from core import modports
         moved = modports.pending()

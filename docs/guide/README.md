@@ -487,6 +487,40 @@ looks after the firewall (`ufw`) on each machine.
 
 Nodes older than 1.16.14 show only their game ports, with the address the master knows them by.
 
+#### Port check
+
+The top of the page (since 1.23.1) compares every port the servers and the panel need with what
+is really using each port on the machine (on a cluster master, on every member). It catches
+what can happen outside the panel: another program on a server's port (a Docker container, a
+server started by hand, another panel), two servers edited by hand onto one port, a mod or plugin
+the panel doesn't know opening a port, and a server set to the panel's own port.
+
+- **Who holds a port** is named, so you can change or stop that program yourself: its name,
+  process id, path and command line (which often shows the port setting itself), the systemd
+  unit or Windows service it runs as, or the Docker container and its published port. A Java or
+  Bedrock server the panel didn't start is recognised as one. The panel never stops or changes
+  another program. When nothing visible holds a port (Docker publishing it through firewall rules
+  only, or the Windows HTTP service), it says so and gives the command that shows more.
+- **Fixed by itself**, because nothing outside the machine relies on them: RCON and Query ports,
+  the known mods' ports above (now also when another program holds them), and a port a mod the
+  panel doesn't know opened, when exactly one line in that server's `config` or `plugins` files
+  sets it. **Needs attention** says what moved until the server restarts.
+- **Move to a free port** moves a server's game port (with its IPv6, Query and gameplay ports)
+  to the next free one, stops and starts the server if it was running, opens the new port in the
+  firewall and tells you what to change on your router. The join page follows by itself.
+- **Starting** a server from the panel while another program holds its game port is refused with
+  the reason, instead of the server crashing and restarting over and over.
+- Ports a server opened through a mod the panel doesn't know are listed and remembered, so no
+  new server or mod is given them.
+- **Check the router** reads the router's forwards over UPnP and says which point to the wrong
+  machine or port, are turned off, or lead to a port no server uses now. pfSense lists only the
+  forwards UPnP made, not the ones under Firewall > NAT > Port Forward.
+- Problems also show under **Needs attention** with a **Port check** link, the **Last crash** card
+  links here when a port was taken, and the `port_conflict` webhook (Panel Settings >
+  Notifications, on by default) sends each new problem once.
+- `sudo redstonepanel ports` prints the same list on the command line, also while the panel is
+  stopped (for example when another program took the panel's own port).
+
 ### Join pages
 
 Telling a new player how to join usually means a message with the address, the version and,
@@ -1727,8 +1761,9 @@ panel knows where these keep their port:
   forwarding** lists them. Voice chat and Geyser are for players outside; the web maps, Plan and
   NuVotifier are listed under "Only if you need them".
 - Geyser with `clone-remote-port: true` and voice chat with `port=-1` share the game port's
-  number and are left alone. Mods the panel doesn't know are never changed; if one can't open its
-  port, the **Last crash** card says a mod's port was taken, and names the port when the log does.
+  number and are left alone. If a mod the panel doesn't know can't open its port, the **Last
+  crash** card says a mod's port was taken, and names the port when the log does; the **Port
+  check** (under Port forwarding) names what holds it and, when one config line sets it, moves it.
 
 ### Finding mods and plugins
 

@@ -268,3 +268,22 @@ def give_back(path, owner):
     from core.platform.fake._result import done
     fake.record("system.give_back", path, owner)
     return done()
+
+
+def listeners():
+    """What listens on which port: fake.state.listeners (the Linux side's shape)."""
+    base = {"pid": None, "program": "", "exe": "", "command": "", "service": "", "cwd": "", "user": "",
+            "address": "0.0.0.0"}
+    return [dict(base, **l) for l in getattr(fake.state, "listeners", [])]
+
+
+def docker_ps():
+    return getattr(fake.state, "docker_ps", "")
+
+
+def ephemeral_ports():
+    return (32768, 60999)
+
+
+def can_bind(port, proto):
+    return (int(port), proto) not in getattr(fake.state, "unbindable", set())
