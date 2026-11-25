@@ -905,5 +905,46 @@ Start Port    End Port
         w._machine_cache.clear()
 
 
+class OpenLink(unittest.TestCase):
+    """1.24: the installer's Finish page and the Start menu open RedstonePanel.url next to the
+    program, which the panel writes on every start."""
+
+    def test_the_link_points_at_the_panel_and_follows_a_change(self):
+        from core.platform.windows import system as w
+        with tempfile.TemporaryDirectory() as top:
+            path = w.write_open_link("https://localhost:8443/", folder=top)
+            self.assertEqual(path, os.path.join(top, "RedstonePanel.url"))
+            with open(path, encoding="utf-8", newline="") as f:
+                text = f.read()
+            self.assertTrue(text.startswith("[InternetShortcut]\r\nURL=https://localhost:8443/\r\n"))
+            self.assertIn("IconFile=" + os.path.join(top, "app", "static", "img", "favicon.ico"), text)
+            w.write_open_link("http://localhost:8080/", folder=top)
+            with open(path, encoding="utf-8") as f:
+                self.assertIn("URL=http://localhost:8080/", f.read())
+            self.assertEqual(sorted(os.listdir(top)), ["RedstonePanel.url"])
+
+    def test_a_checkout_writes_nothing(self):
+        from core.platform.windows import system as w
+        self.assertIsNone(w._program_folder())          # tests run from a checkout, not Program Files
+        self.assertIsNone(w.write_open_link("http://localhost:8080/"))
+        for side in ("linux", "fake"):
+            mod = importlib.import_module(f"core.platform.{side}.system")
+            self.assertIsNone(mod.write_open_link("http://localhost:8080/"))
+
+    def test_the_address_on_this_computer(self):
+        import run
+        self.assertEqual(run.local_url("http", 8080), "http://localhost:8080/")
+        self.assertEqual(run.local_url("https", 8443), "https://localhost:8443/")
+        self.assertEqual(run.local_url("https", 443), "https://localhost/")
+
+    def test_the_installer_has_the_start_menu_entry_and_the_finish_box(self):
+        with open(os.path.join(ROOT, "packaging", "windows", "redstonepanel.wxs"), encoding="utf-8") as f:
+            wxs = f.read()
+        self.assertIn('Target="[INSTALLDIR]RedstonePanel.url"', wxs)
+        self.assertIn('WixShellExecTarget" Value="[INSTALLDIR]RedstonePanel.url"', wxs)
+        self.assertIn('Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="OpenPanel"', wxs)
+        self.assertNotIn("localhost:8080", wxs)        # the address depends on the panel's settings
+
+
 if __name__ == "__main__":
     unittest.main()

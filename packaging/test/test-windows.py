@@ -16,6 +16,7 @@ import argparse
 import http.server
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -262,6 +263,7 @@ def main():
     check("the session works", code == 200, f"{code} {me}")
     code, info = p.get("/api/panel-info")
     print(f"        panel-info: {json.dumps(info)[:300]}")
+    check("the Start menu's link goes to the panel on this computer", open_link() == local_url(p.base), open_link())
     windows_accounts(p)
     # Where new servers go: <home>\servers, or the folder the owner chose in Panel Settings
     code, view = p.get("/api/settings/servers-folder")
@@ -1230,6 +1232,21 @@ def windows_names(p):
           code == 400 and "plugins/aux.yml" in out and "notes:1.txt" in out and "world/Level.dat" in out, f"{code} {out[:400]}")
 
 
+def open_link():
+    """1.24: the URL in RedstonePanel.url next to the program (the Start menu's RedstonePanel and
+    the installer's Finish page open it)."""
+    try:
+        with open(os.path.join(PROGRAM, "RedstonePanel.url"), encoding="utf-8") as f:
+            return next((l.strip()[4:] for l in f if l.startswith("URL=")), "")
+    except OSError as e:
+        return str(e)
+
+
+def local_url(base):
+    """http://127.0.0.1:8080 -> http://localhost:8080/"""
+    return re.sub(r"//127\.0\.0\.1(?=[:/]|$)", "//localhost", base.rstrip("/")) + "/"
+
+
 def _reconnect(p, base, password, seconds=120):
     """After the panel restarted itself: the new address, signed in again if needed."""
     p.base = base
@@ -1254,6 +1271,8 @@ def cluster_alone(p, args):
     time.sleep(4)
     https = f"https://127.0.0.1:{old.get('https_port') or 8443}"
     check("the panel comes back with cluster HTTPS", _reconnect(p, https, args.password), p.base)
+    check("the Start menu's link follows it to HTTPS", wait("link", lambda: open_link() == local_url(https), 30),
+          open_link())
     code, cl = p.get("/api/settings/cluster")
     check("it is the master", code == 200 and (cl or {}).get("role") == "master", f"{code} {str(cl)[:300]}")
     import ssl

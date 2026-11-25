@@ -88,7 +88,9 @@ command prompt on the PC.
 2. The installer asks one question: **where servers, backups and settings are kept**. The
    default is `C:\ProgramData\RedstonePanel`; pick another drive if that is where the room is.
    The folder's name can't have a space in it.
-3. Open **http://localhost:8080** on that computer. The user name is **admin** and the password
+3. Leave **Open RedstonePanel in my browser** ticked and click **Finish**: the sign-in page
+   opens (http://localhost:8080). Later, **RedstonePanel** in the Start menu opens it, at the
+   right address even after you change the port or turn on HTTPS. The user name is **admin** and the password
    is in `first-sign-in.txt` in the folder from step 2. Change the password under **Users**,
    then delete the file. A Windows account in **Administrators** can also sign in, as an admin;
    to let other Windows accounts in, add them to a local group named **RedstonePanel**.

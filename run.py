@@ -107,6 +107,12 @@ def reset_2fa(name):
         pass
 
 
+def local_url(scheme, port):
+    """The panel's address in a browser on this computer."""
+    default = 443 if scheme == "https" else 80
+    return f"{scheme}://localhost" + ("" if int(port) == default else f":{port}") + "/"
+
+
 def main():
     import uvicorn
     s = settings.load()
@@ -148,6 +154,11 @@ def main():
     else:
         settings.RUNTIME.update(scheme="http", port=s["http_port"], https_error=error)
         port = s["http_port"]
+    # 1.24, Windows: the Start menu's RedstonePanel and the installer's Finish page open this
+    try:
+        system.write_open_link(local_url(settings.RUNTIME["scheme"], port))
+    except OSError as e:
+        print(f"[redstonepanel] Couldn't write the link to the panel: {e}", file=sys.stderr)
 
     from main import app
     from core import playerlog

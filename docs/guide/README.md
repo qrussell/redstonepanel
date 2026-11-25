@@ -220,7 +220,9 @@ the PC.
    **More info**, then **Run anyway**. The release lists the file's SHA-256 next to it.
 2. The installer asks where servers, backups and settings are kept. The default is
    `C:\ProgramData\RedstonePanel`; the folder's name can't have a space in it.
-3. Open **http://localhost:8080**. The user name is **admin**, and the password is in
+3. Leave **Open RedstonePanel in my browser** ticked and click **Finish**: the sign-in page opens
+   (http://localhost:8080). Later, open **RedstonePanel** from the Start menu; it follows the
+   panel if you change its port or turn on HTTPS. The user name is **admin**, and the password is in
    `first-sign-in.txt` in that folder (open it as an administrator). Change the password under
    **Users**, then delete the file. You can also sign in with your own Windows account if it is
    in **Administrators** (an admin), or in a local group named **RedstonePanel** that you make

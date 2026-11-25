@@ -93,7 +93,7 @@ def install(args):
         json.dump({"home": home}, f)
     load_panel(home)
     from core.platform import paths
-    from core.platform.windows import _win, firewall, services
+    from core.platform.windows import _win, firewall, services, system
 
     # Folders: the home is the panel's (administrators and the system); the units and Java are
     # readable by everyone, because each game server's own account has to read them
@@ -207,6 +207,12 @@ WantedBy=multi-user.target
     st = settings.load()                             # HTTPS turned on since: say where the panel really is
     url = (f"https://localhost:{st.get('https_port') or 8443}" if st.get("https_mode", "off") != "off"
            else f"http://localhost:{port}")
+    # 1.24: what the Finish page's "Open RedstonePanel" and the Start menu's RedstonePanel open;
+    # the panel writes it again on every start (a new port or HTTPS)
+    try:
+        system.write_open_link(url + "/", folder=os.path.dirname(APP_DIR))
+    except OSError as e:
+        say(f"Couldn't write the link to the panel: {e}")
     say(f"RedstonePanel is installed. Open {url}")
     return 0
 

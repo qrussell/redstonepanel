@@ -1247,3 +1247,39 @@ def can_bind(port, proto):
             return True
         except OSError:
             return False
+
+
+OPEN_LINK = "RedstonePanel.url"
+
+
+def _program_folder():
+    """Program Files\\RedstonePanel when the panel runs from the installer's files (app\\ next to
+    python\\), else None (a checkout)."""
+    app = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    top = os.path.dirname(app)
+    if os.path.basename(app).lower() == "app" and os.path.isdir(os.path.join(top, "python")):
+        return top
+    return None
+
+
+def write_open_link(url, folder=None):
+    """The link the installer's Finish page and the Start menu's RedstonePanel open (1.24): an
+    Internet shortcut next to the program, to the address the panel serves on this computer.
+    Written at install and on every start, so a new port or HTTPS is followed. Returns its path."""
+    folder = folder or _program_folder()
+    if not folder:
+        return None
+    icon = os.path.join(folder, "app", "static", "img", "favicon.ico")
+    text = f"[InternetShortcut]\r\nURL={url}\r\nIconFile={icon}\r\nIconIndex=0\r\n"
+    path = os.path.join(folder, OPEN_LINK)
+    try:
+        with open(path, encoding="utf-8") as f:
+            if f.read() == text:
+                return path
+    except OSError:
+        pass
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+    os.replace(tmp, path)
+    return path
