@@ -5,8 +5,8 @@ set -e
 # services, whose program is about to go, and warn about every game server that stays on this
 # machine with nothing to manage it. Game servers nobody chose for are never stopped here, and
 # worlds are never deleted. Choose for each server first with:  sudo redstonepanel uninstall
-if [ "$1" = "remove" ] && [ -x /usr/sbin/redstonepanel ]; then
-    /usr/sbin/redstonepanel uninstall-hook || true
+if [ "$1" = "remove" ] && command -v redstonepanel >/dev/null 2>&1; then
+    redstonepanel uninstall-hook || true
 fi
 
 #DEBHELPER#
