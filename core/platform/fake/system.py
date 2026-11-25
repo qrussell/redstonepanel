@@ -283,3 +283,7 @@ def docker_ps():
 
 def ephemeral_ports():
     return (32768, 60999)
+
+
+def can_bind(port, proto):
+    return (int(port), proto) not in getattr(fake.state, "unbindable", set())

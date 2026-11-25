@@ -276,6 +276,11 @@ def report(servers=None, fresh=False):
             continue
         others = holders_of(c["port"], c["proto"], c["server"])
         if not others:
+            if c["server"] and c["kind"] in GAME_KINDS and unseen_holder(c, held.get((c["port"], c["proto"]), []), names):
+                problems.append(_problem("taken", "error", c["server"], c,
+                                         f"{c['server']}: its {c['label']} {c['proto'].upper()} {c['port']} can't be "
+                                         f"opened: {UNSEEN}. Stop that program, or use Move to a free port here.",
+                                         "move", []))
             continue
         outside = [o for o in others if o[0] == "other"]
         mine = [o for o in others if o[0] in ("server", "panel", "phantom")]
@@ -368,6 +373,22 @@ def report(servers=None, fresh=False):
     for p in problems:
         dedup.setdefault(p["id"], p)
     return {"problems": list(dedup.values()), "unknown": unknown, "moved": pending(), "checked": int(time.time())}
+
+
+UNSEEN = ("another program holds it that the system can't name (often WSL with networkingMode=mirrored, "
+          "a Linux server running inside WSL, or Docker publishing the port through firewall rules)")
+
+
+def unseen_holder(claim, holders, names):
+    """True when nothing listed holds the port, the server itself doesn't either, and yet a real
+    bind is refused: a holder the socket lists can't see (WSL mirrored networking takes ports in
+    the Windows port space without showing in netstat or Get-NetTCPConnection)."""
+    if any(owner(h, names) == ("server", claim["server"]) for h in holders):
+        return False
+    try:
+        return not system.can_bind(claim["port"], claim["proto"])
+    except Exception:
+        return False
 
 
 def _dedupe(holders):
@@ -683,6 +704,11 @@ def start_check(server):
                 f"{server} can't start: its {c['label']} {c['proto'].upper()} {c['port']} is used by "
                 f"{describe(others[0])}. Stop or change that program, or move {server} to a free port under "
                 f"Port forwarding → Port check.")
+        mine = [l for l in found if l["port"] == c["port"] and l["proto"] == c["proto"]]
+        if unseen_holder(c, mine, names):
+            raise manager.ServerError(
+                f"{server} can't start: its {c['label']} {c['proto'].upper()} {c['port']} can't be opened: {UNSEEN}. "
+                f"Stop that program, or move {server} to a free port under Port forwarding → Port check.")
 
 
 def attention(rep=None):

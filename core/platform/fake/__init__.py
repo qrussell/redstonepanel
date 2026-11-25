@@ -49,6 +49,7 @@ def reset():
     state.shells = []                   # every Shell spawn() returned
     state.listeners = []                # [{"proto", "port", "pid", "program", "service", ...}] for system.listeners()
     state.docker_ps = ""                # what `docker ps --format "{{.Names}}\t{{.Ports}}"` prints
+    state.unbindable = set()            # {(port, proto)} a bind is refused on (WSL mirrored, Docker iptables)
     return state
 
 

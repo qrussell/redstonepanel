@@ -58,6 +58,7 @@ class Fixture(unittest.TestCase):
         self.props = {}
         self.held = []
         self.lines = {}
+        self.unbindable = set()
         os.makedirs(os.environ["RP_DATA_DIR"], exist_ok=True)
         if os.path.exists(PA.STATE):
             os.remove(PA.STATE)
@@ -72,6 +73,7 @@ class Fixture(unittest.TestCase):
                                                             "label": "the panel's web page"}]),
             mock.patch.object(PA, "_ephemeral", lambda: (32768, 60999)),
             mock.patch.object(PA, "find_port_lines", lambda server, port: list(self.lines.get((server, port), []))),
+            mock.patch.object(PA.system, "can_bind", lambda port, proto: (port, proto) not in self.unbindable),
         ]
         for p in patches:
             p.start()
@@ -165,6 +167,17 @@ class Finding(Fixture):
         self.assertEqual(h["command"], "java -jar paper.jar --port 25565")
         self.assertEqual(h["exe"], "/usr/lib/jvm/java-21/bin/java")
         self.assertTrue(h["minecraft"], "recognised as a Minecraft server the panel didn't start")
+
+    def test_a_holder_no_list_shows(self):
+        """Found on a real PC: WSL with networkingMode=mirrored held TCP 19132 without showing in
+        Get-NetTCPConnection; only a bind was refused."""
+        self.bedrock("minecraft-bedrock", status="offline")
+        self.unbindable = {(19132, "tcp")}
+        [p] = self.problems(type="taken")
+        self.assertEqual((p["port"], p["proto"], p["fix"], p["level"]), (19132, "tcp", "move", "error"))
+        self.assertIn("WSL", p["text"])
+        self.held = [L(19132, pid=20, service="minecraft-bedrock.service")]
+        self.assertEqual(self.problems(type="taken"), [], "its own server holding it is fine")
 
     def test_a_docker_container(self):
         self.java("minecraft-java", status="offline")
@@ -261,6 +274,13 @@ class Starting(Fixture):
         self.java("minecraft-java")
         self.held = [L(25565, pid=10, service="minecraft-java.service")]
         PA.start_check("minecraft-java")
+
+    def test_refused_when_only_a_bind_shows_the_holder(self):
+        self.bedrock("minecraft-bedrock", status="offline")
+        self.unbindable = {(19132, "tcp")}
+        with self.assertRaises(manager.ServerError) as e:
+            PA.start_check("minecraft-bedrock")
+        self.assertIn("WSL", str(e.exception))
 
     def test_bedrock_raknet_ipv6_port(self):
         self.bedrock("minecraft-bedrock", status="offline", transport="raknet", **{"server-portv6": "19133"})

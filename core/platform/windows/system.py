@@ -1231,3 +1231,19 @@ def ephemeral_ports():
         return (nums[0], min(65535, nums[0] + nums[1] - 1)) if len(nums) >= 2 else (49152, 65535)
     got = _cached("ephemeral", 3600, read)
     return tuple(got) if got else (49152, 65535)
+
+
+def can_bind(port, proto):
+    """True when this machine would let a program open the port now (0.0.0.0, TCP or UDP). Some
+    holders are invisible to the socket lists (WSL with networkingMode=mirrored on Windows, a
+    port Docker publishes with firewall rules only): only a real bind shows them."""
+    import socket
+    kind = socket.SOCK_STREAM if proto == "tcp" else socket.SOCK_DGRAM
+    with socket.socket(socket.AF_INET, kind) as s:
+        if kind == socket.SOCK_STREAM and hasattr(socket, "SO_REUSEADDR") and os.name != "nt":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)    # Linux: ignore TIME_WAIT, still refused by a listener
+        try:
+            s.bind(("0.0.0.0", int(port)))
+            return True
+        except OSError:
+            return False
