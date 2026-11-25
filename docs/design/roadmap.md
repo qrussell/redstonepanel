@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.22.0 (24 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) and the Windows preview (1.22) shipped; the rest of the Windows version (1.23 and 1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.23.0 (25 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) and the whole single machine on Windows (1.23) shipped; mixed clusters (1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1780,6 +1780,38 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     (including port ranges reserved by Hyper-V or WSL), and Needs attention notes when the PC
     is set to sleep or a Windows Update restart is pending. **Gate:** every 1.17.2 feature
     checked on a real Windows machine. **Size:** large.
+
+    **As built (released 25 Nov 2026, MR !150).** As planned, plus Quilt, Forge, NeoForge and
+    modpacks (Quentin's choice), and with these differences. **No terminal on Windows, ever**
+    (Quentin, 24 Nov): the owner usually sits at that PC and can open a command prompt, and it
+    keeps a way to run any command as any account out of the panel. **SFTP moves to 1.24.**
+    Limits are Job Objects (`core/platform/windows/jobs.py`): Windows refuses committed memory
+    past the limit, so Java stops with out of memory; the runner records it as `oom-kill` so the
+    crash card says it hit its limit. Loader installers run as the new server's virtual account
+    by pointing its service at `runner.py service UNIT --task` for one run
+    (`services.run_as_server`), since Windows starts a virtual account only through its
+    service. SSH storage uses OpenSSH's `sftp` (resuming with `reput`) instead of `rsync`.
+    Self-update downloads the release's MSI from GitHub, checks it against the `.sha256` file and
+    GitHub's digest, and a detached PowerShell runs `msiexec /qn`, restarts the panel and the
+    servers that ran, and writes the exit code the new panel reads back
+    (`core/platform/windows/panelpkg.py`); game servers stop for about a minute, unlike Linux.
+    1.22 panels can't update themselves, so the first update is by hand. Windows sign-in uses
+    `LogonUser` (network logon); Administrators (by SID) or a local group **RedstonePanel** may
+    sign in, and every spelling of an account (`.\name`, `PC\name`, a Microsoft account's
+    e-mail) becomes one panel identity. Needs attention reads `netsh` excluded port ranges,
+    `powercfg` and the Windows Update restart keys. Found on a real PC (Quentin's): the router
+    address was always empty on Windows (now `system.default_gateway`, from
+    `GetIpForwardTable`), and with HTTPS on only the HTTP port had a firewall rule (the
+    installer and Panel Settings now keep the panel's rule in step). Also in this release, on
+    both systems: a new Bedrock server's automatic port skips UDP ports another program holds,
+    and Geyser's port is read on NeoForge and BungeeCord. Tested: `windows.yml` on
+    `windows-2022` and `windows-2025` (staged install and MSI, the full install test including
+    limits, S3 copies, a Bedrock server with auto-update and Phantom, a Forge server, the servers
+    folder, Found servers and Windows accounts, upgrade over itself, removal); Quentin's PC as
+    administrator with HTTPS on and servers on another drive, 96 of 104 checks (the 8 failures
+    were the test's own assumptions, fixed; the run stopped at the Bedrock step, so Forge, the
+    servers folder and Found servers were covered there by CI only); 1,065 unit tests; the
+    Linux release workflow on every supported system and ARM64.
 
 29. **1.24: mixed Linux and Windows clusters.** Windows nodes and masters; members report
     their system (`CLUSTER_API` goes up by one). Java servers move both ways unchanged;

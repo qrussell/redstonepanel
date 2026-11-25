@@ -1,6 +1,6 @@
 # RedstonePanel on Windows
 
-Status: preview in 1.22 (Java servers on one computer) · Author: Quentin Russell
+Status: preview; 1.22 Java servers on one computer, 1.23 the whole single machine · Author: Quentin Russell
 
 The plan and the list of what maps to what are in the [roadmap](roadmap.md) under "1.21 to
 1.24". This page says how the Windows side is built, for whoever changes it next.
@@ -185,7 +185,8 @@ button and its Settings switch and the API refuses a session.
 installs the libraries next to it and copies the panel; `msi` wraps that with WiX 3
 (`redstonepanel.wxs`). The installer asks one question, where servers and data go, and runs
 `setup.py install`, which makes the folders and their rights, the service, the firewall rule
-for the panel's port and the first account. `setup.py uninstall` removes services, tasks and
+for the panel's ports (HTTP, and HTTPS when it is on; Panel Settings keeps it in step) and the
+first account. `setup.py uninstall` removes services, tasks and
 rules and keeps the home folder. Unattended:
 `msiexec /i RedstonePanel-x.y.z-x64.msi /qn DATAFOLDER=D:\RedstonePanel`.
 

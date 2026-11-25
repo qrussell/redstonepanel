@@ -9,6 +9,19 @@ the dashboard.
 
 ---
 
+## 1.23: the whole single machine on Windows *(November 2026)*
+
+- **Bedrock servers on Windows**, with automatic updates and Phantom.
+- **Quilt, Forge, NeoForge and modpacks**, **memory and processor limits**, **off-site
+  backups** (SSH storage and S3) and crash explanations with Windows causes.
+- **Update now** updates the panel on Windows, from the GitHub release.
+- **Sign in with a Windows account** in Administrators or a local **RedstonePanel** group.
+- Needs attention warns about ports Hyper-V or WSL reserved, a PC set to sleep and a pending
+  Windows Update restart. The terminal stays Linux-only by design.
+- Coming from 1.22 on Windows? Run the 1.23 installer once; after that, **Update now** does it.
+
+[Release notes](../../release-notes/v1.23.0.md)
+
 ## 1.22: RedstonePanel on Windows (preview) *(November 2026)*
 
 - **A Windows installer** for Windows 11 and Windows Server 2022 or 2025, no WSL needed: Java

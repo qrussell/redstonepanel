@@ -66,12 +66,13 @@ the panel offers Java 21 and says that it may not start them.
 
 ## On Windows (preview)
 
-From 1.22 there is a Windows installer. It is a **preview**: Java servers on one computer,
-with backups and restore, schedules, the console, the file manager, add-ons, the firewall,
-webhooks and two-factor sign-in. Bedrock servers, Quilt, Forge and NeoForge, modpacks, memory
-and CPU limits, off-site backup storage, SFTP, clusters and updating from the panel come in
-later releases; until then the panel says so instead of offering them. For those today, use
-Linux or [WSL](FAQ.md#can-i-run-it-on-windows-with-wsl).
+From 1.22 there is a Windows installer, and from 1.23 it does everything one computer needs:
+Java servers of every type (Vanilla, Paper, Purpur, Fabric, Quilt, Forge, NeoForge, modpacks)
+and Bedrock servers with automatic updates and Phantom, backups and off-site copies (SSH
+storage and S3), schedules, the console, the file manager, add-ons, the firewall, memory and
+processor limits, crash explanations, webhooks, two-factor sign-in and **Update now**. It stays
+a **preview** until clusters and SFTP arrive in 1.24. The terminal is Linux-only by design;
+on Windows, open a command prompt on the PC.
 
 - **Windows 11, or Windows Server 2022 or 2025**, 64-bit Intel or AMD. Windows 10 installs too
   but isn't tested, and no longer gets updates from Microsoft.
@@ -88,7 +89,8 @@ Linux or [WSL](FAQ.md#can-i-run-it-on-windows-with-wsl).
    The folder's name can't have a space in it.
 3. Open **http://localhost:8080** on that computer. The user name is **admin** and the password
    is in `first-sign-in.txt` in the folder from step 2. Change the password under **Users**,
-   then delete the file.
+   then delete the file. A Windows account in **Administrators** can also sign in, as an admin;
+   to let other Windows accounts in, add them to a local group named **RedstonePanel**.
 
 What you get is ordinary Windows: the panel is the service **RedstonePanel**, each game server
 is its own service (`minecraft-<name>`) running as its own account that can reach only its own
@@ -96,8 +98,11 @@ folder, schedules are tasks under **RedstonePanel** in Task Scheduler, and ports
 the **RedstonePanel** group in Windows Defender Firewall. Game servers and schedules keep
 running while the panel is stopped, and start with Windows.
 
-- **Update:** run the newer installer. Game servers stop while the files are replaced and
-  start again afterwards. Worlds, backups and settings are kept.
+- **Update:** **Update now** on the dashboard (from 1.23), or run the newer installer. Game
+  servers stop for about a minute while the files are replaced and start again afterwards.
+  Worlds, backups and settings are kept. Coming from 1.22, run the 1.23 installer once by hand.
+- **Off-site backups to SSH storage** need Windows' OpenSSH Client (Settings → System →
+  Optional features), which most Windows 11 PCs already have.
 - **Remove:** **Settings → Apps → Installed apps → RedstonePanel → Uninstall**. The services,
   tasks and firewall rules go; the folder from step 2 stays, with your worlds and backups in
   it. Delete it yourself if you don't want them.
