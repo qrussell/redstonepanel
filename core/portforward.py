@@ -160,7 +160,8 @@ def _row(port, proto, kind, what, note="", inside=None, check=None):
 # Java extras: Query, RCON, Geyser, Simple Voice Chat
 # ---------------------------------------------------------------------------
 GEYSER_CONFIGS = ("plugins/Geyser-Spigot/config.yml", "plugins/Geyser-Velocity/config.yml",
-                  "config/Geyser-Fabric/config.yml", "config/geyser/config.yml", "plugins/geyser/config.yml")
+                  "config/Geyser-Fabric/config.yml", "config/Geyser-NeoForge/config.yml",
+                  "plugins/Geyser-BungeeCord/config.yml", "config/geyser/config.yml", "plugins/geyser/config.yml")
 VOICE_CONFIGS = ("plugins/voicechat/voicechat-server.properties", "config/voicechat/voicechat-server.properties")
 
 

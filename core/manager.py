@@ -692,6 +692,17 @@ def _port_bindable(port):
         except OSError:
             return False
 
+def _udp_port_bindable(port):
+    """True if nothing else on the host holds this UDP port right now (a Bedrock server outside
+    the panel, or Geyser in a server the panel doesn't know)."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        try:
+            s.bind(("0.0.0.0", port))
+            return True
+        except OSError:
+            return False
+
 def _free_rcon_port(server_dir, start=25575):
     """First port from 25575 up that no managed server claims (this server's own game
     ports included) and that no other process is listening on."""
@@ -1267,7 +1278,8 @@ def _reserve_name(edition):
         used = _used_ports()
         port, step = (25565, 1) if edition == "java" else (19132, 2)
         while (({port, port + 1} if edition == "bedrock" else {port}) & used
-               or (edition == "java" and not _port_bindable(port))):
+               or (edition == "java" and not _port_bindable(port))
+               or (edition == "bedrock" and not (_udp_port_bindable(port) and _udp_port_bindable(port + 1)))):
             port += step
         _busy.add(name)
         _busy_ports[name] = {port, port + 1} if edition == "bedrock" else {port}
