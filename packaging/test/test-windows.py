@@ -1176,7 +1176,7 @@ def sftp(p, args, name):
     print("        " + out.strip().replace("\n", " | ")[-900:])
     check("an admin signs in with ACCOUNT.SERVER and the panel password, and sees the server's folder",
           code == 0 and "LIST" in out and "server.properties" in out, out[-500:])
-    check("uploads, renames and reads at an offset", "SIZE 15000" in out and "READ b'from sftp '" in out, out[-500:])
+    check("uploads, renames and reads at an offset", "SIZE 15000" in out and "READ b' from sftp'" in out, out[-500:])
     check("names Windows can't hold are refused", "REFUSED /aux.txt" in out and "REFUSED /x:y" in out, out[-500:])
     check("the session can't leave the server's folder ('/../..' is its own folder)", "UP True" in out, out[-300:])
     folder = os.path.join(args.servers_dir, name)
