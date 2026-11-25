@@ -2545,8 +2545,10 @@ def cluster_node_action_api(node_id: str, server_name: str, req: ServerActionReq
     if req.action not in manager.POWER_ACTIONS:
         raise HTTPException(status_code=400, detail=f"Unknown action '{req.action}'.")
     try:
+        # Waits for the node's answer: a start on Windows returns once the service runs, a stop
+        # or restart once the server has saved and stopped (1.24: the 4 s default timed out)
         cluster_client.call_node(node, "POST", f"/api/servers/{server_name}/action",
-                                 {"action": req.action}, actor=me)
+                                 {"action": req.action}, actor=me, timeout=cluster_client.ACTION_TIMEOUT)
     except cluster_client.NodeError as e:
         raise HTTPException(status_code=502, detail=f"{node['name']}: {e}")
     finally:

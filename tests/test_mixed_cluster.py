@@ -447,6 +447,29 @@ class OwnCertificate(unittest.TestCase):
         self.assertIn("was renewed", logged[0])
 
 
+class MovedBack(unittest.TestCase):
+    """Found on Superman (1.24): a server moved away and back finds its old copy holding its
+    name. It keeps its own name, numbered, instead of becoming the next minecraft-java-N."""
+
+    def test_its_own_name_numbered(self):
+        taken = {"minecraft-mx-java", "minecraft-mx-java-2"}
+        with mock.patch.object(manager, "find_server_folder", side_effect=lambda n: "/x" if n in taken else None), \
+                mock.patch.object(manager, "_unit_path", side_effect=lambda n: "/nonexistent/" + n):
+            for prefer, got in (("minecraft-survival", "minecraft-survival"), ("minecraft-mx-java", "minecraft-mx-java-3"),
+                                ("minecraft-mx-java-2", "minecraft-mx-java-3")):
+                name = manager._reserve_like(prefer)
+                manager._release_name(name)
+                self.assertEqual(name, got)
+            self.assertIsNone(manager._reserve_like("other-name"))
+
+    def test_a_start_on_a_node_waits_for_its_answer(self):
+        from core import cluster_client
+        self.assertGreaterEqual(cluster_client.ACTION_TIMEOUT, 120)
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main.py"), encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn('{"action": req.action}, actor=me, timeout=cluster_client.ACTION_TIMEOUT)', text)
+
+
 class SftpOnWindows(unittest.TestCase):
     def test_the_service_unit_on_windows(self):
         from core import sftp

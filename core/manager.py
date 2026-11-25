@@ -1697,6 +1697,21 @@ def _reserve_exact(name):
         _busy.add(name)
         return True
 
+def _reserve_like(prefer):
+    """prefer if it's free, else the same name numbered (1.24): a server moved away and back finds
+    its old copy still holding the name, and comes back as minecraft-survival-2, not as the next
+    minecraft-java-N. None if no such name is free."""
+    if _reserve_exact(prefer):
+        return prefer
+    base = re.sub(r"-\d+$", "", prefer)
+    if base == "minecraft":
+        return None
+    for n in range(2, 100):
+        name = f"{base}-{n}"
+        if name != prefer and _reserve_exact(name):
+            return name
+    return None
+
 def import_transferred(root, edition, prefer_name=None, heap=None, java=None, start=True, on_placed=None, jvm=None):
     """A server folder moved or copied from another cluster member (1.16), unpacked at root.
     Keeps prefer_name and the server's ports when they're free here, else picks others.
@@ -1704,7 +1719,7 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
     Returns {name, port, old_port, renamed}."""
     if edition == "bedrock":
         require_bedrock_machine()
-    name = prefer_name if prefer_name and _reserve_exact(prefer_name) else None
+    name = _reserve_like(prefer_name) if prefer_name else None
     if not name:
         name, _ = _reserve_name(edition)
     try:
