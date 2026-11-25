@@ -29,7 +29,8 @@
     redstonepanel upgrade             update the redstonepanel package (apt), as the panel's Update button does
     redstonepanel uninstall           remove the panel, choosing first what happens to each game server:
                                       stop it and keep its files (recommended), keep it running
-                                      without the panel, or delete it (after a backup)
+                                      without the panel (Linux), or delete it (after a backup);
+                                      on Windows it then says to finish in Settings > Apps
         [--servers stop|keep|delete] [--purge] [--yes]   the same without questions
 
   Clusters (one master panel controls the game servers of other panels, its nodes):
