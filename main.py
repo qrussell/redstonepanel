@@ -1719,6 +1719,50 @@ def undo_found_server(server_name: str, request: Request):
     from core import found
     return _found_call(found.undo, server_name, actor=request.state.user["username"])
 
+# 1.23.2: Panel Settings > Remove RedstonePanel. Choose what happens to every game server of this
+# machine (stop and keep files, keep running, delete after a backup), then remove the package.
+class UninstallChoices(BaseModel):
+    choices: dict
+    confirm: str = ""
+    delete_backups: bool = False
+
+class UninstallRun(BaseModel):
+    purge: bool = False
+
+def _uninstall_call(fn, *args, **kw):
+    from core import uninstall
+    try:
+        return fn(*args, **kw)
+    except (uninstall.UninstallError, manager.ServerError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/uninstall")
+def uninstall_overview(request: Request):
+    _require_admin(request, "remove the panel")
+    from core import uninstall
+    return uninstall.overview()
+
+@app.post("/api/uninstall/apply")
+def uninstall_apply(req: UninstallChoices, request: Request):
+    _require_admin(request, "remove the panel")
+    from core import uninstall
+    return _uninstall_call(uninstall.apply, req.choices, actor=request.state.user["username"],
+                           confirm=req.confirm, delete_backups=req.delete_backups)
+
+@app.delete("/api/uninstall/plan")
+def uninstall_cancel(request: Request):
+    _require_admin(request, "remove the panel")
+    from core import uninstall
+    uninstall.clear_plan()
+    manager.write_log(f"[UNINSTALL] {request.state.user['username']} isn't removing the panel after all.")
+    return {"ok": True}
+
+@app.post("/api/uninstall/run")
+def uninstall_run(req: UninstallRun, request: Request):
+    _require_admin(request, "remove the panel")
+    from core import uninstall
+    return _uninstall_call(uninstall.run, purge=req.purge, actor=request.state.user["username"])
+
 @app.post("/api/servers/removed/{server_name}/restore")
 def restore_server(server_name: str):
     try:

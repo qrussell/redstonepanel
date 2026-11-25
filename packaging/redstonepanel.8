@@ -41,6 +41,12 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .br
 .B redstonepanel upgrade
 .br
+.B redstonepanel uninstall
+.RB [ \-\-servers
+.BR stop | keep | delete ]
+.RB [ \-\-purge ]
+.RB [ \-\-yes ]
+.br
 .B redstonepanel cluster
 .RB { create
 .IR NAME | status | join-code
@@ -193,6 +199,17 @@ Run apt-get update, then upgrade only the redstonepanel package, keeping changed
 configuration files. The dashboard's Update now button runs this as the transient unit
 \fBredstonepanel-upgrade.service\fR, so it carries on while the panel restarts; its output is
 in \fI/var/lib/redstonepanel/upgrade.log\fR and the outcome in \fIupgrade.json\fR.
+.TP
+.B uninstall
+Remove RedstonePanel safely. Lists every game server (running, starts at boot, last backup) and
+asks what happens to them first: \fBstop\fR (stop and disable the service, keep the folder;
+restore it after installing the panel again; recommended), \fBkeep\fR (leave it running with
+nothing to manage it) or \fBdelete\fR (needs a backup from the last 24 hours, offered on the
+spot, and typing DELETE; backups are kept). Then runs \fBapt-get remove\fR, or \fBpurge\fR
+with \fB\-\-purge\fR. \fB\-\-yes\fR asks nothing (give \fB\-\-servers\fR). Panel Settings >
+Remove RedstonePanel does the same in the browser. A plain \fBapt remove\fR never stops a game
+server: it turns off the panel's own timers and services and prints every server it leaves
+running or starting at boot.
 .SH NOTIFICATIONS
 The package installs a systemd drop-in for every
 .BR minecraft-*.service ,

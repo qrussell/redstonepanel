@@ -30,6 +30,10 @@ show everything the panel does. It arrives in four releases:
   sleep and a pending Windows Update restart. The terminal stays Linux-only by design: on
   Windows the owner is usually at that computer and can open a command prompt there. SFTP
   comes with 1.24.
+- **1.23.2: removing the panel safely.** **Panel Settings → Remove RedstonePanel** and
+  `sudo redstonepanel uninstall` back up your servers and ask what happens to each one (stop it
+  and keep its files, keep it running, or delete it) before removing the panel, so no server is
+  left running with nothing to manage it by accident.
 - **1.24: mixed clusters.** Windows and Linux machines in one cluster, with either as the
   master, and servers and backup copies moving between them. Windows stops being a preview.
 

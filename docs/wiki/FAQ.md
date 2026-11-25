@@ -149,9 +149,15 @@ machines and still manage them from one page.
 
 ## What happens if the panel stops or I uninstall it?
 
-Your game servers keep running: they're systemd services, not child processes of the panel.
-Backup and restart schedules keep running too. Removing the panel package doesn't touch your
-servers or backups.
+If the panel stops, your game servers keep running: they're systemd services, not child
+processes of the panel, and backup and restart schedules keep running too.
+
+To uninstall it, use `sudo redstonepanel uninstall` or **Panel Settings → Remove RedstonePanel**,
+not a plain `apt remove`. They ask what happens to each server first: stop it and keep its files
+(recommended), keep it running without the panel, or delete it after a backup. A server left
+running after the panel is gone keeps starting at boot and holding its ports with nothing to
+back it up or update it, which is easy to forget. Worlds and backups are never deleted unless
+you choose to. See [Installation → Removing](Installation#removing).
 
 ## Is it secure?
 
