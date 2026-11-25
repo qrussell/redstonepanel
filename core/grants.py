@@ -383,6 +383,9 @@ admin    GET     /api/port-forwarding/local
 admin    PUT     /api/port-forwarding/settings
 admin    POST    /api/port-forwarding/lookup
 admin    POST    /api/port-forwarding/check
+admin    GET     /api/port-check
+admin    POST    /api/port-check/router
+admin    POST    {_S}/ports/move
 
 proxy            GET     /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 proxy            POST    /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}

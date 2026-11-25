@@ -39,6 +39,8 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .br
 .B redstonepanel notify-test
 .br
+.B redstonepanel ports
+.br
 .B redstonepanel upgrade
 .br
 .B redstonepanel cluster
@@ -187,6 +189,12 @@ also while the panel is stopped. Exits 1 if an update failed.
 .TP
 .B notify-test
 Send a test message to the webhook set under Panel Settings > Notifications.
+.TP
+.B ports
+The Port check: list every port the game servers and the panel need, which program holds
+each one now (name, process id, path, command line, its systemd unit, or its Docker
+container), and the conflicts found, with what the panel does about each. Works while the
+panel itself is stopped, for example when another program took its web port.
 .TP
 .B upgrade
 Run apt-get update, then upgrade only the redstonepanel package, keeping changed

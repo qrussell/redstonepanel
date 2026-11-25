@@ -30,6 +30,12 @@ show everything the panel does. It arrives in four releases:
   sleep and a pending Windows Update restart. The terminal stays Linux-only by design: on
   Windows the owner is usually at that computer and can open a command prompt there. SFTP
   comes with 1.24.
+- **1.23.1: port check.** Finds port conflicts the panel can't prevent when it makes a server:
+  another program on a server's port (named, with its process, path, command line, service or
+  Docker container), servers edited by hand onto one port, mods the panel doesn't know, a server
+  on the panel's own port and router forwards that don't match. It moves RCON, Query and mod
+  ports by itself, offers **Move to a free port** for game ports, and refuses to start a server
+  whose port another program holds. Linux and Windows.
 - **1.24: mixed clusters.** Windows and Linux machines in one cluster, with either as the
   master, and servers and backup copies moving between them. Windows stops being a preview.
 

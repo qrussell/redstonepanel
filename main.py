@@ -30,6 +30,7 @@ import core.settings as panel_settings
 import core.twofactor as twofactor
 import core.qr as qr
 import core.portforward as portforward
+import core.portaudit as portaudit
 from core.version import panel_version
 import core.cluster as cluster
 import core.cluster_client as cluster_client
@@ -2319,6 +2320,31 @@ def port_forwarding_lookup_api(request: Request):
 def port_forwarding_check_api(request: Request):
     _require_admin(request, "check port forwarding")
     return _ports_call(portforward.check, portforward.overview(actor=request.state.user["username"]))
+
+# --- 1.23.1: the Port check (core/portaudit.py): what holds each port the servers need
+@app.get("/api/port-check")
+def port_check_api(request: Request):
+    """This panel's Port check. The cluster master's Port forwarding page reads each node's
+    through /api/port-forwarding/local."""
+    _require_admin(request, "see the port check")
+    return portaudit.report(fresh=True)
+
+@app.post("/api/port-check/router")
+def port_check_router_api(request: Request):
+    """Reads the router's port forwards over UPnP and compares them with the servers."""
+    _require_admin(request, "check the router")
+    return portaudit.router_check(actor=request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/ports/move")
+def move_server_port_api(request: Request, server_name: str, body: dict = Body(default={})):
+    """Moves a server to the next free game port (the Port check's Move button)."""
+    _require_admin(request, "change a server's port")
+    restart = body.get("restart") if isinstance(body, dict) else None
+    try:
+        return portaudit.move(server_name, actor=request.state.user["username"],
+                              restart=None if restart is None else bool(restart))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # --- 1.21.5: join pages for players (core/joinpage.py), served on their own port by
 # core/joinsite.py. Everything here is the admin's side; the public side has no /api at all.

@@ -507,11 +507,60 @@ def main():
     found_servers(p, args)
 
     # ------------------------------------------------------------------ the command line
+    port = port_check(p, name, port) or port
+
     section("The redstonepanel command")
     code, out = run(["cmd", "/c", "redstonepanel", "status"])
     check("`redstonepanel status` runs from a prompt", code == 0 and "admin" in out, out[-400:])
+    code, out = run(["cmd", "/c", "redstonepanel", "ports"], timeout=180)
+    check("`redstonepanel ports` lists the server's port and who holds it",
+          code == 0 and f"{port}/tcp" in out and name in out, out[-600:])
 
     return finish(p, args, name, port)
+
+
+def port_check(p, name, port):
+    """1.23.1: another program on the server's game port is named, the start is refused, and
+    Move gives the server a free port. Returns the server's new port."""
+    section("Port check")
+    code, r = p.post(f"/api/servers/{name}/action", {"action": "stop"}, timeout=300)
+    check("the server stops", code == 200 and wait("stopped", lambda: service_state(name) == "STOPPED", 150), f"{code} {r}")
+    holder = subprocess.Popen([sys.executable, "-c", "import socket,time; s=socket.socket(); "
+                               f"s.bind(('0.0.0.0', {port})); s.listen(); time.sleep(900)"])
+    try:
+        time.sleep(3)
+        code, rep = p.get("/api/port-check", timeout=180)
+        mine = [x for x in (rep or {}).get("problems", []) if x.get("server") == name and x.get("port") == port]
+        check("the Port check finds another program on its game port", code == 200 and bool(mine), f"{code} {str(rep)[:500]}")
+        h = (mine[0]["holders"] if mine and mine[0].get("holders") else [{}])[0]
+        check("... and names it: python, its process id and path",
+              h.get("pid") == holder.pid and "python" in str(h.get("program")).lower() and bool(h.get("exe")), str(h)[:400])
+        check("... with Move offered", bool(mine) and mine[0].get("fix") == "move", str(mine)[:300])
+        code, r = p.post(f"/api/servers/{name}/action", {"action": "start"}, timeout=180)
+        check("a start from the panel is refused with the reason", code == 400 and "can't start" in str(r)
+              and str(holder.pid) in str(r), f"{code} {str(r)[:400]}")
+        check("... and the service wasn't started", service_state(name) == "STOPPED", str(service_state(name)))
+        code, host = p.get("/api/host", timeout=180)
+        check("Needs attention shows it", any(a.get("where") == "ports" and a.get("server") == name
+                                              for a in (host or {}).get("attention", [])), str((host or {}).get("attention"))[:400])
+        code, m = p.post(f"/api/servers/{name}/ports/move", {}, timeout=300)
+        new = (m or {}).get("new")
+        check("Move gives it the next free port", code == 200 and isinstance(new, int) and new != port, f"{code} {m}")
+        if not new:
+            return None
+        code, out = ps(f"@(Get-NetFirewallRule -DisplayName 'RedstonePanel {new}/tcp' -ErrorAction SilentlyContinue).Count")
+        check("Defender Firewall opens the new port", out.strip().endswith("1"), out[-200:])
+        code, r = p.post(f"/api/servers/{name}/action", {"action": "start"}, timeout=180)
+        def listening_new():
+            try:
+                socket.create_connection(("127.0.0.1", new), 2).close()
+                return True
+            except OSError:
+                return False
+        check("it starts on the new port", code == 200 and wait("listen", listening_new, 300, every=5), f"{code} {r}")
+        return new
+    finally:
+        holder.kill()
 
 
 def _usage(home, name):

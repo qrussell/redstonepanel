@@ -657,3 +657,151 @@ def give_back(path, owner):
     if not re.fullmatch(r"[0-9]+:[0-9]+", owner or ""):
         raise ValueError("not an owner this system gave")
     return logged(["chown", "-R", owner, path])
+
+
+# ---------------------------------------------------------------------------
+# Who listens on which port (1.23.1, the Port check)
+# ---------------------------------------------------------------------------
+def _hex_address(text):
+    """An address as /proc/net/* writes it (hex, 32-bit words in the machine's byte order)."""
+    import socket
+    import sys
+    raw = bytes.fromhex(text)
+    if sys.byteorder == "little":
+        raw = b"".join(raw[i:i + 4][::-1] for i in range(0, len(raw), 4))
+    return socket.inet_ntop(socket.AF_INET6 if len(raw) == 16 else socket.AF_INET, raw)
+
+
+def _parse_proc_net(text, proto):
+    """/proc/net/tcp, tcp6, udp or udp6 -> [(address, port, inode)] for every TCP socket that
+    is listening and every UDP socket bound to a port and not connected to one peer."""
+    out = []
+    for line in (text or "").splitlines()[1:]:
+        f = line.split()
+        if len(f) < 10:
+            continue
+        if f[3] != ("0A" if proto == "tcp" else "07"):
+            continue
+        address, _, port = f[1].partition(":")
+        try:
+            port, inode = int(port, 16), int(f[9])
+            address = _hex_address(address)
+        except ValueError:
+            continue
+        if port:
+            out.append((address, port, inode))
+    return out
+
+
+def _process(pid):
+    """What a process is: {"pid", "program", "exe", "command", "service", "cwd", "user"}."""
+    base = os.path.join(paths.PROC, str(pid))
+    info = {"pid": pid, "program": "", "exe": "", "command": "", "service": "", "cwd": "", "user": ""}
+    try:
+        with open(os.path.join(base, "comm")) as f:
+            info["program"] = f.read().strip()
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(base, "cmdline"), "rb") as f:
+            argv = [a.decode("utf-8", "replace") for a in f.read().split(b"\0") if a]
+        info["command"] = " ".join(argv)[:600]
+    except OSError:
+        pass
+    for key, name in (("exe", "exe"), ("cwd", "cwd")):
+        try:
+            info[key] = os.readlink(os.path.join(base, name))
+        except OSError:
+            pass
+    try:
+        with open(os.path.join(base, "cgroup")) as f:
+            for line in f:
+                last = line.strip().rsplit("/", 1)[-1]
+                if last.endswith(".service") or last.startswith("docker-") and last.endswith(".scope"):
+                    info["service"] = last
+                    break
+    except OSError:
+        pass
+    try:
+        st = os.stat(base)
+        try:
+            info["user"] = pwd.getpwuid(st.st_uid).pw_name
+        except KeyError:
+            info["user"] = str(st.st_uid)
+    except OSError:
+        pass
+    return info
+
+
+def listeners():
+    """Every listening TCP socket and bound UDP socket on this machine and the program that owns
+    it: [{"proto", "address", "port", "pid", "program", "exe", "command", "service", "cwd",
+    "user"}]. Read from /proc (sockets, then each process's open files). A socket no process
+    can be found for (the kernel's own, or one in another network namespace's process) has pid
+    None. Looking only."""
+    sockets = []
+    for proto in ("tcp", "udp"):
+        for name in (proto, proto + "6"):
+            try:
+                with open(os.path.join(paths.PROC, "net", name)) as f:
+                    sockets += [(proto, a, p, i) for a, p, i in _parse_proc_net(f.read(), proto)]
+            except OSError:
+                continue
+    wanted = {i for _, _, _, i in sockets if i}
+    owner = {}
+    try:
+        pids = [n for n in os.listdir(paths.PROC) if n.isdigit()]
+    except OSError:
+        pids = []
+    for pid in pids:
+        fd_dir = os.path.join(paths.PROC, pid, "fd")
+        try:
+            fds = os.listdir(fd_dir)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                link = os.readlink(os.path.join(fd_dir, fd))
+            except OSError:
+                continue
+            if link.startswith("socket:["):
+                try:
+                    inode = int(link[8:-1])
+                except ValueError:
+                    continue
+                if inode in wanted and inode not in owner:
+                    owner[inode] = int(pid)
+    infos = {}
+    out = []
+    for proto, address, port, inode in sockets:
+        pid = owner.get(inode)
+        if pid is not None and pid not in infos:
+            infos[pid] = _process(pid)
+        base = infos.get(pid) or {"pid": None, "program": "", "exe": "", "command": "", "service": "", "cwd": "",
+                                  "user": ""}
+        out.append(dict(base, proto=proto, address=address, port=port))
+    return out
+
+
+def docker_ps():
+    """`docker ps` as "name<TAB>ports" lines, or "" when Docker isn't installed or not running.
+    Docker can publish a port through firewall rules alone, with no program listening."""
+    import shutil
+    if not shutil.which("docker"):
+        return ""
+    try:
+        r = quiet(["docker", "ps", "--format", "{{.Names}}\t{{.Ports}}"], timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return r.stdout if r.returncode == 0 else ""
+
+
+def ephemeral_ports():
+    """(first, last) of the ports the system hands out to outgoing connections and to programs
+    that ask for any free port (net.ipv4.ip_local_port_range)."""
+    try:
+        with open(os.path.join(paths.PROC, "sys", "net", "ipv4", "ip_local_port_range")) as f:
+            lo, hi = (int(x) for x in f.read().split()[:2])
+        return (lo, hi)
+    except (OSError, ValueError):
+        return (32768, 60999)

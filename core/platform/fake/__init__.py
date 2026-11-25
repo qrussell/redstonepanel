@@ -47,6 +47,8 @@ def reset():
     state.terminal_accounts = {}        # name -> {"password", "uid", "shell", "locked"}
     state.terminal_uid = None           # what foreground_uid() says, when not the account's own
     state.shells = []                   # every Shell spawn() returned
+    state.listeners = []                # [{"proto", "port", "pid", "program", "service", ...}] for system.listeners()
+    state.docker_ps = ""                # what `docker ps --format "{{.Names}}\t{{.Ports}}"` prints
     return state
 
 
