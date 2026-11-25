@@ -62,7 +62,8 @@
       <Component Id="StartMenu" Guid="7C2F5A0E-6B1D-4E59-9A43-2D8E61B0C4F7" Win64="yes">
         <Shortcut Id="OpenPanel" Name="RedstonePanel" Description="Open RedstonePanel in your browser"
                   Target="[INSTALLDIR]RedstonePanel.url" Icon="panel.ico" />
-        <RegistryValue Root="HKLM" Key="Software\RedstonePanel" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+        <!-- HKCU as the key path, as Windows Installer wants for a shortcut (ICE38/43/57) -->
+        <RegistryValue Root="HKCU" Key="Software\RedstonePanel" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </DirectoryRef>
 
