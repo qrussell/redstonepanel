@@ -205,7 +205,10 @@ WantedBy=multi-user.target
                     _win.start_service(svc)
             except OSError:
                 pass
-    say(f"RedstonePanel is installed. Open http://localhost:{port}")
+    st = settings.load()                             # HTTPS turned on since: say where the panel really is
+    url = (f"https://localhost:{st.get('https_port') or 8443}" if st.get("https_mode", "off") != "off"
+           else f"http://localhost:{port}")
+    say(f"RedstonePanel is installed. Open {url}")
     return 0
 
 
