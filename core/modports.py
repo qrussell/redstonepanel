@@ -239,12 +239,14 @@ def _keeper_order(server, port):
     return (0 if _active(server) else 1, server)
 
 
-def plan(all_claims, game_ports, bindable=None, keeper=None):
+def plan(all_claims, game_ports, bindable=None, keeper=None, held=()):
     """[(server, claim, new port)] that make every mod port unique: no two servers' mods on
-    one port, and no mod on a port a server uses for the game (or RCON/query). Pure apart from
-    the bindable() check of new ports."""
+    one port, and no mod on a port a server uses for the game (or RCON/query) or another program
+    holds (held: ports listening programs that aren't panel servers hold, from the Port check).
+    Pure apart from the bindable() check of new ports."""
     keeper = keeper or _keeper_order
-    taken = set(game_ports) | {c["port"] for cs in all_claims.values() for c in cs}
+    held = set(held or ())
+    taken = set(game_ports) | held | {c["port"] for cs in all_claims.values() for c in cs}
     by_port = {}
     for s, cs in all_claims.items():
         for c in cs:
@@ -252,7 +254,7 @@ def plan(all_claims, game_ports, bindable=None, keeper=None):
     moves = []
     for port in sorted(by_port):
         users = sorted(by_port[port], key=lambda sc: keeper(sc[0], port))
-        losers = users if port in game_ports else users[1:]
+        losers = users if port in game_ports or port in held else users[1:]
         for s, c in losers:
             new = next_free(port, taken, bindable)
             if new is None:
@@ -262,7 +264,7 @@ def plan(all_claims, game_ports, bindable=None, keeper=None):
     return moves
 
 
-def resolve(only=None, actor="panel"):
+def resolve(only=None, actor="panel", held=()):
     """Moves every clashing mod port to the next free one (see plan()). only: just the moves of
     these servers (the others are still counted). Returns the moves made, as
     [{server, mod, name, path, old, new, proto, at}], and remembers them for Needs attention."""
@@ -273,7 +275,7 @@ def resolve(only=None, actor="panel"):
             return []
         game = manager._used_ports(mods=False)
         done = []
-        for s, c, new in plan(all_claims, game):
+        for s, c, new in plan(all_claims, game, held=held):
             if only and s not in only:
                 continue
             fmt, key = KNOWN[c["mod"]][2], KNOWN[c["mod"]][3]
@@ -295,7 +297,8 @@ def resolve(only=None, actor="panel"):
                 continue
             others = [o for o, cs in all_claims.items() for x in cs if x["port"] == c["port"] and o != s]
             manager.write_log(f"[PORTS] {s}: {c['name']} was set to {c['proto'].upper()} {c['port']}, which "
-                              + (f"{', '.join(others)} also use" if others else "a server uses for the game")
+                              + (f"{', '.join(others)} also use" if others else
+                                 "another program holds" if c["port"] in set(held or ()) else "a server uses for the game")
                               + f"; moved it to {new} in {c['path']}.")
             done.append({"server": s, "mod": c["mod"], "name": c["name"], "path": c["path"], "old": c["port"],
                          "new": new, "proto": c["proto"], "with": others, "at": int(time.time())})

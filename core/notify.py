@@ -40,8 +40,10 @@ EVENTS = {
     "type_changed": "Server type changed",
     "tps_low": "TPS under 15 for 5 minutes",
     "disk_full": "Disk over 95 % full",
+    "port_conflict": "Port conflict found",
 }
-DEFAULT_EVENTS = ["crashed", "backup_failed", "backup_copy_failed", "restarted", "update_available", "update_failed"]
+DEFAULT_EVENTS = ["crashed", "backup_failed", "backup_copy_failed", "restarted", "update_available", "update_failed",
+                  "port_conflict"]
 # A server stuck in a crash loop restarts every 20 s; one message per event per server is enough
 QUIET_SECONDS = {"crashed": 300, "started": 60, "stopped": 60, "player_refused": 60,
                  "tps_low": 3600, "disk_full": 3600}   # 1.17's alerts: at most once an hour each
@@ -309,6 +311,11 @@ def unit_event(phase, server, env=None):
         try:                                   # it now uses any mod port the panel moved
             from core import modports
             modports.started(server)
+        except Exception:
+            pass
+        try:                                   # and any RCON, Query or config port the Port check moved
+            from core import portaudit
+            portaudit.started(server)
         except Exception:
             pass
     else:

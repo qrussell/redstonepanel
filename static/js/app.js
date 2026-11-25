@@ -534,6 +534,7 @@ const ServerApp = {
                 <p class="font-bold text-gray-900 dark:text-white">${esc(c.title)}</p>
                 <p class="text-gray-800 dark:text-gray-200">${esc(c.text)}</p>
                 <p class="text-gray-600 dark:text-gray-400"><b>Fix:</b> ${esc(c.fix)}</p>
+                ${admin && /port/.test(c.id || '') ? `<button onclick="ServerApp.openPorts()" class="mt-1 underline text-theme">Open the Port check</button>` : ''}
             </div>`).join('');
         const suspects = (rec.suspects || []).filter(s => s.present !== false).map(s => `
             <div class="mt-2 flex flex-wrap items-center gap-2">
@@ -6344,8 +6345,9 @@ const ServerApp = {
 				<h3 class="${h3} mb-2">Needs attention</h3>
 				<div class="space-y-2">${attention.map(a => {
 					const tab = a.where === 'backups' ? 'backups' : a.where === 'access' ? 'access' : '';
-					const link = a.server ? ` <button onclick="ServerApp.openServerByName(${this.jsArg(a.server)}, ${this.jsArg(tab)})" class="underline text-theme whitespace-nowrap">Open ${esc(a.server)}</button>`
-						: a.where === 'update' && this.isAdmin() ? ` <button onclick="ServerApp.startPanelUpdate()" class="underline text-theme whitespace-nowrap">Update now</button>` : '';
+					const link = (a.server ? ` <button onclick="ServerApp.openServerByName(${this.jsArg(a.server)}, ${this.jsArg(tab)})" class="underline text-theme whitespace-nowrap">Open ${esc(a.server)}</button>`
+						: a.where === 'update' && this.isAdmin() ? ` <button onclick="ServerApp.startPanelUpdate()" class="underline text-theme whitespace-nowrap">Update now</button>` : '')
+						+ (a.where === 'ports' && this.isAdmin() ? ` <button onclick="ServerApp.openPorts()" class="underline text-theme whitespace-nowrap">Port check</button>` : '');
 					return `<div class="text-sm p-2 rounded border ${tone[a.level] || tone.warn} text-gray-900 dark:text-gray-100">${icon[a.level] || '⚠️'} ${esc(a.text)}${link}</div>`;
 				}).join('')}</div>
 			</section>` : `
@@ -7053,6 +7055,88 @@ const ServerApp = {
 		this.renderPorts();
 	},
 
+	// --- 1.23.1: the Port check (core/portaudit.py). Each member's report arrives with its
+	// port forwarding rows; Move goes to the member that runs the server.
+	portsRouterCheck: null,
+	portsMoveNote: null,
+
+	portCheckCard() {
+		const d = this.portsData, esc = t => this.escapeHtml(String(t ?? ''));
+		const card = 'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4';
+		const btn = 'px-3 py-1.5 rounded text-sm font-bold transition';
+		const grey = `${btn} bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white`;
+		const icon = { error: '⛔', warn: '⚠️', info: 'ℹ️' };
+		const tone = { error: 'border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30',
+			warn: 'border-yellow-300 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/30',
+			info: 'border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30' };
+		const multi = d.members.length > 1;
+		const items = [], notes = [], unknown = [];
+		for (const m of d.members) {
+			const pc = m.port_check;
+			const where = multi ? ` <span class="text-xs text-gray-500">(${m.local ? esc(m.name) : '🌐 ' + esc(m.name)})</span>` : '';
+			if (m.state !== 'ok') continue;
+			if (!pc) { notes.push(`${esc(m.name)} runs an older RedstonePanel without the Port check. Update it to see its ports.`); continue; }
+			if (pc.error) { notes.push(`${esc(m.name)}: the Port check couldn't run (${esc(pc.error)}).`); continue; }
+			for (const p of pc.problems || []) {
+				if (p.fix === 'auto') continue;
+				const holders = (p.holders || []).filter(h => h.exe || h.command || h.service || h.container);
+				const details = holders.length ? `<details class="mt-1"><summary class="cursor-pointer text-xs text-theme">Which program</summary>
+					<dl class="mt-1 text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">${holders.map(h => [
+						['Program', h.program], ['Process', h.pid], ['Path', h.exe], ['Command', h.command],
+						[h.service && h.service.endsWith('.service') ? 'systemd unit' : 'Service', h.service],
+						['Container', h.container], ['Account', h.user]].filter(x => x[1]).map(x =>
+						`<dt class="text-gray-500">${esc(x[0])}</dt><dd class="font-mono break-all">${esc(x[1])}</dd>`).join('')).join('<dt class="col-span-2 border-t border-gray-200 dark:border-gray-700 my-1"></dt>')}</dl></details>` : '';
+				const move = p.fix === 'move' && p.server
+					? ` <button onclick="ServerApp.portCheckMove(${this.jsArg(m.local ? null : m.id)}, ${this.jsArg(p.server)}, this)" class="${grey} ml-1">Move to a free port</button>` : '';
+				const open = p.server ? ` <button onclick="ServerApp.openServerByName(${this.jsArg(p.server)}, '')" class="underline text-theme whitespace-nowrap">Open ${esc(p.server)}</button>` : '';
+				items.push(`<div class="text-sm p-2 rounded border ${tone[p.level] || tone.warn} text-gray-900 dark:text-gray-100">${icon[p.level] || '⚠️'} ${esc(p.text)}${where}${move}${open}${details}</div>`);
+			}
+			for (const [server, moves] of Object.entries(pc.moved || {})) {
+				for (const mv of moves) items.push(`<div class="text-sm p-2 rounded border ${tone.info} text-gray-900 dark:text-gray-100">${icon.info} The panel moved ${esc(server)}'s ${esc(mv.label)} from ${esc(mv.old)} to ${esc(mv.new)} (${esc(mv.why)}). ${esc(server)} uses it from its next start.${where}</div>`);
+			}
+			for (const u of pc.unknown || []) unknown.push(`<span class="font-mono whitespace-nowrap">${esc(u.server)} ${esc(u.proto.toUpperCase())} ${esc(u.port)}</span>`);
+		}
+		const moved = this.portsMoveNote ? `<p class="text-sm mt-2 ${this.portsMoveNote.ok ? 'text-green-700 dark:text-green-400' : 'text-red-500'}">${esc(this.portsMoveNote.text)}</p>` : '';
+		const rc = this.portsRouterCheck;
+		const router = rc ? `<div class="mt-3 text-sm">${rc.answered
+			? (rc.problems.length ? rc.problems.map(p => `<div class="p-2 mt-1 rounded border ${tone[p.level] || tone.warn} text-gray-900 dark:text-gray-100">${icon[p.level] || '⚠️'} ${esc(p.text)}</div>`).join('')
+				: `<p class="text-green-700 dark:text-green-400">✅ The router's ${rc.mappings} forward${rc.mappings === 1 ? '' : 's'} match the servers.</p>`)
+			: ''}<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${esc(rc.note || '')}</p></div>` : '';
+		return `<div class="${card}">
+			<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+				<h3 class="text-lg font-bold text-gray-900 dark:text-white">Port check</h3>
+				<button onclick="ServerApp.portCheckRouter(this)" class="${grey}">Check the router</button>
+			</div>
+			<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Every port the servers and the panel need, and what is really using it on ${multi ? 'each machine' : 'this machine'}. The panel moves RCON, Query and mod ports by itself; it never stops another program or changes your router.</p>
+			${items.length ? `<div class="space-y-2">${items.join('')}</div>` : '<p class="text-sm text-green-700 dark:text-green-400">✅ No port conflicts found.</p>'}
+			${moved}
+			${notes.length ? `<ul class="list-disc ml-5 mt-3 text-sm text-gray-600 dark:text-gray-300">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : ''}
+			${unknown.length ? `<p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Ports servers opened through a mod or plugin the panel doesn't know (no other server or mod is given them): ${unknown.join(', ')}.</p>` : ''}
+			${router}
+		</div>`;
+	},
+
+	async portCheckMove(node, server, btn) {
+		if (!confirm(`Move ${server} to the next free port? If it's running it is stopped and started again, and players use the new port from then on.`)) return;
+		btn.disabled = true;
+		btn.innerText = 'Moving...';
+		const res = await fetch(apiUrl(`/api/servers/${encodeURIComponent(server)}/ports/move`, node), {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+		this.portsMoveNote = res.ok ? { ok: true, text: `${server}: ${(await res.json()).note}` } : { ok: false, text: await this.apiError(res) };
+		this.loadPorts();
+	},
+
+	async portCheckRouter(btn) {
+		btn.disabled = true;
+		btn.innerText = 'Asking the router...';
+		const res = await fetch('/api/port-check/router', { method: 'POST' });
+		btn.disabled = false;
+		btn.innerText = 'Check the router';
+		if (!res.ok) { alert(await this.apiError(res)); return; }
+		this.portsRouterCheck = await res.json();
+		this.renderPorts();
+	},
+
 	// Every row of every server on every member, with where it goes
 	portsRows() {
 		const out = [];
@@ -7245,7 +7329,7 @@ const ServerApp = {
 			<div class="text-sm text-gray-700 dark:text-gray-300">${this.portsRouter === 'generic' ? generic : pfsense}</div>
 		</div>`;
 
-		document.getElementById('ports-body').innerHTML = addressCard + clashCard + forwardCard + howCard + optionalCard + closedCard;
+		document.getElementById('ports-body').innerHTML = this.portCheckCard() + addressCard + clashCard + forwardCard + howCard + optionalCard + closedCard;
 	},
 
 	openCluster() {

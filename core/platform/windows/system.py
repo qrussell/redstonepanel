@@ -1154,3 +1154,96 @@ def hint(what, *args):
     if what == "install-package":                   # Java comes from the panel's Java page; nothing to type
         return ""
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Who listens on which port (1.23.1, the Port check)
+# ---------------------------------------------------------------------------
+def service_of(pid, parents, services):
+    """The Windows service a process belongs to: its own, or one up to three parents above it
+    (the panel's runner hosts java.exe and bedrock_server.exe as its children). "" when none."""
+    for _ in range(4):
+        if pid in services:
+            return services[pid]
+        pid = (parents.get(pid) or (0,))[0]
+        if not pid:
+            return ""
+    return ""
+
+
+def parse_listeners(data):
+    """The PowerShell answer of listeners() -> the list it returns."""
+    procs = {int(p[0]): p for p in data.get("processes") or [] if p}
+    parents = {int(p[0]): (int(p[1] or 0),) for p in procs.values()}
+    services = {}
+    for pid, name in data.get("services") or []:
+        services.setdefault(int(pid), str(name))
+    out = []
+    for proto, address, port, pid in data.get("sockets") or []:
+        pid = int(pid or 0)
+        p = procs.get(pid)
+        if pid == 4:
+            p = [4, 0, "System", "", ""]
+        out.append({"proto": str(proto), "address": str(address), "port": int(port), "pid": pid or None,
+                    "program": str(p[2]) if p else "", "exe": str(p[3] or "") if p else "",
+                    "command": str(p[4] or "")[:600] if p else "",
+                    "service": service_of(pid, parents, services) if p else "", "cwd": "", "user": ""})
+    return out
+
+
+def listeners():
+    """Every listening TCP socket and bound UDP socket on this PC and the program that owns it:
+    [{"proto", "address", "port", "pid", "program", "exe", "command", "service", "cwd", "user"}].
+    Process 4 ("System") is Windows itself, usually the HTTP service (http.sys) on behalf of a
+    program that reserved a web address. Looking only."""
+    r = _win.powershell(
+        "$s = @(); "
+        "$s += @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | ForEach-Object { ,@('tcp', [string]$_.LocalAddress, [int]$_.LocalPort, [int]$_.OwningProcess) }); "
+        "$s += @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue | ForEach-Object { ,@('udp', [string]$_.LocalAddress, [int]$_.LocalPort, [int]$_.OwningProcess) }); "
+        "$p = @(Get-CimInstance Win32_Process | ForEach-Object { ,@([int]$_.ProcessId, [int]$_.ParentProcessId, [string]$_.Name, [string]$_.ExecutablePath, [string]$_.CommandLine) }); "
+        "$v = @(Get-CimInstance Win32_Service -Filter 'ProcessId <> 0' | ForEach-Object { ,@([int]$_.ProcessId, [string]$_.Name) }); "
+        "@{ sockets = $s; processes = $p; services = $v } | ConvertTo-Json -Depth 4 -Compress", timeout=90)
+    if r.returncode != 0:
+        return []
+    try:
+        return parse_listeners(json.loads(r.stdout or "{}"))
+    except (ValueError, TypeError, IndexError):
+        return []
+
+
+def docker_ps():
+    """`docker ps` as "name<TAB>ports" lines, or "" when Docker Desktop isn't installed or running."""
+    if not shutil.which("docker"):
+        return ""
+    try:
+        r = _win.quiet(["docker", "ps", "--format", "{{.Names}}\t{{.Ports}}"], timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return r.stdout if r.returncode == 0 else ""
+
+
+def ephemeral_ports():
+    """(first, last) of the dynamic port range Windows hands out (49152-65535 unless changed with
+    netsh int ipv4 set dynamicport)."""
+    def read():
+        r = _win.quiet(["netsh", "int", "ipv4", "show", "dynamicport", "tcp"], timeout=20)
+        nums = [int(n) for n in re.findall(r":\s*([0-9]+)", r.stdout or "")]
+        return (nums[0], min(65535, nums[0] + nums[1] - 1)) if len(nums) >= 2 else (49152, 65535)
+    got = _cached("ephemeral", 3600, read)
+    return tuple(got) if got else (49152, 65535)
+
+
+def can_bind(port, proto):
+    """True when this machine would let a program open the port now (0.0.0.0, TCP or UDP). Some
+    holders are invisible to the socket lists (WSL with networkingMode=mirrored on Windows, a
+    port Docker publishes with firewall rules only): only a real bind shows them."""
+    import socket
+    kind = socket.SOCK_STREAM if proto == "tcp" else socket.SOCK_DGRAM
+    with socket.socket(socket.AF_INET, kind) as s:
+        if kind == socket.SOCK_STREAM and hasattr(socket, "SO_REUSEADDR") and os.name != "nt":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)    # Linux: ignore TIME_WAIT, still refused by a listener
+        try:
+            s.bind(("0.0.0.0", int(port)))
+            return True
+        except OSError:
+            return False

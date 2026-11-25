@@ -392,7 +392,17 @@ def local_report(list_servers=None):
             "ufw": {"installed": fw.get("installed"), "active": active},
             "web": {"port": web, "scheme": scheme},
             "servers": out, "machine": machine,
-            "reserved": [{"proto": q, "start": a, "end": b} for q, a, b in reserved]}
+            "reserved": [{"proto": q, "start": a, "end": b} for q, a, b in reserved],
+            "port_check": _port_check(list_servers)}
+
+
+def _port_check(list_servers=None):
+    """The Port check's report for this machine (1.23.1), or {"error"} when it couldn't run."""
+    from core import portaudit
+    try:
+        return portaudit.report(servers=list_servers() if list_servers else None)
+    except Exception as e:
+        return {"error": str(e), "problems": [], "unknown": [], "moved": {}}
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +418,8 @@ def _node_report(node, actor=None):
         if not isinstance(rep, dict) or not isinstance(rep.get("servers"), list):
             raise cluster_client.NodeError("error", "The answer was incomplete.")
         return dict(base, state="ok", **{k: rep.get(k) for k in
-                                         ("lan_ip", "lan_ips", "gateway", "ufw", "web", "servers", "machine")})
+                                         ("lan_ip", "lan_ips", "gateway", "ufw", "web", "servers", "machine",
+                                          "reserved", "port_check")})
     except cluster_client.NodeError as e:
         if e.state not in ("too_old",) and e.status != 404:
             return dict(base, state=e.state, error=str(e), servers=[], machine=[])
@@ -491,9 +502,9 @@ WAN_SERVICE_RE = re.compile(r"<serviceType>\s*(urn:schemas-upnp-org:service:WAN(
                             r".*?<controlURL>\s*([^<\s]+)\s*</controlURL>", re.S)
 
 
-def upnp_address(gateway, timeout=2.0):
-    """UPnP IGD GetExternalIPAddress on the gateway, or None. Only a description on the gateway's
-    own address is fetched."""
+def _upnp_control(gateway, timeout=2.0):
+    """(service type, control URL) of the gateway's UPnP WAN connection, or None. Only a
+    description on the gateway's own address is fetched."""
     msg = ("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 1\r\n"
            "ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n").encode()
     location = None
@@ -518,18 +529,33 @@ def upnp_address(gateway, timeout=2.0):
         return None
     try:
         desc = _no_proxy.open(location, timeout=timeout).read(200000).decode("utf-8", "replace")
-        m = WAN_SERVICE_RE.search(desc)
-        if not m:
-            return None
-        service, control = m.group(1), urljoin(location, m.group(2))
-        if urlsplit(control).hostname != gateway:
-            return None
-        body = ('<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
-                's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>'
-                f'<u:GetExternalIPAddress xmlns:u="{service}"/></s:Body></s:Envelope>').encode()
-        req = urllib.request.Request(control, data=body, headers={
-            "Content-Type": 'text/xml; charset="utf-8"', "SOAPAction": f'"{service}#GetExternalIPAddress"'})
-        ans = _no_proxy.open(req, timeout=timeout).read(20000).decode("utf-8", "replace")
+    except Exception:
+        return None
+    m = WAN_SERVICE_RE.search(desc)
+    if not m:
+        return None
+    service, control = m.group(1), urljoin(location, m.group(2))
+    if urlsplit(control).hostname != gateway:
+        return None
+    return service, control
+
+
+def _soap(control, service, action, args="", timeout=2.0):
+    body = ('<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
+            's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>'
+            f'<u:{action} xmlns:u="{service}">{args}</u:{action}></s:Body></s:Envelope>').encode()
+    req = urllib.request.Request(control, data=body, headers={
+        "Content-Type": 'text/xml; charset="utf-8"', "SOAPAction": f'"{service}#{action}"'})
+    return _no_proxy.open(req, timeout=timeout).read(20000).decode("utf-8", "replace")
+
+
+def upnp_address(gateway, timeout=2.0):
+    """UPnP IGD GetExternalIPAddress on the gateway, or None."""
+    found = _upnp_control(gateway, timeout)
+    if not found:
+        return None
+    try:
+        ans = _soap(found[1], found[0], "GetExternalIPAddress", timeout=timeout)
     except Exception:
         return None
     m = re.search(r"<NewExternalIPAddress>\s*([0-9.]+)\s*</NewExternalIPAddress>", ans)
@@ -537,6 +563,36 @@ def upnp_address(gateway, timeout=2.0):
         return str(ipaddress.ip_address(m.group(1))) if m else None
     except ValueError:
         return None
+
+
+def _tag(xml, name):
+    m = re.search(rf"<{name}>\s*([^<]*?)\s*</{name}>", xml)
+    return m.group(1) if m else ""
+
+
+def upnp_mappings(gateway, timeout=2.0, limit=256):
+    """The router's port forwards, read over UPnP (GetGenericPortMappingEntry):
+    [{"outside", "proto", "inside_ip", "inside", "enabled", "description"}], or None when the
+    router doesn't answer UPnP. Only forwards made over UPnP or listed by it show here; pfSense
+    lists only the ones UPnP made, not those typed under Firewall > NAT."""
+    found = _upnp_control(gateway, timeout)
+    if not found:
+        return None
+    out = []
+    for i in range(limit):
+        try:
+            ans = _soap(found[1], found[0], "GetGenericPortMappingEntry",
+                        f"<NewPortMappingIndex>{i}</NewPortMappingIndex>", timeout=timeout)
+        except Exception:
+            break                      # a SOAP fault (index past the end) arrives as an HTTP error
+        ext, inside = _tag(ans, "NewExternalPort"), _tag(ans, "NewInternalPort")
+        if not ext.isdigit() or not inside.isdigit():
+            break
+        out.append({"outside": int(ext), "proto": _tag(ans, "NewProtocol").lower(),
+                    "inside_ip": _tag(ans, "NewInternalClient"), "inside": int(inside),
+                    "enabled": _tag(ans, "NewEnabled") not in ("0", "false"),
+                    "description": _tag(ans, "NewPortMappingDescription")[:120]})
+    return out
 
 
 def lookup_public_address():

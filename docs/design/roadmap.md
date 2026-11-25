@@ -2193,6 +2193,32 @@ systemd containers: the button, the prompt, a linked sign-in, wrong passwords an
 root refused, `sudo`, idle close, sign-out, limits, the node opt-in through the master, and no
 websocket on the join port).
 
+### 1.23.1: a port check
+
+Asked for by Quentin on 25 Nov 2026 ("a port audit to identify and fix port conflicts outside of
+the expected use cases"), after 1.23 so Bedrock and Phantom on Windows are covered from the start.
+
+**Why:** the panel picks free ports when it makes a server and moves known mods off shared
+ports (1.21.9), but a home server is shared with other things: an old server started by hand, a
+Docker container, another panel, a mod nobody told the panel about, a server.properties edited
+by hand. Then a server crash-loops on a taken port and the admin has to find out with `ss` who
+holds it.
+
+**How:** `core/portaudit.py` puts the ports every server needs (game, IPv6, Query, RCON,
+gameplay, known mods) and the panel's own (web, join pages, SFTP, Phantom) next to every
+listening socket from `system.listeners()` (Linux: `/proc/net/*` and each process's open files;
+Windows: `Get-NetTCPConnection`/`Get-NetUDPEndpoint` and the process and service lists) and
+`docker ps`. It fixes by itself only what nobody outside the machine relies on (RCON, Query,
+known mod ports, an unknown mod's port when exactly one config line sets it); a game port moves
+on the admin's click; another program is named and never touched. A start from the panel is
+refused while another program holds the game port. The report sits at the top of Port
+forwarding (each member's comes with its rows, so no new node route), in Needs attention, behind
+`redstonepanel ports`, and in the `port_conflict` webhook. **Check the router** reads the
+router's forwards over UPnP. Windows reserved ranges stay 1.23's (`system.reserved_ports()`) and
+are avoided by Move.
+
+**Size:** medium. One core module, three platform functions, a card on an existing page.
+
 ### 2.0: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
