@@ -93,7 +93,8 @@ command prompt on the PC.
    right address even after you change the port or turn on HTTPS. The user name is **admin** and the password
    is in `first-sign-in.txt` in the folder from step 2. Change the password under **Users**,
    then delete the file. A Windows account in **Administrators** can also sign in, as an admin;
-   to let other Windows accounts in, add them to a local group named **RedstonePanel**.
+   so can members of a local group named **RedstonePanel**. Windows accounts always sign in as
+   admins; give everyone else a panel account under **Users**.
 
 What you get is ordinary Windows: the panel is the service **RedstonePanel**, each game server
 is its own service (`minecraft-<name>`) running as its own account that can reach only its own

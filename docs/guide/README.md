@@ -225,8 +225,9 @@ the PC.
    panel if you change its port or turn on HTTPS. The user name is **admin**, and the password is in
    `first-sign-in.txt` in that folder (open it as an administrator). Change the password under
    **Users**, then delete the file. You can also sign in with your own Windows account if it is
-   in **Administrators** (an admin), or in a local group named **RedstonePanel** that you make
-   for the people you want to let in.
+   in **Administrators**, or in a local group named **RedstonePanel** that you make. Windows
+   accounts always sign in as admins; for people who should only run some servers, make panel
+   accounts under **Users**.
 
 Java (Eclipse Temurin) is downloaded the first time a server needs it. Each game server is a
 Windows service (`minecraft-<name>`) running as its own account that can reach only its own

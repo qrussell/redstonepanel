@@ -242,13 +242,16 @@ def status():
     print(f"HTTPS:     {s['https_mode']}" + (f" (HTTP port {s['http_port']} redirects)" if s["https_mode"] != "off" else ""))
     print(f"Sign-in:   {'required' if s['login_mode'] == 'required' else 'not required from ' + ', '.join(s['trusted_networks'])}"
           + ("; two-factor required for admins" if s.get("require_2fa_admins") else ""))
-    print(f"Linux:     members of {' or '.join(auth.ALLOWED_LINUX_GROUPS)} can sign in")
+    if paths.WINDOWS:
+        print("Windows:   members of Administrators or RedstonePanel can sign in (as admins)")
+    else:
+        print(f"Linux:     members of {' or '.join(auth.ALLOWED_LINUX_GROUPS)} can sign in (as admins)")
     users = auth.list_panel_users()
     print(f"Panel users: {', '.join(u['username'] + ' (' + u['role'] + (', 2FA' if u['two_factor'] else '') + (', disabled' if u['disabled'] else '') + ')' for u in users) or 'none'}")
     from core import twofactor
     linux_2fa = sorted(k.split(":", 1)[1] for k in twofactor.enabled_keys() if k.startswith("linux:"))
     if linux_2fa:
-        print(f"Two-factor (Linux accounts): {', '.join(linux_2fa)}")
+        print(f"Two-factor ({'Windows' if paths.WINDOWS else 'Linux'} accounts): {', '.join(linux_2fa)}")
     from core import cluster
     st = cluster.state()
     print(f"Cluster:   {st['role']}" + (f" of '{st.get('name') or st.get('cluster_name')}'" if st["role"] != "standalone" else "")
