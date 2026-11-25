@@ -109,6 +109,8 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.23
 
+**Removing the panel safely** *(1.23.2)*. **Panel Settings → Remove RedstonePanel** and `sudo redstonepanel uninstall` back up your servers and ask what happens to each one (stop it and keep its files, keep it running without the panel, or delete it) before removing the panel, so no server is left running with nothing to manage it by accident. See the [1.23.2 release notes](release-notes/v1.23.2.md).
+
 **A port check** *(1.23.1)*. The Port forwarding page finds port conflicts the panel can't prevent, such as another program, a Docker container or an unknown mod on a server's port. It names the other program so you can fix it, moves RCON, Query and mod ports by itself, moves a game port on a click, refuses to start a server whose port is taken, and checks your router's forwards. See the [1.23.1 release notes](release-notes/v1.23.1.md).
 
 **The whole single machine on Windows**. Bedrock servers with automatic updates and Phantom, Quilt, Forge, NeoForge and modpacks, memory and processor limits, off-site backups, crash explanations with Windows causes, **Update now** for the panel itself, and signing in with a Windows account. Needs attention warns about ports Hyper-V or WSL reserved, a PC set to sleep and a pending Windows Update restart. Clusters come to Windows in 1.24. See the [1.23.0 release notes](release-notes/v1.23.0.md).
