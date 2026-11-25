@@ -46,6 +46,14 @@ show everything the panel does. It arrives in four releases:
 A few things work differently on Windows and are documented: Let's Encrypt comes with 1.24, Windows accounts without a password can't sign in to the panel (panel accounts
 can), and Windows 10 installs with an end-of-support note. Windows on ARM comes later.
 
+### 1.24.1: sign in with Windows Hello (Windows panels)
+
+- **Passkeys** on Windows panels: sign in with your Windows Hello PIN, face or fingerprint (or a
+  phone or security key) instead of typing a password. Works on the panel's own PC at
+  `localhost`, or from elsewhere when the panel is on a host name with a trusted certificate.
+  Passwords and optional two-factor stay. Linux panels keep Linux accounts and panel accounts
+  with optional two-factor.
+
 ### 2.0: an API for scripts and bots
 
 - **API tokens** with a limited set of allowed routes and servers, shown once and revocable.

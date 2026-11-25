@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.23.2 (25 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) and removing the panel safely (1.23.2) shipped; mixed clusters (1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.23.2 (25 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) and removing the panel safely (1.23.2) shipped; mixed clusters (1.24), Windows Hello sign-in on Windows panels (1.24.1) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -2258,6 +2258,36 @@ services run through the panel's own program, which the MSI removes). Tests: 17 
 (`tests/test_uninstall.py`) and `packaging/test/test-uninstall.sh`, 30 of 30 checks in a systemd
 container (in the GitHub release workflow's cluster job), also run on Superman; the overview
 and the refusals were checked read-only against the real servers of the Windows panel.
+
+### 1.24.1: sign in with Windows Hello on Windows panels *(planned)*
+
+31. **Windows Hello passkeys (Windows panels only).** Decided by Quentin on 25 Nov 2026.
+
+**Why.** Whoever installs the panel on Windows is an administrator who unlocks that PC with a
+Windows Hello PIN, face or fingerprint every day, and asked to sign in to the panel the same way.
+The panel can't check the PIN itself: Windows keeps it in the PC's security chip and only lets a
+program check real passwords (LogonUser), which is also why passwordless Microsoft accounts can't
+sign in today. A passkey (WebAuthn) lets the browser ask Windows Hello and send the panel only a
+signature.
+
+**How.** After a normal sign-in, **Account → Add a passkey** registers one with Windows Hello (a
+phone or security key works too); the sign-in page gets **Sign in with a passkey**. Passkeys are
+an extra for each account, panel accounts and Windows accounts alike: the password stays, so does
+optional two-factor (1.16.7), and `redstonepanel reset-2fa NAME` also removes an account's passkeys
+for recovery. Checked with the `cryptography` library the installer already carries (ES256 and
+RS256), no new dependency. Limits to show on screen: browsers allow passkeys only at
+`http://localhost` on the panel's own PC or on a host name with a certificate the browser trusts
+(not a bare IP like `https://10.0.0.39:8443`), so the button only appears where it can work.
+
+**Linux stays as it is** (Quentin, 25 Nov 2026): Linux accounts through PAM and panel accounts,
+each with optional two-factor. No passkeys on Linux panels.
+
+**Not in the free panel:** "Sign in with Google, GitHub or Apple" and organisation single sign-on
+are planned for a paid bundle, separately.
+
+**Open questions:** whether an admin can register a passkey for a Windows account that has no
+password (so passwordless Microsoft accounts get in), and opening the panel already signed in
+from the Start menu on its own PC as a later step. Size: M.
 
 ### 2.0: an API for scripts and bots
 
