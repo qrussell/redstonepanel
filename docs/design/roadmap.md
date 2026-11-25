@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.23.0 (25 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) and the whole single machine on Windows (1.23) shipped; mixed clusters (1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.23.1 (25 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) and a port check (1.23.1) shipped; mixed clusters (1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -2193,7 +2193,7 @@ systemd containers: the button, the prompt, a linked sign-in, wrong passwords an
 root refused, `sudo`, idle close, sign-out, limits, the node opt-in through the master, and no
 websocket on the join port).
 
-### 1.23.1: a port check
+### 1.23.1: a port check *(released Nov 2026)*
 
 Asked for by Quentin on 25 Nov 2026 ("a port audit to identify and fix port conflicts outside of
 the expected use cases"), after 1.23 so Bedrock and Phantom on Windows are covered from the start.
@@ -2218,6 +2218,19 @@ router's forwards over UPnP. Windows reserved ranges stay 1.23's (`system.reserv
 are avoided by Move.
 
 **Size:** medium. One core module, three platform functions, a card on an existing page.
+
+**As built (1.23.1):** `core/portaudit.py` with `system.listeners()`, `docker_ps()`,
+`ephemeral_ports()` and `can_bind()` on Linux, Windows and the fake platform. The bind probe
+was added after the 1.23 work found that WSL mirrored networking holds ports no socket list
+shows. `modports.resolve(held=)` moves known mod ports off outside holders. The check runs in
+`manager.control_server` (refuses the start) and in the firewall sweep (moves, `port_conflict`
+webhook, state in `DATA_DIR/port-check.json`). The report rides on the existing
+`/api/port-forwarding/local` node route; new master routes `GET /api/port-check`,
+`POST /api/port-check/router` (UPnP `GetGenericPortMappingEntry`) and
+`POST /api/servers/{name}/ports/move`, all admin. The sidebar keeps the name "Port forwarding".
+Tested by `tests/test_portaudit.py` (24 tests), `packaging/test/test-port-check.sh` (31 checks
+in a systemd container, in release.yml), a Port check section in `test-windows.py` (Windows
+Server 2022 and 2025) and a test build on a live panel with four servers.
 
 ### 2.0: an API for scripts and bots
 

@@ -1,3 +1,22 @@
+redstonepanel (1.23.1) noble; urgency=medium
+
+  * Port check: the Port forwarding page compares every port the servers
+    and the panel need with what really uses each port, and names the
+    other program (process, path, command line, service or Docker
+    container). The panel never stops or changes another program.
+  * RCON, Query and mod ports another program holds move by themselves;
+    a game port moves to a free one on a click, with the firewall opened.
+  * Starting a server whose game port another program holds is refused
+    with the reason, instead of crash-looping.
+  * Check the router reads the router's forwards over UPnP and names the
+    ones that point to the wrong machine or port.
+  * Needs attention, the Last crash card, `redstonepanel ports` and a new
+    port_conflict webhook report port problems. Linux and Windows.
+  * A bind probe finds ports held where the socket lists can't see, such
+    as WSL mirrored networking on Windows.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Wed, 25 Nov 2026 06:30:00 -0000
+
 redstonepanel (1.23.0) noble; urgency=medium
 
   * Windows: Bedrock servers (Mojang's Windows build) with automatic
