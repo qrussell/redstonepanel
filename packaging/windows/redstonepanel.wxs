@@ -85,7 +85,7 @@
 
     <Property Id="WIXUI_INSTALLDIR" Value="DATAFOLDER" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
-              Value="RedstonePanel is running. Open http://localhost:8080 in a browser on this computer. The user name is admin; the password is in the file first-sign-in.txt in the folder you chose (C:\ProgramData\RedstonePanel unless you changed it)." />
+              Value="RedstonePanel is running. Open http://localhost:8080 in a browser on this computer. The user name is admin; the password is in the file first-sign-in.txt in the folder you chose (C:\ProgramData\RedstonePanel unless you changed it). To remove the panel later, start with Panel Settings &gt; Remove RedstonePanel (or redstonepanel uninstall as administrator): it backs up and asks what happens to each server first." />
     <UIRef Id="WixUI_InstallDir" />
     <UIRef Id="WixUI_ErrorProgressText" />
   </Product>

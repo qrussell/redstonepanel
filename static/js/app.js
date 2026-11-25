@@ -6001,6 +6001,10 @@ const ServerApp = {
 			${this.notYet('cluster') ? `<h4 class="font-bold text-gray-900 dark:text-white mb-2">Windows preview</h4>
 			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">RedstonePanel on Windows is a preview: every kind of server on one computer. Not here yet: clusters and SFTP (both come next). The terminal is Linux-only: on Windows, open a command prompt on the computer itself.</p>` : ''}
 
+			<h4 id="set-section-remove" class="font-bold text-gray-900 dark:text-white mb-2">Remove RedstonePanel</h4>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Don't just uninstall the ${this.onWindows() ? 'app' : 'package'}: game servers that are running or start ${this.onWindows() ? 'with Windows' : 'at boot'} ${this.onWindows() ? 'would be left without the panel' : 'would stay on this machine with nothing to manage them'}. This page backs them up, asks what happens to each one, then removes the panel. Also from a prompt: <span class="font-mono">${this.onWindows() ? 'redstonepanel uninstall' : 'sudo redstonepanel uninstall'}</span>.</p>
+			<button onclick="ServerApp.openUninstall()" class="mb-6 px-4 py-2 rounded text-sm font-bold text-white bg-red-600 hover:bg-red-700">Remove RedstonePanel…</button>
+
 			<h4 id="set-section-connection" class="font-bold text-gray-900 dark:text-white mb-2">Connection</h4>
 			<div class="space-y-2 mb-3">
 				${clusterRole === 'master'
@@ -6138,6 +6142,145 @@ const ServerApp = {
 		document.getElementById('set-custom-cert').classList.toggle('hidden', mode !== 'custom');
 		document.getElementById('set-self-signed-info').classList.toggle('hidden', mode !== 'self_signed');
 		document.getElementById('set-trusted').classList.toggle('hidden', login !== 'trusted_networks');
+	},
+
+	// --- 1.23.2: Panel Settings → Remove RedstonePanel. Back up, choose what happens to every game
+	// server (stop and keep files / keep running / delete), then remove the panel. ---
+	async openUninstall(message, ok) {
+		const overlay = document.getElementById('settings-overlay');
+		const box = document.getElementById('settings-content');
+		overlay.classList.remove('hidden');
+		if (!message) box.innerHTML = '<p class="text-gray-500">Loading…</p>';
+		const res = await fetch('/api/uninstall');
+		if (!res.ok) { box.innerHTML = `<p class="text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = this.uninstallData = await res.json();
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const boot = d.windows ? 'starts with Windows' : 'starts at boot';
+		const options = [['stop', 'Stop it, keep its files (recommended)'], ...(d.keep_possible ? [['keep', 'Keep it running without the panel']] : []), ['delete', 'Delete it completely']];
+		const kept = new Set((d.plan && d.plan.keep) || []);
+		const rows = d.servers.map(s => {
+			const state = [s.running ? '<span class="text-green-600 dark:text-green-400 font-bold">running</span>' : 'stopped', s.enabled ? boot : ''].filter(Boolean).join(', ');
+			const fresh = s.last_backup && (Date.now() / 1000 - s.last_backup) < d.recent_backup_hours * 3600;
+			return `<div class="py-2 border-t border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center gap-2">
+				<div class="min-w-0 flex-1 text-sm text-gray-900 dark:text-gray-200">
+					<b>${esc(s.name)}</b> <span class="${note}">${esc(s.edition || '')} · port ${esc(s.port || '?')} · ${state}</span><br>
+					<span class="${note}">Last backup: ${s.last_backup ? esc(this.fmtWhen(s.last_backup)) : '<span class="text-red-500">never</span>'}${fresh ? ' ✓' : ''}</span>
+				</div>
+				<select data-uninstall="${esc(s.name)}" onchange="ServerApp.uninstallChoiceChanged()" aria-label="What happens to ${esc(s.name)}" class="${field} sm:w-72">
+					${options.map(([v, label]) => `<option value="${v}" ${(kept.has(s.name) ? 'keep' : 'stop') === v ? 'selected' : ''}>${label}</option>`).join('')}
+				</select>
+			</div>`;
+		}).join('');
+		const done = d.servers.length === 0;
+		box.innerHTML = `
+			<div class="flex justify-between items-start mb-4">
+				<div>
+					<button onclick="ServerApp.openPanelSettings('remove')" class="${note} underline mb-1">← Panel Settings</button>
+					<h3 class="text-xl font-bold text-gray-900 dark:text-white">Remove RedstonePanel</h3>
+				</div>
+				<button onclick="ServerApp.closePanelSettings()" class="text-gray-500 hover:text-gray-900 dark:hover:text-white text-xl leading-none" aria-label="Close">✕</button>
+			</div>
+			<div class="text-sm p-3 mb-4 rounded border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200">
+				<b>Uninstalling the panel while game servers are running or ${d.windows ? 'start with Windows' : 'start at boot'} ${d.windows ? 'stops them and leaves their files with nothing to run them' : 'leaves them on this machine with nothing to manage them'}.</b>
+				${d.windows ? '' : 'They keep starting at boot and holding their ports, with no backups, restarts or updates, until someone stops them by hand.'}
+				Choose what happens to each one first. Uninstalling never deletes a world on its own.
+			</div>
+			${message ? `<p class="text-sm mb-3 ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}">${esc(message)}</p>` : ''}
+
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">1. Back up every server</h4>
+			${done ? `<p class="${note} mb-4">There are no game servers on this machine.</p>` : `
+			<p class="${note} mb-2">Backups stay in <span class="font-mono">${esc(d.backup_root)}</span> after the panel is gone${this.notYet('offsite') ? '' : ', and in your backup storage if you use one'}.</p>
+			<button id="uninstall-backup" onclick="ServerApp.uninstallBackupAll(this)" class="mb-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold text-sm disabled:opacity-50">Back up every server now</button>
+			<p id="uninstall-backup-msg" class="${note} mb-4"></p>`}
+
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">2. Choose what happens to each server</h4>
+			${done ? `<p class="${note} mb-4">Nothing to choose.</p>` : `
+			<ul class="${note} mb-2 list-disc pl-5 space-y-1">
+				<li><b>Stop it, keep its files</b>: its service is ${d.windows ? 'removed' : 'stopped, turned off and removed'}; the world and settings stay in its folder. Install the panel again and bring it back from <b>New server → Removed servers</b>.</li>
+				${d.keep_possible ? `<li><b>Keep it running without the panel</b>: it stays an ordinary service that ${boot} and holds its ports. Nothing backs it up, restarts it or updates it. Stop it later with <span class="font-mono">sudo systemctl disable --now minecraft-NAME</span>.</li>` : ''}
+				<li><b>Delete it completely</b>: its service and folder go. Needs a backup from the last ${esc(d.recent_backup_hours)} hours; its backups stay unless you tick the box below.</li>
+			</ul>
+			${d.servers.length > 1 ? `<label class="${note} block mb-1">For all of them: <select onchange="ServerApp.uninstallChooseAll(this.value)" class="${field} mt-1"><option value="">Choose for each</option>${options.map(([v, label]) => `<option value="${v}">${label}</option>`).join('')}</select></label>` : ''}
+			<div class="mb-2">${rows}</div>
+			<div id="uninstall-delete" class="hidden mb-2 p-3 rounded border border-red-300 dark:border-red-700">
+				<label class="${note} block mb-2">Type <b>DELETE</b> to delete the servers marked "Delete it completely"<br><input id="uninstall-confirm" autocomplete="off" spellcheck="false" class="${field} mt-1 font-mono w-40"></label>
+				<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" id="uninstall-delete-backups"> Delete their backups too</label>
+			</div>
+			<p id="uninstall-apply-msg" class="hidden text-sm text-red-500 mb-2"></p>
+			<button onclick="ServerApp.uninstallApply(this)" class="mb-4 px-4 py-2 rounded text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50">Carry out these choices</button>`}
+
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">3. Remove the panel</h4>
+			${d.left_behind.length && !done ? `<p class="text-sm text-yellow-700 dark:text-yellow-300 mb-2">Still running or set to start: ${d.left_behind.map(esc).join(', ')}. Carry out your choices above first.</p>` : ''}
+			${d.windows
+				? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">Then remove it in Windows: <b>${esc(d.command)}</b>. The servers' folders, worlds and backups stay; installing the panel again brings back the ones you stopped.</p>`
+				: `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">From a terminal: <span class="font-mono">${esc(d.command)}</span> (keeps the panel's accounts and settings) or <span class="font-mono">${esc(d.purge_command)}</span> (deletes them too). Either way, worlds and backups stay.</p>
+				${d.can_run ? `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-2"><input type="checkbox" id="uninstall-purge"> Also delete the panel's accounts and settings</label>
+				<button id="uninstall-run" onclick="ServerApp.uninstallRun(this)" class="px-4 py-2 rounded text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50">Uninstall now</button>` : ''}`}
+			${d.plan && d.plan.keep && d.plan.keep.length ? `<p class="${note} mt-3">You chose to keep ${d.plan.keep.map(esc).join(', ')} running. <button onclick="ServerApp.uninstallCancel()" class="underline">Not removing the panel after all</button></p>` : ''}`;
+		this.uninstallChoiceChanged();
+	},
+
+	uninstallChoices() {
+		const out = {};
+		document.querySelectorAll('select[data-uninstall]').forEach(el => { out[el.dataset.uninstall] = el.value; });
+		return out;
+	},
+
+	uninstallChooseAll(value) {
+		if (!value) return;
+		document.querySelectorAll('select[data-uninstall]').forEach(el => { el.value = value; });
+		this.uninstallChoiceChanged();
+	},
+
+	uninstallChoiceChanged() {
+		const del = Object.values(this.uninstallChoices()).includes('delete');
+		const box = document.getElementById('uninstall-delete');
+		if (box) box.classList.toggle('hidden', !del);
+	},
+
+	async uninstallBackupAll(button) {
+		button.disabled = true;
+		const msg = document.getElementById('uninstall-backup-msg');
+		const names = ((this.uninstallData || {}).servers || []).map(s => s.name);
+		const failed = [];
+		for (const [i, name] of names.entries()) {
+			msg.textContent = `Backing up ${name} (${i + 1} of ${names.length})…`;
+			const r = await fetch(`/api/servers/${encodeURIComponent(name)}/backups`, { method: 'POST' });
+			if (!r.ok) failed.push(`${name}: ${await this.apiError(r)}`);
+		}
+		this.openUninstall(failed.length ? `Some backups failed. ${failed.join(' ')}` : `Backed up ${names.length} server${names.length === 1 ? '' : 's'}.`, !failed.length);
+	},
+
+	async uninstallApply(button) {
+		button.disabled = true;
+		const msg = document.getElementById('uninstall-apply-msg');
+		const confirmEl = document.getElementById('uninstall-confirm'), backupsEl = document.getElementById('uninstall-delete-backups');
+		const res = await fetch('/api/uninstall/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ choices: this.uninstallChoices(), confirm: confirmEl ? confirmEl.value : '', delete_backups: !!(backupsEl && backupsEl.checked) }) });
+		if (!res.ok) { msg.textContent = await this.apiError(res); msg.classList.remove('hidden'); button.disabled = false; return; }
+		const d = await res.json();
+		const parts = [['stopped', 'Stopped, files kept'], ['kept', 'Left running'], ['deleted', 'Deleted']].filter(([k]) => d[k].length).map(([k, l]) => `${l}: ${d[k].join(', ')}.`);
+		this.loadServers && this.loadServers();
+		this.openUninstall(parts.join(' ') + ' Now remove the panel (step 3).', true);
+	},
+
+	async uninstallRun(button) {
+		if (button.dataset.sure !== '1') { button.dataset.sure = '1'; button.textContent = 'Click again to remove the panel'; return; }
+		button.disabled = true;
+		const purge = !!(document.getElementById('uninstall-purge') || {}).checked;
+		const res = await fetch('/api/uninstall/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ purge }) });
+		if (!res.ok) return this.openUninstall(await this.apiError(res), false);
+		document.getElementById('settings-content').innerHTML = `
+			<h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Removing RedstonePanel</h3>
+			<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">The panel is being removed and will stop answering in a moment. Worlds and backups stay on this machine (backups in <span class="font-mono">${this.escapeHtml((this.uninstallData || {}).backup_root || '')}</span>).</p>
+			<p class="text-xs text-gray-500 dark:text-gray-400">To use it again, install the package again: your stopped servers are under New server → Removed servers${purge ? '' : ', and your accounts and settings are still there'}.</p>`;
+	},
+
+	async uninstallCancel() {
+		await fetch('/api/uninstall/plan', { method: 'DELETE' });
+		this.openUninstall('Nothing will be left running on purpose. Your servers carry on as before.', true);
 	},
 
 	closePanelSettings() {

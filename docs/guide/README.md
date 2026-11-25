@@ -1341,6 +1341,34 @@ Both also remove the server's backup and restart timers, close its game ports in
 clear it from systemd's list of failed units. Failed units left behind by servers removed
 with older versions are cleared the next time the dashboard loads.
 
+### Removing RedstonePanel
+
+Don't just uninstall the package (`apt remove`) or the Windows app. Game servers that are
+running or start on their own would stay on the machine with nothing to manage them: on Linux
+they keep starting at boot and holding their ports, with no backups, restarts or updates.
+
+Use **Panel Settings → Remove RedstonePanel** (also linked from every server's **Maintenance**
+tab), or `sudo redstonepanel uninstall` in a terminal. Both go through the same steps:
+
+1. **Back up every server** (one button; backups stay in `/var/backups/redstonepanel` after the
+   panel is gone).
+2. **Choose what happens to each server**, or one choice for all of them:
+   - **Stop it, keep its files** (recommended): its service is stopped, turned off and removed;
+     the world stays in its folder. Install the panel again and bring it back from **New server
+     → Removed servers**.
+   - **Keep it running without the panel** (Linux only): it stays an ordinary service. Stop it
+     later with `sudo systemctl disable --now minecraft-NAME`.
+   - **Delete it completely**: needs a backup from the last 24 hours and typing **DELETE**. Its
+     backups stay unless you tick **Delete their backups too**.
+3. **Remove the panel**: **Uninstall now** (Linux), or `sudo apt remove redstonepanel`
+   (`purge` also deletes the panel's accounts and settings). On Windows: **Settings → Apps →
+   RedstonePanel → Uninstall**.
+
+If someone runs `apt remove` without these steps, the panel still never stops a game server or
+deletes a world: it turns off its own timers and services and prints every server left running
+or starting at boot, with the command to stop it. Installing the panel again turns the left
+servers' backup and restart schedules back on.
+
 ## 9. Backups
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/backups.png"><img src="images/backups.png" alt="Backups tab, Java server"></picture>
@@ -2189,6 +2217,7 @@ Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 | `redstonepanel restart-server NAME` | Warn players, then restart a server (what its restart timer runs). |
 | `redstonepanel check-updates` | Look for newer server versions and update the Bedrock servers set to update automatically (what the update timer runs every 6 hours). |
 | `redstonepanel notify-test` | Send a test notification. |
+| `redstonepanel uninstall` | [Remove the panel safely](#removing-redstonepanel): choose what happens to each server first. |
 | `redstonepanel cluster create "NAME"` | Make this panel a cluster master. |
 | `redstonepanel cluster join-code` | Make a join code (master). |
 | `redstonepanel join 'CODE'` | Join a cluster. |

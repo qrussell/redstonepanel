@@ -36,6 +36,10 @@ show everything the panel does. It arrives in four releases:
   on the panel's own port and router forwards that don't match. It moves RCON, Query and mod
   ports by itself, offers **Move to a free port** for game ports, and refuses to start a server
   whose port another program holds. Linux and Windows.
+- **1.23.2: removing the panel safely.** **Panel Settings → Remove RedstonePanel** and
+  `sudo redstonepanel uninstall` back up your servers and ask what happens to each one (stop it
+  and keep its files, keep it running, or delete it) before removing the panel, so no server is
+  left running with nothing to manage it by accident.
 - **1.24: mixed clusters.** Windows and Linux machines in one cluster, with either as the
   master, and servers and backup copies moving between them. Windows stops being a preview.
 

@@ -2232,6 +2232,26 @@ Tested by `tests/test_portaudit.py` (24 tests), `packaging/test/test-port-check.
 in a systemd container, in release.yml), a Port check section in `test-windows.py` (Windows
 Server 2022 and 2025) and a test build on a live panel with four servers.
 
+### 1.23.2: removing the panel without leaving servers behind
+
+**Why.** Uninstalling the package (`apt remove`) left every game server running and enabled with
+nothing to manage it, and the panel's backup, restart and update timers firing a command that no
+longer existed. Quentin found one such server, left by an old Linux panel inside WSL, still
+holding TCP 19132 days later and silently stopping the Windows panel's Bedrock server from
+accepting players. Nothing on screen said how to remove the panel properly.
+
+**How.** `core/uninstall.py`, **Panel Settings → Remove RedstonePanel** (linked from every
+server's **Maintenance** tab) and `sudo redstonepanel uninstall` follow the same steps: back up
+every server, choose for each one (**stop it, keep its files**, recommended, which is Uninstall
+with Keep World; **keep it running without the panel**, Linux only; **delete it**, after a backup
+from the last 24 hours and typing DELETE, backups kept unless asked), then remove the package
+(**Uninstall now** runs `redstonepanel remove-package` in a transient unit). A new prerm runs
+`redstonepanel uninstall-hook` on remove: it never stops a server nobody chose for, but turns off
+the panel's own timers and services (schedules kept) and prints every server left running or
+starting at boot with the command to stop it. The panel turns those servers' schedules back on
+when it is installed again. The postinst message and the Windows installer's last page say how
+to remove the panel safely. Size: S.
+
 ### 2.0: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already

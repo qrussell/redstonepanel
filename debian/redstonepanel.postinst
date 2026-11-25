@@ -19,6 +19,12 @@ Sign in with a Linux account in the 'sudo' or 'redstonepanel' group, or create a
 panel account:   sudo redstonepanel add-user NAME
 Status:          sudo redstonepanel status
 
+To remove the panel later, don't just uninstall the package: game servers that are still running
+or start at boot would stay on this machine with nothing to manage them. Use either
+  sudo redstonepanel uninstall               or   Panel Settings > Remove RedstonePanel
+which ask what happens to each server first (stop and keep its files, keep it running, or delete
+it after a backup), then remove the panel.
+
 EOF
 fi
 

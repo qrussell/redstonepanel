@@ -251,6 +251,10 @@ user     GET     /api/terminal
 admin    POST    /api/terminal/ticket
 admin    GET     /api/terminal/sessions
 admin    DELETE  /api/terminal/sessions/{{sid}}
+admin    GET     /api/uninstall
+admin    POST    /api/uninstall/apply
+admin    DELETE  /api/uninstall/plan
+admin    POST    /api/uninstall/run
 user     GET     /api/servers
 user     GET     /api/host
 user     GET     /api/host/history

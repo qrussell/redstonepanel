@@ -103,9 +103,11 @@ running while the panel is stopped, and start with Windows.
   Worlds, backups and settings are kept. Coming from 1.22, run the 1.23 installer once by hand.
 - **Off-site backups to SSH storage** need Windows' OpenSSH Client (Settings → System →
   Optional features), which most Windows 11 PCs already have.
-- **Remove:** **Settings → Apps → Installed apps → RedstonePanel → Uninstall**. The services,
-  tasks and firewall rules go; the folder from step 2 stays, with your worlds and backups in
-  it. Delete it yourself if you don't want them.
+- **Remove:** start with **Panel Settings → Remove RedstonePanel** (or `redstonepanel uninstall`
+  as administrator) to back up and choose what happens to each server, then **Settings → Apps →
+  Installed apps → RedstonePanel → Uninstall**. The services, tasks and the panel's firewall rule
+  go; the folder from step 2 stays, with your worlds and backups in it. Delete it yourself if you
+  don't want them.
 - **Without the questions:** `msiexec /i RedstonePanel-x.y.z-x64.msi /qn DATAFOLDER=D:\RedstonePanel`
 - **From a prompt** (as administrator): `redstonepanel status`, `redstonepanel add-user NAME`,
   `redstonepanel reset-2fa NAME`, as on Linux.
@@ -169,13 +171,24 @@ running through an update. With a `.deb`, install the newer file the same way as
 
 ## Removing
 
+Don't just remove the package while game servers are running or start at boot: they would stay
+on this machine with nothing to manage them, holding their ports, with no backups, restarts or
+updates. Remove the panel safely with either:
+
 ```bash
-sudo apt remove redstonepanel     # stops the panel, keeps its settings
-sudo apt purge redstonepanel      # also deletes /var/lib/redstonepanel
+sudo redstonepanel uninstall
 ```
 
-Neither touches your game servers in `/opt/minecraft-*` or your backups in
-`/var/backups/redstonepanel`. Game servers stay installed as systemd services and keep running.
+or **Panel Settings → Remove RedstonePanel** in the browser (also linked from every server's
+**Maintenance** tab). Both back up your servers, ask what happens to each one (**stop it and keep
+its files**, the recommended choice, **keep it running without the panel**, or **delete it** after
+a backup), then remove the package. `--purge` (or the tick box) also deletes the panel's accounts
+and settings in `/var/lib/redstonepanel`. Worlds and backups in `/var/backups/redstonepanel` are
+never deleted unless you choose to.
+
+A plain `sudo apt remove redstonepanel` never stops or deletes a game server either: it turns off
+the panel's own timers and services and lists every server it leaves running. Servers you stopped
+come back from **New server → Removed servers** after installing the panel again.
 
 ## Where things are
 

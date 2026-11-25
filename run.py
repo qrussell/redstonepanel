@@ -30,6 +30,11 @@
     redstonepanel sftp-serve          run the SFTP server (its service, redstonepanel-sftp.service,
                                       runs this while SFTP is on under Panel Settings > SFTP)
     redstonepanel upgrade             update the redstonepanel package (apt), as the panel's Update button does
+    redstonepanel uninstall           remove the panel, choosing first what happens to each game server:
+                                      stop it and keep its files (recommended), keep it running
+                                      without the panel (Linux), or delete it (after a backup);
+                                      on Windows it then says to finish in Settings > Apps
+        [--servers stop|keep|delete] [--purge] [--yes]   the same without questions
 
   Clusters (one master panel controls the game servers of other panels, its nodes):
     redstonepanel cluster create "NAME"   make this panel a cluster master
@@ -49,6 +54,7 @@ on plain HTTP instead and shows admins a warning, so a bad setting never locks y
 import os
 import sys
 import threading
+import time
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(APP_DIR)
@@ -174,6 +180,12 @@ def main():
     # The update check timer (1.16.12): written here so upgrading the package sets it up
     from core import updates
     updates.ensure_timer()
+    # 1.23.2: back after being uninstalled: servers that were left alone get their timers again
+    try:
+        from core import uninstall
+        uninstall.after_reinstall()
+    except Exception as e:
+        manager.write_log(f"[UNINSTALL] Couldn't turn the schedules back on: {e}")
     # Performance history: every server and the host, once a minute (1.17)
     from core import perf
     perf.sampler()
@@ -538,6 +550,105 @@ def restore_cmd(name):
           + (f" (port {r['old_port']} is used by another server)" if r["old_port"] else "") + ".")
 
 
+def _ask(question, answers, default=None):
+    """One line of input until it's one of answers (lower case); default on an empty line."""
+    while True:
+        try:
+            a = input(question).strip().lower()
+        except EOFError:
+            sys.exit("\nStopped: nothing was changed.")
+        if not a and default:
+            return default
+        if a in answers:
+            return a
+        print("Please answer " + ", ".join(answers) + ".")
+
+
+def uninstall_cmd(args):
+    """Removes RedstonePanel after choosing what happens to every game server (1.23.2)."""
+    from core import backups, uninstall
+    choice = purge = None
+    yes = False
+    it = iter(args)
+    for a in it:
+        if a == "--servers":
+            choice = next(it, None)
+            if choice not in uninstall.CHOICES:
+                sys.exit("--servers takes stop, keep or delete.")
+        elif a == "--purge":
+            purge = True
+        elif a == "--yes":
+            yes = True
+        else:
+            sys.exit(f"Unknown option {a}. See: redstonepanel help")
+    info = uninstall.overview()
+    found = info["servers"]
+    print("Remove RedstonePanel\n")
+    print("Uninstalling the panel while game servers are running or start at boot leaves them on this")
+    print("machine with nothing to manage them: they keep holding their ports, with no backups,")
+    print("restarts or updates. Choose what happens to them first.\n")
+    print("Recommended order: 1. back up every server  2. choose what happens to them  3. remove the panel\n")
+    if found:
+        for s in found:
+            state = ", ".join(w for w, on in (("running", s["running"]), ("starts at boot", s["enabled"])) if on) or "stopped"
+            print(f"  {s['name']:<24} {s['edition'] or '':<8} port {s['port'] or '?':<6} {state:<26} "
+                  f"last backup: {_when(s['last_backup']) if s['last_backup'] else 'never'}")
+        print()
+        if choice is None:
+            if yes:
+                sys.exit("Say what happens to the servers with --servers stop|keep|delete.")
+            print("  1  Stop them and keep their files (recommended). Install the panel again and restore")
+            print("     them from New server > Removed servers.")
+            if info["keep_possible"]:
+                print("  2  Keep them running without the panel.")
+            print("  3  Delete them completely (after a backup; their backups are kept).")
+            pick = _ask("What should happen to them? [1] ", ["1", "2", "3"] if info["keep_possible"] else ["1", "3"], "1")
+            choice = {"1": "stop", "2": "keep", "3": "delete"}[pick]
+        if choice == "delete":
+            stale = [s["name"] for s in found if not s["last_backup"]
+                     or time.time() - s["last_backup"] > uninstall.RECENT_BACKUP]
+            if stale and (yes or _ask(f"Back up {', '.join(stale)} now? [Y/n] ", ["y", "n"], "y") == "y"):
+                for name in stale:
+                    print(f"Backing up {name}...")
+                    try:
+                        b = backups.run_backup(name, "manual")
+                        print(f"  saved {backups.server_backup_dir(name)}/{b['file']}")
+                    except backups.BackupError as e:
+                        sys.exit(f"  {e}")
+            confirm = uninstall.CONFIRM_WORD if yes else input(f"Type {uninstall.CONFIRM_WORD} to delete "
+                                                               f"{', '.join(s['name'] for s in found)}: ").strip()
+        else:
+            confirm = None
+        try:
+            done = uninstall.apply({s["name"]: choice for s in found}, actor=_actor(), confirm=confirm)
+        except uninstall.UninstallError as e:
+            sys.exit(str(e))
+        for what, label in (("stopped", "Stopped, files kept"), ("kept", "Left running without the panel"),
+                            ("deleted", "Deleted")):
+            if done[what]:
+                print(f"{label}: {', '.join(done[what])}")
+    else:
+        print("There are no game servers on this machine.")
+    if info["windows"]:
+        print(f"\nNow remove the panel: {uninstall.remove_command()}")
+        return
+    if purge is None:
+        purge = False if yes else _ask("Also delete the panel's accounts and settings (purge)? [y/N] ", ["y", "n"], "n") == "y"
+    if not yes and _ask(f"Remove the panel now ({uninstall.remove_command(purge)})? [y/N] ", ["y", "n"], "n") != "y":
+        print(f"\nRemove it when you're ready with: {uninstall.remove_command(purge)}")
+        return
+    sys.exit(uninstall.remove_package(purge))
+
+
+def uninstall_hook_cmd():
+    """Run by the package's prerm when the package is removed; must never fail the removal."""
+    try:
+        from core import uninstall
+        uninstall.package_hook()
+    except Exception as e:
+        print(f"redstonepanel uninstall-hook: {e}", file=sys.stderr)
+
+
 def upgrade_cmd():
     """Upgrades the redstonepanel package (the panel's Update button runs this in its own unit)."""
     from core import selfupdate
@@ -593,6 +704,14 @@ if __name__ == "__main__":
         leave_cmd()
     elif cmd == "upgrade" and not rest:
         upgrade_cmd()
+    elif cmd == "uninstall":
+        uninstall_cmd(rest)
+    elif cmd == "remove-package" and rest in ([], ["--purge"]):
+        # The panel's Uninstall now button runs this in a unit of its own
+        from core import uninstall
+        sys.exit(uninstall.remove_package(purge=bool(rest)))
+    elif cmd == "uninstall-hook" and not rest:
+        uninstall_hook_cmd()
     elif cmd == "cluster-https" and not rest:
         cluster_https()
     elif cmd in ("-h", "--help", "help"):
