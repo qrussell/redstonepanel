@@ -196,7 +196,14 @@ with two-factor sign-in). A sign-in reaches one server's folder only.
 
 Yes, with a **cluster** (1.5 and newer, fully managed from the master since 1.15). Make one panel
 the master, add the others with a join code, and the master's sidebar lists every machine's
-servers with all their tabs. See the [User Manual](../guide/README.md#18-clusters).
+servers with all their tabs. Linux and Windows machines can be in the same cluster (1.24). See
+the [User Manual](../guide/README.md#18-clusters).
+
+**Accounts aren't shared between machines.** You sign in to the master with the master's
+accounts; its admins manage every server on every node, and its user accounts get the servers you
+tick for them, node servers included. A Windows account can't sign in to a Linux master (or the
+other way round). Each node keeps its own accounts for signing in to it directly. See
+[Accounts in a cluster](../guide/README.md#accounts-in-a-cluster).
 
 ## How do friends outside my home join?
 

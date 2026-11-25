@@ -2204,10 +2204,30 @@ later for this.
 master's templates to a node. Templates a node made on its own panel are listed under its name,
 with **Copy to this panel**.
 
-**Who can do what:** admins on the master are admins on the nodes; users on the master have a
-user's rights there (no file manager, Java or Phantom). Both panels' consoles log each change
-with the master user's name, e.g. `[CLUSTER] alex@Main: …`. The master can never change a node's
-users, settings or HTTPS, or erase a server's files.
+### Accounts in a cluster
+
+Each panel keeps **its own accounts**. Joining a cluster doesn't copy, share or sync them, on
+Linux or Windows:
+
+- **You manage the cluster from the master, with the master's accounts.** Sign in there with a
+  panel account, or with a system account the master accepts (on Linux, in **sudo** or
+  **redstonepanel**; on Windows, in **Administrators** or **RedstonePanel**). A Windows account
+  can't sign in to a Linux master, and a Linux account can't sign in to a Windows master: only
+  the machine an account belongs to can check its password.
+- **Admins on the master manage the whole cluster:** every server on every node, moves and
+  copies, backup copies, templates and the cluster's settings. They need no account on the
+  nodes; a node trusts its master through the cluster certificate.
+- **User accounts on the master** get only what you tick for them under **Users → Servers**,
+  and that includes node servers (the master keeps those ticks too; see
+  [What a helper may do](#what-a-helper-may-do)). Moving servers and choosing backup copies stay
+  with admins.
+- **Every change is logged with the master user's name**, on the master and on the node, e.g.
+  `[CLUSTER] alex@Main: start minecraft-java on Garage`.
+- **A node's own accounts keep working on the node.** Signing in at a node's own address shows
+  only that machine, as a standalone panel would. The master can never change a node's users,
+  settings or HTTPS, or erase a server's files.
+- **So:** give each person one account, on the master. Keep a working admin on every node too
+  (the one made at install is enough), for when the master is down.
 
 **Certificates:** the master renews the nodes' certificates, and its own, 30 days before they
 expire. A master on the internet can serve its own certificate (certbot, or win-acme on Windows)
