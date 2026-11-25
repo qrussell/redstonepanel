@@ -834,6 +834,37 @@ class WindowsAccounts(unittest.TestCase):
             self.assertEqual(auth.find_account(".\\Quent"), ("linux", "quent"))
 
 
+class RouterAndPanelRule(unittest.TestCase):
+    """1.23, found on a real PC: the router's address on Windows, and the panel's firewall rule
+    covering HTTPS."""
+
+    def test_the_default_route_with_the_lowest_metric(self):
+        from core.platform.windows import system as w
+        rows = [("10.0.0.0", "255.255.255.0", "0.0.0.0", 25), ("0.0.0.0", "0.0.0.0", "10.0.0.1", 35),
+                ("0.0.0.0", "0.0.0.0", "192.168.56.1", 281), ("0.0.0.0", "0.0.0.0", "0.0.0.0", 5)]
+        self.assertEqual(w.pick_gateway(rows), "10.0.0.1")
+        self.assertIsNone(w.pick_gateway([("10.0.0.0", "255.255.255.0", "0.0.0.0", 25)]))
+
+    def test_portforward_asks_the_platform(self):
+        from core import portforward
+        with mock.patch.object(platform.area("system"), "default_gateway", lambda: "10.0.0.1", create=True):
+            self.assertEqual(portforward.default_gateway(), "10.0.0.1")
+
+    def test_the_panel_rule_opens_http_and_https(self):
+        script = firewall.panel_rule_script([8080, 8443])
+        self.assertIn("-LocalPort 8080,8443", script)
+        self.assertIn("'RedstonePanel web panel (8080, 8443/tcp)'", script)
+        self.assertTrue(script.startswith("if (Get-NetFirewallRule -Group 'RedstonePanel panel'"))
+        self.assertNotIn("if (", firewall.panel_rule_script([8080], only_if_present=False))
+
+    def test_setup_and_settings_use_it(self):
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(here, "packaging", "windows", "setup.py"), encoding="utf-8") as f:
+            self.assertIn("firewall.panel_rule_script(ports, only_if_present=False)", f.read())
+        with open(os.path.join(here, "main.py"), encoding="utf-8") as f:
+            self.assertIn("firewall.panel_ports(", f.read())
+
+
 class MachineNotes(unittest.TestCase):
     """1.23: reserved port ranges (Hyper-V, WSL, Docker), PC sleep and a pending Windows Update restart."""
     NETSH = """

@@ -184,6 +184,10 @@ def fs():
     return os
 
 
+def default_gateway():
+    return getattr(fake.state, "gateway", None)
+
+
 def reserved_ports():
     """Port ranges the system keeps for itself, [(proto, start, end)]: none on Linux (Windows:
     Hyper-V, WSL and Docker Desktop reserve some)."""

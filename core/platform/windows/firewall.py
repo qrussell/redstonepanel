@@ -100,3 +100,30 @@ def to_ufw_text(output):
 
 def is_active(text):
     return "Status: active" in (text or "")
+
+
+PANEL_GROUP = "RedstonePanel panel"
+
+
+def panel_rule_script(ports, only_if_present=True):
+    """The PowerShell that makes the panel's own rule (group "RedstonePanel panel") open exactly
+    these TCP ports. With only_if_present, nothing happens when there is no such rule (the panel
+    was installed with --no-firewall)."""
+    ports = sorted({int(p) for p in ports if 0 < int(p) < 65536})
+    name = _win.ps_quote(f"RedstonePanel web panel ({', '.join(str(p) for p in ports)}/tcp)")
+    group = _win.ps_quote(PANEL_GROUP)
+    make = (f"Get-NetFirewallRule -Group {group} -ErrorAction SilentlyContinue | Remove-NetFirewallRule; "
+            f"New-NetFirewallRule -DisplayName {name} -Group {group} -Direction Inbound -Action Allow "
+            f"-Protocol TCP -LocalPort {','.join(str(p) for p in ports)} -Profile Any | Out-Null")
+    if only_if_present:
+        return f"if (Get-NetFirewallRule -Group {group} -ErrorAction SilentlyContinue) {{ {make} }}"
+    return make
+
+
+def panel_ports(ports, only_if_present=True):
+    """Opens the panel's own web ports (HTTP, and HTTPS when it's on) in its own rule. Returns
+    the PowerShell's exit code."""
+    r = _win.powershell(panel_rule_script(ports, only_if_present), timeout=120)
+    _log(f"[FIREWALL] The panel's rule now opens {', '.join(str(p) for p in sorted(set(ports)))}/tcp." if r.returncode == 0
+         else f"[WARNING] Couldn't change the panel's firewall rule: {(r.stderr or r.stdout).strip()[:300]}")
+    return r.returncode

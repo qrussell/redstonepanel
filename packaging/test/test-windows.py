@@ -43,6 +43,16 @@ class Panel:
     def __init__(self, base):
         self.base, self.cookie = base, None
 
+    def context(self):
+        """For https: one that takes the panel's own self-signed certificate."""
+        if not self.base.startswith("https://"):
+            return None
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
     def call(self, method, path, body=None, timeout=120, raw=False):
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method)
@@ -51,13 +61,7 @@ class Panel:
         if self.cookie:
             req.add_header("Cookie", self.cookie)
         try:
-            ctx = None
-            if self.base.startswith("https://"):            # the panel's own self-signed certificate
-                import ssl
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+            with urllib.request.urlopen(req, timeout=timeout, context=self.context()) as r:
                 for h in r.headers.get_all("Set-Cookie") or []:
                     if h.startswith("rp_session="):
                         self.cookie = h.split(";", 1)[0]
@@ -155,6 +159,50 @@ def neighbour_after(before):
     del NEIGHBOUR_MADE[:]
 
 
+def service_pid(name):
+    code, out = run(["sc", "queryex", name])
+    for line in out.splitlines():
+        if line.strip().startswith("PID"):
+            v = line.split(":", 1)[1].strip()
+            return int(v) if v.isdigit() and v != "0" else None
+    return None
+
+
+def server_java_pids(name):
+    """The java.exe processes the server's own service started: nothing else on the PC."""
+    parent = service_pid(name)
+    if not parent:
+        return []
+    code, out = ps(f"Get-CimInstance Win32_Process -Filter \"Name='java.exe' AND ParentProcessId={parent}\" | "
+                   "Select-Object -ExpandProperty ProcessId")
+    return [x for x in out.split() if x.isdigit()]
+
+
+def _read_bytes(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def restore_notifications(p, args):
+    """Puts back the webhook the PC's owner had before the test (or none)."""
+    if getattr(args, "notifications_restored", False):
+        return
+    args.notifications_restored = True
+    saved = getattr(args, "saved_notifications", None)
+    p.put("/api/settings/notifications", {"clear": True})
+    if saved is None:
+        return
+    with open(os.path.join(args.home, "data", "notifications.json"), "r+b") as f:   # in place: keeps its permissions
+        f.write(saved)
+        f.truncate()
+    code, n = p.get("/api/settings/notifications")
+    check("the owner's own webhook is back as it was", code == 200 and _read_bytes(
+        os.path.join(args.home, "data", "notifications.json")) == saved, f"{code} {n}")
+
+
 class Hook(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace")
@@ -214,6 +262,13 @@ def main():
     code, info = p.get("/api/panel-info")
     print(f"        panel-info: {json.dumps(info)[:300]}")
     windows_accounts(p)
+    # Where new servers go: <home>\servers, or the folder the owner chose in Panel Settings
+    code, view = p.get("/api/settings/servers-folder")
+    args.servers_dir = (view or {}).get("folder") or os.path.join(home, "servers")
+    args.servers_setting = "" if (view or {}).get("is_default", True) else args.servers_dir
+    print(f"        new servers go to {args.servers_dir}" + ("" if (view or {}).get("is_default", True) else " (chosen by the owner)"))
+    # The owner's webhook, put back at the end (the test sets its own)
+    args.saved_notifications = _read_bytes(os.path.join(home, "data", "notifications.json"))
 
     # ------------------------------------------------------------------ dashboard
     section("Dashboard")
@@ -235,6 +290,15 @@ def main():
         code, host2 = p.get("/api/host")
         check("processor use is measured", code == 200 and (host2.get("cpu") or {}).get("percent") is not None,
               str((host2 or {}).get("cpu")))
+
+    section("Port forwarding guide and the panel's firewall rule")
+    code, pf = p.get("/api/port-forwarding/local")
+    check("the guide knows this PC's router (default gateway)", code == 200 and bool((pf or {}).get("gateway"))
+          and bool((pf or {}).get("lan_ip")), f"{code} {str(pf)[:300]}")
+    web = int(((pf or {}).get("web") or {}).get("port") or 0)
+    code, out = ps("Get-NetFirewallRule -Group 'RedstonePanel panel' | Get-NetFirewallPortFilter | "
+                   "Select-Object -ExpandProperty LocalPort")
+    check(f"the panel's firewall rule opens the port it answers on ({web})", str(web) in out.replace(",", " ").split(), out[-300:])
 
     # ------------------------------------------------------------------ Java and a server
     section("Java from Adoptium and a new server")
@@ -266,7 +330,7 @@ def main():
     check("... under a name no other Windows service has", name != NEIGHBOUR, str(name))
     if not name:
         return finish(p, args, None)
-    d = os.path.join(home, "servers", name)
+    d = os.path.join(args.servers_dir, name)
     unit = os.path.join(home, "services", f"{name}.service")
     check("its unit file is written (the same file as on Linux)", os.path.isfile(unit))
     if os.path.isfile(unit):
@@ -401,10 +465,8 @@ def main():
     check("a webhook is saved", code == 200, f"{code} {n}")
     code, out = run(["schtasks", "/Query", "/TN", "\\RedstonePanel\\notifications"])
     check("the notification task exists", code == 0, out[-300:])
-    # Only the Java the panel installed for this server: other Minecraft servers on the machine are left alone
-    code, out = ps("Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | Where-Object { $_.ExecutablePath -like '"
-                   + os.path.join(args.home, "java") + "\\*' } | Select-Object -ExpandProperty ProcessId")
-    pids = [x for x in out.split() if x.isdigit()]
+    # Only this server's java.exe (a child of its service's process): the PC's other servers are left alone
+    pids = server_java_pids(name)
     print(f"        killing java.exe {pids}")
     for pid in pids:
         run(["taskkill", "/F", "/PID", pid])
@@ -434,7 +496,7 @@ def main():
     check("Minecraft is listening again", wait("listen", listening, 300, every=5))
     code, r = p.post(f"/api/servers/{name}/action", {"action": "restart"}, timeout=300)
     check("Restart works", code == 200 and wait("listen", listening, 300, every=5), f"{code} {r}")
-    p.put("/api/settings/notifications", {"clear": True})
+    restore_notifications(p, args)
 
     limits(p, args, name, listening)
     offsite_s3(p, args, name)
@@ -501,7 +563,7 @@ def bedrock(p, args):
     name = (dep or {}).get("name")
     if not check("a Bedrock server is deployed", code == 200 and bool(name), f"{code} {dep}"):
         return
-    d = os.path.join(args.home, "servers", name)
+    d = os.path.join(args.servers_dir, name)
     check("it has Mojang's Windows program", os.path.isfile(os.path.join(d, "bedrock_server.exe")))
     check("its service runs as its own account",
           wait("svc", lambda: service_state(name) == "RUNNING", 60)
@@ -666,7 +728,7 @@ def loaders(p, args):
     name = (dep or {}).get("name")
     if not check("a Forge server is deployed", code == 200 and bool(name), f"{code} {str(dep)[:600]}"):
         return
-    d = os.path.join(args.home, "servers", name)
+    d = os.path.join(args.servers_dir, name)
     code, out = run(["cmd", "/c", "dir", "/q", os.path.join(d, "libraries")])
     check("the installer's files belong to the server's own account", name.lower() in out.lower(), out[-600:])
     cmd = service_command(name) or ""
@@ -734,7 +796,9 @@ def join_and_terminal(p, name):
     path = (r or {}).get("path") or ""
     check("the server's join page is turned on", code == 200 and bool(path), f"{code} {str(r)[:200]}")
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:8444/join/{urllib.parse.quote(path)}", timeout=20) as resp:
+        scheme = "https" if p.base.startswith("https:") else "http"     # join pages follow the panel's HTTPS
+        with urllib.request.urlopen(f"{scheme}://127.0.0.1:8444/join/{urllib.parse.quote(path)}", timeout=20,
+                                    context=p.context()) as resp:
             page_code, page = resp.status, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         page_code, page = e.code, ""
@@ -756,8 +820,14 @@ def servers_folder(p, args, body):
     home = args.home
     code, view = p.get("/api/settings/servers-folder")
     usual = os.path.join(home, "servers")
-    check("the usual place is the servers folder in the panel's home", code == 200 and view.get("is_default")
-          and os.path.normcase(view.get("folder", "")) == os.path.normcase(usual), f"{code} {view}")
+    if args.servers_setting:
+        print(f"        this PC's owner chose {args.servers_setting}; it is put back at the end")
+        check("the panel shows the folder the owner chose", code == 200 and not view.get("is_default")
+              and os.path.normcase(view.get("folder", "")) == os.path.normcase(args.servers_setting), f"{code} {view}")
+        usual = args.servers_setting
+    else:
+        check("the usual place is the servers folder in the panel's home", code == 200 and view.get("is_default")
+              and os.path.normcase(view.get("folder", "")) == os.path.normcase(usual), f"{code} {view}")
     drive = os.path.splitdrive(os.path.abspath(home))[0]
     drives = {v.get("drive"): v for v in view.get("drives") or []}
     check("the drives to choose from include the panel's own, which suggests the usual place",
@@ -796,8 +866,9 @@ def servers_folder(p, args, body):
         code, lst = p.get("/api/servers")
         names = [s.get("name") for s in (lst if isinstance(lst, list) else lst.get("servers", []))]
         check("the panel lists servers from both folders", name in names and len(names) >= 2, str(names))
-        code, view = p.put("/api/settings/servers-folder", {"folder": ""})
-        check("back to the usual place; the other folder is still looked in", code == 200 and view.get("is_default")
+        code, view = p.put("/api/settings/servers-folder", {"folder": args.servers_setting})
+        check("back to the folder before; the other folder is still looked in",
+              code == 200 and bool(view.get("is_default")) == (not args.servers_setting)
               and any(os.path.normcase(f.get("folder", "")) == os.path.normcase(other) for f in view.get("folders", [])), f"{code} {view}")
         code, lst = p.get("/api/servers")
         names = [s.get("name") for s in (lst if isinstance(lst, list) else lst.get("servers", []))]
@@ -810,7 +881,7 @@ def servers_folder(p, args, body):
             check("removing it deletes its folder there", code == 200 and wait("gone", lambda: not os.path.exists(os.path.join(other, name)), 60),
                   f"{code} {r}")
             check("... and its Windows service", wait("gone", lambda: service_state(name) is None, 60), str(service_state(name)))
-        p.put("/api/settings/servers-folder", {"folder": ""})
+        p.put("/api/settings/servers-folder", {"folder": args.servers_setting})
         if not args.keep:
             run(["cmd", "/c", "rmdir", "/s", "/q", top])
 
@@ -922,7 +993,7 @@ def found_servers(p, args):
         check("the panel's service runs it from the same folder", wait("svc", lambda: service_state(name) == "RUNNING", 60)
               and wait("port", listening, 90), str(service_state(name)))
         check("the jar has the name the panel uses; nothing was copied", os.path.isfile(os.path.join(d, "server.jar"))
-              and not os.path.exists(os.path.join(d, jar)) and not os.path.exists(os.path.join(args.home, "servers", name)))
+              and not os.path.exists(os.path.join(d, jar)) and not os.path.exists(os.path.join(args.servers_dir, name)))
         code, out = run(["icacls", d])
         check("the server's own account can change the folder", f"NT SERVICE\\{name}".lower() in out.lower(), out[:500])
         code, lst = p.get("/api/servers")
@@ -1006,14 +1077,17 @@ def finish(p, args, name, port=None):
         check("the server is removed", code == 200, f"{code} {r}")
         check("its Windows service is gone", wait("gone", lambda: service_state(name) is None, 60), str(service_state(name)))
         left = []
-        for root, dirs, files in os.walk(os.path.join(home, "servers", name)):
+        folder = os.path.join(getattr(args, "servers_dir", None) or os.path.join(home, "servers"), name)
+        for root, dirs, files in os.walk(folder):
             left += [os.path.join(root, n) for n in files + dirs]
-        check("its folder is gone", not os.path.exists(os.path.join(home, "servers", name)), f"{r} left: {left[:12]}")
+        check("its folder is gone", not os.path.exists(folder), f"{r} left: {left[:12]}")
         if port:
             code, out = ps(f"@(Get-NetFirewallRule -DisplayName 'RedstonePanel {port}/tcp' -ErrorAction SilentlyContinue).Count")
             check("its firewall rule is gone", out.strip().endswith("0"), out[-200:])
         code, out = run(["schtasks", "/Query", "/TN", f"\\RedstonePanel\\redstonepanel-restart@{name}"])
         check("its scheduled tasks are gone", code != 0, out[-200:])
+    if hasattr(args, "saved_notifications"):
+        restore_notifications(p, args)
     if getattr(args, "neighbour", None):
         neighbour_after(args.neighbour)
     print(f"\n{len(PASSED)} passed, {len(FAILED)} failed")

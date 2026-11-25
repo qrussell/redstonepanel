@@ -1029,6 +1029,45 @@ def parse_excluded_ranges(text):
     return out
 
 
+def pick_gateway(rows):
+    """The default gateway among IPv4 routes [(dest, mask, next_hop, metric)] (addresses as
+    dotted text): the 0.0.0.0/0 route with a next hop and the lowest metric, or None."""
+    best = None
+    for dest, mask, hop, metric in rows:
+        if dest == "0.0.0.0" and mask == "0.0.0.0" and hop and hop != "0.0.0.0":
+            if best is None or metric < best[1]:
+                best = (hop, metric)
+    return best[0] if best else None
+
+
+def _ipv4_routes():
+    """This PC's IPv4 routes from GetIpForwardTable: [(dest, mask, next_hop, metric)]."""
+    class ROW(ctypes.Structure):
+        _fields_ = [(n, wintypes.DWORD) for n in (
+            "dest", "mask", "policy", "next_hop", "if_index", "type", "proto", "age", "next_hop_as",
+            "metric1", "metric2", "metric3", "metric4", "metric5")]
+    iphlp = ctypes.WinDLL("iphlpapi")
+    size = wintypes.ULONG(0)
+    iphlp.GetIpForwardTable(None, ctypes.byref(size), False)
+    if not size.value:
+        return []
+    buf = ctypes.create_string_buffer(size.value)
+    if iphlp.GetIpForwardTable(buf, ctypes.byref(size), True) != 0:
+        return []
+    count = ctypes.cast(buf, ctypes.POINTER(wintypes.DWORD))[0]
+    rows = ctypes.cast(ctypes.addressof(buf) + ctypes.sizeof(wintypes.DWORD), ctypes.POINTER(ROW))
+    text = lambda v: socket.inet_ntoa(v.to_bytes(4, "little"))
+    return [(text(rows[i].dest), text(rows[i].mask), text(rows[i].next_hop), rows[i].metric1) for i in range(count)]
+
+
+def default_gateway():
+    """The IPv4 default gateway (the router), or None."""
+    try:
+        return pick_gateway(_ipv4_routes())
+    except (OSError, AttributeError, ValueError):
+        return None
+
+
 def reserved_ports():
     """The port ranges Windows keeps for itself (Hyper-V, WSL, Docker Desktop reserve them at
     start-up; nothing else can listen there): [(proto, start, end)]. Asked every 5 minutes."""

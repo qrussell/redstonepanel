@@ -651,6 +651,12 @@ def update_settings_api(request: Request, new: dict = Body(...)):
         raise HTTPException(status_code=400, detail="Set up two-factor sign-in for your own account first "
                                                     "(Password button), so this doesn't lock you out.")
     panel_settings.save(s)
+    if restart:                                      # Windows: the panel's firewall rule follows its ports
+        from core.platform import firewall, CommandError
+        try:
+            firewall.panel_ports([s["http_port"]] + ([s["https_port"]] if s["https_mode"] != "off" else []))
+        except CommandError:
+            pass
     me = request.state.user["username"]
     manager.write_log(f"[SETTINGS] {me} changed panel settings: HTTPS={s['https_mode']}, "
                       f"ports {s['http_port']}/{s['https_port']}, sign-in={s['login_mode']}, "

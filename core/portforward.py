@@ -316,16 +316,8 @@ def _from_firewall_rules(s):
 # This machine
 # ---------------------------------------------------------------------------
 def default_gateway():
-    """The IPv4 default gateway from /proc/net/route, or None."""
-    try:
-        with open(os.path.join(paths.PROC, "net/route")) as f:
-            for line in f.readlines()[1:]:
-                p = line.split()
-                if len(p) > 3 and p[1] == "00000000" and int(p[3], 16) & 2:
-                    return socket.inet_ntoa(struct.pack("<L", int(p[2], 16)))
-    except (OSError, ValueError):
-        pass
-    return None
+    """The IPv4 default gateway (the router), or None."""
+    return system.default_gateway()
 
 
 def primary_ip(gateway=None):

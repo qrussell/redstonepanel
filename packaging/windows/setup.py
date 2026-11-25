@@ -93,7 +93,7 @@ def install(args):
         json.dump({"home": home}, f)
     load_panel(home)
     from core.platform import paths
-    from core.platform.windows import _win, services
+    from core.platform.windows import _win, firewall, services
 
     # Folders: the home is the panel's (administrators and the system); the units and Java are
     # readable by everyone, because each game server's own account has to read them
@@ -171,14 +171,13 @@ WantedBy=multi-user.target
                     "More accounts: Users in the panel, or `redstonepanel add-user NAME` in an administrator prompt.\n")
         say(f"Account '{first_name}' created; its password is in {note}")
 
-    if not args.no_firewall:
-        rule = _win.ps_quote(f"RedstonePanel web panel ({port}/tcp)")
-        r = _win.powershell(
-            f"Get-NetFirewallRule -Group 'RedstonePanel panel' -ErrorAction SilentlyContinue | Remove-NetFirewallRule; "
-            f"New-NetFirewallRule -DisplayName {rule} -Group 'RedstonePanel panel' -Direction Inbound -Action Allow "
-            f"-Protocol TCP -LocalPort {port} -Profile Any | Out-Null", timeout=120)
-        say(f"Firewall: port {port} open for the panel" if r.returncode == 0
-            else f"Couldn't open port {port} in the firewall: {(r.stderr or r.stdout).strip()[:200]}")
+    if not args.no_firewall:                        # HTTP, and HTTPS when it was turned on before an upgrade
+        st = settings.load()
+        ports = [port] + ([st.get("https_port") or 8443] if st.get("https_mode", "off") != "off" else [])
+        r = _win.powershell(firewall.panel_rule_script(ports, only_if_present=False), timeout=120)
+        shown = ", ".join(str(p) for p in ports)
+        say(f"Firewall: port{'s' if len(ports) > 1 else ''} {shown} open for the panel" if r.returncode == 0
+            else f"Couldn't open port {shown} in the firewall: {(r.stderr or r.stdout).strip()[:200]}")
 
     services.prepare()                               # the drop-in, the notification task, game servers' services
     # Game servers that started with Windows before an uninstall or upgrade do so again

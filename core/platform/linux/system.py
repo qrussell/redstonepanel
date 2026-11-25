@@ -427,6 +427,21 @@ def fs():
     return os
 
 
+def default_gateway():
+    """The IPv4 default gateway from /proc/net/route, or None."""
+    import socket
+    import struct
+    try:
+        with open(os.path.join(paths.PROC, "net/route")) as f:
+            for line in f.readlines()[1:]:
+                p = line.split()
+                if len(p) > 3 and p[1] == "00000000" and int(p[3], 16) & 2:
+                    return socket.inet_ntoa(struct.pack("<L", int(p[2], 16)))
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def reserved_ports():
     """Port ranges the system keeps for itself, [(proto, start, end)]: none on Linux (Windows:
     Hyper-V, WSL and Docker Desktop reserve some)."""
