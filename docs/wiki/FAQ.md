@@ -19,9 +19,8 @@
 - want to sell game servers to customers. RedstonePanel has no billing, tenant isolation or
   resale features, and none are planned;
 - need a macOS app. It runs on Ubuntu 24.04, 26.04 and 26.10, Linux Mint 22 and 23, Debian
-  13 and 64-bit Raspberry Pi OS, and from 1.22 on Windows as a [preview](Installation.md#on-windows-preview) (Java
-  servers on one computer; for everything else on Windows, use
-  [WSL](#can-i-run-it-on-windows-with-wsl));
+  13 and 64-bit Raspberry Pi OS, and from 1.22 on Windows as a [preview](Installation.md#on-windows-preview) (one
+  computer, Java and Bedrock, from 1.23; clusters come in 1.24);
 - want every server isolated in its own container. RedstonePanel deliberately uses systemd
   instead of Docker.
 

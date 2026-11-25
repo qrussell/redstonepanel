@@ -107,6 +107,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.23
+
+**The whole single machine on Windows**. Bedrock servers with automatic updates and Phantom, Quilt, Forge, NeoForge and modpacks, memory and processor limits, off-site backups, crash explanations with Windows causes, **Update now** for the panel itself, and signing in with a Windows account. Needs attention warns about ports Hyper-V or WSL reserved, a PC set to sleep and a pending Windows Update restart. Clusters come to Windows in 1.24. See the [1.23.0 release notes](release-notes/v1.23.0.md).
+
 ## What's new in 1.22
 
 **RedstonePanel on Windows (preview)**. A Windows installer for Windows 11 and Windows Server 2022 or 2025 runs Java servers on one computer, with backups, schedules, the console, Live Chat, the file manager, add-ons, join pages and more; each game server is an ordinary Windows service. Bedrock, modpacks, limits and clusters follow in 1.23 and 1.24. See [On Windows](docs/wiki/Installation.md#on-windows-preview) and the [1.22.0 release notes](release-notes/v1.22.0.md).
@@ -354,7 +358,7 @@ things are kept: [On Windows (preview)](docs/wiki/Installation.md#on-windows-pre
 | Debian 13 (trixie) | ✅ tested | ✅ tested | Debian packages Java 21 and 25 only (see [Java](#what-gets-installed)). |
 | Raspberry Pi OS, 64-bit (Debian 13 based) | | ✅ Pi 4 and Pi 5 | Java servers only. See [Raspberry Pi](#raspberry-pi). |
 | Ubuntu 25.04 and 25.10 | ✅ | ✅ | Still installs, but Ubuntu no longer updates them: upgrade to 26.04. |
-| Windows 11, Windows Server 2022 and 2025 | ✅ Server 2022 and 2025 tested | | **Preview** from 1.22, with its own installer: Java servers on one computer. See [On Windows](docs/wiki/Installation.md#on-windows-preview). Windows 10 installs but isn't tested. |
+| Windows 11, Windows Server 2022 and 2025 | ✅ Server 2022 and 2025 tested | | **Preview** from 1.22, with its own installer: Java and Bedrock servers on one computer (1.23); clusters in 1.24. See [On Windows](docs/wiki/Installation.md#on-windows-preview). Windows 10 installs but isn't tested. |
 
 **Bedrock servers need an x86-64 machine.** Mojang only makes Bedrock Dedicated Server for
 64-bit Intel and AMD Linux, so on ARM64 (a Raspberry Pi, an ARM VPS) the panel hides Bedrock
