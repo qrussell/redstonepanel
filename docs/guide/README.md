@@ -1350,6 +1350,8 @@ they keep starting at boot and holding their ports, with no backups, restarts or
 Use **Panel Settings → Remove RedstonePanel** (also linked from every server's **Maintenance**
 tab), or `sudo redstonepanel uninstall` in a terminal. Both go through the same steps:
 
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/remove-panel.png"><img src="images/remove-panel.png" alt="Panel Settings, Remove RedstonePanel: back up, then choose for each server"></picture>
+
 1. **Back up every server** (one button; backups stay in `/var/backups/redstonepanel` after the
    panel is gone).
 2. **Choose what happens to each server**, or one choice for all of them:
@@ -1363,6 +1365,8 @@ tab), or `sudo redstonepanel uninstall` in a terminal. Both go through the same 
 3. **Remove the panel**: **Uninstall now** (Linux), or `sudo apt remove redstonepanel`
    (`purge` also deletes the panel's accounts and settings). On Windows: **Settings → Apps →
    RedstonePanel → Uninstall**.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/remove-panel-steps.png"><img src="images/remove-panel-steps.png" alt="Typing DELETE, carrying out the choices and Uninstall now"></picture>
 
 If someone runs `apt remove` without these steps, the panel still never stops a game server or
 deletes a world: it turns off its own timers and services and prints every server left running

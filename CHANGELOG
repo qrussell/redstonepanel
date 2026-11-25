@@ -4,6 +4,15 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.23.2 (2026-11-25)
+
+Release notes: release-notes/v1.23.2.md
+
+- Panel Settings > Remove RedstonePanel and `sudo redstonepanel uninstall` remove the panel safely: back up every server, choose for each one (stop it and keep its files, keep it running without the panel, or delete it after a recent backup), then remove the package.
+- The Maintenance tab links to it, and the message after installing and the Windows installer's last page say how to remove the panel.
+- Removing the package never stops a game server nobody chose for: it turns off the panel's own timers and services and lists every server left running or starting at boot, with the command to stop it.
+- Installing the panel again turns those servers' backup and restart schedules back on.
+
 ## 1.23.1 (2026-11-25)
 
 Release notes: release-notes/v1.23.1.md

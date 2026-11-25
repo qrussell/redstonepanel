@@ -9,6 +9,18 @@ the dashboard.
 
 ---
 
+## 1.23.2: removing the panel safely *(November 2026)*
+
+- **Panel Settings → Remove RedstonePanel** and `sudo redstonepanel uninstall` back up every
+  server, ask what happens to each one (stop it and keep its files, keep it running without the
+  panel, or delete it after a recent backup), then remove the panel. The Maintenance tab links
+  to it.
+- A plain `apt remove` never stops a server nobody chose for: it turns off the panel's own
+  timers and lists every server left running or starting at boot, with the command to stop it.
+  Installing the panel again turns their schedules back on.
+
+[Release notes](../../release-notes/v1.23.2.md)
+
 ## 1.23.1: a port check *(November 2026)*
 
 - **Port check** on the Port forwarding page finds port conflicts the panel can't prevent:

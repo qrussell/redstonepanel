@@ -1,3 +1,19 @@
+redstonepanel (1.23.2) noble; urgency=medium
+
+  * Panel Settings > Remove RedstonePanel and `sudo redstonepanel
+    uninstall` remove the panel safely: back up every server, choose for
+    each one (stop it and keep its files, keep it running without the
+    panel, or delete it after a recent backup), then remove the package.
+  * The Maintenance tab links to it, and the message after installing
+    and the Windows installer's last page say how to remove the panel.
+  * Removing the package never stops a game server nobody chose for: it
+    turns off the panel's own timers and services and lists every server
+    left running or starting at boot, with the command to stop it.
+  * Installing the panel again turns those servers' backup and restart
+    schedules back on.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Wed, 25 Nov 2026 17:30:00 -0000
+
 redstonepanel (1.23.1) noble; urgency=medium
 
   * Port check: the Port forwarding page compares every port the servers
