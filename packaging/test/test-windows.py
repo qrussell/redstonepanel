@@ -51,7 +51,13 @@ class Panel:
         if self.cookie:
             req.add_header("Cookie", self.cookie)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            ctx = None
+            if self.base.startswith("https://"):            # the panel's own self-signed certificate
+                import ssl
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
                 for h in r.headers.get_all("Set-Cookie") or []:
                     if h.startswith("rp_session="):
                         self.cookie = h.split(";", 1)[0]
@@ -163,6 +169,8 @@ class Hook(http.server.BaseHTTPRequestHandler):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8080)
+    ap.add_argument("--url", help="the panel's address when it isn't http://127.0.0.1:PORT, e.g. https://127.0.0.1:8443 "
+                                  "on a PC where HTTPS is on (its self-signed certificate is accepted)")
     ap.add_argument("--home", default=os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "RedstonePanel"))
     ap.add_argument("--keep", action="store_true", help="leave the test server in place")
     ap.add_argument("--loader", default="vanilla")
@@ -170,7 +178,7 @@ def main():
                     help="after installing again over a run with --keep: the account and the server are still there")
     args = ap.parse_args()
     home = args.home
-    p = Panel(f"http://127.0.0.1:{args.port}")
+    p = Panel(args.url or f"http://127.0.0.1:{args.port}")
     if args.after_upgrade:
         return after_upgrade(p, args)
 
