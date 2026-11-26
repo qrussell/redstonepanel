@@ -15,6 +15,7 @@ the dashboard.
   Windows Defender Firewall, so its master can reach it. A PC that joined on 1.24.0 fixes itself
   after the update.
 - A server created on a node from the master shows in the list without reloading the page.
+- A master's **Dashboard and Cluster page load much faster**; update every member.
 
 [Release notes](../../release-notes/v1.24.1.md)
 

@@ -109,7 +109,7 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.24
 
-**Mixed Linux and Windows clusters**. A Windows PC can be a cluster's master or a node next to Linux machines, with servers and backup copies moving between them (Bedrock gets the new machine's own program, and a move onto Windows checks file names first). Windows gets SFTP, **Windows Hello** sign-in and an easier first password, and is no longer a preview. Any panel can **remember your device** for 30 days. `redstonepanel reset-password` resets a forgotten panel password. See the [1.24.0 release notes](release-notes/v1.24.0.md). **1.24.1** opens the HTTPS port in Windows Defender Firewall when a Windows PC joins a cluster, and shows a server created on a node without a reload ([release notes](release-notes/v1.24.1.md)).
+**Mixed Linux and Windows clusters**. A Windows PC can be a cluster's master or a node next to Linux machines, with servers and backup copies moving between them (Bedrock gets the new machine's own program, and a move onto Windows checks file names first). Windows gets SFTP, **Windows Hello** sign-in and an easier first password, and is no longer a preview. Any panel can **remember your device** for 30 days. `redstonepanel reset-password` resets a forgotten panel password. See the [1.24.0 release notes](release-notes/v1.24.0.md). **1.24.1** opens the HTTPS port in Windows Defender Firewall when a Windows PC joins a cluster, shows a server created on a node without a reload, and loads a master's Dashboard and Cluster page much faster ([release notes](release-notes/v1.24.1.md)).
 
 ## What's new in 1.23
 

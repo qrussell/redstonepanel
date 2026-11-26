@@ -2323,7 +2323,11 @@ covers create, join, leave, dissolve and promote from the page and the CLI; Pane
 the rule alone when it already opens those ports. `loadServers()` asks
 `/api/cluster/overview?fresh=1`, which skips the master's 10-second copy of each node's list, and
 `cluster_client.forget_cached()` counts per node so a fetch that started before a change can't
-store its older answer. Tests: `tests/test_overview_cache.py` and the firewall cases in
+store its older answer. A master's Dashboard and Cluster page were slow (4 nodes, 9 servers): every
+`/api/host` ran the 1.23.1 port check through `sync_firewall()`, about 5 seconds on Windows. The
+dashboard now calls `sync_firewall(ports=False)`, the firewall watcher keeps the port check every
+2 minutes, and Needs attention reuses its socket list (`portaudit.ATTENTION_AGE`). The pages ask
+for servers and hosts at the same time and draw members first. Tests: `tests/test_overview_cache.py`, the firewall cases in
 `tests/test_cluster.py` and `tests/test_windows.py`.
 
 ### 1.25: an API for scripts and bots

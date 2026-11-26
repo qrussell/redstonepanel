@@ -51,7 +51,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
-| 1.24.1 | A Windows PC that joins or creates a cluster opens its HTTPS port (8443) in the firewall; a server created on a node shows without a reload. | [Clusters](#18-clusters) |
+| 1.24.1 | A Windows PC that joins or creates a cluster opens its HTTPS port (8443) in the firewall; a server created on a node shows without a reload; a master's Dashboard and Cluster page load much faster. | [Clusters](#18-clusters) |
 | 1.24.0 | **Mixed Linux and Windows clusters**, SFTP on Windows, **Windows Hello** passkeys (or a phone), an easier first password on Windows, and **Remember this device** for 30 days. | [Clusters](#18-clusters), [Windows Hello](#windows-hello-passkeys), [Remember this device](#remember-this-device) |
 | 1.23.2 | **Remove RedstonePanel** under Panel Settings (and `sudo redstonepanel uninstall`) backs up every server and asks what happens to each one before the panel goes. | [Removing RedstonePanel](#removing-redstonepanel) |
 | 1.23.1 | **Port check** on the Port forwarding page: finds port conflicts, names the other program and fixes what it safely can. | [Port check](#port-check) |
