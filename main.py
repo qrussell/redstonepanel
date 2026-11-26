@@ -29,6 +29,7 @@ import core.auth as auth
 import core.settings as panel_settings
 import core.twofactor as twofactor
 import core.passkeys as passkeys
+import core.devices as devices
 import core.firstsignin as firstsignin
 import core.qr as qr
 import core.portforward as portforward
@@ -301,12 +302,22 @@ def phone_qr_api(url: str):
 class LoginRequest(BaseModel):
     username: str
     password: str
+    remember: bool = False
 
-def _set_session_cookie(request: Request, response: Response, identity):
-    token = auth.make_session_token(identity)
-    response.set_cookie(auth.SESSION_COOKIE, token, max_age=auth.SESSION_SECONDS,
+def _set_session_cookie(request: Request, response: Response, identity, remember=False):
+    device = None
+    if remember:
+        # Remember this device (1.24): a 30-day sign-in that Forget (or signing out here) ends
+        device = devices.add(twofactor.account_key(identity["src"], identity["u"]),
+                             devices.describe(request.headers.get("user-agent")),
+                             request.client.host if request.client else "")
+    token = auth.make_session_token(identity, device)
+    response.set_cookie(auth.SESSION_COOKIE, token, max_age=auth.session_seconds(token),
                         httponly=True, samesite="strict", secure=request.url.scheme == "https", path="/")
     return token
+
+def _remembered(remember):
+    return " (remembering this device)" if remember else ""
 
 @app.post("/api/auth/login")
 def login_api(req: LoginRequest, request: Request, response: Response):
@@ -318,12 +329,12 @@ def login_api(req: LoginRequest, request: Request, response: Response):
         raise HTTPException(status_code=401, detail=str(e))
     if identity.get("pending"):
         # Right password; the session comes after the code (POST /api/auth/login/code)
-        response.set_cookie(auth.PENDING_COOKIE, auth.make_pending_token(identity), max_age=auth.PENDING_SECONDS,
+        response.set_cookie(auth.PENDING_COOKIE, auth.make_pending_token(identity, req.remember), max_age=auth.PENDING_SECONDS,
                             httponly=True, samesite="strict", secure=request.url.scheme == "https",
                             path="/api/auth/login")
         return {"code_needed": True}
-    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip}")
-    return auth.read_session_token(_set_session_cookie(request, response, identity))
+    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip}{_remembered(req.remember)}")
+    return auth.read_session_token(_set_session_cookie(request, response, identity, req.remember))
 
 class CodeRequest(BaseModel):
     code: str
@@ -340,8 +351,9 @@ def login_code_api(req: CodeRequest, request: Request, response: Response):
         raise HTTPException(status_code=401, detail=str(e))
     response.delete_cookie(auth.PENDING_COOKIE, path="/api/auth/login")
     how = "a recovery code" if identity["used"] == "recovery" else "an app code"
-    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip} with {how}")
-    user = auth.read_session_token(_set_session_cookie(request, response, identity))
+    remember = bool(identity.get("r"))
+    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip} with {how}{_remembered(remember)}")
+    user = auth.read_session_token(_set_session_cookie(request, response, identity, remember))
     if user and identity["used"] == "recovery":
         user["recovery_left"] = twofactor.status(twofactor.account_key(identity["src"], identity["u"]))["recovery_left"]
     return user
@@ -349,6 +361,9 @@ def login_code_api(req: CodeRequest, request: Request, response: Response):
 @app.post("/api/auth/logout")
 def logout_api(request: Request, response: Response):
     terminal.signed_out(request.cookies.get(auth.SESSION_COOKIE))      # its terminals close too
+    remembered = auth.session_device(request.cookies.get(auth.SESSION_COOKIE))
+    if remembered and auth.read_session_token(request.cookies.get(auth.SESSION_COOKIE)):
+        devices.remove(*remembered)                                     # signing out forgets this device
     response.delete_cookie(auth.SESSION_COOKIE, path="/")
     response.delete_cookie(auth.PENDING_COOKIE, path="/api/auth/login")
     return {"status": "success"}
@@ -505,6 +520,7 @@ class PasskeyLoginRequest(BaseModel):
     authenticator_data: str
     signature: str
     user_handle: Optional[str] = None
+    remember: bool = False
 
 @app.post("/api/auth/passkey/login")
 def passkey_login_api(req: PasskeyLoginRequest, request: Request, response: Response):
@@ -521,8 +537,40 @@ def passkey_login_api(req: PasskeyLoginRequest, request: Request, response: Resp
         auth._record_fail(keys)
         manager.write_log(f"[AUTH] Failed passkey sign-in from {ip}: {e}")
         raise HTTPException(status_code=401, detail=str(e))
-    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip} with a passkey")
-    return auth.read_session_token(_set_session_cookie(request, response, identity))
+    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip} with a passkey"
+                      f"{_remembered(req.remember)}")
+    return auth.read_session_token(_set_session_cookie(request, response, identity, req.remember))
+
+# --- Remember this device (1.24): the signed-in account's remembered devices ---
+def _dev_account(request: Request):
+    user = request.state.user
+    if user["source"] not in ("panel", "linux"):
+        raise HTTPException(status_code=400, detail="Sign in with your account to see its remembered devices.")
+    return user, twofactor.account_key(user["source"], user["username"])
+
+@app.get("/api/auth/devices")
+def devices_list_api(request: Request):
+    user, key = _dev_account(request)
+    here = user.get("device")
+    return {"days": devices.REMEMBER_DAYS,
+            "devices": [dict(d, current=d["id"] == here) for d in reversed(devices.list_for(key))]}
+
+@app.delete("/api/auth/devices/{device_id}")
+def device_forget_api(device_id: str, request: Request):
+    user, key = _dev_account(request)
+    if not devices.remove(key, device_id):
+        raise HTTPException(status_code=404, detail="That device isn't remembered.")
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) forgot a remembered device")
+    return {"status": "success"}
+
+@app.delete("/api/auth/devices")
+def devices_forget_all_api(request: Request):
+    """Forgets every remembered device but this one (sign out here to forget it too)."""
+    user, key = _dev_account(request)
+    n = devices.remove_all(key, keep=user.get("device"))
+    if n:
+        manager.write_log(f"[AUTH] {user['username']} ({user['source']}) forgot {n} remembered device(s)")
+    return {"forgotten": n}
 
 def _pk_account(request: Request):
     user = request.state.user

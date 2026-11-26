@@ -328,6 +328,22 @@ On **Windows** the first kind is **Windows accounts** in **Administrators** or a
 Admins can turn sign-in off for devices on your home network; see
 [Panel Settings](#17-panel-settings-name-https-sign-in).
 
+### Remember this device
+
+From 1.24, tick **Remember this device for 30 days** when you sign in (with a password, a
+two-factor code or [Windows Hello](#windows-hello-passkeys)) on your own computer or phone, and
+that browser stays signed in for 30 days instead of 12 hours. Each panel remembers you on its
+own, so tick it on every panel you use. Don't tick it on a shared or borrowed computer.
+
+Your remembered devices are listed under **🔑 Password → Remembered devices**, by browser and
+system (for example *Edge on Windows*), with when and from where each was last used. **Forget**
+signs one out at once (use it for a lost phone), and **Forget All Other Devices** signs out
+every one but the device you are using. Signing out on a device forgets it too. A new password,
+a disabled or deleted account forgets all of them. After 30 days the device asks you to sign in
+again.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/remembered-devices.png"><img src="images/remembered-devices.png" alt="Remembered devices under the Password button" width="420"></picture>
+
 ### Two-factor sign-in
 
 Any account, panel or Linux, can ask for a second step after the password: a six-digit code

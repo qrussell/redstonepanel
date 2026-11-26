@@ -1858,7 +1858,10 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     that goes backwards is refused. Browsers allow passkeys at `localhost` or a host name over
     HTTPS, never a bare IP, which the panel explains where it can't offer them. `reset-2fa` and
     the admin's reset remove passkeys too. Linux panels are unchanged (Linux accounts, panel
-    accounts, optional two-factor). Two small fixes came with it: the installer's Finish page now
+    accounts, optional two-factor). **Remember this device** came with it too (Quentin's ask while testing, `core/devices.py`): a box on
+    the sign-in page makes a 30-day session tied to a device record (`data/devices.json`), checked
+    on every request, listed under **🔑 Password** with Forget and Forget All Other Devices; signing
+    out, a new password, or a disabled or deleted account forgets it. Two small fixes came with it: the installer's Finish page now
     opens a **one-use link to choose the admin password** (`core/firstsignin.py`, 7 days, the
     token after `#`, the file readable only by the person who ran the installer; using it deletes
     `first-sign-in.txt`), and `redstonepanel reset-password NAME` sets a forgotten panel

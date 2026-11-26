@@ -41,6 +41,12 @@
         <label for="password" class="block text-sm font-bold mb-1">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required
                class="w-full mb-4 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white">
+
+        <!-- 1.24: a 30-day sign-in on this browser, until it is forgotten under 🔑 Password -->
+        <label class="flex items-start gap-2 mb-4 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+            <input id="remember" type="checkbox" class="mt-1 w-4 h-4">
+            <span>Remember this device for 30 days<span class="block text-xs text-gray-500 dark:text-gray-400">Only on your own computer or phone.</span></span>
+        </label>
         </div>
 
         <!-- Two-factor sign-in: shown after the right password when the account has it on -->
@@ -137,13 +143,21 @@
             }
         }).catch(() => {});
 
+        // Remember this device: the box keeps the last choice made on this browser
+        function rememberThis() {
+            const on = document.getElementById('remember').checked;
+            try { localStorage.setItem('rp_remember', on ? '1' : '0'); } catch (e) {}
+            return on;
+        }
+        try { document.getElementById('remember').checked = localStorage.getItem('rp_remember') === '1'; } catch (e) {}
+
         document.getElementById('passkey-btn').addEventListener('click', async () => {
             const btn = document.getElementById('passkey-btn');
             const err = document.getElementById('login-error');
             err.classList.add('hidden');
             btn.disabled = true;
             try {
-                await rpPasskey.signIn();
+                await rpPasskey.signIn(rememberThis());
                 location.replace('/static/index.html');
                 return;
             } catch (e) {
@@ -239,7 +253,8 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             username: document.getElementById('username').value,
-                            password: document.getElementById('password').value
+                            password: document.getElementById('password').value,
+                            remember: rememberThis()
                         })
                     });
                 if (res.ok) {

@@ -351,6 +351,20 @@ class Routes(unittest.TestCase):
         self.assertEqual(c.delete(f"/api/auth/passkeys/{pk['id']}").status_code, 200)
         self.assertEqual(self.passkey_sign_in(self.client(sign_in=False), auth).status_code, 401)
 
+    def test_passkey_sign_in_can_remember_the_device(self):
+        from core import devices
+        d = tempfile.mkdtemp()
+        with mock.patch.object(devices, "DEVICES_FILE", os.path.join(d, "devices.json")), \
+                mock.patch.dict(devices._cache, {"mtime": None, "data": None}):
+            c, auth = self.client(), Authenticator()
+            self.add(c, auth)
+            fresh = self.client(sign_in=False)
+            r = fresh.post("/api/auth/passkey/options")
+            r = fresh.post("/api/auth/passkey/login", json=dict(auth.get(r.json(), "https://localhost:8443"), remember=True))
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(len(devices.list_for("panel:alex")), 1)
+            self.assertTrue(fresh.get("/api/auth/me").json()["passkey"])
+
     def test_adding_needs_the_password(self):
         c = self.client()
         r = c.post("/api/auth/passkeys/options", json={"password": "wrong one"})

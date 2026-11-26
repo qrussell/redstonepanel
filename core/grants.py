@@ -251,6 +251,9 @@ signed   GET     /api/auth/passkeys
 signed   POST    /api/auth/passkeys/options
 signed   POST    /api/auth/passkeys
 signed   DELETE  /api/auth/passkeys/{{cred_id}}
+signed   GET     /api/auth/devices
+signed   DELETE  /api/auth/devices
+signed   DELETE  /api/auth/devices/{{device_id}}
 signed   POST    /api/auth/password
 signed   GET     /api/auth/ssh-keys
 signed   POST    /api/auth/ssh-keys
