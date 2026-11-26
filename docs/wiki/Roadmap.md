@@ -62,6 +62,8 @@ can), and Windows 10 installs with an end-of-support note. Windows on ARM comes 
 - **Start at boot**, per server, on the Maintenance tab: turn it off for a server you only play
   now and then and it stays stopped after a reboot until someone starts it. Works on Linux and
   Windows, and is kept through restores, reinstalls and moves to another node.
+- **Open dashboard, signed in:** an admin on the master opens a node's own panel already signed
+  in, without an account there. Each node can turn it off.
 
 ### 1.26: sleep mode
 

@@ -2368,6 +2368,23 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     server for good forgets it. Tests: `tests/test_bootstart.py`, and `test-install.sh` (off from
     the page and the CLI, `systemctl is-enabled` follows, the server keeps running, logged).
 
+33. **Open dashboard, signed in, from the master.** Asked for by Quentin on 26 Nov 2026: a node
+    on a PC someone else was using had no account he knew, so he couldn't reach its Update now.
+    **As built (1.25):** an admin's **Open dashboard ↗** on the master's Cluster page asks the
+    node (`POST /api/cluster/sign-in`, node token, contract 10) for a ticket signed with the
+    node's own secret, good for 60 seconds and once. The browser opens
+    `/api/auth/master-sign-in?ticket=...` on the node, which sets an ordinary session cookie for
+    `<admin>@<master>` with the admin role (source `master`) through a small page that then loads
+    the dashboard. The session is checked on every request against the cluster state: it ends when
+    the node leaves, gets a new master (epoch) or turns **Let the master's admins sign in here**
+    off (Settings → Cluster on the node; on by default, so a node nobody can sign in to is still
+    reachable). It has no account on the node: `/api/auth/*` other than `me` and `logout` is
+    refused. Wrong or used tickets count towards the sign-in limit. This changes rule "a master
+    never changes a node's users or settings" for admins who click through, which is why the node
+    can turn it off. Tests: `tests/test_mastersignin.py`, and `test-cluster.sh` (link, admin on
+    the node, its Users page, no account to change, once only, off ends the session and refuses
+    new links, a promoted master ends the old master's sessions).
+
 ### 1.26: sleep mode (start when a player joins)
 
 32. **Sleep mode.** Asked for by Quentin on 26 Nov 2026, after Start at boot: a server that

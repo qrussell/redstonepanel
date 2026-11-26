@@ -53,7 +53,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
-| 1.25.0 | **API tokens** for scripts and bots, and a per-server **Start at boot** switch. | [API tokens](#api-tokens), [Start at boot](#start-at-boot) |
+| 1.25.0 | **API tokens** for scripts and bots, a per-server **Start at boot** switch, and **Open dashboard** from the master signed in on a node. | [API tokens](#api-tokens), [Start at boot](#start-at-boot), [Accounts in a cluster](#accounts-in-a-cluster) |
 | 1.24.1 | A Windows PC that joins or creates a cluster opens its HTTPS port (8443) in the firewall; a server created on a node shows without a reload; a master's Dashboard and Cluster page load much faster. | [Clusters](#18-clusters) |
 | 1.24.0 | **Mixed Linux and Windows clusters**, SFTP on Windows, **Windows Hello** passkeys (or a phone), an easier first password on Windows, and **Remember this device** for 30 days. | [Clusters](#18-clusters), [Windows Hello](#windows-hello-passkeys), [Remember this device](#remember-this-device) |
 | 1.23.2 | **Remove RedstonePanel** under Panel Settings (and `sudo redstonepanel uninstall`) backs up every server and asks what happens to each one before the panel goes. | [Removing RedstonePanel](#removing-redstonepanel) |
@@ -2344,6 +2344,14 @@ Linux or Windows:
 - **A node's own accounts keep working on the node.** Signing in at a node's own address shows
   only that machine, as a standalone panel would. The master can never change a node's users,
   settings or HTTPS, or erase a server's files.
+- **Open dashboard, signed in (1.25).** On the master's Cluster page, an admin's
+  **Open dashboard ↗** on a node opens that node's own panel in a new tab, already signed in as
+  `you@<master>` with the admin role, so you can reach its Users, Settings and **Update now**
+  without an account there. The master gets a one-use link from the node that works for a
+  minute. The sign-in has no account on the node, so it can't change a password or two-factor
+  there, and it ends when the node leaves the cluster or gets a new master. Each node decides:
+  **Settings → Cluster → Let the master's admins sign in here** (on by default) on the node.
+  Both panels log it.
 - **So:** give each person one account, on the master. Keep a working admin on every node too
   (the one made at install is enough), for when the master is down.
 
