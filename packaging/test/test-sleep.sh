@@ -214,6 +214,7 @@ echo "--- Bedrock over NetherNet"
 api POST "/api/servers/$B/action" '{"action":"stop"}' >/dev/null
 wait_for 60 "  stopped" inactive $B
 dx "sed -i '/^transport=/d; /^server-udp-ports=/d' /opt/$B/server.properties && echo server-udp-ports=$BP >> /opt/$B/server.properties"
+is "  sleep mode on" 200 "$(code PUT /api/servers/$B/sleep '{"enabled":true,"minutes":15}')"
 is "  Sleep now" 200 "$(code POST /api/servers/$B/sleep/now)"
 wait_for 30 "  asleep, the panel holds TCP $BP" listens "$BP" t
 py "import socket; s=socket.create_connection(('127.0.0.1', $BP), timeout=5); s.sendall(b'hello')" 2>/dev/null

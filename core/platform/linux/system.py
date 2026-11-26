@@ -407,13 +407,15 @@ def root_path():
 
 def boot_time():
     """When this machine (or its container) last started: the start time of process 1, as Unix
-    time, or None. Sleep mode (1.26) tells a reboot from a restart of the panel with it."""
+    time to 1/100 s (the kernel counts in ticks, so it never moves), or None. Sleep mode (1.26)
+    tells a reboot from a restart of the panel with it; a container restarted two seconds after
+    the last one must still count as a reboot."""
     try:
         with open(os.path.join(paths.PROC, "stat")) as f:
             btime = next(float(l.split()[1]) for l in f if l.startswith("btime "))
         with open(os.path.join(paths.PROC, "1", "stat")) as f:
             ticks = float(f.read().rsplit(")", 1)[1].split()[19])
-        return round(btime + ticks / os.sysconf("SC_CLK_TCK"))
+        return round(btime + ticks / os.sysconf("SC_CLK_TCK"), 2)
     except (OSError, ValueError, IndexError, StopIteration):
         return None
 

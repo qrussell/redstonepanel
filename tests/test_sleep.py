@@ -369,11 +369,19 @@ class Boot(Base):
         Z._set_state("minecraft-java", "asleep")
         bootstart.remember("minecraft-java", False)
         fake.state.servers["minecraft-java"]["state"] = "inactive"
-        fake.state.boot_time += 30                          # a quick restart is still a restart
+        fake.state.boot_time += 2                           # a container restarted 2 s later: still a restart
         with mock.patch.object(Z, "_open") as op:
             Z.resume()
         op.assert_not_called()
         self.assertEqual(Z.state("minecraft-java"), "off")
+
+    def test_windows_boot_times_may_wobble(self):
+        with mock.patch.object(Z.platform, "name", return_value="windows"):
+            self.assertTrue(Z._same_boot(1000.0, 1003.0))
+            self.assertFalse(Z._same_boot(1000.0, 1030.0))
+        self.assertTrue(Z._same_boot(1000.0, 1000.01))
+        self.assertFalse(Z._same_boot(1000.0, 1002.0))
+        self.assertFalse(Z._same_boot(None, 1000.0))
 
     def test_a_panel_restart_keeps_what_it_was(self):
         self.server()

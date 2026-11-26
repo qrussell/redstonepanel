@@ -54,7 +54,8 @@ CHECK_EVERY = 30                # seconds between player counts of awake servers
 WATCH_EVERY = 2                 # seconds between looks at asleep servers' units (started from outside?)
 CONNECT_TIMEOUT = 5             # a Java client gets this long to say what it wants
 MAX_CLIENTS = 32                # Java connections handled at once; more are closed
-BOOT_SLACK = 5                  # seconds two boot times may differ and still be the same boot (Windows rounds)
+BOOT_SLACK = 5                  # seconds two Windows boot times may differ and still be the same boot
+BOOT_SLACK_EXACT = 0.5         # the same elsewhere: Linux reads it exactly from the kernel
 RAKNET_MAGIC = bytes.fromhex("00ffff00fefefefefdfdfdfd12345678")
 NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.@-]*$")
 
@@ -826,7 +827,10 @@ def _serve_ready(ready):
 # The loop
 # ---------------------------------------------------------------------------
 def _same_boot(a, b):
-    return a is not None and b is not None and abs(float(a) - float(b)) <= BOOT_SLACK
+    """Windows works its boot time out from the clock and the uptime (whole seconds, and the clock
+    moves); Linux reads it exactly, and a container restarts in a couple of seconds."""
+    slack = BOOT_SLACK if platform.name() == "windows" else BOOT_SLACK_EXACT
+    return a is not None and b is not None and abs(float(a) - float(b)) <= slack
 
 
 def resume(now_boot=None):
