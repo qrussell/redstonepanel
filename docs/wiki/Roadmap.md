@@ -51,7 +51,7 @@ show everything the panel does. It arrives in four releases:
 A few things work differently on Windows and are documented: Let's Encrypt comes with 1.24, Windows accounts without a password can't sign in to the panel (panel accounts
 can), and Windows 10 installs with an end-of-support note. Windows on ARM comes later.
 
-### 2.0: an API for scripts and bots
+### 1.25: an API for scripts and bots
 
 - **API tokens** with a limited set of allowed routes and servers, shown once and revocable.
 
