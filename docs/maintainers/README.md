@@ -20,7 +20,7 @@ is reachable at `https://gitlab-cf.cielocloud.dev` (a Cloudflare tunnel), for gi
 ### Discord
 
 The RedstonePanel Discord lives on the Cielo Cloud server. The public invite
-(`https://discord.gg/MpWzy84Eh`, channel #rp-general) is linked from the website header, hero and
+(`https://discord.gg/B5YkQm3zaX`, channel #rp-general) is linked from the website header, hero and
 footer, the README, the wiki (Home, FAQ, Roadmap, sidebar, Discord setup) and CONTRIBUTING.md.
 To change it, replace that link everywhere (`grep -rn discord.gg`); make the new invite with
 **Expire after: Never**.

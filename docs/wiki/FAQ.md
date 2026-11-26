@@ -222,5 +222,5 @@ folder. The panel gives it a port and a systemd service.
 Open an [issue](https://github.com/qrussell/redstonepanel/issues) for bugs, or join the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) for questions and ideas.
 To chat with other panel owners and hear about new releases first, join the
-[RedstonePanel Discord](https://discord.gg/MpWzy84Eh).
+[RedstonePanel Discord](https://discord.gg/B5YkQm3zaX).
 The [Roadmap](Roadmap.md) shows what's planned, and feedback decides the order.

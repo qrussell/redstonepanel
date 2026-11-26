@@ -3,7 +3,7 @@
 What's being built now and what's planned after **1.25.0**, the latest release. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) or on
-[Discord](https://discord.gg/MpWzy84Eh) what you'd use first.
+[Discord](https://discord.gg/B5YkQm3zaX) what you'd use first.
 
 The guiding rules stay the same: **protect people's worlds first**, use the system's own service manager rather than
 reinventing it (systemd on Linux), and add no dependencies that aren't in Ubuntu's archive. The full working plan,

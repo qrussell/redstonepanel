@@ -13,7 +13,7 @@ are all welcome.
 - **Ideas and questions:** use [Discussions](https://github.com/qrussell/redstonepanel/discussions).
   For a bigger change, start a discussion first so we can agree on the approach before you
   write the code.
-- **Chat:** the [RedstonePanel Discord](https://discord.gg/MpWzy84Eh) for quick questions and release
+- **Chat:** the [RedstonePanel Discord](https://discord.gg/B5YkQm3zaX) for quick questions and release
   announcements. Decisions and bug reports still go in Discussions and issues, so they can be
   found later.
 

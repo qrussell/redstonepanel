@@ -47,7 +47,7 @@ On Windows, download `RedstonePanel-<version>-x64.msi` from the
 ## Help and feedback
 
 - Chat, quick questions and release announcements: the
-  [RedstonePanel Discord](https://discord.gg/MpWzy84Eh).
+  [RedstonePanel Discord](https://discord.gg/B5YkQm3zaX).
 - Questions and ideas: the
   [features and roadmap discussion](https://github.com/qrussell/redstonepanel/discussions).
 - Bugs: [open an issue](https://github.com/qrussell/redstonepanel/issues).

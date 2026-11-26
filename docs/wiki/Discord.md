@@ -2,7 +2,7 @@
 
 *This page helps you set up a Discord for your own players. To talk to other RedstonePanel
 owners, ask a question or hear about new releases, join the
-[RedstonePanel Discord](https://discord.gg/MpWzy84Eh).*
+[RedstonePanel Discord](https://discord.gg/B5YkQm3zaX).*
 
 A step-by-step guide for a new server admin. You run RedstonePanel with several Minecraft servers
 (say a Paper survival server, a Fabric modded server, a Vanilla creative server and a Bedrock
