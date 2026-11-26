@@ -24,7 +24,7 @@
         return e && (e.name === 'NotAllowedError' || e.name === 'AbortError');
     }
 
-    async function signIn() {
+    async function signIn(remember) {
         let res = await fetch('/api/auth/passkey/options', { method: 'POST' });
         if (!res.ok) throw new Error(await detail(res));
         const o = await res.json();
@@ -40,7 +40,7 @@
             body: JSON.stringify({
                 id: toB64u(cred.rawId), client_data: toB64u(r.clientDataJSON),
                 authenticator_data: toB64u(r.authenticatorData), signature: toB64u(r.signature),
-                user_handle: r.userHandle ? toB64u(r.userHandle) : null
+                user_handle: r.userHandle ? toB64u(r.userHandle) : null, remember: !!remember
             })
         });
         if (!res.ok) throw new Error(await detail(res));

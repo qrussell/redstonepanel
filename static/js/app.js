@@ -8078,7 +8078,7 @@ const ServerApp = {
 		document.getElementById('modal-content').innerHTML = `
 			${password}${forcedIntro}
 			<div id="tf-box"><p class="text-sm text-gray-500">Loading two-factor sign-in...</p></div>
-			${this.accountForced ? '' : '<div id="pk-box" class="mt-6 hidden"></div><div id="ssh-box" class="mt-6"></div>'}
+			${this.accountForced ? '' : '<div id="pk-box" class="mt-6 hidden"></div><div id="dev-box" class="mt-6 hidden"></div><div id="ssh-box" class="mt-6"></div>'}
 			${footer}`;
 		document.getElementById('modal-overlay').classList.remove('hidden');
 		const res = await fetch('/api/auth/2fa');
@@ -8087,7 +8087,53 @@ const ServerApp = {
 		if (this.accountForced && !this.tfStatus.enabled) return this.startTwoFactorSetup();
 		this.renderTwoFactor();
 		this.loadPasskeys();
+		this.loadDevices();
 		this.loadSshKeys();
+	},
+
+	// --- 1.24: Remember this device (🔑 Password → Remembered devices) ---
+	async loadDevices(message, ok) {
+		const box = document.getElementById('dev-box');
+		if (!box) return;
+		const res = await fetch('/api/auth/devices');
+		if (!res.ok) { box.classList.add('hidden'); return; }
+		const d = await res.json();
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const when = t => t ? new Date(t * 1000).toLocaleDateString() : '';
+		const others = d.devices.filter(x => !x.current).length;
+		const list = d.devices.map(x => `
+			<div class="flex items-start justify-between gap-2 p-2 mb-2 rounded border border-gray-200 dark:border-gray-700">
+				<div class="min-w-0 text-sm">
+					<div class="font-bold text-gray-900 dark:text-white truncate">${esc(x.name)}${x.current ? ' <span class="font-normal text-xs text-green-600 dark:text-green-400">this device</span>' : ''}</div>
+					<div class="text-xs text-gray-500 dark:text-gray-400">Since ${esc(when(x.created))} · last used ${esc(when(x.last_used))}${x.last_ip ? ` from ${esc(x.last_ip)}` : ''}</div>
+				</div>
+				<button data-id="${esc(x.id)}" data-current="${x.current ? 1 : ''}" onclick="ServerApp.forgetDevice(this.dataset.id, !!this.dataset.current)" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white shrink-0">Forget</button>
+			</div>`).join('');
+		box.innerHTML = `
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">Remembered devices</h4>
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-3">${d.devices.length
+				? `These stay signed in for ${esc(d.days)} days from when you ticked <b>Remember this device</b>. Forget one you no longer use, or have lost; it is signed out at once.`
+				: `None. Tick <b>Remember this device</b> when you sign in on your own computer or phone to stay signed in there for ${esc(d.days)} days.`}</p>
+			${list}
+			<p id="dev-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-2">${esc(message || '')}</p>
+			${others ? '<button onclick="ServerApp.forgetOtherDevices()" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Forget All Other Devices</button>' : ''}`;
+		box.classList.remove('hidden');
+	},
+
+	async forgetDevice(id, current) {
+		if (current && !confirm('Forget this device? You will be signed out here.')) return;
+		const res = await fetch(`/api/auth/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+		if (!res.ok) return this.loadDevices(await this.apiError(res), false);
+		if (current) { location.replace('/static/login.html'); return; }
+		this.loadDevices('Forgotten: that device has to sign in again.', true);
+	},
+
+	async forgetOtherDevices() {
+		if (!confirm('Sign out every other remembered device? This one stays signed in.')) return;
+		const res = await fetch('/api/auth/devices', { method: 'DELETE' });
+		if (!res.ok) return this.loadDevices(await this.apiError(res), false);
+		const d = await res.json();
+		this.loadDevices(`Forgotten: ${d.forgotten} device${d.forgotten === 1 ? '' : 's'}.`, true);
 	},
 
 	// --- 1.24: passkeys (Windows Hello) on Windows panels (🔑 Password → Passkeys) ---
@@ -8193,9 +8239,11 @@ const ServerApp = {
 		if (pw) pw.classList.toggle('hidden', !!focused);
 		const ssh = document.getElementById('ssh-box');
 		if (ssh) ssh.classList.toggle('hidden', !!focused);
-		const pk = document.getElementById('pk-box');
-		if (pk && focused) pk.classList.add('hidden');
-		else if (pk && !focused && pk.innerHTML.trim()) pk.classList.remove('hidden');
+		for (const id of ['pk-box', 'dev-box']) {
+			const el = document.getElementById(id);
+			if (el && focused) el.classList.add('hidden');
+			else if (el && !focused && el.innerHTML.trim()) el.classList.remove('hidden');
+		}
 	},
 
 	renderTwoFactor() {
