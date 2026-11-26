@@ -151,6 +151,8 @@ class Ceremonies(unittest.TestCase):
     def add(self, auth, key="linux:Quent"):
         opts = passkeys.registration_options(key, "Quent", "Quent", RP, ORIGIN)
         self.assertEqual(opts["authenticatorSelection"]["userVerification"], "required")
+        # this PC, a phone (QR code) or a security key: not limited to Windows Hello on the PC
+        self.assertNotIn("authenticatorAttachment", opts["authenticatorSelection"])
         self.assertEqual([p["alg"] for p in opts["pubKeyCredParams"]], [-7, -257])
         a = auth.create(opts, ORIGIN)
         return passkeys.register(key, a["client_data"], a["attestation_object"], RP, ORIGIN, "Windows Hello")

@@ -1850,7 +1850,9 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     Windows panels sign in with Windows accounts and panel accounts, optional two-factor, and
     **Windows Hello passkeys** (WebAuthn, `core/passkeys.py`): any account adds one under
     **🔑 Password** after typing its password, and **Sign in with Windows Hello** needs no user
-    name. Only the public key is kept (`data/passkeys.json`); ES256 and RS256; user verification
+    name. The passkey can be on the PC (Windows Hello), a phone (Windows shows a QR code) or a
+    security key: no authenticator attachment is asked for, after Quentin tried his phone in the
+    first test. Only the public key is kept (`data/passkeys.json`); ES256 and RS256; user verification
     required, so a passkey sign-in counts as both steps (and meets "require two-factor for
     admins"); one-use 2-minute challenges; the origin and host name are checked, and a counter
     that goes backwards is refused. Browsers allow passkeys at `localhost` or a host name over
