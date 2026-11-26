@@ -178,7 +178,8 @@ class Export(unittest.TestCase):
             import main
         except ImportError:
             self.skipTest("needs fastapi")
-        self.assertIn("for_windows", main.TransferExport.model_fields)
+        fields = getattr(main.TransferExport, "model_fields", None) or main.TransferExport.__fields__   # pydantic 1 (Ubuntu 24.04)
+        self.assertIn("for_windows", fields)
 
 
 class Members(unittest.TestCase):
