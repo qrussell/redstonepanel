@@ -28,15 +28,26 @@
   var url = document.body.getAttribute('data-status');
   if (!url || !window.fetch) return;
   var pill = document.getElementById('status'), players = document.getElementById('players'), names = document.getElementById('names');
+  var wake = document.getElementById('wake'), wakeNote = document.getElementById('wake-note'), startBtn = document.getElementById('start');
+  var STATES = { online: ['on', 'Online'], starting: ['starting', 'Starting'], sleeping: ['sleeping', 'Asleep'], offline: ['off', 'Offline'] };
+  var fast = null;
   function show(d) {
-    var on = d.status === 'online';
-    if (pill) { pill.textContent = on ? 'Online' : 'Offline'; pill.className = 'pill ' + (on ? 'on' : 'off'); }
+    var on = d.status === 'online', st = STATES[d.status] || STATES.offline;
+    if (pill) { pill.textContent = st[1]; pill.className = 'pill ' + st[0]; }
     var p = on ? d.players : null;
     if (players) {
       players.textContent = !p || p.online === null || p.online === undefined ? ''
         : p.max === null || p.max === undefined ? p.online + ' playing' : p.online + ' of ' + p.max + ' playing';
     }
     if (names) names.textContent = p && p.names && p.names.length ? 'Playing now: ' + p.names.join(', ') : '';
+    // 1.26: an asleep server, the Start button, and checking often while it starts
+    if (wake) wake.hidden = on;
+    if (wakeNote) {
+      wakeNote.textContent = d.status === 'sleeping' ? 'The server is asleep to save power. It starts by itself when you join; then join again in about 30 seconds.'
+        : d.status === 'starting' ? 'The server is starting. This page shows Online when you can join.' : '';
+    }
+    if (startBtn) startBtn.disabled = d.status === 'starting';
+    if (on && fast) { clearInterval(fast); fast = null; if (wakeNote) wakeNote.textContent = ''; }
   }
   function refresh() {
     if (document.hidden) return;
@@ -45,6 +56,20 @@
       .then(function (d) { if (d) show(d); })
       .catch(function () {});
   }
+  if (startBtn) {
+    startBtn.addEventListener('click', function () {
+      startBtn.disabled = true;
+      fetch(startBtn.getAttribute('data-start'), { method: 'POST', cache: 'no-store', credentials: 'omit', headers: { 'X-Join-Start': '1' } })
+        .then(function (r) { return r.json().catch(function () { return {}; }); })
+        .then(function (d) {
+          if (d.error) { if (wakeNote) wakeNote.textContent = d.error; startBtn.disabled = false; return; }
+          show({ status: d.status === 'online' ? 'online' : 'starting', players: null });
+          if (!fast) fast = setInterval(refresh, 5000);
+        })
+        .catch(function () { startBtn.disabled = false; });
+    });
+  }
+  if (pill && pill.className.indexOf('starting') >= 0) fast = setInterval(refresh, 5000);
   setInterval(refresh, 30000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
 })();

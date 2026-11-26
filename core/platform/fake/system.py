@@ -170,6 +170,10 @@ def root_path():
     return "/"
 
 
+def boot_time():
+    return fake.state.boot_time
+
+
 def process_alive(pid):
     return pid in fake.state.processes
 

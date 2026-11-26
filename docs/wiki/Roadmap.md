@@ -66,14 +66,15 @@ can), and Windows 10 installs with an end-of-support note. Windows on ARM comes 
 - **Open dashboard, signed in:** an admin on the master opens a node's own panel already signed
   in, without an account there. Each node can turn it off.
 
-### 1.26: sleep mode
+### 1.26: sleep mode, and Start on the join page
 
 - **Start when a player joins.** A server nobody is playing on stops after a time you choose,
-  and the panel answers on its port instead ("Sleeping: join to wake it"). When someone joins,
-  it starts again and they join a minute later. For Java and Bedrock, per server, off by default.
-- **A Start server button on join pages.** Players can start a stopped server from its join
-  page, if you switch it on for that server. The panel starts it, with a short wait between
-  presses.
+  and the panel answers on its port instead ("Sleeping: join to start it"). When someone joins,
+  it starts again and they join about 30 seconds later. For Java and Bedrock, per server, off by
+  default, on Linux and Windows and on cluster nodes. A sleeping server doesn't start at boot:
+  it goes to sleep instead.
+- **Start the server from its join page.** An admin can let visitors of a server's public join
+  page start it while it's stopped, with limits so nobody can start it over and over.
 
 ## Ideas under consideration
 

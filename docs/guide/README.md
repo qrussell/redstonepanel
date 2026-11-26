@@ -31,6 +31,8 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Keep backups off this machine (NAS, Backblaze B2, S3) | [Off-site copies](#off-site-copies-ssh-or-s3-storage) |
 | Restart a server every night | [Scheduled restarts](#scheduled-restarts) |
 | Keep a server from starting when the machine starts | [Start at boot](#start-at-boot) |
+| Stop a server nobody plays on, and start it when someone joins | [Sleep mode](#sleep-mode) |
+| Let friends start a stopped server from its join page | [Join pages](#join-pages) (**Let visitors start the server**) |
 | Find out why a server lags | [Performance](#performance) |
 | Give a server more memory, or limit it | [Memory and limits](#memory-and-limits) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
@@ -628,6 +630,12 @@ Nothing is public until you turn it on, twice: the port, and then each server's 
     friends-only server. It can't be guessed and never appears in the list. **Make a new
     link** replaces it; the old link stops working.
   - **Show who is playing** adds the players' names. Off, only the number is shown.
+  - **Let visitors start the server** *(1.26)* shows a **Start the server** button on the page
+    while the server is stopped or asleep, so a friend can start it without an account. The
+    page then says **Starting** and turns **Online** when they can join. Anyone who can open
+    the page can press it, so it's off by default: the panel starts a server at most once every
+    2 minutes from its page, and each visitor at most 3 times an hour. The page never stops a
+    server; pair it with [Sleep mode](#sleep-mode) so it stops by itself again when nobody plays.
   - **A note for players** and **a link of your own** (a Discord invite, a website) appear at
     the top of the page. Only `https://` links are accepted.
   - **Where players get the mods** (mod servers). A server made **From a modpack** on Modrinth
@@ -1186,6 +1194,52 @@ that's running.
   another cluster member.
 - Helpers need the **Settings** permission for that server to change it.
 - From a prompt: `sudo redstonepanel boot minecraft-NAME off` (or `on`).
+- With [Sleep mode](#sleep-mode) on, the machine never starts the server by itself; this switch
+  then says what happens after a reboot: ticked, the server goes to sleep (and starts when a
+  player joins); unticked, it stays stopped.
+
+### Sleep mode
+
+*(1.26)* Under **Start at boot**. A server nobody is playing on stops by itself, and starts
+again when someone tries to join. It saves memory and CPU on a machine that holds several
+servers, without anyone having to open the panel to start one.
+
+Tick **Sleep when nobody is playing** and choose how long the server may sit empty (15 minutes
+unless you change it, from 1 minute to a day). After that time with nobody on, the panel stops
+the server and listens on its game port itself. The server is then **asleep**: a blue moon ☾
+next to it in the server list, the Dashboard and the Cluster page.
+
+- **Java:** Minecraft's server list shows the server's message of the day with **Sleeping: join
+  to start it**, its icon and 0 players. Joining starts it, and the player sees "The server was
+  asleep and is starting up for you. Join again in about 30 seconds" (about a minute for a
+  modded server). Players the whitelist or ban list would turn away are told so, and don't wake
+  it.
+- **Bedrock over RakNet** (`transport=raknet`): the server list shows it as sleeping; the first
+  try to join starts it, and the player joins again once it runs.
+- **Bedrock over NetherNet** (the default since Bedrock 1.26.50): there is no server list answer
+  to give, so the server shows as offline in the **Servers** tab (looking at it doesn't start
+  it). Pressing **Join** starts it; the player joins again once it runs.
+
+What else to know:
+
+- **Stop means stopped.** Pressing **Stop** on a running or sleeping server stops it for good:
+  it doesn't wake when someone joins until you **Start** it, or press **☾ Sleep now**, which
+  puts it to sleep straight away.
+- **At boot** the machine never starts a server with sleep mode on. After a reboot it goes to
+  sleep if [Start at boot](#start-at-boot) is ticked, and stays stopped if not.
+- A server never goes to sleep during a backup, a move or a type change. The panel counts
+  players with the same server list ping Minecraft uses (Java and RakNet Bedrock) or from the
+  player log (NetherNet Bedrock); if the server doesn't answer, it isn't counted as empty.
+- The panel itself must run for a server to wake: while the panel is stopped or updating, a
+  sleeping server stays asleep. The **Port check** knows the panel holds the port for the
+  sleeping server and doesn't report it.
+- Notifications: a server going to sleep sends **Server stopped** (if you turned that on) with
+  "went to sleep"; waking sends **Server started**.
+- In a cluster each node puts its own servers to sleep and wakes them; the master shows them
+  asleep. A move keeps the setting. Not available for a Bedrock server that Phantom forwards to
+  (not tested yet), and not tested behind Velocity or BungeeCord.
+- Helpers need the **Settings** permission to change it and **Power** for **Sleep now**. From a
+  prompt: `sudo redstonepanel sleep minecraft-NAME on 30` (or `off`).
 
 ### Templates, export, update and uninstall
 

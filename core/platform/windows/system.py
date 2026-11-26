@@ -713,6 +713,17 @@ def root_path():
     return (os.environ.get("SystemDrive") or "C:") + "\\"
 
 
+def boot_time():
+    """When Windows last started (Unix time, whole seconds), or None. Sleep mode (1.26) tells
+    a restart of the machine from a restart of the panel with it."""
+    try:
+        k32 = _win.dll("kernel32")
+        k32.GetTickCount64.restype = ctypes.c_ulonglong
+        return float(int(time.time() - k32.GetTickCount64() / 1000.0))
+    except (OSError, AttributeError):
+        return None
+
+
 def process_alive(pid):
     k = _win.dll("kernel32")
     k.OpenProcess.restype = wintypes.HANDLE

@@ -130,7 +130,7 @@ class Settings(Base):
 
 class PublicView(Base):
     ALLOWED = {"path", "title", "edition", "loader", "loader_key", "minecraft", "needs", "status", "players",
-               "address", "geyser", "pack", "player_pack", "note", "link", "has_icon"}
+               "address", "geyser", "pack", "player_pack", "note", "link", "has_icon", "can_start"}
 
     def test_only_the_fixed_fields_leave(self):
         s = summary(directory="/opt/minecraft-survival", rcon_port="25575", lan_ip="192.168.1.20", node="Basement",
@@ -253,7 +253,7 @@ class PublicPort(Base):
     def test_status_and_icon(self):
         self.on(show_players=True)
         st = self.get("/join/survival/status.json")
-        self.assertEqual(json.loads(st.body), {"status": "online", "minecraft": "1.21.11",
+        self.assertEqual(json.loads(st.body), {"status": "online", "minecraft": "1.21.11", "can_start": False,
                                                "players": {"online": 2, "max": 20, "names": ["Alex", "Steve"]}})
         icon = self.get("/join/survival/icon.png")
         self.assertEqual((icon.status, icon.content_type, icon.body), (200, "image/png", PNG))

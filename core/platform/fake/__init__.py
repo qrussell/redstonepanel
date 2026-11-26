@@ -50,6 +50,7 @@ def reset():
     state.listeners = []                # [{"proto", "port", "pid", "program", "service", ...}] for system.listeners()
     state.docker_ps = ""                # what `docker ps --format "{{.Names}}\t{{.Ports}}"` prints
     state.unbindable = set()            # {(port, proto)} a bind is refused on (WSL mirrored, Docker iptables)
+    state.boot_time = 1000000000.0      # when the machine started (Unix time), for system.boot_time()
     return state
 
 

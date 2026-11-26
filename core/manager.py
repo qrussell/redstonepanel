@@ -833,6 +833,13 @@ def java_major():
         _java_cache.update(at=now, major=major)
     return _java_cache["major"]
 
+def _sleep_fields(svc):
+    try:
+        from core import sleep
+        return sleep.list_fields(svc)
+    except Exception:
+        return {"sleep": False, "sleeping": False}
+
 def list_servers():
     servers = []
     names = [u.replace(services.SUFFIX, "") for u in services.unit_files("minecraft")]
@@ -895,6 +902,8 @@ def list_servers():
             "firewall_rules": sorted([list(r) for r in firewall_rules(
                 "java" if "java" in exec_start else "bedrock", props)
                 | (mod_firewall_rules(svc) if "java" in exec_start else set())]),
+            # Sleep mode (1.26): {"sleep": on?, "sleeping": asleep now (the panel holds its port)?}
+            **_sleep_fields(svc),
         })
     return servers
 
@@ -1258,7 +1267,10 @@ def control_server(server_name, action):
     if not SERVICE_NAME_RE.match(server_name or "") or \
             not os.path.isfile(_unit_path(server_name)):
         raise ServerError(f"No Minecraft server called '{server_name}' on this panel.")
-    if action != "stop":
+    if action == "stop":
+        from core import sleep                 # 1.26: Stop means stopped, not asleep
+        sleep.stopped_by_hand(server_name)
+    else:
         from core import transfer
         if transfer.is_moving(server_name):
             raise ServerError(f"{server_name} is being moved to another cluster member; it can't be started here.")
@@ -1332,6 +1344,8 @@ def remove_server(server_name, keep_world, note=None):
     d = get_server_dir(server_name)
     exec_start = services.exec_start(server_name)
     rules = firewall_rules("java" if "java" in exec_start else "bedrock", read_properties(d))
+    from core import sleep
+    sleep.forget(server_name)                   # sleep mode (1.26): let go of its port, forget the choice
     services.stop(server_name, elevate=True)
     services.disable(server_name, elevate=True)
 
@@ -1716,7 +1730,7 @@ def _reserve_like(prefer):
     return None
 
 def import_transferred(root, edition, prefer_name=None, heap=None, java=None, start=True, on_placed=None, jvm=None,
-                       boot=True):
+                       boot=True, sleep_minutes=None):
     """A server folder moved or copied from another cluster member (1.16), unpacked at root.
     Keeps prefer_name and the server's ports when they're free here, else picks others.
     on_placed(name) is called once the folder is in place, so a failure after it can be undone.
@@ -1752,6 +1766,8 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
         system.give_to_game_account(mc_dir)
         _write_unit(name, mc_dir, edition, **heap, **({"java": java} if java else {}), jvm=jvm or {})
         bootstart.remember(name, boot is not False)      # Start at boot (1.25): as it was on the old member
+        from core import sleep
+        sleep.remember(name, sleep_minutes)             # sleep mode (1.26): the same
         bootstart.apply(name)
         if start:
             services.start(name)

@@ -454,6 +454,9 @@ def _change(args, elevate=False, quiet=False, timeout=None):
 def control(unit_name, action, elevate=False, quiet=False):
     """start, stop, restart, enable or disable any unit by its full name."""
     unit_name = _full(unit_name)
+    if action in ("start", "restart"):
+        from core import platform as _platform      # sleep mode (1.26) lets go of the port first
+        _platform.before_start(unit_name)
     if unit_name.endswith(".timer"):
         return systemctl(action, unit_name)
     name = _service_name(unit_name)

@@ -170,7 +170,14 @@ def _meta(server, edition):
             "jvm": deployopts.get_flags(server) if edition == "java" else None,
             "backup": backups.get_schedule(server), "restart": restarts.get_schedule(server),
             "phantom": edition == "bedrock" and _phantom_installed(server),
-            "boot": bootstart.wanted(server)}
+            "boot": bootstart.wanted(server),
+            "sleep": _sleep_minutes(server)}
+
+
+def _sleep_minutes(server):
+    """Sleep mode (1.26): its minutes when on, else None (older members ignore it)."""
+    from core import sleep
+    return sleep.minutes(server) if sleep.enabled(server) else None
 
 
 def _sha256(path):
@@ -435,6 +442,8 @@ def _clean_meta(meta):
                             f"x86-64 (64-bit Intel or AMD). Move it to another member.")
     out = {"edition": meta["edition"], "phantom": meta.get("phantom") is True,
            "boot": meta.get("boot") is not False}      # Start at boot (1.25); older members don't say: on
+    sl = meta.get("sleep")                              # sleep mode (1.26); older members don't say: off
+    out["sleep"] = sl if isinstance(sl, int) and not isinstance(sl, bool) and 0 < sl <= 24 * 60 else None
     name = meta.get("name")
     out["name"] = name if isinstance(name, str) and manager.SERVICE_NAME_RE.match(name) else None
     for k in ("xms", "xmx"):
@@ -712,7 +721,7 @@ def install(tid, keep_name=True, start=True, carry=True, actor="master"):
         result = manager.import_transferred(root, meta["edition"], prefer_name=meta.get("name") if keep_name else None,
                                             heap={k: meta[k] for k in ("xms", "xmx") if k in meta}, java=java,
                                             start=start, on_placed=placed, jvm=meta.get("jvm") or {},
-                                            boot=meta.get("boot", True))
+                                            boot=meta.get("boot", True), sleep_minutes=meta.get("sleep"))
         if start:
             checked = time.time()
             _stays_running(result["name"])

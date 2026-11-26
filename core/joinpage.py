@@ -99,7 +99,7 @@ def default_slug(server):
 def defaults(server):
     return {"enabled": False, "slug": default_slug(server), "unlisted": False, "token": "",
             "address": "", "note": "", "link_url": "", "link_label": "", "pack_url": "",
-            "show_players": False}
+            "show_players": False, "allow_start": False}
 
 
 def page(key, pages=None):
@@ -165,6 +165,7 @@ def save_page(member, server, new, actor="?"):
         cfg["enabled"] = bool(new.get("enabled"))
         cfg["unlisted"] = bool(new.get("unlisted"))
         cfg["show_players"] = bool(new.get("show_players"))
+        cfg["allow_start"] = bool(new.get("allow_start"))        # 1.26: a Start button for visitors
         slug = str(new.get("slug") or "").strip().lower() or default_slug(server)
         if not SLUG_RE.match(slug) or slug in RESERVED_SLUGS:
             raise JoinError("The link name can use small letters, numbers and dashes, up to 40 characters "
@@ -343,7 +344,7 @@ def local_summary(server, list_servers=None):
            "status": s.get("status") if s.get("status") in ("online", "offline") else "offline",
            "port": port if port.isdigit() else "", "motd": str(s.get("motd") or "")[:200],
            "transport": s.get("transport"), "geyser_port": "", "modpack": None, "icon": "",
-           "players": None, "player_pack": None}
+           "players": None, "player_pack": None, "sleeping": bool(s.get("sleeping"))}
     if edition == "Java":
         out["modpack"] = _modpack(d)
         if loader in javaservers.MOD_LOADERS:
@@ -546,7 +547,7 @@ def _player_pack_view(cfg, s):
             "ask": p["ask"]}
 
 
-def public_view(cfg, s, public_address=None):
+def public_view(cfg, s, public_address=None, key=None):
     """The page's whole content, from the fixed list of fields that may leave the machine."""
     loader = s.get("loader") or ""
     players = s.get("players") if s.get("status") == "online" else None
@@ -560,7 +561,8 @@ def public_view(cfg, s, public_address=None):
         "loader_key": loader if needs == "mods" else "",
         "minecraft": s.get("minecraft") or "",
         "needs": needs,
-        "status": "online" if s.get("status") == "online" else "offline",
+        "status": _public_state(key, s),
+        "can_start": bool(cfg.get("allow_start")) and s.get("status") != "online",
         "players": None if not players else {
             "online": players.get("online"), "max": players.get("max"),
             "names": list(players.get("names") or [])[:NAMES_MAX] if cfg["show_players"] else None},
@@ -576,7 +578,75 @@ def public_view(cfg, s, public_address=None):
 
 def public_status(view):
     """The part of the page that refreshes by itself."""
-    return {"status": view["status"], "players": view["players"], "minecraft": view["minecraft"]}
+    return {"status": view["status"], "players": view["players"], "minecraft": view["minecraft"],
+            "can_start": view["can_start"]}
+
+
+# ---------------------------------------------------------------------------
+# 1.26: starting a stopped (or sleeping) server from its page, when the admin allows it
+# ---------------------------------------------------------------------------
+START_COOLDOWN = 120            # seconds: one start per server in this time, however many visitors press
+START_SHOWN = 240               # seconds the page says "Starting" after a start, until the server answers
+START_PER_IP = 3                # starts one address may ask for in an hour, over all servers
+_starts = {}                    # key -> time of the last start asked from a page
+_starts_by_ip = {}              # ip -> [times]
+
+
+def _public_state(key, s):
+    """online, starting, sleeping or offline: what a visitor may know."""
+    if s.get("status") == "online":
+        return "online"
+    if key and time.time() - _starts.get(key, 0) < START_SHOWN:
+        return "starting"
+    return "sleeping" if s.get("sleeping") else "offline"
+
+
+def start_from_page(key, ip, now=None):
+    """A visitor pressed Start on the page of `key`. Returns "online", "starting" or raises JoinError.
+    The admin must have allowed it on that page. A start already asked in the last
+    START_COOLDOWN seconds is not repeated; an address gets START_PER_IP starts an hour."""
+    now = time.time() if now is None else now
+    cfg = page(key)
+    if not cfg["enabled"] or not cfg.get("allow_start"):
+        raise JoinError("This server can't be started from its page.")
+    s = summary(key, fresh=True)
+    if s.get("status") == "online":
+        return "online"
+    with _lock:
+        if now - _starts.get(key, 0) < START_COOLDOWN:
+            return "starting"
+        times = [t for t in _starts_by_ip.get(ip, []) if now - t < 3600]
+        if len(times) >= START_PER_IP:
+            raise JoinError("You've started servers here a few times in the last hour. Try again later.")
+        if len(_starts_by_ip) > 5000:
+            _starts_by_ip.clear()
+        _starts_by_ip[ip] = times + [now]
+        _starts[key] = now
+    member, server = split_key(key)
+    manager.write_log(f"[JOIN] A visitor from {ip} started {server}"
+                      + ("" if member == "local" else f" on cluster member {member}") + " from its join page.")
+    threading.Thread(target=_start_server, args=(member, server, ip), name=f"join-start-{server}", daemon=True).start()
+    return "starting"
+
+
+def _start_server(member, server, ip):
+    try:
+        if member == "local":
+            from core import sleep
+            if not sleep.wake(server, f"a visitor of its join page ({ip})"):
+                manager.control_server(server, "start")
+        else:
+            from core import cluster, cluster_client
+            node = cluster.find_node(member)
+            if not node:
+                raise JoinError("That cluster member is gone.")
+            cluster_client.call_node(node, "POST", f"/api/servers/{quote(server, safe='')}/action", {"action": "start"},
+                                     actor="join page", timeout=cluster_client.ACTION_TIMEOUT)
+            cluster_client.forget_cached(member)
+    except Exception as e:
+        manager.write_log(f"[JOIN] Starting {server} from its join page failed: {e}")
+    finally:
+        _summary_cache.pop(page_key(member, server), None)
 
 
 # ---------------------------------------------------------------------------
@@ -607,6 +677,7 @@ def admin_overview(list_servers=None):
             rows.append({"name": s["name"], "edition": s.get("edition"), "loader": javaservers.LOADERS.get(loader, ""),
                          "mods": loader in javaservers.MOD_LOADERS, "minecraft": s.get("minecraft") or s.get("version"),
                          "status": s.get("status"), "port": s.get("port"), "motd": s.get("motd"),
+                         "sleep": bool(s.get("sleep")), "sleeping": bool(s.get("sleeping")),
                          "page": {k: v for k, v in cfg.items() if k != "token"}, "path": path_of(cfg)})
         out.append({"id": m["id"], "name": m["name"], "local": m["local"], "state": m["state"], "error": m["error"],
                     "servers": rows})

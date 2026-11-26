@@ -179,6 +179,17 @@ class Finding(Fixture):
         self.held = [L(19132, pid=20, service="minecraft-bedrock.service")]
         self.assertEqual(self.problems(type="taken"), [], "its own server holding it is fine")
 
+    def test_a_server_started_after_the_list_was_made(self):
+        """Found in 1.26 testing: the dashboard reuses a list of listeners for minutes; a server
+        that started since then (a sleeping one that woke) isn't a holder nobody can name."""
+        self.bedrock("minecraft-bedrock")
+        self.unbindable = {(19132, "tcp")}
+        now = [L(19132, pid=20, service="minecraft-bedrock.service")]
+        def listeners(fresh=False, max_age=None):
+            return list(now) if fresh else []
+        with mock.patch.object(PA, "listeners", listeners):
+            self.assertEqual(self.problems(type="taken"), [])
+
     def test_a_docker_container(self):
         self.java("minecraft-java", status="offline")
         self.held = [L(25565, program="Docker", container="mc-old", inside=25565)]

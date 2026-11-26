@@ -110,6 +110,9 @@ _AFTER = {"start": {"state": "active"}, "restart": {"state": "active"}, "stop": 
 
 
 def control(unit_name, action, elevate=False, quiet=False):
+    if action in ("start", "restart"):
+        from core import platform as _platform      # sleep mode (1.26) lets go of the port first
+        _platform.before_start(unit_name)
     fake.record(f"services.{action}", unit_name[:-len(SUFFIX)] if unit_name.endswith(SUFFIX) else unit_name)
     _set(unit_name, **_AFTER.get(action, {}))
     return done() if quiet else 0

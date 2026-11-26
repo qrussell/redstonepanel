@@ -158,6 +158,9 @@ def _change(args, elevate=False, quiet=False, timeout=None):
 
 def control(unit_name, action, elevate=False, quiet=False):
     """start, stop, restart, enable or disable any unit by its full name."""
+    if action in ("start", "restart"):
+        from core import platform as _platform      # sleep mode (1.26) lets go of the port first
+        _platform.before_start(unit_name)
     return _change([action, unit_name], elevate, quiet)
 
 

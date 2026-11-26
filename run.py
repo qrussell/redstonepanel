@@ -13,6 +13,9 @@
                                       make one (every server unless --servers); prints it once
     redstonepanel token revoke NAME   revoke one; requests with it are refused at once
     redstonepanel boot NAME on|off    start a game server when the machine starts, or not
+    redstonepanel sleep NAME on [MINUTES]|off
+                                      sleep mode: stop a game server after MINUTES (15) with nobody on,
+                                      and start it when a player joins (the panel listens on its port)
     redstonepanel set-name "NAME"     name shown in the panel to tell servers apart
                                       ("" = use this server's host name)
     redstonepanel reset-security      recovery: plain HTTP on 8080, sign-in required, restart
@@ -178,6 +181,9 @@ def main():
     from core import playerlog
     playerlog.on_new_events(playerlog.notify_events)
     playerlog.start()
+    # Sleep mode (1.26): stop servers nobody plays on, listen on their ports, start them on a join
+    from core import sleep
+    sleep.start()
     # Cluster masters: renew node certificates 30 days before they expire, nightly cluster backup
     from core import cluster_client, manager
     import main as main_module
@@ -386,6 +392,24 @@ def token_cmd(args):
         print(f"Token {out['name']} (shown only now):\n{out['token']}")
         return
     sys.exit("Usage: redstonepanel token list | create NAME --perms view,power [--servers a,b] [--days N] | revoke NAME")
+
+
+def sleep_cmd(args):
+    """Sleep mode (1.26) for one game server."""
+    from core import manager, sleep
+    name, on = args[0], args[1] == "on"
+    mins = args[2] if len(args) > 2 else None
+    if mins is not None and not mins.isdigit():
+        sys.exit("MINUTES must be a whole number (1 to 1440).")
+    try:
+        info = sleep.turn(name, on, int(mins) if mins else None, actor="command line")
+    except (manager.ServerError, sleep.SleepError) as e:
+        sys.exit(str(e))
+    if on:
+        print(f"{name} sleeps after {info['minutes']} minute{'s' if info['minutes'] != 1 else ''} with nobody on, "
+              f"and starts when a player joins.")
+    else:
+        print(f"Sleep mode is off for {name}.")
 
 
 def boot_cmd(args):
@@ -810,6 +834,8 @@ if __name__ == "__main__":
         token_cmd(rest)
     elif cmd == "boot" and len(rest) == 2 and rest[1] in ("on", "off"):
         boot_cmd(rest)
+    elif cmd == "sleep" and (len(rest) == 2 and rest[1] in ("on", "off") or len(rest) == 3 and rest[1] == "on"):
+        sleep_cmd(rest)
     elif cmd == "add-user":
         add_user(rest)
     elif cmd == "removed" and not rest:

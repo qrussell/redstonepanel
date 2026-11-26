@@ -2399,6 +2399,53 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     cluster nodes do it on their own (the master only shows "sleeping"). Works with Start at boot
     off. Not for servers behind a proxy (Velocity or BungeeCord) or with Phantom until tested.
     **Size:** about two weeks.
+    **As built (1.26):** `core/sleep.py`, a thread of the panel (no service or program of its
+    own, so Linux and Windows are the same code). Every 30 s it counts the players of each awake
+    server with sleep mode on: the Server List Ping for Java, the RakNet ping for RakNet Bedrock,
+    the player log for NetherNet Bedrock; no answer never counts as empty. After the chosen
+    minutes (15 by default, 1 to 1440) it takes the server's backup lock (no sleeping in the
+    middle of a backup; also not while moving or changing type), stops it and listens on its game
+    port. Java: the status answer echoes the client's protocol, shows the MOTD with "Sleeping:
+    join to start it", the icon and 0 players; a login gets a Login Disconnect ("starting up,
+    join again in about 30 seconds", a minute for modded) and wakes it, unless the whitelist or
+    ban list would refuse that name. RakNet Bedrock: a pong (version and protocol remembered from
+    the last real pong) and Open Connection Request 1 wakes it. NetherNet has no status to
+    answer, so a TCP connection that sends anything wakes it. **Changes from the plan:** the
+    listener lets go of the port through a hook in the platform layer (`platform.before_start()`,
+    called by every system's `services.control()` for start and restart), so any start in the
+    panel's process frees the port first; a start from outside is noticed within 2 s. A socket
+    closed while `select()` waits on it stays open in the kernel until select returns, which the
+    first real test caught (the woken server's port check found 25565 taken); the loop now waits
+    on a wake-up socket too and a close waits for the round to end. **Stop means stopped**: Stop
+    (panel or API) turns waking off until the next Start or **Sleep now**; a crash or a stop from
+    outside is the same. **Boot:** the unit is always disabled while sleep mode is on
+    (`bootstart.apply()`), the Start at boot switch keeps showing the choice, and after the
+    machine starts the panel puts the server to sleep if the choice is on and leaves it stopped
+    if not. A reboot is told from a panel restart by `system.boot_time()` (Linux: when process 1
+    started, which is the container's start under Docker; Windows: GetTickCount64). State in
+    `sleep.json` (root-only) so notify-unit can say "went to sleep" and `redstonepanel ports`
+    counts the panel's listener as the server's (`portaudit.owner()`). Moves carry the minutes
+    (`sleep` in the server's details; older members ignore it). Bedrock servers with Phantom are
+    refused until tested. CLI `redstonepanel sleep NAME on [MINUTES]|off`.
+    **Tested:** `tests/test_sleep.py` (36: the Java status, login, whitelist and ban answers over
+    a socket pair, the RakNet pong and wake, real listeners on free ports, the empty clock, the
+    backup lock, before_start, Stop, wake and failed wake, starts from outside, reboot and panel
+    restart, Start at boot, the Port check owner, moves, the stop notification, and the join
+    page Start). `packaging/test/test-sleep.sh` in Docker with a real vanilla 1.21.11 server and
+    a real mineflayer client, and a real Bedrock server over RakNet and NetherNet (added to
+    release.yml's cluster jobs).
+
+34. **Start the server from its join page.** Asked for by Quentin on 26 Nov 2026, for a
+    community server a friend wants to join while it's stopped. **As built (1.26):** a per-page
+    switch **Let visitors start the server** (off by default). The page shows **Start the server**
+    while the server is stopped or asleep, and says Starting until it answers. The button is the
+    join site's only POST (`/join/<link>/start`); it needs the header `X-Join-Start: 1`, which a
+    form on another site can't send, and is a 404 where the switch is off. The panel starts a
+    server at most once every 2 minutes from its page and each address at most 3 times an hour;
+    the page never stops a server (sleep mode does that). On a master a node's server is started
+    through the node's own action route. Logged with the visitor's address. Tested in
+    `tests/test_sleep.py` and `test-sleep.sh`. A Discord `/start` with an API token is planned for
+    1.27.
 
 ## Groundwork (do alongside, before promoting)
 

@@ -45,6 +45,7 @@ import core.backup_targets as backup_targets
 import core.perf as perf
 import core.crashes as crashes
 import core.bootstart as bootstart
+import core.sleep as sleep
 import core.apitokens as apitokens
 import core.mastersignin as mastersignin
 import core.grants as grants
@@ -1067,7 +1068,7 @@ def _boot_server(server_name):
 @app.get("/api/servers/{server_name}/boot")
 def get_boot(server_name: str):
     _boot_server(server_name)
-    return {"enabled": bootstart.enabled(server_name)}
+    return {"enabled": bootstart.shown(server_name), "sleep": sleep.enabled(server_name)}
 
 @app.put("/api/servers/{server_name}/boot")
 def set_boot(request: Request, server_name: str, req: BootUpdate):
@@ -1079,6 +1080,35 @@ def set_boot(request: Request, server_name: str, req: BootUpdate):
         raise HTTPException(status_code=500, detail=f"The system still says Start at boot is {'on' if on else 'off'} "
                                                     f"for {server_name}; see the action console.")
     return {"enabled": on}
+
+# --- 1.26: sleep mode (core/sleep.py): stops when nobody plays, starts when someone joins
+class SleepUpdate(BaseModel):
+    enabled: bool
+    minutes: Optional[int] = None
+
+def _sleep_call(fn, *args, **kw):
+    try:
+        return fn(*args, **kw)
+    except sleep.SleepError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/api/servers/{server_name}/sleep")
+def get_sleep(server_name: str):
+    _boot_server(server_name)
+    return sleep.info(server_name)
+
+@app.put("/api/servers/{server_name}/sleep")
+def set_sleep(request: Request, server_name: str, req: SleepUpdate):
+    _boot_server(server_name)
+    return _sleep_call(sleep.turn, server_name, req.enabled, req.minutes, actor=request.state.user["username"])
+
+@app.post("/api/servers/{server_name}/sleep/now")
+def sleep_now(request: Request, server_name: str):
+    _boot_server(server_name)
+    _sleep_call(sleep.sleep_now, server_name, actor=request.state.user["username"])
+    return sleep.info(server_name)
 
 # --- 1.17.1: why did it crash? (core/crashes.py)
 class CrashFix(BaseModel):

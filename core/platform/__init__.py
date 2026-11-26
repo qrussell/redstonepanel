@@ -75,6 +75,25 @@ def area(which):
     return _state["areas"][which]
 
 
+_before_start = []
+
+
+def on_before_start(fn):
+    """Sleep mode (1.26): fn(unit_name) runs before any game server or unit is started or
+    restarted through services, so the panel can let go of a port it holds for it."""
+    if fn not in _before_start:
+        _before_start.append(fn)
+
+
+def before_start(unit_name):
+    """Called by each system's services.control() for start and restart. Never raises."""
+    for fn in list(_before_start):
+        try:
+            fn(unit_name)
+        except Exception:
+            pass
+
+
 class _Area:
     """`services.start(...)` -> the current system's services.start(...)."""
 
@@ -103,4 +122,4 @@ certs = _Area("certs")
 terminal = _Area("terminal")
 
 __all__ = ["services", "firewall", "console", "packages", "system", "certs", "terminal", "paths",
-           "CommandError", "TimeoutExpired", "use", "name", "area"]
+           "CommandError", "TimeoutExpired", "use", "name", "area", "on_before_start", "before_start"]

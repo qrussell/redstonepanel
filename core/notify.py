@@ -321,6 +321,13 @@ def unit_event(phase, server, env=None):
     else:
         requested = stop_requested(server)
         event, message = describe_stop(os.environ if env is None else env, requested)
+        if requested and event == "stopped":
+            try:                               # sleep mode (1.26): say it sleeps, not just stopped
+                from core import sleep
+                if sleep.is_asleep(server):
+                    message = "went to sleep (nobody was playing). It starts when a player joins."
+            except Exception:
+                pass
         d = None if requested or event == "crashed" else bedrock_dir(server)
         if d and not bedrock_quit_cleanly(d):
             event, message = "crashed", "crashed (the game ended without shutting down). Starting it again in 20 seconds."
