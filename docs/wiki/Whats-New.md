@@ -9,6 +9,16 @@ the dashboard.
 
 ---
 
+## 1.24.1: Windows cluster fixes *(November 2026)*
+
+- A Windows PC that joins or creates a cluster now opens the panel's HTTPS port (8443) in
+  Windows Defender Firewall, so its master can reach it. A PC that joined on 1.24.0 fixes itself
+  after the update.
+- A server created on a node from the master shows in the list without reloading the page.
+- A master's **Dashboard and Cluster page load much faster**; update every member.
+
+[Release notes](../../release-notes/v1.24.1.md)
+
 ## 1.24.0: mixed Linux and Windows clusters *(November 2026)*
 
 - A Windows PC can be a cluster's **master or a node** next to Linux machines. Java and Bedrock

@@ -1,3 +1,18 @@
+redstonepanel (1.24.1) noble; urgency=medium
+
+  * Windows: creating, joining or leaving a cluster opens or closes the
+    panel's HTTPS port in its firewall rule. A Windows PC that joined on
+    1.24.0 only had port 8080 open, so its master couldn't reach it; the
+    panel now checks the rule at every start and fixes it.
+  * A server created on a node from the master shows in the server list
+    straight away, without reloading the page.
+  * A cluster master's Dashboard and Cluster page load much faster: each
+    member no longer runs the full port check whenever it's asked for its
+    figures (it still runs every two minutes), and the page draws the
+    members first.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Thu, 26 Nov 2026 05:00:00 +0000
+
 redstonepanel (1.24.0) noble; urgency=medium
 
   * Mixed Linux and Windows clusters: a Windows PC can be a cluster's
