@@ -1,3 +1,22 @@
+redstonepanel (1.26.0) noble; urgency=medium
+
+  * Sleep mode, per server on the Maintenance tab (and `redstonepanel sleep
+    NAME on [MINUTES]|off`): after the minutes you choose with nobody on,
+    the panel stops the server and answers on its port. Java shows
+    "Sleeping: join to start it" in the server list; joining starts it and
+    the player joins again about 30 seconds later. Bedrock wakes on the
+    first try to join. Works on Linux, Windows and cluster nodes, and is
+    kept through moves. A sleeping server never starts at boot: after a
+    reboot it goes back to sleep if Start at boot is on.
+  * Join pages: "Let visitors start the server" adds a Start the server
+    button to a stopped server's public page (off by default; one start
+    every 2 minutes per server, 3 an hour per visitor).
+  * Port check: right after a server started, the dashboard could say its
+    port was held by a program the system can't name, for up to three
+    minutes. It now looks again before saying so.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Thu, 26 Nov 2026 20:00:00 +0000
+
 redstonepanel (1.25.0) noble; urgency=medium
 
   * API tokens for scripts and bots: Panel Settings > API tokens, or
