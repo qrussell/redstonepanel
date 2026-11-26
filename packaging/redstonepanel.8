@@ -22,6 +22,14 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .B redstonepanel terminal
 .BR on | off
 .br
+.B redstonepanel token
+.BR list | create | revoke
+.RI [ NAME ]
+.br
+.B redstonepanel boot
+.I NAME
+.BR on | off
+.br
 .B redstonepanel removed
 .br
 .B redstonepanel restore
@@ -123,6 +131,30 @@ Recovery: switch the panel back to plain HTTP on port 8080 with sign\-in require
 On a cluster member this cuts the panel off from the cluster until
 .B cluster-https
 is run.
+.TP
+.B token list
+List the API tokens (Panel Settings, API tokens): what each may do on which servers, when it
+expires and when it was last used.
+.TP
+.BI "token create " NAME " \-\-perms " PERMS " \fR[\fP\-\-servers " SERVERS "\fR] [\fP\-\-days " N \fR]\fP
+Make an API token for a script or bot and print it; it is not shown again.
+.I PERMS
+is a comma\-separated list of view, console, power, players, files, mods, settings and backups;
+.I SERVERS
+a comma\-separated list of game servers (every server, including later ones, when left out).
+A script sends it as
+.BR "Authorization: Bearer rpa_..." .
+A token can do what a user account with those permissions could, and never what needs an
+admin.
+.TP
+.BI "token revoke " NAME
+Revoke an API token; requests with it are refused at once.
+.TP
+.BI "boot " "NAME " on | off
+Whether the game server
+.I NAME
+starts by itself when the machine starts (the Maintenance tab's Start at boot). Off, it stays
+stopped after a reboot until someone starts it.
 .TP
 .BI "reset-password " NAME
 Recovery: set a new password for the panel account

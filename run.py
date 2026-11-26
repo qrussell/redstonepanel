@@ -8,6 +8,11 @@
                                       create a panel account (asks for the password)
     redstonepanel reset-password NAME set a panel account's new password (asks for it, or reads one
                                       line from stdin) and sign it out everywhere
+    redstonepanel token list          API tokens for scripts and bots (Panel Settings > API tokens)
+    redstonepanel token create NAME --perms view,power [--servers minecraft-a,minecraft-b] [--days 90]
+                                      make one (every server unless --servers); prints it once
+    redstonepanel token revoke NAME   revoke one; requests with it are refused at once
+    redstonepanel boot NAME on|off    start a game server when the machine starts, or not
     redstonepanel set-name "NAME"     name shown in the panel to tell servers apart
                                       ("" = use this server's host name)
     redstonepanel reset-security      recovery: plain HTTP on 8080, sign-in required, restart
@@ -335,6 +340,71 @@ def reset_password(args):
     try:
         from core import manager
         manager.write_log(f"[AUTH] password reset for panel user '{name}' from the command line")
+    except Exception:
+        pass
+
+
+def token_cmd(args):
+    """API tokens (1.25) from an admin prompt or SSH."""
+    from core import apitokens, grants
+    if args == ["list"]:
+        tokens = apitokens.list_tokens()
+        if not tokens:
+            print("No API tokens.")
+        for tk in tokens:
+            what = "; ".join(f"{'every server' if k == '*' else k}: {','.join(v)}" for k, v in tk["grants"].items())
+            when = time.strftime("%Y-%m-%d", time.localtime(tk["expires"])) if tk["expires"] else "never"
+            used = time.strftime("%Y-%m-%d %H:%M", time.localtime(tk["last_used"])) if tk["last_used"] else "never"
+            print(f"{tk['name']}  ({what})  expires {when}{' (expired)' if tk['expired'] else ''}  last used {used}")
+        return
+    if len(args) >= 2 and args[0] == "revoke":
+        name = " ".join(args[1:])
+        match = [tk for tk in apitokens.list_tokens() if tk["name"].lower() == name.lower()]
+        if not match:
+            sys.exit(f"No API token called {name}. See them with: redstonepanel token list")
+        apitokens.revoke(match[0]["id"])
+        _log_cli(f"[API] revoked the API token {match[0]['name']} from the command line")
+        print(f"Revoked {match[0]['name']}.")
+        return
+    if len(args) >= 2 and args[0] == "create":
+        opts, name = {"--perms": None, "--servers": None, "--days": None}, []
+        it = iter(args[1:])
+        for a in it:
+            if a in opts:
+                opts[a] = next(it, None)
+            else:
+                name.append(a)
+        if not opts["--perms"]:
+            sys.exit(f"Say what it may do: --perms with any of {','.join(grants.PERMS)}")
+        perms = [x.strip() for x in opts["--perms"].split(",") if x.strip()]
+        keys = [x.strip() for x in (opts["--servers"] or "*").split(",") if x.strip()]
+        try:
+            out = apitokens.create(" ".join(name), {k: perms for k in keys}, opts["--days"], actor="command line")
+        except apitokens.TokenError as e:
+            sys.exit(str(e))
+        _log_cli(f"[API] made the API token {out['name']} from the command line")
+        print(f"Token {out['name']} (shown only now):\n{out['token']}")
+        return
+    sys.exit("Usage: redstonepanel token list | create NAME --perms view,power [--servers a,b] [--days N] | revoke NAME")
+
+
+def boot_cmd(args):
+    """Start at boot (1.25) for one game server."""
+    from core import bootstart, manager
+    name, on = args[0], args[1]
+    try:
+        manager._check_server(name)
+    except manager.ServerError as e:
+        sys.exit(str(e))
+    now = bootstart.turn(name, on == "on")
+    _log_cli(f"[SERVICE] Start at boot turned {on} for {name} from the command line")
+    print(f"{name} {'starts' if now else 'does not start'} when the machine starts.")
+
+
+def _log_cli(text):
+    try:
+        from core import manager
+        manager.write_log(text)
     except Exception:
         pass
 
@@ -736,6 +806,10 @@ if __name__ == "__main__":
         status()
     elif cmd == "reset-password":
         reset_password(rest)
+    elif cmd == "token":
+        token_cmd(rest)
+    elif cmd == "boot" and len(rest) == 2 and rest[1] in ("on", "off"):
+        boot_cmd(rest)
     elif cmd == "add-user":
         add_user(rest)
     elif cmd == "removed" and not rest:
