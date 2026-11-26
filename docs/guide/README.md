@@ -229,7 +229,10 @@ the PC.
    turn on HTTPS. You can also sign in with your own Windows account if it is in
    **Administrators**, or in a local group named **RedstonePanel** that you make, and add
    **Windows Hello** (face, fingerprint or PIN) to skip the password; see
-   [Windows Hello](#windows-hello-passkeys). Windows accounts always sign in as admins; for
+   [Windows Hello](#windows-hello-passkeys). A Microsoft account signs in with its email
+   address and its Microsoft account password; the Windows PIN is not a password Windows checks
+   for other programs. If you never use a password (a passwordless Microsoft account), sign in
+   as **admin** once and add Windows Hello there. Windows accounts always sign in as admins; for
    people who should only run some servers, make panel accounts under **Users**.
 
 Java (Eclipse Temurin) is downloaded the first time a server needs it. Each game server is a
