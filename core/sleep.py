@@ -583,11 +583,13 @@ def holds(port, proto):
     return None
 
 
-def asleep_ports():
-    """{(port, proto): server} for the servers asleep, from their settings (any process)."""
+def sleep_ports():
+    """{(port, proto): server} for every server with sleep mode on, asleep or not, from their
+    settings (any process). The Port check reuses a list of listening sockets for up to 30 s, so
+    a listener it saw may belong to a server that has just woken up: it's still that server's."""
     from core import manager
     out = {}
-    for server in asleep_servers():
+    for server in sorted(_load()["servers"]):
         try:
             props = manager.read_properties(manager.get_server_dir(server))
             java = manager._is_java(server)

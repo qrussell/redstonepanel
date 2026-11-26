@@ -407,12 +407,24 @@ class Elsewhere(Base):
         self.server()
         Z.turn("minecraft-java", True, 15)
         Z._set_state("minecraft-java", "asleep")
-        with mock.patch.object(Z, "asleep_ports", lambda: {(25565, "tcp"): "minecraft-java"}):
+        with mock.patch.object(Z, "sleep_ports", lambda: {(25565, "tcp"): "minecraft-java"}):
             got = portaudit.owner({"port": 25565, "proto": "tcp", "pid": os.getpid(), "service": "redstonepanel.service"},
                                   {"minecraft-java"})
             self.assertEqual(got, ("server", "minecraft-java"))
             got = portaudit.owner({"port": 8080, "proto": "tcp", "pid": os.getpid(), "service": ""}, {"minecraft-java"})
             self.assertEqual(got, ("panel", None))
+
+    def test_a_listener_seen_just_before_a_wake_is_still_the_server(self):
+        # the Port check reuses its list of listeners for 30 s: the panel's sleep listener may be
+        # in it after the server woke up and its own process holds the port
+        self.server()
+        Z.turn("minecraft-java", True, 15)
+        Z._set_state("minecraft-java", "awake")
+        ports = Z.sleep_ports()
+        self.assertEqual(ports.get((25565, "tcp")), "minecraft-java")
+        got = portaudit.owner({"port": 25565, "proto": "tcp", "pid": os.getpid(), "service": "redstonepanel.service"},
+                              {"minecraft-java"})
+        self.assertEqual(got, ("server", "minecraft-java"))
 
     def test_a_move_carries_it(self):
         from core import transfer

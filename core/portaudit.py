@@ -187,10 +187,10 @@ def listeners(fresh=False, max_age=LISTEN_CACHE):
 
 
 def _asleep_on(port, proto):
-    """The asleep server whose game port the panel holds (sleep mode, 1.26), or None."""
+    """The server with sleep mode on whose game port the panel holds (1.26), or None."""
     try:
         from core import sleep
-        return sleep.holds(port, proto) or sleep.asleep_ports().get((port, proto))
+        return sleep.holds(port, proto) or sleep.sleep_ports().get((port, proto))
     except Exception:
         return None
 
