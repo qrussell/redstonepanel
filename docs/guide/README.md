@@ -51,6 +51,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.24.1 | A Windows PC that joins or creates a cluster opens its HTTPS port (8443) in the firewall; a server created on a node shows without a reload. | [Clusters](#18-clusters) |
 | 1.24.0 | **Mixed Linux and Windows clusters**, SFTP on Windows, **Windows Hello** passkeys (or a phone), an easier first password on Windows, and **Remember this device** for 30 days. | [Clusters](#18-clusters), [Windows Hello](#windows-hello-passkeys), [Remember this device](#remember-this-device) |
 | 1.23.2 | **Remove RedstonePanel** under Panel Settings (and `sudo redstonepanel uninstall`) backs up every server and asks what happens to each one before the panel goes. | [Removing RedstonePanel](#removing-redstonepanel) |
 | 1.23.1 | **Port check** on the Port forwarding page: finds port conflicts, names the other program and fixes what it safely can. | [Port check](#port-check) |
@@ -2222,6 +2223,9 @@ works between them, including moves, copies and backup copies:
   try again. A Windows panel checks the same when it restores a backup or imports an archive.
 - Both machines need RedstonePanel 1.24 or later for a Windows member; Linux members on 1.16 or
   later still move servers between themselves.
+- **Firewall on Windows.** A cluster member is reached on its HTTPS port (8443 unless you
+  changed it). The panel opens it in Windows Defender Firewall when the PC creates or joins a
+  cluster (from 1.24.1). Players' game ports are opened for each server as usual.
 
 **Creating a server on a node:** in **New Server**, pick the node under **Where**. A template
 you choose is copied to the node first, ports are picked on the node, and if the node doesn't have

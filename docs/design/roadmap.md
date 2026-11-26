@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.24.0 (26 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) removing the panel safely (1.23.2) and mixed Linux and Windows clusters with Windows Hello sign-in (1.24) shipped; API tokens (1.25) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.24.1 (26 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) removing the panel safely (1.23.2) and mixed Linux and Windows clusters with Windows Hello sign-in (1.24) with its Windows cluster fixes (1.24.1) shipped; API tokens (1.25) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -2307,6 +2307,24 @@ services run through the panel's own program, which the MSI removes). Tests: 17 
 (`tests/test_uninstall.py`) and `packaging/test/test-uninstall.sh`, 30 of 30 checks in a systemd
 container (in the GitHub release workflow's cluster job), also run on Superman; the overview
 and the refusals were checked read-only against the real servers of the Windows panel.
+
+### 1.24.1: Windows cluster fixes *(released Nov 2026)*
+
+**Why.** Quentin installed 1.24.0 on a second Windows 11 PC and it couldn't be reached by its
+master. A fresh Windows install has HTTPS off, so the installer's rule ("RedstonePanel panel")
+opened only 8080; joining turned on cluster HTTPS on 8443 and restarted, but only saving Panel
+Settings updated that rule. He also found that a server created on a node from the master
+appeared only after a reload.
+
+**As built (1.24.1):** `settings.sync_panel_firewall()` makes the panel's rule open exactly
+`settings.panel_ports()` (HTTP, and HTTPS when it's on). `cluster._set_https()` calls it, which
+covers create, join, leave, dissolve and promote from the page and the CLI; Panel Settings uses it;
+`run.py` calls it at every start, so 1.24.0 nodes fix themselves. On Windows the script leaves
+the rule alone when it already opens those ports. `loadServers()` asks
+`/api/cluster/overview?fresh=1`, which skips the master's 10-second copy of each node's list, and
+`cluster_client.forget_cached()` counts per node so a fetch that started before a change can't
+store its older answer. Tests: `tests/test_overview_cache.py` and the firewall cases in
+`tests/test_cluster.py` and `tests/test_windows.py`.
 
 ### 2.0: an API for scripts and bots
 
