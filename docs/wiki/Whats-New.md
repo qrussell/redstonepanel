@@ -9,6 +9,19 @@ the dashboard.
 
 ---
 
+## 1.24.0: mixed Linux and Windows clusters *(November 2026)*
+
+- A Windows PC can be a cluster's **master or a node** next to Linux machines. Java and Bedrock
+  servers move both ways (Bedrock gets the new machine's program), and a move onto Windows is
+  refused, with the list, when the server holds file names Windows can't.
+- Backup copies and restores work across systems. **SFTP** works on Windows. Windows is no
+  longer a preview.
+- Windows panels: **Sign in with Windows Hello** (face, fingerprint or PIN) once you add a
+  passkey under **🔑 Password**, and the installer opens a page to **choose the admin password**.
+- `redstonepanel reset-password NAME` sets a forgotten panel password.
+
+[Release notes](../../release-notes/v1.24.0.md)
+
 ## 1.23.2: removing the panel safely *(November 2026)*
 
 - **Panel Settings → Remove RedstonePanel** and `sudo redstonepanel uninstall` back up every

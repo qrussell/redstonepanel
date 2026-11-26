@@ -1,3 +1,26 @@
+redstonepanel (1.24.0) noble; urgency=medium
+
+  * Mixed Linux and Windows clusters: a Windows PC can be a cluster's
+    master or a node next to Linux machines. The Cluster page and Panel
+    Settings say Linux or Windows for each member.
+  * Java and Bedrock servers move both ways; a Bedrock server gets the
+    new machine's own program. A move or restore onto Windows is refused,
+    with the list, when the server holds file names Windows can't.
+  * Backup copies, restores and encrypted cluster backups work across
+    systems.
+  * SFTP on Windows, and HTTPS with your own certificate (win-acme or
+    certbot) picks up a renewed certificate by itself. Windows is no
+    longer a preview.
+  * Windows sign-in: Windows Hello (face, fingerprint or PIN) through
+    passkeys, added under Password; it counts as two-factor sign-in.
+  * The Windows installer's Finish page opens a one-use link to choose
+    the admin password, and the Start menu gets RedstonePanel.
+  * `redstonepanel reset-password NAME` sets a forgotten panel password.
+  * A server moved away and back keeps its name; start, stop and restart
+    on a node wait for its answer.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Thu, 26 Nov 2026 01:00:00 -0000
+
 redstonepanel (1.23.2) noble; urgency=medium
 
   * Panel Settings > Remove RedstonePanel and `sudo redstonepanel
