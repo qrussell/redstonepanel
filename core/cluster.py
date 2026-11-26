@@ -38,13 +38,15 @@ from core.platform import certs, paths
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
-CLUSTER_API = 9                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
+CLUSTER_API = 10                # the master<->node contract version (see hello()); 3: moving servers (1.16),
                                 # 4: backup copies on another member (1.16.8), 5: pre-copy moves (1.16.13),
                                 # 6: New server's Advanced options and moves that keep startup flags (1.17.2),
                                 # 7: Purpur, Quilt, Forge, NeoForge and modpacks (1.20),
                                 # 8: the terminal, through the master (1.21.10),
-                                # 9: Windows members; moves to Windows check file names first (1.24)
+                                # 9: Windows members; moves to Windows check file names first (1.24),
+                                # 10: the master's admins open a node's panel signed in (1.25)
 MIXED_API = 9                   # a node needs this to be told a move goes to Windows (export for_windows)
+SIGN_IN_API = 10                # a node needs this for Open dashboard (signed in) from the master
 TERMINAL_API = 8                # a node needs this for a terminal from the master
 LOADERS_API = 7                 # a node needs this for the 1.20 server types and modpacks
 ADVANCED_API = 6                # a node needs this for New server's Advanced options
@@ -73,6 +75,7 @@ SERVER = r"/api/servers/minecraft[A-Za-z0-9_.@-]*"
 NODE_ROUTES = (
     # phase 1: membership, certificates, the cluster page
     ("GET", r"/api/cluster/hello"),
+    ("POST", r"/api/cluster/sign-in"),      # 1.25: a ticket for a master admin's Open dashboard
     ("DELETE", r"/api/cluster/membership"),
     ("POST", r"/api/cluster/cert/csr"),
     ("PUT", r"/api/cluster/cert"),
@@ -212,7 +215,8 @@ def clean_machine(value):
 def public_node(n):
     """A node record without its token."""
     out = {k: n.get(k) for k in ("id", "name", "url", "platform", "machine", "version", "cluster_api",
-                                 "cert_expires", "added", "added_by", "last_ok", "sans", "renew_error", "terminal")}
+                                 "cert_expires", "added", "added_by", "last_ok", "sans", "renew_error", "terminal",
+                                 "master_sign_in")}
     out["verify"] = node_verify(n)
     return out
 
@@ -536,7 +540,8 @@ def hello():
     cert = s["cert_file"] if s["https_mode"] == "custom" else node_crt()
     return {"name": panel_settings.display_name(s), "version": panel_version(), "cluster_api": CLUSTER_API,
             "platform": this_system(), "machine": platform.machine(), "cluster_id": st.get("cluster_id"), "cert_expires": cert_expires(cert),
-            "https_mode": s["https_mode"], "terminal": terminal.node_fields()}
+            "https_mode": s["https_mode"], "terminal": terminal.node_fields(),
+            "master_sign_in": s.get("master_sign_in") is not False}
 
 
 def this_system():

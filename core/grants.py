@@ -244,6 +244,7 @@ public   POST    /api/auth/passkey/login
 public   POST    /api/auth/first-sign-in/check
 public   POST    /api/auth/first-sign-in
 public   POST    /api/auth/logout
+public   GET     /api/auth/master-sign-in
 public   GET     /api/cluster/ca
 public   GET     /api/cluster/ca.crt
 public   POST    /api/cluster/join
@@ -419,6 +420,7 @@ proxy            DELETE  /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 power@node_id    POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/action
 settings@node_id POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/template
 admin            POST    /api/cluster/nodes/{{node_id}}/templates
+admin            POST    /api/cluster/nodes/{{node_id}}/sign-in
 backups@member_id GET    /api/cluster/backup-copies/{{member_id}}/{{server_name}}
 backups@member_id POST   /api/cluster/backup-copies/{{member_id}}/{{server_name}}/sync
 backups@panel    GET     /api/cluster/backup-copies/file/{{holder}}/{{panel}}/{{server_name}}/{{filename}}
@@ -432,6 +434,7 @@ admin            GET     /api/cluster/moves/{{job_id}}
 admin            DELETE  /api/cluster/moved/{{member_id}}/{{server_name}}
 
 node     GET     /api/cluster/hello
+node     POST    /api/cluster/sign-in
 node     DELETE  /api/cluster/membership
 node     POST    /api/cluster/cert/csr
 node     PUT     /api/cluster/cert

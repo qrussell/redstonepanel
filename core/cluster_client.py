@@ -252,6 +252,7 @@ def _hello_fields(node):
     if h.get("platform"):
         out["platform"] = cluster.clean_system(h.get("platform"))
     out["terminal"] = cluster.clean_terminal(h.get("terminal"))      # None from a node before 1.21.10
+    out["master_sign_in"] = h.get("master_sign_in") is True           # False from a node before 1.25
     return out
 
 

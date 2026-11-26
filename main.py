@@ -14,6 +14,7 @@ import core.selfupdate as selfupdate
 import core.phantom as phantom
 import core.host as host
 import urllib.parse
+import html as html_text
 import core.javaservers as javaservers
 import core.playerlog as playerlog
 import core.whitelist as whitelist
@@ -45,6 +46,7 @@ import core.perf as perf
 import core.crashes as crashes
 import core.bootstart as bootstart
 import core.apitokens as apitokens
+import core.mastersignin as mastersignin
 import core.grants as grants
 import core.sshkeys as sshkeys
 import core.sftp as sftp
@@ -125,12 +127,12 @@ async def no_stale_static(request: Request, call_next):
 PUBLIC_API = {"/api/auth/login", "/api/auth/login/code", "/api/auth/logout", "/api/health", "/api/panel-info",
               "/api/auth/passkeys/available", "/api/auth/passkey/options", "/api/auth/passkey/login",
               "/api/auth/first-sign-in", "/api/auth/first-sign-in/check",
-              "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join"}
+              "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join", "/api/auth/master-sign-in"}
 ADMIN_API = ("/api/users", "/api/settings")
 # What an API token (1.25) never reaches, whatever its grants: the account routes and the terminal
 TOKEN_REFUSED_API = ("/api/auth/", "/api/terminal")
 NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates",
-                 "/api/cluster/transfers", "/api/cluster/held-backups")
+                 "/api/cluster/transfers", "/api/cluster/held-backups", "/api/cluster/sign-in")
 CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster/nodes/", "/api/cluster/moves",
                     "/api/cluster/moved/", "/api/cluster/backup-copies")
 STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
@@ -188,6 +190,10 @@ async def access_control(request: Request, call_next):
                                                    "for admins)."}, status_code=403)
                 if path.startswith(NODE_ONLY_API):
                     return JSONResponse({"detail": "Only the cluster's master can use this."}, status_code=403)
+                if (user["source"] == mastersignin.SOURCE and path.startswith("/api/auth/")
+                        and path not in mastersignin.AUTH_ALLOWED):
+                    return JSONResponse({"detail": "You signed in here from the cluster's master, so you have no "
+                                                   "account on this panel to change."}, status_code=403)
                 if path.startswith(CLUSTER_USER_API) and user["source"] == "trusted":
                     return JSONResponse({"detail": "Sign in to see the cluster."}, status_code=403)
                 if path.startswith(ADMIN_API) and user["role"] != "admin":
@@ -819,7 +825,9 @@ def update_settings_api(request: Request, new: dict = Body(...)):
                # ... or the join pages (PUT /api/settings/join)
                join_enabled=old["join_enabled"], join_port=old["join_port"], join_index=old["join_index"],
                # ... or the terminal (PUT /api/settings/terminal)
-               **{k: old[k] for k in panel_settings.TERMINAL_KEYS})
+               **{k: old[k] for k in panel_settings.TERMINAL_KEYS},
+               # ... or whether the master's admins may sign in here (PUT /api/settings/master-sign-in)
+               master_sign_in=old["master_sign_in"])
     try:
         s = panel_settings.validate(new)
     except panel_settings.SettingsError as e:
@@ -2532,6 +2540,75 @@ def cluster_join_api(request: Request, body: dict = Body(...)):
 def cluster_hello_api():
     return cluster.hello()
 
+# --- 1.25: Open dashboard. A master admin opens a node's own panel, signed in (core/mastersignin.py)
+@app.post("/api/cluster/sign-in")
+def cluster_sign_in_ticket_api(request: Request):
+    """Node side: a one-use ticket for the master's admin named in X-RedstonePanel-Actor."""
+    try:
+        return {"ticket": mastersignin.issue(request.state.user)}
+    except mastersignin.SignInError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+_SIGN_IN_PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>RedstonePanel</title><meta http-equiv="refresh" content="0; url={to}"></head>
+<body style="font-family:sans-serif;background:#111;color:#eee;padding:2rem">{text}</body></html>"""
+
+@app.get("/api/auth/master-sign-in", response_class=HTMLResponse)
+def master_sign_in_api(request: Request, ticket: str = ""):
+    """Node side: the link the master gave its admin's browser. Signs in and goes to the dashboard
+    (through a page of its own, so the strict cookie is sent from then on)."""
+    ip = request.client.host if request.client else "unknown"
+    keys = (f"ip:{ip}",)
+    if auth._throttled(keys):
+        return HTMLResponse(_SIGN_IN_PAGE.format(to="/static/login.html", text="Too many failed sign-ins. Try again "
+                                                 "in a few minutes."), status_code=429)
+    try:
+        identity = mastersignin.redeem(ticket)
+    except mastersignin.SignInError as e:
+        auth._record_fail(keys)
+        manager.write_log(f"[AUTH] A sign-in link from the cluster's master was refused from {ip}: {e}")
+        return HTMLResponse(_SIGN_IN_PAGE.format(to="/static/login.html", text=html_text.escape(str(e))), status_code=403)
+    response = HTMLResponse(_SIGN_IN_PAGE.format(to="/", text="Signing in..."))
+    _set_session_cookie(request, response, identity)
+    manager.write_log(f"[AUTH] {identity['u']} signed in from {ip} with Open dashboard on the cluster's master")
+    return response
+
+@app.post("/api/cluster/nodes/{node_id}/sign-in")
+def cluster_node_sign_in_api(node_id: str, request: Request):
+    """Master side: a link that opens the node's own panel signed in as this admin."""
+    node = _proxy_node(node_id)
+    me = request.state.user
+    if me["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can open a node's own panel.")
+    if (node.get("cluster_api") or 1) < cluster.SIGN_IN_API:
+        raise HTTPException(status_code=400, detail=f"{node['name']} needs RedstonePanel 1.25 or later for this. "
+                                                    "Update it, or sign in there with its own account.")
+    try:
+        got = cluster_client.call_node(node, "POST", "/api/cluster/sign-in", {}, actor=me["username"], role="admin")
+    except cluster_client.NodeError as e:
+        raise HTTPException(status_code=403 if e.state in ("too_old", "rejected") else 502,
+                            detail=f"{node['name']}: {e}")
+    ticket = got.get("ticket") if isinstance(got, dict) else None
+    if not isinstance(ticket, str) or not ticket or len(ticket) > 2000:
+        raise HTTPException(status_code=502, detail=f"{node['name']} didn't give a sign-in link.")
+    manager.write_log(f"[CLUSTER] {me['username']} opened {node['name']}'s own panel, signed in")
+    return {"url": f"{node['url']}/api/auth/master-sign-in?ticket={urllib.parse.quote(ticket)}"}
+
+class MasterSignInSetting(BaseModel):
+    enabled: bool
+
+@app.put("/api/settings/master-sign-in")
+def master_sign_in_setting_api(req: MasterSignInSetting, request: Request):
+    """Node side: whether the master's admins may open this panel signed in (on by default)."""
+    s = dict(panel_settings.load(), master_sign_in=req.enabled)
+    try:
+        panel_settings.save(panel_settings.validate(s))
+    except panel_settings.SettingsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[SETTINGS] {request.state.user['username']} turned signing in from the cluster's master "
+                      f"{'on' if req.enabled else 'off'}.")
+    return {"enabled": req.enabled}
+
 @app.delete("/api/cluster/membership")
 def cluster_membership_api(request: Request):
     try:
@@ -3321,7 +3398,8 @@ def cluster_settings_api(request: Request):
     elif st["role"] == "node":
         view.update(name=st.get("cluster_name"), cluster_id=st.get("cluster_id"), epoch=st.get("epoch"),
                     master_name=st.get("master_name"), master_url=st.get("master_url"),
-                    joined=st.get("joined"), last_used=st.get("last_used"), last_ip=st.get("last_ip"))
+                    joined=st.get("joined"), last_used=st.get("last_used"), last_ip=st.get("last_ip"),
+                    master_sign_in=mastersignin.allowed())
     return view
 
 @app.post("/api/settings/cluster")

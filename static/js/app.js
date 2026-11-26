@@ -6555,6 +6555,27 @@ const ServerApp = {
 		RPTerminal.start({ node: nodeId || '', name, idleMinutes: t.idle_minutes });
 	},
 
+	// 1.25: a master admin opens a node's own panel signed in (the node allows it unless its admin
+	// turned it off under Panel Settings > Cluster)
+	canSignInToNode(n) {
+		return !!(this.isAdmin() && n.state === 'ok' && (n.cluster_api || 1) >= 10 && n.master_sign_in);
+	},
+
+	async openNodeSignedIn(nodeId, button) {
+		const win = window.open('', '_blank');          // now, while the click still counts (pop-up blockers)
+		button.disabled = true;
+		const res = await fetch(`/api/cluster/nodes/${encodeURIComponent(nodeId)}/sign-in`, { method: 'POST' });
+		button.disabled = false;
+		if (!res.ok) {
+			const msg = await this.apiError(res);
+			if (win) win.close();
+			alert(`Couldn't open it signed in: ${msg}`);
+			return;
+		}
+		const { url } = await res.json();
+		if (win) { win.opener = null; win.location.href = url; } else window.location.href = url;
+	},
+
 	canOpenNodeTerminal(n) {
 		const t = n.local ? (this.terminalInfo && this.terminalInfo.available)
 			: n.terminal && n.terminal.supported && n.terminal.enabled && n.terminal.from_master;
@@ -7696,7 +7717,9 @@ const ServerApp = {
 						</div>
 						<div class="flex flex-wrap justify-end items-center gap-3">
 						${this.canOpenNodeTerminal(n) ? `<button onclick="ServerApp.openTerminal(${this.jsArg(n.local ? '' : n.id)}, ${this.jsArg(n.name)})" title="A shell on this machine, as a Linux account" class="${btn} bg-gray-500 hover:bg-gray-600">⌨️ Terminal</button>` : ''}
-						${n.local ? '' : `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-sm underline text-theme whitespace-nowrap">Open dashboard ↗</a>`}
+						${n.local ? '' : this.canSignInToNode(n)
+							? `<button onclick="ServerApp.openNodeSignedIn(${this.jsArg(n.id)}, this)" title="Opens ${esc(n.name)}'s own panel, signed in as you" class="text-sm underline text-theme whitespace-nowrap">Open dashboard ↗</button>`
+							: `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-sm underline text-theme whitespace-nowrap">Open dashboard ↗</a>`}
 						</div>
 					</div>
 					${ok ? '' : `<p class="mx-4 mb-3 text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200">⚠️ ${esc(this.clusterStates[n.state] || n.state)}${n.error ? ` <span class="text-xs">(${esc(n.error)})</span>` : ''}</p>`}
@@ -7948,6 +7971,10 @@ const ServerApp = {
 			box.innerHTML = `
 				<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">This panel is a <b>node</b> of cluster <b>${esc(d.name)}</b>. Its master, <b>${esc(d.master_name)}</b> (<span class="font-mono">${esc(d.master_url)}</span>), can see and manage its game servers (every tab, creating servers, Java and Phantom). It can't change this panel's users, settings or HTTPS, or erase a server's files.</p>
 				<p class="${note} mb-2">Last contact from the master: ${esc(this.fmtTime(d.last_used))}${d.last_ip ? ' from ' + esc(d.last_ip) : ''}.</p>
+				<label class="flex items-start gap-2 mb-3 text-sm cursor-pointer">
+					<input type="checkbox" id="cl-master-sign-in" ${d.master_sign_in ? 'checked' : ''} onchange="ServerApp.saveMasterSignIn(this)" class="mt-1">
+					<span><b class="text-gray-900 dark:text-white">Let the master's admins sign in here</b><br><span class="${note}">Admins on ${esc(d.master_name)} can click <b>Open dashboard</b> on its Cluster page and land on this panel signed in, as an admin, without an account here. Turn it off to make them sign in with an account of this panel.</span></span>
+				</label>
 				${caLine}
 				<button onclick="ServerApp.leaveCluster(false)" class="${small}">Leave cluster</button>
 				<p id="cl-error" class="hidden text-sm text-red-500 mt-2"></p>`;
@@ -8072,6 +8099,12 @@ const ServerApp = {
 		this.clusterError('Joining...');
 		const data = await this.clusterPost('/api/settings/cluster/join', { code });
 		if (data) this.showRestarting(data.url, 'Your browser will warn about the certificate until you import the cluster CA.');
+	},
+
+	async saveMasterSignIn(box) {
+		const res = await fetch('/api/settings/master-sign-in', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ enabled: box.checked }) });
+		if (!res.ok) { alert(await this.apiError(res)); box.checked = !box.checked; }
 	},
 
 	async leaveCluster(dissolve) {
