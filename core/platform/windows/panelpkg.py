@@ -8,7 +8,11 @@ A Windows release is the MSI that the release workflow attaches to the GitHub re
     `apt-cache policy redstonepanel` has a Candidate: line;
   * downloads that MSI from GitHub over HTTPS and refuses it unless its SHA-256 matches the
     release's .sha256 file (and the digest GitHub keeps for the file, when it gives one);
-  * hands it to the Windows installer in a PowerShell process of its own.
+  * hands it to the Windows installer in a PowerShell process of its own, started by Task
+    Scheduler as the system account (1.24.2), so it isn't in the panel's Job Object (which ends
+    everything in it when the installer stops the panel) and it has the hidden console
+    PowerShell needs. Before 1.24.2 it was started with DETACHED_PROCESS, and powershell.exe
+    without a console exits before running anything: the installer never ran.
 
 The installer stops the panel and the game servers (they run from the panel's own Python) and
 puts in the new files. The PowerShell process waits for it, then starts the panel again, and
@@ -173,6 +177,9 @@ def _ps(value):
     return "'" + str(value).replace("'", "''") + "'"
 
 
+TASK_NAME = "RedstonePanel update"
+
+
 def installer_script(msi, log, result, home, servers, panel_service="redstonepanel"):
     """The PowerShell that runs the installer, waits for it and starts everything again."""
     names = ", ".join(_ps(s) for s in servers) or ""
@@ -188,8 +195,48 @@ def installer_script(msi, log, result, home, servers, panel_service="redstonepan
         "}",
         "$out = @{ code = $code; finished = [int][double]::Parse((Get-Date -UFormat %s)) } | ConvertTo-Json -Compress",
         f"[IO.File]::WriteAllText({_ps(result)}, $out)",
+        f"schtasks.exe /Delete /TN {_ps(TASK_NAME)} /F | Out-Null",
         "",
     ])
+
+
+def task_xml(argv, cwd):
+    """A Task Scheduler task with no trigger that runs argv once, when asked, as the system account."""
+    from core.platform.windows import units
+    xml = units.task_xml(argv[0], subprocess.list2cmdline(argv[1:]), "*-*-* 04:00:00",
+                         "Installs a RedstonePanel update, then starts the panel and its game servers again.",
+                         working_dir=cwd, time_limit="PT1H")
+    start, end = xml.index("<Triggers>"), xml.index("</Triggers>") + len("</Triggers>")
+    return xml[:start] + "<Triggers />" + xml[end:]
+
+
+def start_installer(argv, cwd, run=None):
+    """Starts the installer script outside the panel: a one-off scheduled task, run now. When Task
+    Scheduler can't, a hidden PowerShell of its own (out of the panel's job where Windows allows)."""
+    from core.platform.windows import _win
+    run = run or (lambda cmd: _win.quiet(cmd, timeout=60))
+    os.makedirs(folder(), exist_ok=True)
+    xml = _file("update-task.xml")
+    try:
+        with open(xml, "w", encoding="utf-16") as f:
+            f.write(task_xml(argv, cwd))
+        made = run(["schtasks.exe", "/Create", "/TN", TASK_NAME, "/XML", xml, "/F"])
+        if made.returncode == 0 and run(["schtasks.exe", "/Run", "/TN", TASK_NAME]).returncode == 0:
+            return "task"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    finally:
+        try:
+            os.remove(xml)
+        except OSError:
+            pass
+    flags = _win.CREATE_NO_WINDOW | _win.CREATE_NEW_PROCESS_GROUP     # never DETACHED_PROCESS: PowerShell needs a console
+    kw = dict(cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+    try:
+        subprocess.Popen(argv, creationflags=flags | _win.CREATE_BREAKAWAY_FROM_JOB, **kw)
+    except OSError:
+        subprocess.Popen(argv, creationflags=flags, **kw)
+    return "process"
 
 
 def running_servers():
@@ -232,7 +279,7 @@ def install(out=print, spawn=None, servers=None):
     windir = os.environ.get("SystemRoot") or r"C:\Windows"
     argv = [os.path.join(windir, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile",
             "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script]
-    (spawn or _win.spawn_detached)(argv, cwd=folder())
+    (spawn or start_installer)(argv, cwd=folder())
     out(f"Setting up redstonepanel ({info['version']}) ... The Windows installer runs now: the panel and its "
         f"game servers stop for a minute and start again.")
     return True
