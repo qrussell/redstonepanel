@@ -66,7 +66,7 @@ class Fixture(unittest.TestCase):
             mock.patch.object(manager, "list_servers", lambda: [dict(name=n, directory=f"/srv/{n}", **v)
                                                                 for n, v in self.servers.items()]),
             mock.patch.object(manager, "read_properties", lambda d: dict(self.props[os.path.basename(d)])),
-            mock.patch.object(PA, "listeners", lambda fresh=False: list(self.held)),
+            mock.patch.object(PA, "listeners", lambda fresh=False, max_age=None: list(self.held)),
             mock.patch.object(PA, "_mod_claims", lambda name: []),
             mock.patch.object(PA, "panel_claims", lambda: [{"server": None, "kind": "panel", "key": "web",
                                                             "port": 8443, "proto": "tcp",
@@ -251,7 +251,7 @@ class Starting(Fixture):
     def setUp(self):
         super().setUp()
         for name, fn in (("resolve", lambda only=None, actor="panel": []),
-                         ("listeners", lambda fresh=False: list(self.held))):
+                         ("listeners", lambda fresh=False, max_age=None: list(self.held))):
             p = mock.patch.object(PA, name, fn)
             p.start()
             self.addCleanup(p.stop)

@@ -31,6 +31,7 @@ from core.settings import DATA_DIR
 
 STATE = os.path.join(DATA_DIR, "port-check.json")
 LISTEN_CACHE = 30                 # seconds a list of listening sockets is reused (dashboard, page)
+ATTENTION_AGE = 180               # Needs attention reuses the firewall watcher's list (made every 2 minutes)
 _lock = threading.RLock()
 _cache = {"at": 0.0, "listeners": None}
 
@@ -163,10 +164,10 @@ def parse_docker(text):
     return out
 
 
-def listeners(fresh=False):
-    """system.listeners(), reused for LISTEN_CACHE seconds, plus ports Docker publishes."""
+def listeners(fresh=False, max_age=LISTEN_CACHE):
+    """system.listeners(), reused for max_age seconds, plus ports Docker publishes."""
     with _lock:
-        if not fresh and _cache["listeners"] is not None and time.monotonic() - _cache["at"] < LISTEN_CACHE:
+        if not fresh and _cache["listeners"] is not None and time.monotonic() - _cache["at"] < max_age:
             return _cache["listeners"]
     try:
         found = list(system.listeners())
@@ -241,7 +242,7 @@ def _ephemeral():
         return (49152, 65535)
 
 
-def report(servers=None, fresh=False):
+def report(servers=None, fresh=False, max_age=LISTEN_CACHE):
     """{"problems": [...], "unknown": [...], "checked": time} for this machine.
 
     problem: {"id", "type", "level", "server", "port", "proto", "kind", "key", "label", "text",
@@ -254,7 +255,7 @@ def report(servers=None, fresh=False):
     status = {s["name"]: s.get("status") for s in servers}
     claims = all_claims(servers)
     held = {}
-    for l in listeners(fresh=fresh):
+    for l in listeners(fresh=fresh, max_age=max_age):
         held.setdefault((l["port"], l["proto"]), []).append(l)
     problems = []
     seen = set()
@@ -714,7 +715,7 @@ def start_check(server):
 def attention(rep=None):
     """Needs attention items: [(level, text, server)]."""
     try:
-        rep = report() if rep is None else rep
+        rep = report(max_age=ATTENTION_AGE) if rep is None else rep
     except Exception:
         return []
     out = [(p["level"], p["text"], p["server"]) for p in rep["problems"] if p["fix"] != "auto"]

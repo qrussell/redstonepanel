@@ -188,6 +188,19 @@ class Sync(unittest.TestCase):
         self.assertEqual(self.cmds, [])
         self.assertEqual(M._fw_load(), {"minecraft-b": {("19132", "tcp"), ("7551", "udp")}})
 
+    def test_the_dashboard_leaves_the_port_check_to_the_watcher(self):
+        """1.24.1: listing every socket takes seconds on Windows, so a dashboard or cluster
+        request doesn't run the port check; the watcher (every 2 minutes) does."""
+        from core import portaudit, host
+        swept = []
+        with mock.patch.object(portaudit, "sweep", lambda: swept.append(1)):
+            M.sync_firewall(ports=False)
+            self.assertEqual(swept, [])
+            M.sync_firewall()
+            self.assertEqual(swept, [1])
+        with open(host.__file__, encoding="utf-8") as f:
+            self.assertIn("manager.sync_firewall(ports=False)", f.read())
+
     def test_hand_edited_port(self):
         M.firewall_record("minecraft-b", {("19132", "tcp"), ("19132", "udp"), ("7551", "udp")})
         self.serve(**{"minecraft-b": {("19140", "tcp"), ("19140", "udp"), ("7551", "udp")}})

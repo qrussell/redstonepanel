@@ -172,7 +172,7 @@ class Report(unittest.TestCase):
             mock.patch.object(H, "rates", lambda units: (12.5, {"eth0": {"rx": 10, "tx": 20, "rx_total": 1, "tx_total": 2}},
                                                          {"minecraft-java.service": 3.2})),
             mock.patch.object(H, "firewall", lambda: self.fw),
-            mock.patch.object(H.manager, "sync_firewall", lambda: []),
+            mock.patch.object(H.manager, "sync_firewall", lambda ports=True: []),
             mock.patch.object(H, "failed_units", lambda: self.failed),
             mock.patch.object(H.proxies, "find_phantoms", lambda: []),
             mock.patch.object(H.javaservers, "installed_javas", lambda: {21: "/usr/lib/jvm/java-21/bin/java"}),

@@ -6375,33 +6375,37 @@ const ServerApp = {
 			if (!this.dashData) body.innerHTML = `<p class="text-red-500">Couldn't load the dashboard: ${this.escapeHtml(e.message)}</p>`;
 			return;
 		}
+		// 1.24.1: these four ask at the same time, and the cluster's hosts (the slowest, since
+		// each member answers for itself) are drawn when they come, not before anything else
+		const shown = () => { if (!document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard(); };
 		const cl = this.dashData.services.cluster;
-		if (cl && cl.role === 'master') {
+		const hosts = (async () => {
+			if (!(cl && cl.role === 'master')) { this.dashHosts = null; return; }
 			try {
 				const r = await fetch('/api/cluster/hosts');
 				this.dashHosts = r.ok ? await r.json() : null;
 			} catch (e) { /* keep the last answer */ }
-		} else {
-			this.dashHosts = null;
-		}
-		if (this.isAdmin() && !this.dashData.redacted) {
-			try {
-				const r = await fetch('/api/settings/setup');
-				this.setupData = r.ok ? await r.json() : null;
-			} catch (e) { /* keep the last answer */ }
-		} else {
-			this.setupData = null;
-		}
-		if (this.isAdmin()) {
-			try {
-				const r = await fetch('/api/terminal');
-				this.terminalInfo = r.ok ? await r.json() : null;
-			} catch (e) { /* keep the last answer */ }
-		} else {
-			this.terminalInfo = null;
-		}
-		await this.loadHostHistory();
-		if (!document.getElementById('dashboard').classList.contains('hidden')) this.renderDashboard();
+		})();
+		await Promise.all([
+			(async () => {
+				if (!(this.isAdmin() && !this.dashData.redacted)) { this.setupData = null; return; }
+				try {
+					const r = await fetch('/api/settings/setup');
+					this.setupData = r.ok ? await r.json() : null;
+				} catch (e) { /* keep the last answer */ }
+			})(),
+			(async () => {
+				if (!this.isAdmin()) { this.terminalInfo = null; return; }
+				try {
+					const r = await fetch('/api/terminal');
+					this.terminalInfo = r.ok ? await r.json() : null;
+				} catch (e) { /* keep the last answer */ }
+			})(),
+			this.loadHostHistory(),
+		]);
+		shown();
+		await hosts;
+		if (cl && cl.role === 'master') shown();
 	},
 
 	// --- 1.21.10: the terminal (static/js/terminal.js). Admins only, on a Linux machine, when on. ---
@@ -7492,17 +7496,19 @@ const ServerApp = {
 
 	async loadCluster() {
 		const box = document.getElementById('cluster-nodes');
+		// 1.24.1: servers and hosts are asked at the same time; the members and their servers
+		// are drawn first, and each member's CPU, memory and disk when they come
+		const hosts = fetch('/api/cluster/hosts').then(h => h.ok ? h.json() : null).catch(() => null);
 		const res = await fetch('/api/cluster/overview');
 		if (!res.ok) {
 			box.innerHTML = `<p class="text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`;
 			return;
 		}
 		this.clusterData = await res.json();
-		try {
-			const h = await fetch('/api/cluster/hosts');
-			this.clusterHosts = h.ok ? await h.json() : null;
-		} catch (e) { this.clusterHosts = null; }
-		this.renderCluster();
+		const open = () => !document.getElementById('cluster-view').classList.contains('hidden');
+		if (open()) this.renderCluster();
+		this.clusterHosts = await hosts;
+		if (open()) this.renderCluster();
 	},
 
 	// A value for an inline onclick="...(here)" handler: JSON, then HTML-escaped
