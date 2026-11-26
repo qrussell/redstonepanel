@@ -2326,13 +2326,13 @@ the rule alone when it already opens those ports. `loadServers()` asks
 store its older answer. Tests: `tests/test_overview_cache.py` and the firewall cases in
 `tests/test_cluster.py` and `tests/test_windows.py`.
 
-### 2.0: an API for scripts and bots
+### 1.25: an API for scripts and bots
 
 30. **API tokens.** The API already exists (FastAPI, with `/docs`) and the cluster code already
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes and, after 1.18, the servers they may touch. Shown once, revocable, and
-    logged under the token's name. Per-server permissions moved to 1.18; if nothing else joins
-    this release, it can ship as a point release after 1.24 instead.
+    logged under the token's name. Per-server permissions moved to 1.18. Planned as 2.0 until
+    26 Nov 2026, when Quentin chose to keep numbering releases 1.24, 1.25 and on.
 
 ## Groundwork (do alongside, before promoting)
 
