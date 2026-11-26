@@ -8112,7 +8112,7 @@ const ServerApp = {
 		const can = d.usable && window.rpPasskey && rpPasskey.browserCan();
 		box.innerHTML = `
 			<h4 class="font-bold text-gray-900 dark:text-white mb-1">Passkeys (Windows Hello)</h4>
-			<p class="text-sm text-gray-500 dark:text-gray-400 mb-3">Sign in with your face, fingerprint or Windows Hello PIN instead of your password. A passkey works at the address it was added at (${esc(location.hostname)}), in this browser's Windows account.</p>
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-3">Sign in with your face, fingerprint or Windows Hello PIN instead of your password, or with your phone: when Windows asks, choose a phone and scan the QR code. A passkey works at the address it was added at (${esc(location.hostname)}).</p>
 			${list}
 			${can ? `<input type="password" id="pk-password" autocomplete="current-password" placeholder="Your password, to add a passkey" class="${field}">
 			<input id="pk-name" maxlength="60" placeholder="Name (optional), e.g. Desk PC" class="${field}">` :

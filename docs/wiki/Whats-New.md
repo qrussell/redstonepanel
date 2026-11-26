@@ -16,7 +16,7 @@ the dashboard.
   refused, with the list, when the server holds file names Windows can't.
 - Backup copies and restores work across systems. **SFTP** works on Windows. Windows is no
   longer a preview.
-- Windows panels: **Sign in with Windows Hello** (face, fingerprint or PIN) once you add a
+- Windows panels: **Sign in with Windows Hello** (face, fingerprint, PIN or your phone) once you add a
   passkey under **🔑 Password**, and the installer opens a page to **choose the admin password**.
 - `redstonepanel reset-password NAME` sets a forgotten panel password.
 

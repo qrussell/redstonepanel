@@ -338,7 +338,8 @@ def registration_options(key, username, display, rp_id, origin):
         "pubKeyCredParams": [{"type": "public-key", "alg": a} for a in ALGS],
         "timeout": CHALLENGE_SECONDS * 1000,
         "attestation": "none",
-        "authenticatorSelection": {"authenticatorAttachment": "platform", "residentKey": "required",
+        # No authenticatorAttachment: Windows offers Windows Hello on this PC, a phone (QR code) or a security key
+        "authenticatorSelection": {"residentKey": "required",
                                    "requireResidentKey": True, "userVerification": "required"},
         "excludeCredentials": [{"type": "public-key", "id": c["id"]} for c in creds],
     }

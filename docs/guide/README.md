@@ -365,6 +365,11 @@ keep Linux accounts, panel accounts and two-factor codes.
 
 <p><picture><source media="(prefers-color-scheme: light)" srcset="images/light/windows-hello.png"><img src="images/windows-hello.png" alt="The sign-in page of a Windows panel, with Sign in with Windows Hello" width="300"></picture> <picture><source media="(prefers-color-scheme: light)" srcset="images/light/passkeys.png"><img src="images/passkeys.png" alt="Passkeys (Windows Hello) under the Password button" width="340"></picture></p>
 
+A passkey can also live on your **phone** (Android or iPhone) or a security key. When you click
+**Add Passkey**, choose **Use another device** in the Windows window, scan the QR code with the
+phone's camera and let it save the passkey; Bluetooth must be on on both. To sign in, click
+**Sign in with Windows Hello**, choose the phone and scan the code again.
+
 It counts as two-factor sign-in on its own (the PC's key plus your face, finger or PIN), so it
 also meets **Require two-factor sign-in for admins**. Browsers allow passkeys only at a name,
 not an IP address, and only over HTTPS or at `http://localhost`, so it works at
