@@ -278,7 +278,7 @@
     <nav class="sticky top-0 z-50 bg-obsidian/95 backdrop-blur-md border-b-2 border-[#2a2e3b]">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16 sm:h-20">
-                <!-- Brand Logo + v1.17 Badge -->
+                <!-- Brand Logo + version badge -->
                 <a href="#" class="flex items-center gap-3 group">
                     <!-- Custom Pixel-Art SVG Redstone Lamp Icon -->
                     <div class="w-10 h-10 mc-slot rounded-md flex items-center justify-center p-1.5 shrink-0">
@@ -303,7 +303,7 @@
                             REDSTONE<span class="redstone-glow-text">PANEL</span>
                         </span>
                         <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-pixel bg-redstone/20 text-redstone-bright border border-redstone/50 rounded w-fit">
-                            v1.22
+                            v1.23.2
                         </span>
                     </div>
                 </a>
@@ -385,7 +385,7 @@
             <!-- Status Pill -->
             <div class="inline-flex items-center gap-2.5 mc-slot rounded-full px-4 py-1.5 mb-7">
                 <span class="w-2.5 h-2.5 rounded-sm redstone-lamp"></span>
-                <span class="text-xs font-mono text-gray-300">Ubuntu &bull; Debian &bull; Raspberry Pi &bull; Windows preview &bull; Release v1.22</span>
+                <span class="text-xs font-mono text-gray-300">Ubuntu &bull; Debian &bull; Raspberry Pi &bull; Windows preview &bull; Release v1.23.2</span>
             </div>
 
             <!-- Main Headline -->
@@ -828,12 +828,20 @@
 
                         <div class="mc-panel redstone-wire-border rounded-xl p-6">
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.23 — Current Release</h3>
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.23.2 — Current Release</h3>
                                 <span class="px-2.5 py-1 text-[10px] font-pixel bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded">
                                     SHIPPING NOW
                                 </span>
                             </div>
                             <ul class="space-y-2 text-sm text-gray-300">
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Removing the panel safely (1.23.2):</strong> Panel Settings and <code class="font-mono text-xs text-white">sudo redstonepanel uninstall</code> back up every server and ask what happens to each one before the panel goes.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>A port check (1.23.1):</strong> finds port conflicts the panel can't prevent, names the other program and fixes what it safely can.</span>
+                                </li>
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
                                     <span><strong>Windows: the whole single machine.</strong> Bedrock servers with auto-update and Phantom, Forge, NeoForge, Quilt and modpacks, memory and CPU limits, off-site backups, updating the panel from the panel, and signing in with a Windows account.</span>
@@ -861,14 +869,22 @@
                         <div class="mc-panel rounded-xl p-6">
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                                 <h3 class="font-pixel text-lg sm:text-xl text-white">v1.24 — Mixed Clusters</h3>
-                                <span class="px-2.5 py-1 text-[10px] font-pixel bg-[#2e3342] text-gray-300 border border-[#3a4052] rounded">
-                                    PLANNED
+                                <span class="px-2.5 py-1 text-[10px] font-pixel bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded">
+                                    IN PROGRESS
                                 </span>
                             </div>
                             <ul class="space-y-2 text-sm text-gray-300">
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
                                     <span><strong>Windows and Linux machines in one cluster</strong>, with either as the master; servers and backup copies move between them.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>SFTP on Windows</strong>, and Let's Encrypt through a Windows client.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Sign in with Windows Hello</strong> (passkeys on the PC, a phone or a security key), <strong>Remember this device</strong> for 30 days, and an easier first password on Windows.</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
@@ -1464,7 +1480,7 @@
             syncSlidersToSelectedServer();
             renderServers();
             updateNodeGauges();
-            appendConsoleLog('RedstonePanel v1.22 Web Console initialized.', 'success');
+            appendConsoleLog('RedstonePanel v1.23.2 Web Console initialized.', 'success');
             appendConsoleLog('Connected to <strong>ubuntu-prod-01</strong> &bull; Type <strong>help</strong> or click a quick command.', 'info');
 
             setInterval(updateNodeGauges, 2800);

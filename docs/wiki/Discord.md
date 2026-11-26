@@ -167,7 +167,7 @@ Bridges run **on the Minecraft server**, so what you can use depends on the serv
 | --- | --- |
 | **Paper** (plugins) | **DiscordSRV** is the most widely used: chat, joins and deaths, a console channel for staff, account linking and role sync. Download it from its official page and drop the `.jar` on the server's **Plugins** tab, or look for it under **Find plugins**. |
 | **Fabric** (mods) | Search **Find mods** for "Discord" and pick a *server-side* bridge mod that has a build for your version. Read its page: setup differs per mod. |
-| **Vanilla** | No plugins or mods, so no bridge. Use the server's Discord channels for chat, or switch it to Paper or Fabric (planned for RedstonePanel 1.19; today, make a new Paper server and move the world over). |
+| **Vanilla** | No plugins or mods, so no bridge. Use the server's Discord channels for chat, or switch it to Paper or Fabric in place with **Maintenance → Server type** (RedstonePanel 1.19 and later), which keeps the world. |
 | **Bedrock** | No plugin system, so no bridge on the server itself. The panel's alerts still work. |
 
 **Setting up a bridge bot** (the same idea for any bridge):

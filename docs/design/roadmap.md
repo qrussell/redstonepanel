@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.23.2 (25 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) and removing the panel safely (1.23.2) shipped; mixed clusters (1.24) and API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated 26 Nov 2026 (1.23.2 is the latest release, 1.24 is being built and tested), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) and removing the panel safely (1.23.2) shipped; mixed Linux and Windows clusters with Windows Hello sign-in (1.24) in progress; API tokens (2.0) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1747,7 +1747,7 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     GitHub matrix on the branch (install tests on all four systems and ARM64, the cluster and
     feature scripts). Not tested: nothing runs on Windows yet.
 
-27. **1.22: Windows preview.** One machine, Java servers. The MSI installer with bundled
+27. **1.22: Windows preview** *(released 24 Nov 2026)*. One machine, Java servers. The MSI installer with bundled
     Python, the panel service, the runner, Java from Adoptium, Defender Firewall, Task
     Scheduler schedules, backups and restore, console, file manager (refusing symlinks,
     junctions and Windows trap names such as `CON` and `name:stream`), catalog, webhooks,
@@ -1774,7 +1774,7 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     Windows PC. The release attaches the MSI and its SHA-256; the MSI isn't signed yet
     (SignPath application pending).
 
-28. **1.23: the whole single machine.** Bedrock and its auto-update, Phantom, hard limits and
+28. **1.23: the whole single machine** *(released 25 Nov 2026)*. Bedrock and its auto-update, Phantom, hard limits and
     performance history, crash explanations with Windows causes, off-site backups over `sftp`
     and S3, self-update, Windows account sign-in, the port forwarding guide and diagnostics
     (including port ranges reserved by Hyper-V or WSL), and Needs attention notes when the PC
@@ -1813,7 +1813,7 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     servers folder and Found servers were covered there by CI only); 1,065 unit tests; the
     Linux release workflow on every supported system and ARM64.
 
-29. **1.24: mixed Linux and Windows clusters.** Windows nodes and masters; members report
+29. **1.24: mixed Linux and Windows clusters** *(in progress)*. Windows nodes and masters; members report
     their system (`CLUSTER_API` goes up by one). Java servers move both ways unchanged;
     Bedrock servers move with their program downloaded again for the target system. Before a
     move or restore onto Windows the master checks for file names Windows can't hold (names
@@ -1821,6 +1821,14 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     Backup copies cross systems, and paths are never sent between members. Let's Encrypt
     through a Windows client, and 1.18's SFTP and permissions confirmed on Windows. The
     preview label comes off. **Size:** medium.
+
+    **Status (26 Nov 2026):** built and in final testing, not yet released. Besides the
+    mixed clusters and SFTP on Windows, 1.24 gained the Windows sign-in work first planned for
+    a later release: **Sign in with Windows Hello** through passkeys (on the PC, a phone or a
+    security key), **Remember this device** for 30 days, a one-use link from the installer to
+    choose the first admin password, `redstonepanel reset-password NAME`, and the installer's
+    Finish page and a Start menu entry that open the panel. Linux panels keep Linux accounts,
+    panel accounts and two-factor. The As built notes follow with the release.
 
 **Alongside 1.18 to 1.20:** new code that runs `systemctl`, `ufw`, `apt` or a shell tool goes
 in a small helper function, with no new hard-coded `/opt` or `/var` paths, so the port doesn't
@@ -2265,7 +2273,7 @@ and the refusals were checked read-only against the real servers of the Windows 
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes and, after 1.18, the servers they may touch. Shown once, revocable, and
     logged under the token's name. Per-server permissions moved to 1.18; if nothing else joins
-    this release, it can ship as a 1.20.x point release instead.
+    this release, it can ship as a point release after 1.24 instead.
 
 ## Groundwork (do alongside, before promoting)
 
