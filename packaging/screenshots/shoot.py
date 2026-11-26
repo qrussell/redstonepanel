@@ -512,6 +512,27 @@ class Shooter:
             self.close_modals()
         step("terminal", terminal)
 
+        # 1.25: Start at boot (Maintenance tab), and API tokens with a new one shown once
+        def api_tokens():
+            self.open_server("minecraft-java", tab="maintenance")
+            page.wait_for_selector("#boot-card:not(.hidden)", timeout=15000)
+            shot("start-at-boot", element="#boot-card")
+            page.evaluate("ServerApp.openPanelSettings()")
+            page.wait_for_selector("#set-api-tokens details", timeout=20000)
+            page.evaluate("""fetch('/api/settings/api-tokens', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: 'Backup script', grants: {'*': ['view', 'backups']}, days: 90})})
+                .then(r => r.json()).then(made => fetch('/api/settings/api-tokens', {method: 'POST',
+                    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: 'Discord bot',
+                    grants: {'minecraft-java': ['view', 'power', 'console']}, days: null})}))
+                .then(r => r.json()).then(made => ServerApp.loadApiTokens(made))""")
+            page.wait_for_selector("#api-token-made", timeout=15000)
+            page.evaluate("document.querySelector('#set-api-tokens details').open = true")
+            page.evaluate("document.getElementById('set-section-api-tokens').scrollIntoView({block: 'start'})")
+            page.wait_for_timeout(500)
+            shot("api-tokens", element="#set-api-tokens")
+            self.close_modals()
+        step("api tokens", api_tokens)
+
         # 1.16.11: off-site copies of the Paper server's backups on the SSH storage
         def offsite():
             self.open_server("minecraft-java", tab="backups")
