@@ -34,15 +34,17 @@ from core import auth, tls
 from core import settings as panel_settings
 from core.settings import DATA_DIR
 from core.version import panel_version
-from core.platform import certs
+from core.platform import certs, paths
 
 CLUSTER_DIR = os.path.join(DATA_DIR, "cluster")
 
-CLUSTER_API = 8                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
+CLUSTER_API = 9                 # the master<->node contract version (see hello()); 3: moving servers (1.16),
                                 # 4: backup copies on another member (1.16.8), 5: pre-copy moves (1.16.13),
                                 # 6: New server's Advanced options and moves that keep startup flags (1.17.2),
                                 # 7: Purpur, Quilt, Forge, NeoForge and modpacks (1.20),
-                                # 8: the terminal, through the master (1.21.10)
+                                # 8: the terminal, through the master (1.21.10),
+                                # 9: Windows members; moves to Windows check file names first (1.24)
+MIXED_API = 9                   # a node needs this to be told a move goes to Windows (export for_windows)
 TERMINAL_API = 8                # a node needs this for a terminal from the master
 LOADERS_API = 7                 # a node needs this for the 1.20 server types and modpacks
 ADVANCED_API = 6                # a node needs this for New server's Advanced options
@@ -533,8 +535,29 @@ def hello():
     s = panel_settings.load()
     cert = s["cert_file"] if s["https_mode"] == "custom" else node_crt()
     return {"name": panel_settings.display_name(s), "version": panel_version(), "cluster_api": CLUSTER_API,
-            "platform": "linux", "machine": platform.machine(), "cluster_id": st.get("cluster_id"), "cert_expires": cert_expires(cert),
+            "platform": this_system(), "machine": platform.machine(), "cluster_id": st.get("cluster_id"), "cert_expires": cert_expires(cert),
             "https_mode": s["https_mode"], "terminal": terminal.node_fields()}
+
+
+def this_system():
+    """The system this panel runs on, as members report it: "linux" or "windows" (1.24)."""
+    return "windows" if paths.WINDOWS else "linux"
+
+
+def clean_system(value):
+    """A member's reported system: "windows", or "linux" (also for anything else, since only Linux
+    panels could join before 1.24)."""
+    return "windows" if str(value or "").strip().lower() == "windows" else "linux"
+
+
+def join_commands(code):
+    """How to join from a prompt on each system. The code has no spaces or quotes in it."""
+    return {"linux": f"sudo redstonepanel join '{code}'",
+            "windows": f"redstonepanel join {code}"}
+
+
+def leave_command(system):
+    return "redstonepanel leave" if system == "windows" else "sudo redstonepanel leave"
 
 
 def clean_terminal(value):
@@ -657,8 +680,9 @@ def create_join(actor, url):
         joins.append(join)
         _save_joins(joins)
     code = encode_code(url, secret, ca_fingerprint(read_ca()))
+    commands = join_commands(code)
     return {"id": join["id"], "code": code, "expires": join["expires"],
-            "command": f"sudo redstonepanel join '{code}'"}
+            "command": commands["linux"], "windows_command": commands["windows"]}
 
 
 def list_joins():
@@ -726,7 +750,7 @@ def accept_join(body, client_ip):
 
         node = {"id": "n-" + secrets.token_hex(3), "name": name, "url": url, "verify": verify,
                 "token": token, "sans": {"names": sorted(names), "ips": sorted(ips)},
-                "cert_expires": expires, "platform": str(body.get("platform") or "linux")[:20],
+                "cert_expires": expires, "platform": clean_system(body.get("platform")),
                 "machine": clean_machine(body.get("machine")),
                 "version": str(body.get("version") or "unknown")[:40], "cluster_api": api,
                 "added": now, "added_by": join.get("created_by"), "last_ok": None}
@@ -772,7 +796,7 @@ def join(code, actor, client):
             token = new_token("rpn_")
             req = {"secret": c["s"], "name": panel_settings.display_name(s), "token": token,
                    "https_port": s["https_port"], "version": panel_version(), "cluster_api": CLUSTER_API,
-                   "platform": "linux", "machine": platform.machine()}
+                   "platform": this_system(), "machine": platform.machine()}
             if custom:
                 req.update(verify="system", url=f"https://{public[0]}:{s['https_port']}",
                            cert_expires=cert_expires(s["cert_file"]))

@@ -1,4 +1,4 @@
-# RedstonePanel on Windows (preview, from 1.22): the bundled-Python build, the setup and the install
+# RedstonePanel on Windows (from 1.22): the bundled-Python build, the setup and the install
 # test on GitHub's Windows runners. GitLab CI has no Windows runner, so this is where the Windows
 # side is tested; GitLab mirrors branches here.
 name: windows
@@ -116,6 +116,13 @@ jobs:
           "msiexec exit code $($p.ExitCode)"
           Select-String -Path install.log -Pattern "WixQuietExec64:|Return value 3|Error 1" | Select-Object -Last 60 | ForEach-Object { $_.Line }
           if ($p.ExitCode) { Get-Content install.log -Tail 80; exit 1 }
+          # 1.24: RedstonePanel in the Start menu, opening the link the panel keeps up to date
+          $lnk = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\RedstonePanel.lnk"
+          if (-not (Test-Path $lnk)) { "No RedstonePanel in the Start menu ($lnk)"; exit 1 }
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath
+          "Start menu: $target"
+          if ($target -ne "C:\Program Files\RedstonePanel\RedstonePanel.url") { "It should open RedstonePanel.url"; exit 1 }
+          Get-Content "C:\Program Files\RedstonePanel\RedstonePanel.url"
           "C:\Program Files\RedstonePanel" | Out-File -FilePath $env:GITHUB_PATH -Append
       - name: Install test (the server is kept for the next step)
         shell: pwsh
@@ -170,6 +177,7 @@ jobs:
           if (Get-Service minecraft-* -ErrorAction SilentlyContinue) { $left += "a game server's service" }
           if (Test-Path "C:\Program Files\RedstonePanel") { $left += "the program folder: " + ((Get-ChildItem "C:\Program Files\RedstonePanel" -Recurse | Select-Object -First 10 -ExpandProperty FullName) -join ", ") }
           if (Get-NetFirewallRule -Group "RedstonePanel panel" -ErrorAction SilentlyContinue) { $left += "the panel's firewall rule" }
+          if (Test-Path (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\RedstonePanel.lnk")) { $left += "the Start menu entry" }
           if (-not (Test-Path "C:\ProgramData\RedstonePanel\servers")) { $left += "(the servers folder should have been kept)" }
           if ($left) { "Left behind: " + ($left -join "; "); exit 1 } else { "Removed cleanly; worlds, backups and settings were kept." }
       - name: What the installer carries

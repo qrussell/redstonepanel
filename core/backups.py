@@ -29,7 +29,7 @@ import subprocess    # noqa: F401  (unused here since 1.21; tests replace subpro
 import tarfile
 import time
 
-from core import manager, notify, properties, rcon
+from core import manager, notify, properties, rcon, winnames
 from core.settings import DATA_DIR
 from core.platform import console, paths, services, system
 
@@ -275,9 +275,41 @@ def _add_tree(tar, d, skip_dirs=(), full=False):
                 # Read as the game account: a file swapped for a link mid-walk can't add a
                 # root-only file to a backup anyone with access to it can download
                 with system.game_files():
-                    tar.add(path, arcname=rel, recursive=False)
+                    _add_file(tar, path, rel)
             except FileNotFoundError:
                 pass          # deleted by the running server while we walked
+
+
+class _AtLength:
+    """Reads exactly `size` bytes from f: a file the running server cut shorter while it was
+    copied is filled out with zeros, so the archive stays readable (tarfile otherwise stops
+    with "unexpected end of data" after writing the header, and the whole backup fails)."""
+
+    def __init__(self, f, size):
+        self.f, self.left, self.short = f, size, False
+
+    def read(self, n=-1):
+        n = self.left if n is None or n < 0 else min(n, self.left)
+        data = self.f.read(n)
+        if len(data) < n:
+            self.short = True
+            data += b"\0" * (n - len(data))
+        self.left -= n
+        return data
+
+
+def _add_file(tar, path, rel):
+    """Adds one file (or link) at the length it had when it was looked at."""
+    info = tar.gettarinfo(path, arcname=rel)
+    if not info.isreg():
+        tar.addfile(info)
+        return
+    with open(path, "rb") as f:
+        src = _AtLength(f, info.size)
+        tar.addfile(info, src)
+    if src.short:
+        manager.write_log(f"[WARNING] {rel} got shorter while it was backed up; the backup has it "
+                          f"filled out with zeros. The server was writing it.")
 
 def _java_rcon(d):
     props = manager.read_properties(d)
@@ -547,6 +579,13 @@ def restore_backup(server, filename):
     edition = _edition(server, d)
     with tarfile.open(path, "r:gz") as tar:
         level, worlds = _archive_world(tar, edition)
+        if paths.WINDOWS:
+            # 1.24: a backup made on Linux (a copy from another member) can hold names Windows
+            # can't; say which before anything is stopped or changed
+            found = winnames.problems(m.name for m in tar.getmembers()
+                                      if any(m.name == w or m.name.startswith(w + "/") for w in worlds))
+            if found:
+                raise BackupError(f"{filename} can't be restored here. " + winnames.describe(found, "Windows"))
     if not worlds:
         raise BackupError(f"{filename} has no world folder ('{level}') to restore.")
     if edition == "java":

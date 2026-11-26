@@ -2,7 +2,7 @@
 
 RedstonePanel installs in about a minute on a fresh Ubuntu or Debian server or a Raspberry Pi,
 and updates with the rest of the system through `apt`. On a Windows PC, see
-[On Windows (preview)](#on-windows-preview).
+[On Windows](#on-windows).
 
 ## What you need
 
@@ -64,15 +64,16 @@ To give a server more memory, use **Maintenance → Memory and limits** (1.17); 
 Raspberry Pi OS packages Java 21 and 25, which run Minecraft 1.17 and newer; for older versions
 the panel offers Java 21 and says that it may not start them.
 
-## On Windows (preview)
+## On Windows
 
 From 1.22 there is a Windows installer, and from 1.23 it does everything one computer needs:
 Java servers of every type (Vanilla, Paper, Purpur, Fabric, Quilt, Forge, NeoForge, modpacks)
 and Bedrock servers with automatic updates and Phantom, backups and off-site copies (SSH
 storage and S3), schedules, the console, the file manager, add-ons, the firewall, memory and
-processor limits, crash explanations, webhooks, two-factor sign-in and **Update now**. It stays
-a **preview** until clusters and SFTP arrive in 1.24. The terminal is Linux-only by design;
-on Windows, open a command prompt on the PC.
+processor limits, crash explanations, webhooks, two-factor sign-in and **Update now**. From
+1.24 it is no longer a preview: a Windows PC can be a cluster's master or node next to Linux
+machines, and SFTP works there too. The terminal is Linux-only by design; on Windows, open a
+command prompt on the PC.
 
 - **Windows 11, or Windows Server 2022 or 2025**, 64-bit Intel or AMD. Windows 10 installs too
   but isn't tested, and no longer gets updates from Microsoft.
@@ -81,16 +82,23 @@ on Windows, open a command prompt on the PC.
 
 1. Download `RedstonePanel-x.y.z-x64.msi` from the
    [latest release](https://github.com/qrussell/redstonepanel/releases/latest) and open it.
-   The preview isn't signed yet, so SmartScreen says **Windows protected your PC**: choose
+   The installer isn't signed yet, so SmartScreen says **Windows protected your PC**: choose
    **More info**, then **Run anyway**. The release lists the file's SHA-256 if you want to
    check it first.
 2. The installer asks one question: **where servers, backups and settings are kept**. The
    default is `C:\ProgramData\RedstonePanel`; pick another drive if that is where the room is.
    The folder's name can't have a space in it.
-3. Open **http://localhost:8080** on that computer. The user name is **admin** and the password
-   is in `first-sign-in.txt` in the folder from step 2. Change the password under **Users**,
-   then delete the file. A Windows account in **Administrators** can also sign in, as an admin;
-   to let other Windows accounts in, add them to a local group named **RedstonePanel**.
+3. Leave **Open RedstonePanel in my browser** ticked and click **Finish**. On a first install
+   the browser opens a page to **choose a password** for the panel account **admin** (a one-use
+   link, for 7 days, readable only by you and administrators). If you skip it, the random
+   password is in `first-sign-in.txt` in the folder from step 2; choosing your own deletes that
+   file. Later, **RedstonePanel** in the Start menu opens the panel, at the right address even
+   after you change the port or turn on HTTPS. A Windows account in **Administrators** can also
+   sign in, as an admin; so can members of a local group named **RedstonePanel**. Windows
+   accounts always sign in as admins; give everyone else a panel account under **Users**. Any
+   account can then add **Windows Hello** (face, fingerprint or PIN) under **🔑 Password** and
+   use **Sign in with Windows Hello**. Forgot the password? In an administrator prompt,
+   `redstonepanel reset-password admin`.
 
 What you get is ordinary Windows: the panel is the service **RedstonePanel**, each game server
 is its own service (`minecraft-<name>`) running as its own account that can reach only its own
@@ -221,7 +229,7 @@ that folder fixes it). The path also can't contain the words "java" or "bedrock"
 
 In a cluster, each machine has its own servers folder, set in that machine's own panel.
 
-**On Windows (preview)** the same setting takes a folder with its drive letter, for example
+**On Windows** the same setting takes a folder with its drive letter, for example
 `D:\Minecraft\servers`, so servers can live on a second disk while the panel stays on `C:`.
 A list next to the box shows this computer's drives with their free space; choosing one fills in
 `\Minecraft\servers` on that drive, so the path is the same whatever the drive letter (you can

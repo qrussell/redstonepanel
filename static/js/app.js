@@ -50,15 +50,17 @@ const ServerApp = {
         }
         const ver = document.getElementById('panel-version');
         if (ver && this.currentUser.panel_version) {
-            // On Windows the panel is a preview (since 1.22) and says so next to its version
-            const preview = this.currentUser.system === 'windows';
-            ver.innerText = 'v' + this.currentUser.panel_version + (preview ? ' · Windows preview' : '');
-            ver.title = `RedstonePanel ${this.currentUser.panel_version}` + (preview ? ' for Windows, a preview: one computer, clusters come later' : '');
+            ver.innerText = 'v' + this.currentUser.panel_version;
+            ver.title = `RedstonePanel ${this.currentUser.panel_version}` + (this.onWindows() ? ' for Windows' : '');
         }
 
         this.applyTheme();
         this.setupDropZones();
         this.setupPhone();
+        // 1.24: just chose the first password with the installer's link: offer Windows Hello next
+        let welcome = false;
+        try { welcome = sessionStorage.getItem('rp_welcome') === '1'; sessionStorage.removeItem('rp_welcome'); } catch (e) {}
+        if (welcome && this.onWindows()) setTimeout(() => this.openAccountModal({}), 0);
         // Many actions open the console; remember what was clicked so it can be kept in view
         document.addEventListener('click', e => {
             const el = e.target.closest && e.target.closest('button, a, input, select, label');
@@ -74,11 +76,9 @@ const ServerApp = {
         await this.loadServers();
     },
 
-    // The Windows preview doesn't do everything yet: /api/auth/me lists what under not_yet
-    // ('cluster', 'sftp', ...).
-    // Those parts of the page are hidden, and the API refuses them too.
-    notYet(name) {
-        return !!(this.currentUser && (this.currentUser.not_yet || []).includes(name));
+    // A cluster member's system as people say it (1.24: members report it; older ones are Linux)
+    systemName(platform) {
+        return platform === 'windows' ? 'Windows' : 'Linux';
     },
 
     onWindows() {
@@ -5976,30 +5976,22 @@ const ServerApp = {
 			<h4 id="set-section-notifications" class="font-bold text-gray-900 dark:text-white mb-2">Notifications</h4>
 			<div id="set-notifications" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
-			<div class="${this.notYet('offsite') ? 'hidden' : ''}">
 			<h4 id="set-section-storage" class="font-bold text-gray-900 dark:text-white mb-2">Backup storage</h4>
 			<div id="set-storage" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
-			</div>
 
 			<h4 id="set-section-servers-folder" class="font-bold text-gray-900 dark:text-white mb-2">Servers folder</h4>
 			<div id="set-servers-folder" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
-			<div class="${this.notYet('sftp') ? 'hidden' : ''}">
 			<h4 id="set-section-sftp" class="font-bold text-gray-900 dark:text-white mb-2">SFTP</h4>
 			<div id="set-sftp" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
-			</div>
 
 			<div id="set-terminal-wrap" class="hidden">
 			<h4 id="set-section-terminal" class="font-bold text-gray-900 dark:text-white mb-2">Terminal</h4>
 			<div id="set-terminal" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 			</div>
 
-			<div class="${this.notYet('cluster') ? 'hidden' : ''}">
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Cluster</h4>
 			<div id="set-cluster" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
-			</div>
-			${this.notYet('cluster') ? `<h4 class="font-bold text-gray-900 dark:text-white mb-2">Windows preview</h4>
-			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">RedstonePanel on Windows is a preview: every kind of server on one computer. Not here yet: clusters and SFTP (both come next). The terminal is Linux-only: on Windows, open a command prompt on the computer itself.</p>` : ''}
 
 			<h4 id="set-section-remove" class="font-bold text-gray-900 dark:text-white mb-2">Remove RedstonePanel</h4>
 			<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Don't just uninstall the ${this.onWindows() ? 'app' : 'package'}: game servers that are running or start ${this.onWindows() ? 'with Windows' : 'at boot'} ${this.onWindows() ? 'would be left without the panel' : 'would stay on this machine with nothing to manage them'}. This page backs them up, asks what happens to each one, then removes the panel. Also from a prompt: <span class="font-mono">${this.onWindows() ? 'redstonepanel uninstall' : 'sudo redstonepanel uninstall'}</span>.</p>
@@ -6009,12 +6001,12 @@ const ServerApp = {
 			<div class="space-y-2 mb-3">
 				${clusterRole === 'master'
 					? `${radio('https_mode', 'cluster', s.https_mode, 'HTTPS from the cluster', 'The cluster CA\'s certificate. Browsers warn until each device imports the cluster CA.')}
-				${radio('https_mode', 'custom', s.https_mode, 'HTTPS with my own certificate', 'For a master on the internet: a certbot (Let\'s Encrypt) certificate for its domain name. Browsers trust it as it is; nodes keep their cluster certificates on private addresses, because only the master talks to them.')}`
+				${radio('https_mode', 'custom', s.https_mode, 'HTTPS with my own certificate', 'For a master on the internet: a ' + (this.onWindows() ? 'win-acme' : 'certbot') + ' (Let\'s Encrypt) certificate for its domain name. Browsers trust it as it is; nodes keep their cluster certificates on private addresses, because only the master talks to them.')}`
 					: clusterRole === 'node'
 					? radio('https_mode', s.https_mode, s.https_mode, s.https_mode === 'custom' ? 'HTTPS with my own certificate' : 'HTTPS from the cluster', 'This panel is a cluster node, so its HTTPS settings are fixed. Leave the cluster to change them.')
 					: `${radio('https_mode', 'off', s.https_mode, 'HTTP (simple)', 'Unencrypted. Fine on a home network you trust.')}
 				${radio('https_mode', 'self_signed', s.https_mode, 'HTTPS with a self-signed certificate', 'Encrypted. Browsers warn unless each device imports the panel\'s CA certificate.')}
-				${radio('https_mode', 'custom', s.https_mode, 'HTTPS with my own certificate', 'For a real domain name, e.g. a Let\'s Encrypt certificate from certbot.')}`}
+				${radio('https_mode', 'custom', s.https_mode, 'HTTPS with my own certificate', 'For a real domain name, e.g. a Let\'s Encrypt certificate from ' + (this.onWindows() ? 'win-acme' : 'certbot') + '.')}`}
 			</div>
 			<div class="grid grid-cols-2 gap-3 mb-3">
 				<label class="text-xs text-gray-500 dark:text-gray-400">HTTP port<input id="set-http-port" type="number" min="1" max="65535" value="${esc(s.http_port)}" class="${field} mt-1"></label>
@@ -6022,8 +6014,9 @@ const ServerApp = {
 			</div>
 			<p id="set-redirect-note" class="text-xs text-gray-500 dark:text-gray-400 mb-3">While HTTPS is on, the HTTP port only redirects to HTTPS.</p>
 			<div id="set-custom-cert" class="grid grid-cols-1 gap-2 mb-3">
-				<label class="text-xs text-gray-500 dark:text-gray-400">Certificate file (full chain, PEM)<input id="set-cert-file" value="${esc(s.cert_file)}" placeholder="/etc/letsencrypt/live/example.com/fullchain.pem" class="${field} mt-1 font-mono"></label>
-				<label class="text-xs text-gray-500 dark:text-gray-400">Private key file (PEM)<input id="set-key-file" value="${esc(s.key_file)}" placeholder="/etc/letsencrypt/live/example.com/privkey.pem" class="${field} mt-1 font-mono"></label>
+				<label class="text-xs text-gray-500 dark:text-gray-400">Certificate file (full chain, PEM)<input id="set-cert-file" value="${esc(s.cert_file)}" placeholder="${this.onWindows() ? 'C:\\Certificates\\example.com-chain.pem' : '/etc/letsencrypt/live/example.com/fullchain.pem'}" class="${field} mt-1 font-mono"></label>
+				<label class="text-xs text-gray-500 dark:text-gray-400">Private key file (PEM)<input id="set-key-file" value="${esc(s.key_file)}" placeholder="${this.onWindows() ? 'C:\\Certificates\\example.com-key.pem' : '/etc/letsencrypt/live/example.com/privkey.pem'}" class="${field} mt-1 font-mono"></label>
+				<p class="text-xs text-gray-500 dark:text-gray-400">When ${this.onWindows() ? 'win-acme' : 'certbot'} renews the certificate, the panel notices within ten minutes and restarts to serve the new one.${this.onWindows() ? ' In win-acme, choose to store the certificate as PEM files and give their paths here.' : ''}</p>
 			</div>
 			<div id="set-self-signed-info" class="text-xs text-gray-500 dark:text-gray-400 mb-3">
 				${ss ? `CA certificate: expires ${esc(ss.expires || '?')} · SHA-256 <span class="font-mono break-all">${esc(ss.sha256 || '?')}</span> · <a href="/api/settings/ca.crt" class="underline text-theme">Download to import on your devices</a>`
@@ -6191,7 +6184,7 @@ const ServerApp = {
 
 			<h4 class="font-bold text-gray-900 dark:text-white mb-1">1. Back up every server</h4>
 			${done ? `<p class="${note} mb-4">There are no game servers on this machine.</p>` : `
-			<p class="${note} mb-2">Backups stay in <span class="font-mono">${esc(d.backup_root)}</span> after the panel is gone${this.notYet('offsite') ? '' : ', and in your backup storage if you use one'}.</p>
+			<p class="${note} mb-2">Backups stay in <span class="font-mono">${esc(d.backup_root)}</span> after the panel is gone, and in your backup storage if you use one.</p>
 			<button id="uninstall-backup" onclick="ServerApp.uninstallBackupAll(this)" class="mb-1 px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold text-sm disabled:opacity-50">Back up every server now</button>
 			<p id="uninstall-backup-msg" class="${note} mb-4"></p>`}
 
@@ -7549,7 +7542,7 @@ const ServerApp = {
 								<span class="${ok ? 'text-green-500' : 'text-yellow-500'}">●</span> ${esc(n.name)}
 								${n.local ? '<span class="text-xs font-normal text-gray-500 dark:text-gray-400">(this panel, the master)</span>' : ''}
 							</h3>
-							${n.local ? '' : `<p class="text-xs text-gray-500 dark:text-gray-400 font-mono">${esc(n.url)} · RedstonePanel ${esc(n.version || '?')}</p>`}
+							${n.local ? '' : `<p class="text-xs text-gray-500 dark:text-gray-400 font-mono">${esc(n.url)} · RedstonePanel ${esc(n.version || '?')} · ${this.systemName(n.platform)}</p>`}
 							${this.nodeResources(n.id)}
 						</div>
 						<div class="flex flex-wrap justify-end items-center gap-3">
@@ -7817,7 +7810,7 @@ const ServerApp = {
 			<div class="flex items-center justify-between gap-2 p-2 border-t border-gray-200 dark:border-gray-700">
 				<div class="min-w-0">
 					<p class="text-sm font-bold text-gray-900 dark:text-white truncate">${esc(n.name)} <span class="font-normal font-mono text-xs text-gray-500">${esc(n.url)}</span></p>
-					<p class="${note}">RedstonePanel ${esc(n.version || '?')}${(n.cluster_api || 1) < 2 ? ' (update it to manage its servers from here)' : ''} · certificate expires ${esc(this.fmtTime(n.cert_expires))}${n.verify === 'cluster' ? ' (renewed automatically ' + esc(d.renew_within_days) + ' days before)' : ''} · last answered ${esc(this.fmtTime(n.last_ok))}</p>
+					<p class="${note}">RedstonePanel ${esc(n.version || '?')} on ${this.systemName(n.platform)}${(n.cluster_api || 1) < 2 ? ' (update it to manage its servers from here)' : ''} · certificate expires ${esc(this.fmtTime(n.cert_expires))}${n.verify === 'cluster' ? ' (renewed automatically ' + esc(d.renew_within_days) + ' days before)' : ''} · last answered ${esc(this.fmtTime(n.last_ok))}</p>
 					<p class="${note}">Certificate checked with
 						<select onchange="ServerApp.setNodeVerify(${this.jsArg(n.id)}, this.value)" class="bg-transparent border border-gray-300 dark:border-gray-600 rounded text-xs">
 							<option value="cluster" ${n.verify === 'cluster' ? 'selected' : ''}>the cluster CA</option>
@@ -7827,7 +7820,7 @@ const ServerApp = {
 				</div>
 				<div class="flex gap-2">
 					${n.verify === 'cluster' ? `<button onclick="ServerApp.renewNodeCert(${this.jsArg(n.id)}, this)" class="${small}">Renew cert</button>` : ''}
-					<button onclick="ServerApp.removeNode(${this.jsArg(n.id)}, ${this.jsArg(n.name)})" class="${small}">Remove</button>
+					<button onclick="ServerApp.removeNode(${this.jsArg(n.id)}, ${this.jsArg(n.name)}, ${this.jsArg(n.platform || 'linux')})" class="${small}">Remove</button>
 				</div>
 			</div>`).join('');
 		const joins = d.joins.map(j => `
@@ -7977,8 +7970,10 @@ const ServerApp = {
 		const where = forUrl ? `<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">To add <b>${esc(forName)}</b>: <a href="${esc(forUrl)}/" target="_blank" rel="noopener" class="underline text-theme">open it ↗</a>, sign in as an admin, and paste this code into <b>Panel Settings › Cluster › Join a cluster</b>. It shows up under Nodes here once it has joined.</p>` : '';
 		out.innerHTML = where + `
 			<p class="text-xs text-yellow-700 dark:text-yellow-300 mb-1">Shown only once. Works once, until ${esc(this.fmtTime(j.expires))}. Anyone with it can add a server to this cluster, so treat it like a password.</p>
-			<p class="text-xs text-gray-500 dark:text-gray-400">On the new server (with RedstonePanel installed), run:</p>
+			<p class="text-xs text-gray-500 dark:text-gray-400">On the new server (with RedstonePanel installed), run on <b>Linux</b>:</p>
 			<textarea readonly rows="3" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white mb-1">${esc(j.command)}</textarea>
+			${j.windows_command ? `<p class="text-xs text-gray-500 dark:text-gray-400">or on <b>Windows</b>, in a command prompt opened as administrator:</p>
+			<textarea readonly rows="3" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white mb-1">${esc(j.windows_command)}</textarea>` : ''}
 			<p class="text-xs text-gray-500 dark:text-gray-400">or paste just the code into that panel's Panel Settings > Cluster > Join:</p>
 			<textarea readonly rows="3" onclick="this.select()" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-xs font-mono text-gray-900 dark:text-white">${esc(j.code)}</textarea>`;
 		out.classList.remove('hidden');
@@ -7990,12 +7985,12 @@ const ServerApp = {
 		this.loadClusterSettings();
 	},
 
-	async removeNode(id, name) {
+	async removeNode(id, name, system) {
 		if (!confirm(`Remove ${name} from the cluster? It goes back to being a standalone panel (if it can be reached).`)) return;
 		const res = await fetch(`/api/settings/cluster/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' });
 		if (!res.ok) return this.clusterError(await this.apiError(res));
 		const d = await res.json();
-		if (!d.node_confirmed) alert(`${name} was removed here, but couldn't be told (${d.problem}). Run "sudo redstonepanel leave" on it.`);
+		if (!d.node_confirmed) alert(`${name} was removed here, but couldn't be told (${d.problem}). Run "${system === 'windows' ? 'redstonepanel leave' : 'sudo redstonepanel leave'}" on it${system === 'windows' ? ', in a command prompt opened as administrator' : ''}.`);
 		this.loadClusterSettings();
 	},
 
@@ -8083,7 +8078,7 @@ const ServerApp = {
 		document.getElementById('modal-content').innerHTML = `
 			${password}${forcedIntro}
 			<div id="tf-box"><p class="text-sm text-gray-500">Loading two-factor sign-in...</p></div>
-			${this.accountForced ? '' : '<div id="ssh-box" class="mt-6"></div>'}
+			${this.accountForced ? '' : '<div id="pk-box" class="mt-6 hidden"></div><div id="dev-box" class="mt-6 hidden"></div><div id="ssh-box" class="mt-6"></div>'}
 			${footer}`;
 		document.getElementById('modal-overlay').classList.remove('hidden');
 		const res = await fetch('/api/auth/2fa');
@@ -8091,7 +8086,102 @@ const ServerApp = {
 		this.tfStatus = await res.json();
 		if (this.accountForced && !this.tfStatus.enabled) return this.startTwoFactorSetup();
 		this.renderTwoFactor();
+		this.loadPasskeys();
+		this.loadDevices();
 		this.loadSshKeys();
+	},
+
+	// --- 1.24: Remember this device (🔑 Password → Remembered devices) ---
+	async loadDevices(message, ok) {
+		const box = document.getElementById('dev-box');
+		if (!box) return;
+		const res = await fetch('/api/auth/devices');
+		if (!res.ok) { box.classList.add('hidden'); return; }
+		const d = await res.json();
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const when = t => t ? new Date(t * 1000).toLocaleDateString() : '';
+		const others = d.devices.filter(x => !x.current).length;
+		const list = d.devices.map(x => `
+			<div class="flex items-start justify-between gap-2 p-2 mb-2 rounded border border-gray-200 dark:border-gray-700">
+				<div class="min-w-0 text-sm">
+					<div class="font-bold text-gray-900 dark:text-white truncate">${esc(x.name)}${x.current ? ' <span class="font-normal text-xs text-green-600 dark:text-green-400">this device</span>' : ''}</div>
+					<div class="text-xs text-gray-500 dark:text-gray-400">Since ${esc(when(x.created))} · last used ${esc(when(x.last_used))}${x.last_ip ? ` from ${esc(x.last_ip)}` : ''}</div>
+				</div>
+				<button data-id="${esc(x.id)}" data-current="${x.current ? 1 : ''}" onclick="ServerApp.forgetDevice(this.dataset.id, !!this.dataset.current)" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white shrink-0">Forget</button>
+			</div>`).join('');
+		box.innerHTML = `
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">Remembered devices</h4>
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-3">${d.devices.length
+				? `These stay signed in for ${esc(d.days)} days from when you ticked <b>Remember this device</b>. Forget one you no longer use, or have lost; it is signed out at once.`
+				: `None. Tick <b>Remember this device</b> when you sign in on your own computer or phone to stay signed in there for ${esc(d.days)} days.`}</p>
+			${list}
+			<p id="dev-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-2">${esc(message || '')}</p>
+			${others ? '<button onclick="ServerApp.forgetOtherDevices()" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Forget All Other Devices</button>' : ''}`;
+		box.classList.remove('hidden');
+	},
+
+	async forgetDevice(id, current) {
+		if (current && !confirm('Forget this device? You will be signed out here.')) return;
+		const res = await fetch(`/api/auth/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+		if (!res.ok) return this.loadDevices(await this.apiError(res), false);
+		if (current) { location.replace('/static/login.html'); return; }
+		this.loadDevices('Forgotten: that device has to sign in again.', true);
+	},
+
+	async forgetOtherDevices() {
+		if (!confirm('Sign out every other remembered device? This one stays signed in.')) return;
+		const res = await fetch('/api/auth/devices', { method: 'DELETE' });
+		if (!res.ok) return this.loadDevices(await this.apiError(res), false);
+		const d = await res.json();
+		this.loadDevices(`Forgotten: ${d.forgotten} device${d.forgotten === 1 ? '' : 's'}.`, true);
+	},
+
+	// --- 1.24: passkeys (Windows Hello) on Windows panels (🔑 Password → Passkeys) ---
+	async loadPasskeys(message, ok) {
+		const box = document.getElementById('pk-box');
+		if (!box) return;
+		const res = await fetch('/api/auth/passkeys');
+		if (!res.ok) { box.classList.add('hidden'); return; }
+		const d = await res.json();
+		if (!d.supported) { box.classList.add('hidden'); return; }
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white mb-2';
+		const when = t => t ? new Date(t * 1000).toLocaleDateString() : 'never';
+		const list = d.passkeys.map(k => `
+			<div class="flex items-start justify-between gap-2 p-2 mb-2 rounded border border-gray-200 dark:border-gray-700">
+				<div class="min-w-0 text-sm">
+					<div class="font-bold text-gray-900 dark:text-white truncate">${esc(k.name)} <span class="font-normal text-xs text-gray-500">${esc(k.rp_id)}</span></div>
+					<div class="text-xs text-gray-500 dark:text-gray-400">Added ${esc(when(k.created))} · last used ${esc(when(k.last_used))}</div>
+				</div>
+				<button data-id="${esc(k.id)}" onclick="ServerApp.removePasskey(this.dataset.id)" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white shrink-0">Remove</button>
+			</div>`).join('');
+		const can = d.usable && window.rpPasskey && rpPasskey.browserCan();
+		box.innerHTML = `
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">Passkeys (Windows Hello)</h4>
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-3">Sign in with your face, fingerprint or Windows Hello PIN instead of your password, or with your phone: when Windows asks, choose a phone and scan the QR code. A passkey works at the address it was added at (${esc(location.hostname)}).</p>
+			${list}
+			${can ? `<input type="password" id="pk-password" autocomplete="current-password" placeholder="Your password, to add a passkey" class="${field}">
+			<input id="pk-name" maxlength="60" placeholder="Name (optional), e.g. Desk PC" class="${field}">` :
+			`<p class="text-sm text-yellow-700 dark:text-yellow-300 mb-2">${esc(d.why || 'This browser can\'t make passkeys here.')}</p>`}
+			<p id="pk-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-2">${esc(message || '')}</p>
+			${can ? '<button onclick="ServerApp.addPasskey()" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Add Passkey</button>' : ''}`;
+		box.classList.remove('hidden');
+	},
+
+	async addPasskey() {
+		try {
+			await rpPasskey.add(document.getElementById('pk-password').value, document.getElementById('pk-name').value);
+		} catch (e) {
+			if (rpPasskey.cancelled(e)) return this.loadPasskeys('Cancelled: no passkey was added.', false);
+			return this.loadPasskeys(e.message || 'The passkey was not added.', false);
+		}
+		this.loadPasskeys('Passkey added. Next time, choose Sign in with Windows Hello.', true);
+	},
+
+	async removePasskey(id) {
+		if (!confirm('Remove this passkey? Windows Hello may still list it; it just won\'t sign in to this panel any more.')) return;
+		const res = await fetch(`/api/auth/passkeys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+		this.loadPasskeys(res.ok ? 'Passkey removed.' : await this.apiError(res), res.ok);
 	},
 
 	// --- 1.18: SSH keys for SFTP (🔑 Password → SSH keys) ---
@@ -8149,6 +8239,11 @@ const ServerApp = {
 		if (pw) pw.classList.toggle('hidden', !!focused);
 		const ssh = document.getElementById('ssh-box');
 		if (ssh) ssh.classList.toggle('hidden', !!focused);
+		for (const id of ['pk-box', 'dev-box']) {
+			const el = document.getElementById(id);
+			if (el && focused) el.classList.add('hidden');
+			else if (el && !focused && el.innerHTML.trim()) el.classList.remove('hidden');
+		}
 	},
 
 	renderTwoFactor() {
@@ -8328,6 +8423,7 @@ const ServerApp = {
 						<span class="font-bold text-gray-900 dark:text-white">${esc(u.username)}</span>
 						${u.disabled ? '<span class="text-xs ml-1 px-2 py-0.5 rounded border border-red-400 text-red-500">disabled</span>' : ''}
 						${u.two_factor ? '<span class="text-xs ml-1 px-2 py-0.5 rounded border border-green-500 text-green-600 dark:text-green-400" title="Two-factor sign-in is on">2FA</span>' : ''}
+						${u.passkeys ? `<span class="text-xs ml-1 px-2 py-0.5 rounded border border-green-500 text-green-600 dark:text-green-400" title="Can sign in with Windows Hello">${u.passkeys === 1 ? 'passkey' : `${u.passkeys} passkeys`}</span>` : ''}
 						${self ? '<span class="text-xs ml-1 text-gray-500">(you)</span>' : ''}
 						<div class="text-xs text-gray-500 dark:text-gray-400">Last sign-in: ${esc(when(u.last_login))}</div>
 						<div class="text-xs text-gray-500 dark:text-gray-400">${u.role === 'admin' ? 'Everything on every server' : esc(this.grantsSummary(u.grants))}</div>
@@ -8340,7 +8436,7 @@ const ServerApp = {
 				<div class="flex flex-wrap gap-2 mt-2 text-xs">
 					${u.role === 'user' ? `<button data-user="${esc(u.username)}" onclick="ServerApp.openUserGrants(this.dataset.user)" class="px-2 py-1 rounded bg-theme hover-bg-theme text-white font-bold">Servers</button>` : ''}
 					<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserPassword(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset password</button>
-					${u.two_factor && !self ? `<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserTwoFactor(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset two-factor</button>` : ''}
+					${(u.two_factor || u.passkeys) && !self ? `<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserTwoFactor(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">${u.two_factor ? 'Reset two-factor' : 'Remove passkeys'}</button>` : ''}
 					${self ? '' : `<button data-user="${esc(u.username)}" onclick="ServerApp.updateUser(this.dataset.user, {disabled: ${!u.disabled}})" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">${u.disabled ? 'Enable' : 'Disable'}</button>
 					<button data-user="${esc(u.username)}" onclick="ServerApp.deleteUser(this.dataset.user)" class="px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white">Delete</button>`}
 				</div>
@@ -8349,7 +8445,7 @@ const ServerApp = {
 
 		content.innerHTML = `
 			<h3 class="text-xl font-bold mb-1 text-gray-900 dark:text-white">Panel Users</h3>
-			${this.onWindows() ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Windows accounts in the <b>Administrators</b> group, or in a local group named <b>RedstonePanel</b>, can also sign in (as admins) with their Windows password (not a PIN); they are managed in Windows, not here (two-factor for them: in an administrator prompt, <span class="font-mono">redstonepanel reset-2fa NAME</span>).</p>`
+			${this.onWindows() ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Windows accounts in the <b>Administrators</b> group, or in a local group named <b>RedstonePanel</b>, can also sign in (as admins) with their Windows password, or with Windows Hello (face, fingerprint or PIN) once they add a passkey under 🔑 Password; they are managed in Windows, not here (to reset their two-factor and passkeys: in an administrator prompt, <span class="font-mono">redstonepanel reset-2fa NAME</span>).</p>`
 			: `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here (two-factor for them: <span class="font-mono">sudo redstonepanel reset-2fa NAME</span>).</p>`}
 			<div class="max-h-72 overflow-y-auto mb-4">${rows}</div>
 			<div class="border-t border-gray-200 dark:border-gray-700 pt-4">
@@ -8499,7 +8595,7 @@ const ServerApp = {
 	},
 
 	async resetUserTwoFactor(username) {
-		if (!confirm(`Turn off two-factor sign-in for '${username}'? Use this when they lost their phone: they sign in with their password and set it up again.`)) return;
+		if (!confirm(`Turn off two-factor sign-in for '${username}' and remove their passkeys (Windows panels)? Use this when they lost their phone or PC: they sign in with their password and set it up again.`)) return;
 		const res = await fetch(`/api/users/${encodeURIComponent(username)}/reset-2fa`, { method: 'POST' });
 		if (!res.ok) alert(`Not reset: ${await this.apiError(res)}`);
 		this.openUsersModal();

@@ -240,7 +240,9 @@ master relies on changes. Contract 8 (1.21.10) adds `"terminal": {"supported", "
 "from_master"}` to the hello and the node's terminal websocket `/api/terminal/node-ws`, which
 takes the node token and `X-RedstonePanel-Actor`, `-Role: admin` and `-Client-IP`; it is not a
 proxied route. The master shows **update RedstonePanel on this node** for nodes
-below the version it needs. `platform` exists for the Windows track (§12).
+below the version it needs. Contract 9 (1.24) makes `platform` real: `"linux"` or `"windows"`,
+in the hello and the join request, and the master tells a source when a move goes to Windows
+(`for_windows` on `/api/cluster/transfers/export`; see §12).
 
 ### Activity log
 
@@ -379,6 +381,9 @@ If this changes, the cluster CA, the tokens and the epoch are the building block
 multi-master design would need anyway.
 
 ## 12. Windows track (separate from the phases)
+
+*Done in 1.22 to 1.24; how it was built is in [windows.md](windows.md). The plan below is kept
+as it was written.*
 
 The cluster protocol is HTTPS + JSON + bearer tokens with nothing Linux-specific, so a Windows
 RedstonePanel can be a node or a master if it passes the same contract tests. The work is in

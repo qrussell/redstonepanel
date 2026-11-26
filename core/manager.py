@@ -11,6 +11,7 @@ import secrets
 import time
 import threading
 
+import stat
 import tempfile
 from core.settings import DATA_DIR, LOG_FILE
 from core import properties, rcon, proxies, bedrock_net, javaservers
@@ -1138,21 +1139,46 @@ def java_for_folder(d):
     except javaservers.MissingJavaError as e:
         raise JavaMissing(e)
 
+# Each system's Bedrock program files (1.24: a folder moved across leaves the other one's behind)
+BEDROCK_PROGRAM_FILES = {"linux": ("bedrock_server", "bedrock_server_symbols.debug"),
+                         "windows": ("bedrock_server.exe", "bedrock_server.pdb")}
+
 def _bedrock_program_for_this_system(d):
     """An imported or moved Bedrock folder made on the other system (bedrock_server on Windows,
-    bedrock_server.exe on Linux) gets this system's program downloaded; the world, packs and
-    settings stay."""
+    bedrock_server.exe on Linux) gets this system's program downloaded, of the version it ran
+    when minecraft.net still has it (1.24); the world, packs and settings stay, and the other
+    system's program is removed."""
     if not has_bedrock_program(d):
-        write_log(f"[SYSTEM] {os.path.basename(d)} has no {paths.BEDROCK_PROGRAM}; downloading the latest Bedrock release.")
-        _fetch_bedrock(d)
+        from core import updates
+        ran = updates.bedrock_installed(d)
+        write_log(f"[SYSTEM] {os.path.basename(d)} has no {paths.BEDROCK_PROGRAM}; downloading "
+                  + (f"Bedrock {ran} for this system." if ran else "the latest Bedrock release."))
+        _fetch_bedrock(d, prefer=ran) if ran else _fetch_bedrock(d)
+    _remove_other_bedrock_program(d)
     system.make_executable(os.path.join(d, paths.BEDROCK_PROGRAM))
 
-def _fetch_bedrock(d):
-    """Downloads the latest Bedrock Dedicated Server and unpacks it into d, keeping the folder's
-    own server.properties, permissions.json and allowlist.json (see core/updates.py)."""
+def _remove_other_bedrock_program(d):
+    other = BEDROCK_PROGRAM_FILES["linux" if paths.WINDOWS else "windows"]
+    gone = []
+    with system.game_files():
+        for name in other:
+            p = os.path.join(d, name)
+            try:
+                if stat.S_ISREG(os.lstat(p).st_mode):
+                    os.remove(p)
+                    gone.append(name)
+            except OSError:
+                pass
+    if gone:
+        write_log(f"[SYSTEM] Removed the other system's Bedrock program from {os.path.basename(d)}: {', '.join(gone)}.")
+
+def _fetch_bedrock(d, prefer=None):
+    """Downloads the latest Bedrock Dedicated Server (or `prefer`, see updates.fetch_bedrock) and
+    unpacks it into d, keeping the folder's own server.properties, permissions.json and
+    allowlist.json (see core/updates.py)."""
     from core import updates
     try:
-        updates.fetch_bedrock(d)
+        updates.fetch_bedrock(d, prefer=prefer)
     except updates.UpdateError as e:
         write_log(f"[WARNING] {e}")
         raise ServerError(str(e))
@@ -1671,6 +1697,21 @@ def _reserve_exact(name):
         _busy.add(name)
         return True
 
+def _reserve_like(prefer):
+    """prefer if it's free, else the same name numbered (1.24): a server moved away and back finds
+    its old copy still holding the name, and comes back as minecraft-survival-2, not as the next
+    minecraft-java-N. None if no such name is free."""
+    if _reserve_exact(prefer):
+        return prefer
+    base = re.sub(r"-\d+$", "", prefer)
+    if base == "minecraft":
+        return None
+    for n in range(2, 100):
+        name = f"{base}-{n}"
+        if name != prefer and _reserve_exact(name):
+            return name
+    return None
+
 def import_transferred(root, edition, prefer_name=None, heap=None, java=None, start=True, on_placed=None, jvm=None):
     """A server folder moved or copied from another cluster member (1.16), unpacked at root.
     Keeps prefer_name and the server's ports when they're free here, else picks others.
@@ -1678,7 +1719,7 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
     Returns {name, port, old_port, renamed}."""
     if edition == "bedrock":
         require_bedrock_machine()
-    name = prefer_name if prefer_name and _reserve_exact(prefer_name) else None
+    name = _reserve_like(prefer_name) if prefer_name else None
     if not name:
         name, _ = _reserve_name(edition)
     try:

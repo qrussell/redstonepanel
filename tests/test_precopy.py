@@ -186,7 +186,8 @@ def _no_list(root):
 
 class PreEnds(Ends):
     """A stand-in member that knows pre-copies."""
-    def export(self, server, stop, precopy=False, base=None):
+    def export(self, server, stop, precopy=False, base=None, for_windows=False):
+        self.for_windows.append(for_windows)
         self._do("export", server, stop, precopy, base)
         if "final" in self.fail and base:
             raise T.TransferError(self.fail["final"])
@@ -227,6 +228,13 @@ class PreCopyJob(unittest.TestCase):
                                    ("begin_import", 6, "s" * 32), ("upload", b"abcdef"),
                                    ("install", True, True, True), ("confirm",)])
         self.assertIsInstance(job["downtime"], int)
+
+    def test_to_windows_both_exports_check_names(self):
+        """1.24: the pre-copy (before anything stops) and the final pass both check."""
+        a, b = PreEnds("local", "Main"), PreEnds("n1", "Gaming PC", system="windows")
+        job = self.run_job(a, b)
+        self.assertEqual(job["state"], "done", job.get("error"))
+        self.assertEqual(a.for_windows, [True, True])
 
     def test_a_failure_after_the_pre_copy_cleans_up_both(self):
         a, b = PreEnds("local", "Main", fail={"final": "disk full"}), PreEnds("n1", "Basement")

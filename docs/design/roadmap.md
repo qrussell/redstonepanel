@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated 26 Nov 2026 (1.23.2 is the latest release, 1.24 is being built and tested), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) and removing the panel safely (1.23.2) shipped; mixed Linux and Windows clusters with Windows Hello sign-in (1.24) in progress; API tokens (1.25) next (releases keep counting up from 1.24, with no jump to 2.0), with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.24.0 (26 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) removing the panel safely (1.23.2) and mixed Linux and Windows clusters with Windows Hello sign-in (1.24) shipped; API tokens (1.25) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -1813,7 +1813,7 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     servers folder and Found servers were covered there by CI only); 1,065 unit tests; the
     Linux release workflow on every supported system and ARM64.
 
-29. **1.24: mixed Linux and Windows clusters** *(in progress)*. Windows nodes and masters; members report
+29. **1.24: mixed Linux and Windows clusters** *(released Nov 2026)*. Windows nodes and masters; members report
     their system (`CLUSTER_API` goes up by one). Java servers move both ways unchanged;
     Bedrock servers move with their program downloaded again for the target system. Before a
     move or restore onto Windows the master checks for file names Windows can't hold (names
@@ -1822,13 +1822,54 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     through a Windows client, and 1.18's SFTP and permissions confirmed on Windows. The
     preview label comes off. **Size:** medium.
 
-    **Status (26 Nov 2026):** built and in final testing, not yet released. Besides the
-    mixed clusters and SFTP on Windows, 1.24 gained the Windows sign-in work first planned for
-    a later release: **Sign in with Windows Hello** through passkeys (on the PC, a phone or a
-    security key), **Remember this device** for 30 days, a one-use link from the installer to
-    choose the first admin password, `redstonepanel reset-password NAME`, and the installer's
-    Finish page and a Start menu entry that open the panel. Linux panels keep Linux accounts,
-    panel accounts and two-factor. The As built notes follow with the release.
+    **As built (1.24):** as planned, with `CLUSTER_API` 9. Members report `platform`; the
+    Cluster page and Panel Settings say *Linux* or *Windows*, and join codes come with a command
+    for each system. The Windows certificate code (the `cryptography` library standing in for
+    `openssl`) gained `req -verify`, `x509 -ext subjectAltName`, `verify -attime` and `enc` in
+    OpenSSL's own format, so cluster CAs, node certificates and encrypted cluster backups work
+    across systems. The name check is `core/winnames.py`: the source refuses before it stops
+    the server (the master asks with `for_windows`), and a Windows panel checks every archive,
+    pre-copy and restore too. Bedrock gets this system's program of the version it ran
+    (`updates.same_version`) or the newest, and the other system's program goes. SFTP runs on
+    Windows as `redstonepanel-sftp` (paramiko in the MSI). "HTTPS with my own certificate"
+    restarts the panel when certbot or win-acme renews the files. Added after testing: a server
+    moved away and back keeps its name, numbered (`minecraft-survival-2`); start, stop and
+    restart on a node wait up to 3 minutes for its answer; and, asked by Quentin, the installer's
+    Finish page opens the panel and the Start menu gets **RedstonePanel** (both open
+    `RedstonePanel.url`, which the panel rewrites on every start). Not possible: a Docker Desktop
+    container can't join a Windows master on the same PC (the master sees the PC's own address),
+    so that direction was tested with the roles swapped and in CI. Tests: 1,149 unit tests; the
+    Windows install and MSI tests on Server 2022 and 2025 (SFTP, a Windows master with an
+    encrypted backup read back, archives with bad names refused); the Linux release workflow;
+    and a real mixed cluster on Quentin's PC (a Linux master in Docker Desktop, the Windows panel
+    as its node): Java and Bedrock moves both ways with pre-copy, the name refusal, backup copies
+    both ways with a restore across, the cluster backup read by `openssl` on both systems, and
+    SFTP on the node, all passing.
+
+    **Sign-in on Windows, added to 1.24 (Quentin, 26 Nov 2026; first planned as 1.24.1):**
+    Windows panels sign in with Windows accounts and panel accounts, optional two-factor, and
+    **Windows Hello passkeys** (WebAuthn, `core/passkeys.py`): any account adds one under
+    **🔑 Password** after typing its password, and **Sign in with Windows Hello** needs no user
+    name. The passkey can be on the PC (Windows Hello), a phone (Windows shows a QR code) or a
+    security key: no authenticator attachment is asked for, after Quentin tried his phone in the
+    first test. Only the public key is kept (`data/passkeys.json`); ES256 and RS256; user verification
+    required, so a passkey sign-in counts as both steps (and meets "require two-factor for
+    admins"); one-use 2-minute challenges; the origin and host name are checked, and a counter
+    that goes backwards is refused. Browsers allow passkeys at `localhost` or a host name over
+    HTTPS, never a bare IP, which the panel explains where it can't offer them. `reset-2fa` and
+    the admin's reset remove passkeys too. Linux panels are unchanged (Linux accounts, panel
+    accounts, optional two-factor). **Remember this device** came with it too (Quentin's ask while testing, `core/devices.py`): a box on
+    the sign-in page makes a 30-day session tied to a device record (`data/devices.json`), checked
+    on every request, listed under **🔑 Password** with Forget and Forget All Other Devices; signing
+    out, a new password, or a disabled or deleted account forgets it. Two small fixes came with it: the installer's Finish page now
+    opens a **one-use link to choose the admin password** (`core/firstsignin.py`, 7 days, the
+    token after `#`, the file readable only by the person who ran the installer; using it deletes
+    `first-sign-in.txt`), and `redstonepanel reset-password NAME` sets a forgotten panel
+    password from an administrator prompt. Google, GitHub and Apple sign-in stay out of the free
+    panel (the paid Teams bundle's roadmap). Tests: unit tests with a synthetic authenticator
+    (ES256 and RS256, replay, wrong origin or host, no user verification, bad signature, counter,
+    disabled account, rate limit), the first sign-in link and `reset-password`; the Windows test
+    walks the link on Server 2022 and 2025.
 
 **Alongside 1.18 to 1.20:** new code that runs `systemctl`, `ufw`, `apt` or a shell tool goes
 in a small helper function, with no new hard-coded `/opt` or `/var` paths, so the port doesn't

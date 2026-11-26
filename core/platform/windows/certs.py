@@ -10,7 +10,14 @@ its own HTTPS certificate; anything else is refused with a message, as a failed 
     req -new -key KEY -subj /CN=... -out CSR
     x509 -req -in CSR -CA CRT -CAkey KEY -set_serial 0x.. -days N -sha256 -extfile FILE -out CRT
     x509 -in CRT -noout [-subject] [-enddate] [-fingerprint -sha256] [-checkend SECONDS]
-    verify -CAfile CA CRT
+    x509 -in CRT -noout -ext subjectAltName
+    req -verify -noout -in CSR
+    verify [-attime T] -CAfile CA CRT
+    enc -aes-256-cbc -pbkdf2 -iter N -salt -pass env:VAR [-d]     (stdin to stdout)
+
+The last four came with clusters on Windows (1.24). `enc` writes OpenSSL's own format ("Salted__",
+an 8-byte salt, then AES-256-CBC with key and IV from PBKDF2-HMAC-SHA256), so an encrypted
+cluster backup made on Linux opens on Windows and the other way round.
 """
 import datetime
 import ipaddress
@@ -30,6 +37,15 @@ def _result(args, code, out, err, text):
 def openssl(args, input=None, text=False, env=None):
     """Does what `openssl ARGS` does -> CompletedProcess. text=False gives bytes."""
     args = list(args)
+    if args and args[0] == "enc":
+        try:
+            out = _enc(args[1:], input if isinstance(input, (bytes, bytearray)) else (input or "").encode(), env)
+            return subprocess.CompletedProcess(["openssl"] + args, 0, out if not text else out.decode("latin-1"),
+                                               b"" if not text else "")
+        except (_Refused, ValueError, KeyError) as e:
+            return _result(args, 1, "", f"bad decrypt: {e}" if "-d" in args else str(e), text)
+        except ImportError:
+            return _result(args, 1, "", "The cryptography library is missing; reinstall RedstonePanel.", text)
     try:
         return _result(args, 0, _run(args, input) or "", "", text)
     except _Refused as e:
@@ -138,6 +154,46 @@ def _not_after(cert):
     return t if t is not None else cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)
 
 
+def _not_before(cert):
+    t = getattr(cert, "not_valid_before_utc", None)
+    return t if t is not None else cert.not_valid_before.replace(tzinfo=datetime.timezone.utc)
+
+
+ENC_MAGIC = b"Salted__"
+
+
+def _enc(rest, data, env):
+    """`openssl enc -aes-256-cbc -pbkdf2 -iter N -salt -pass env:VAR [-d]` on data -> bytes."""
+    import hashlib
+    import os
+    from cryptography.hazmat.primitives import padding
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    opts, _ = _options(rest, flags=("aes-256-cbc", "pbkdf2", "salt", "d", "e"))
+    if not opts.get("aes-256-cbc") or not opts.get("pbkdf2") or not str(opts.get("pass", "")).startswith("env:"):
+        raise _Refused("Only `enc -aes-256-cbc -pbkdf2 -iter N -salt -pass env:VAR [-d]` is supported.")
+    password = (env or os.environ)[opts["pass"][4:]].encode()
+    rounds = int(opts.get("iter", 10000))
+    if opts.get("d"):
+        if data[:8] != ENC_MAGIC or len(data) < 32 or (len(data) - 16) % 16:
+            raise _Refused("not an encrypted file")
+        salt, body = data[8:16], data[16:]
+    else:
+        salt, body = os.urandom(8), data
+    derived = hashlib.pbkdf2_hmac("sha256", password, salt, rounds, 48)
+    cipher = Cipher(algorithms.AES(derived[:32]), modes.CBC(derived[32:]))
+    if opts.get("d"):
+        dec = cipher.decryptor()
+        padded = dec.update(body) + dec.finalize()
+        unpad = padding.PKCS7(128).unpadder()
+        try:
+            return unpad.update(padded) + unpad.finalize()
+        except ValueError:
+            raise _Refused("wrong password or damaged file")
+    pad = padding.PKCS7(128).padder()
+    enc = cipher.encryptor()
+    return ENC_MAGIC + salt + enc.update(pad.update(body) + pad.finalize()) + enc.finalize()
+
+
 def _run(args, stdin=None):
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
@@ -157,6 +213,12 @@ def _run(args, stdin=None):
 
     if cmd == "req":
         opts, _ = _options(rest, flags=("x509", "new", "sha256", "noout", "verify"))
+        if opts.get("verify") and opts.get("in") and not opts.get("new"):
+            with open(opts["in"], "rb") as f:
+                csr = x509.load_pem_x509_csr(f.read())
+            if not csr.is_signature_valid:
+                raise _Refused("Certificate request self-signature did not match")
+            return "Certificate request self-signature verify OK\n"
         if not opts.get("new") or not opts.get("key"):
             raise _Refused("Only `req -new -key KEY ...` is supported.")
         key = _load_key(opts["key"])
@@ -215,6 +277,17 @@ def _run(args, stdin=None):
         if opts.get("fingerprint"):
             fp = cert.fingerprint(hashes.SHA256()).hex().upper()
             out.append("sha256 Fingerprint=" + ":".join(fp[i:i + 2] for i in range(0, len(fp), 2)))
+        if opts.get("ext") == "subjectAltName":
+            try:
+                san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+            except x509.ExtensionNotFound:
+                return "No extensions in certificate\n"
+            words = [f"DNS:{n}" for n in san.value.get_values_for_type(x509.DNSName)] + \
+                [f"IP Address:{n}" for n in san.value.get_values_for_type(x509.IPAddress)]
+            out.append("X509v3 Subject Alternative Name: " + ("critical" if san.critical else ""))
+            out.append("    " + ", ".join(words))
+        elif opts.get("ext"):
+            raise _Refused(f"Only -ext subjectAltName is supported, not {opts['ext']}.")
         if not out:
             raise _Refused("Nothing asked of the certificate that the panel does on Windows.")
         return "\n".join(out) + "\n"
@@ -222,13 +295,20 @@ def _run(args, stdin=None):
     if cmd == "verify":
         opts, files = _options(rest)
         ca = _load_cert(opts["CAfile"])
+        at = datetime.datetime.fromtimestamp(int(opts["attime"]), datetime.timezone.utc) if opts.get("attime") else now
         for path in files:
             cert = _load_cert(path)
             if cert.issuer != ca.subject:
                 raise _Refused(f"{path}: not issued by this certificate authority")
-            ca.public_key().verify(cert.signature, cert.tbs_certificate_bytes, ec.ECDSA(cert.signature_hash_algorithm))
-            if _not_after(cert) <= now:
+            try:
+                ca.public_key().verify(cert.signature, cert.tbs_certificate_bytes,
+                                       ec.ECDSA(cert.signature_hash_algorithm))
+            except Exception:
+                raise _Refused(f"{path}: certificate signature failure")
+            if _not_after(cert) <= at:
                 raise _Refused(f"{path}: certificate has expired")
+            if _not_before(cert) > at:
+                raise _Refused(f"{path}: certificate is not yet valid")
         return "".join(f"{p}: OK\n" for p in files)
 
-    raise _Refused(f"`openssl {cmd}` isn't something the panel does on Windows yet (clusters come in 1.24).")
+    raise _Refused(f"`openssl {cmd}` isn't something the panel does on Windows.")

@@ -32,9 +32,9 @@ import threading
 import time
 import uuid
 
-from core import archive, backups, manager, restarts
+from core import archive, backups, manager, restarts, winnames
 from core.settings import DATA_DIR
-from core.platform import services, system
+from core.platform import paths, services, system
 
 TRANSFER_DIR = os.path.join(DATA_DIR, "transfers")
 ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -287,12 +287,24 @@ def _pack_changed(tar, d, listing):
     return sent, len(gone)
 
 
-def export(server, stop, precopy=False, base=None):
+def windows_problems(server):
+    """[(path, why)] for what a move would carry that a Windows folder can't hold (1.24)."""
+    d = manager.get_server_dir(server)
+    return winnames.problems(rel for rel, _st in _listed(d, True))
+
+
+def export(server, stop, precopy=False, base=None, for_windows=False):
     """Archives the server folder. stop=True (a move) stops the server first and keeps it from
     being started here until finish(); otherwise a live snapshot is taken, as backups do.
     precopy=True (with stop=False) packs it as it is while it runs and lists every file; a later
-    export(stop=True, base=that id) packs only what changed since (see the module docstring)."""
+    export(stop=True, base=that id) packs only what changed since (see the module docstring).
+    for_windows=True (1.24: the target is a Windows member) first refuses, with the list, a
+    folder holding names Windows can't, before the server is stopped."""
     manager._check_server(server)
+    if for_windows:
+        found = windows_problems(server)
+        if found:
+            raise TransferError(f"{server} can't go to a Windows computer as it is. " + winnames.describe(found))
     cleanup_stale()
     listing = None
     if precopy and (stop or base):
@@ -644,6 +656,10 @@ def apply_changes(archive_file, root):
         members = [m for m in members if m is not listed]
         for m in members:
             archive._clean_name(m.name)
+        if paths.WINDOWS:
+            found = winnames.problems(m.name for m in members)
+            if found:
+                raise TransferError(winnames.describe(found, "this Windows computer"))
         needed = sum(m.size for m in members if m.isfile())
         if needed > shutil.disk_usage(root).free * 0.9:
             raise TransferError(f"Not enough disk space here for the files that changed ({needed / 1e9:.1f} GB).", 507)

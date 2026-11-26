@@ -29,28 +29,12 @@ import threading
 from ctypes import wintypes
 
 from core.platform.windows import _win
+from core.winnames import BAD_CHARS, RESERVED, name_problem      # noqa: F401 (shared with moves, 1.24)
 
 FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT = 0x10, 0x400
-RESERVED = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {f"COM{i}" for i in "123456789¹²³"} \
-    | {f"LPT{i}" for i in "123456789¹²³"}
-BAD_CHARS = set('<>:"|?*/\\') | {chr(i) for i in range(32)}
-
 _dirs = {}                              # pretend descriptor -> (path, handle)
 _numbers = itertools.count(1 << 26)     # far above any real descriptor
 _lock = threading.Lock()
-
-
-def name_problem(name):
-    """Why Windows can't hold a file with this name, or None."""
-    if not name or name in (".", ".."):
-        return "that isn't a file name"
-    if any(c in BAD_CHARS for c in name):
-        return 'Windows file names can\'t contain < > : " / \\ | ? * or control characters'
-    if name[-1] in ". ":
-        return "Windows file names can't end with a dot or a space"
-    if name.split(".")[0].strip().upper() in RESERVED:
-        return f"{name.split('.')[0]} is a device name on Windows, not a file"
-    return None
 
 
 def _check(name):

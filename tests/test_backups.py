@@ -331,5 +331,34 @@ class Backups(unittest.TestCase):
         self.assertFalse(B.get_schedule("minecraft-java")["enabled"])
 
 
+@unittest.skipIf(B is None, "needs Linux (fcntl)")
+class FileChangedWhileCopied(unittest.TestCase):
+    """1.24: a file the running server cuts shorter mid-copy no longer fails the whole backup
+    (seen on Windows Server 2025 CI as "OSError: unexpected end of data")."""
+
+    def test_shorter_file_is_filled_out_and_noted(self):
+        d = tempfile.mkdtemp(dir=TMP)
+        write(os.path.join(d, "a.txt"), "hello")
+        write(os.path.join(d, "b.txt"), "world")
+        real = tarfile.TarFile.gettarinfo
+
+        def grown(tar, name=None, arcname=None, fileobj=None):
+            info = real(tar, name, arcname, fileobj)
+            if arcname == "a.txt":
+                info.size += 100           # looked at before the server truncated it
+            return info
+
+        buf, log = io.BytesIO(), []
+        with mock.patch.object(tarfile.TarFile, "gettarinfo", grown), \
+                mock.patch.object(M, "write_log", log.append), \
+                tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            B._add_tree(tar, d)
+        buf.seek(0)
+        with tarfile.open(fileobj=buf, mode="r:gz") as tar:
+            self.assertEqual(tar.extractfile("a.txt").read(), b"hello" + b"\0" * 100)
+            self.assertEqual(tar.extractfile("b.txt").read(), b"world")
+        self.assertTrue(any("a.txt got shorter" in l for l in log), log)
+
+
 if __name__ == "__main__":
     unittest.main()

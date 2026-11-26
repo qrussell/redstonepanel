@@ -11,6 +11,7 @@ import uuid
 
 from core import cluster, cluster_client, manager, transfer
 from core import settings as panel_settings
+from core.platform import paths
 
 MOVE_API = 3                    # a node needs this cluster contract to move servers
 PRECOPY_API = 5                 # ... and this one for a move with a pre-copy (1.16.13)
@@ -31,14 +32,20 @@ class MoveError(ValueError):
 # ---------------------------------------------------------------------------
 # The two ends: this panel, or a node through its token
 # ---------------------------------------------------------------------------
+def system_of(node):
+    """"windows" or "linux": the system a member reported (before 1.24 only Linux could join)."""
+    return "windows" if str((node or {}).get("platform") or "").lower() == "windows" else "linux"
+
+
 class Local:
     id = "local"
 
     def __init__(self):
         self.name = panel_settings.display_name()
+        self.system = "windows" if paths.WINDOWS else "linux"
 
-    def export(self, server, stop, precopy=False, base=None):
-        return transfer.export(server, stop, precopy, base)
+    def export(self, server, stop, precopy=False, base=None, for_windows=False):
+        return transfer.export(server, stop, precopy, base, for_windows)
 
     def chunks(self, tid):
         path, _ = transfer.open_archive(tid)
@@ -77,15 +84,18 @@ class Local:
 class Remote:
     def __init__(self, node, actor, role):
         self.node, self.id, self.name = node, node["id"], node["name"]
+        self.system = system_of(node)
         self.who = {"actor": actor, "role": role}
 
     def _call(self, method, path, body=None, timeout=60):
         return cluster_client.call_node(self.node, method, path, body, timeout=timeout, **self.who)
 
-    def export(self, server, stop, precopy=False, base=None):
+    def export(self, server, stop, precopy=False, base=None, for_windows=False):
         body = {"server": server, "stop": stop}
         if precopy or base:
             body.update(precopy=precopy, base=base)
+        if for_windows:
+            body["for_windows"] = True          # 1.24; a node before it ignores the field
         return self._call("POST", "/api/cluster/transfers/export", body, LONG)
 
     def chunks(self, tid):
@@ -220,7 +230,7 @@ def _precopy(job, a, b, server):
     pre = pimp = None
     try:
         _set(job, step=f"Pre-copy: packing {server} on {a.name} while it runs")
-        pre = a.export(server, False, precopy=True)
+        pre = a.export(server, False, precopy=True, for_windows=b.system == "windows")
         _set(job, total=pre["size"], bytes=0, step=f"Checking space on {b.name}")
         pimp = b.begin_import(pre["size"], pre["sha256"], pre["meta"])
         _set(job, step=f"Pre-copy: copying to {b.name} while {server} keeps running")
@@ -243,7 +253,7 @@ def _run(job, a, b, start_copy):
             pre, pimp = _precopy(job, a, b, server)
             down = time.time()
             _set(job, bytes=0, total=None, step=f"Stopping {server} on {a.name} and packing what changed")
-            exp = a.export(server, True, base=pre["id"])
+            exp = a.export(server, True, base=pre["id"], for_windows=b.system == "windows")
             pre = None                          # A dropped it once the changes were packed
             _set(job, total=exp["size"], step=f"Checking space on {b.name}")
             imp = b.begin_import(exp["size"], exp["sha256"], exp["meta"], base=pimp["id"])
@@ -252,7 +262,7 @@ def _run(job, a, b, start_copy):
         else:
             _set(job, step=f"Stopping and packing {server} on {a.name}" if move else f"Packing {server} on {a.name}")
             down = time.time()
-            exp = a.export(server, move)
+            exp = a.export(server, move, for_windows=b.system == "windows")
             _set(job, total=exp["size"], step=f"Checking space on {b.name}")
             imp = b.begin_import(exp["size"], exp["sha256"], exp["meta"])
             _set(job, step=f"Copying to {b.name}")

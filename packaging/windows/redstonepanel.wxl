@@ -4,5 +4,5 @@
   <String Id="InstallDirDlgTitle" Overridable="yes">{\WixUI_Font_Title}Servers and data</String>
   <String Id="InstallDirDlgDescription" Overridable="yes">Where worlds, backups and settings are kept. Pick a drive with room.</String>
   <String Id="InstallDirDlgFolderLabel" Overridable="yes">Keep Minecraft servers, backups and settings in (no spaces in the name):</String>
-  <String Id="WelcomeDlgDescription" Overridable="yes">This installs RedstonePanel [ProductVersion], a web panel for Minecraft servers, as a Windows service. This is a preview: Java servers on one computer. Click Next to continue.</String>
+  <String Id="WelcomeDlgDescription" Overridable="yes">This installs RedstonePanel [ProductVersion], a web panel for Minecraft servers, as a Windows service. Click Next to continue.</String>
 </WixLocalization>

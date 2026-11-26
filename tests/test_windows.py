@@ -452,28 +452,22 @@ class Limits(unittest.TestCase):
         self.assertFalse(runner._valid_event(dict(ok, result="whatever")))
 
 
-class Preview(unittest.TestCase):
-    """What the Windows preview doesn't do yet is refused in one sentence; reading still works."""
+class NotAPreview(unittest.TestCase):
+    """1.24: clusters and SFTP came to Windows, so nothing is refused there any more for being a
+    preview (the terminal is Linux-only by design, through terminal.supported())."""
 
-    def test_changes_outside_the_preview_are_refused_on_windows_only(self):
+    def test_nothing_is_refused_as_not_yet(self):
         try:
             import main
         except ImportError:
             self.skipTest("needs fastapi")
-        for method, path in (("POST", "/api/settings/cluster"), ("POST", "/api/cluster/moves"),
-                             ("PUT", "/api/settings/sftp")):
-            self.assertIn("Windows preview", main.not_yet(method, path, windows=True) or "", f"{method} {path}")
-            self.assertIsNone(main.not_yet(method, path, windows=False), f"{method} {path}")
-        for method, path in (("GET", "/api/settings/cluster"), ("POST", "/api/servers/deploy"),
-                             ("POST", "/api/servers/minecraft-a/backups"), ("PUT", "/api/settings"),
-                             ("PUT", "/api/settings/notifications"), ("POST", "/api/java/runtimes/install"),
-                             ("GET", "/api/servers/minecraft-a/modpack"), ("POST", "/api/servers/modpack"),
-                             ("POST", "/api/settings/backup-storage"), ("PUT", "/api/servers/minecraft-a/offsite/t1"),
-                             ("POST", "/api/servers/minecraft-a/modpack/update"),
-                             ("PUT", "/api/servers/minecraft-a/resources"),
-                             ("POST", "/api/panel/update"), ("POST", "/api/panel/update/check"),
-                             ("POST", "/api/servers/minecraft-a/phantom/install")):
-            self.assertIsNone(main.not_yet(method, path, windows=True), f"{method} {path}")
+        self.assertFalse(hasattr(main, "WINDOWS_NOT_YET"))
+        self.assertFalse(hasattr(main, "not_yet"))
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "js",
+                               "app.js"), encoding="utf-8") as f:
+            page = f.read()
+        self.assertNotIn("notYet(", page)
+        self.assertNotIn("Windows preview", page)
 
     def test_loaders_set_up_by_an_installer_are_refused_where_it_cannot_be_confined(self):
         from core import javaservers
@@ -909,6 +903,48 @@ Start Port    End Port
         with mock.patch.object(w, "_sleep_minutes", return_value=0), mock.patch.object(w, "_restart_pending", return_value=False):
             self.assertEqual(w.machine_notes(), [])
         w._machine_cache.clear()
+
+
+class OpenLink(unittest.TestCase):
+    """1.24: the installer's Finish page and the Start menu open RedstonePanel.url next to the
+    program, which the panel writes on every start."""
+
+    def test_the_link_points_at_the_panel_and_follows_a_change(self):
+        from core.platform.windows import system as w
+        with tempfile.TemporaryDirectory() as top:
+            path = w.write_open_link("https://localhost:8443/", folder=top)
+            self.assertEqual(path, os.path.join(top, "RedstonePanel.url"))
+            with open(path, encoding="utf-8", newline="") as f:
+                text = f.read()
+            self.assertTrue(text.startswith("[InternetShortcut]\r\nURL=https://localhost:8443/\r\n"))
+            self.assertIn("IconFile=" + os.path.join(top, "app", "static", "img", "favicon.ico"), text)
+            w.write_open_link("http://localhost:8080/", folder=top)
+            with open(path, encoding="utf-8") as f:
+                self.assertIn("URL=http://localhost:8080/", f.read())
+            self.assertEqual(sorted(os.listdir(top)), ["RedstonePanel.url"])
+
+    def test_a_checkout_writes_nothing(self):
+        from core.platform.windows import system as w
+        self.assertIsNone(w._program_folder())          # tests run from a checkout, not Program Files
+        self.assertIsNone(w.write_open_link("http://localhost:8080/"))
+        for side in ("linux", "fake"):
+            mod = importlib.import_module(f"core.platform.{side}.system")
+            self.assertIsNone(mod.write_open_link("http://localhost:8080/"))
+
+    def test_the_address_on_this_computer(self):
+        import run
+        self.assertEqual(run.local_url("http", 8080), "http://localhost:8080/")
+        self.assertEqual(run.local_url("https", 8443), "https://localhost:8443/")
+        self.assertEqual(run.local_url("https", 443), "https://localhost/")
+
+    def test_the_installer_has_the_start_menu_entry_and_the_finish_box(self):
+        with open(os.path.join(ROOT, "packaging", "windows", "redstonepanel.wxs"), encoding="utf-8") as f:
+            wxs = f.read()
+        self.assertIn('Target="[INSTALLDIR]RedstonePanel.url"', wxs)
+        self.assertIn('WixShellExecTarget" Value="[DATAFOLDER]open-panel.url"', wxs)
+        self.assertIn('--for-sid &quot;[UserSID]&quot;', wxs)
+        self.assertIn('Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="OpenPanel"', wxs)
+        self.assertNotIn("localhost:8080", wxs)        # the address depends on the panel's settings
 
 
 if __name__ == "__main__":

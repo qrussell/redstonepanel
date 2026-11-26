@@ -15,7 +15,8 @@ import tempfile
 import time
 import zipfile
 
-from core.platform import system
+from core import winnames
+from core.platform import paths, system
 
 JUNK = {"__MACOSX", ".DS_Store", "Thumbs.db"}   # added by macOS/Windows zip tools
 
@@ -87,11 +88,37 @@ def _extract_tar(path, dest):
             raise ArchiveError(f"Unsafe archive entry refused: {e}")
 
 
+def entry_names(path, kind=None):
+    """Every entry's cleaned relative path (zip links left out, as unpacking skips them)."""
+    kind = kind or _kind(path)
+    if kind == "zip":
+        with zipfile.ZipFile(path) as z:
+            return [_clean_name(i.filename) for i in z.infolist() if not stat.S_ISLNK(i.external_attr >> 16)]
+    with tarfile.open(path) as t:
+        return [_clean_name(m.name) for m in t.getmembers()]
+
+
+def windows_problems(path, kind=None):
+    """[(path, why)] for entries a Windows folder can't hold (see core/winnames.py)."""
+    return winnames.problems(n for n in entry_names(path, kind) if n and n.split("/")[0] not in JUNK)
+
+
+def check_windows_names(path, kind=None, windows=None):
+    """On Windows (1.24), refuses an archive with names Windows can't hold, listing them, before
+    anything is unpacked. Does nothing on Linux."""
+    if not (paths.WINDOWS if windows is None else windows):
+        return
+    found = windows_problems(path, kind)
+    if found:
+        raise ArchiveError(winnames.describe(found, "this Windows computer"))
+
+
 def unpack(path, parent):
     """Unpacks into a new temp folder inside `parent` (same filesystem, so it can be renamed into
     place). Returns (staging_dir, root): root is the folder holding the server files, i.e. the
     staging dir itself or its single wrapping folder. Caller removes staging_dir when done."""
     kind = _kind(path)
+    check_windows_names(path, kind)
     needed = _uncompressed_size(path, kind)
     free = shutil.disk_usage(parent).free
     if needed > free * 0.9:

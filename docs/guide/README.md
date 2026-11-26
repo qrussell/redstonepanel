@@ -21,7 +21,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | …? | Where |
 | --- | --- |
 | Install or update the panel | [Install](#1-install) |
-| Run it on a Windows PC | [On Windows (preview)](#on-windows-preview), or [with WSL](#on-windows-with-wsl) |
+| Run it on a Windows PC | [On Windows](#on-windows), or [with WSL](#on-windows-with-wsl) |
 | Create a Java or Bedrock server | [Create or import a server](#4-create-or-import-a-server) |
 | Bring in a server I already have | [Import](#4-create-or-import-a-server) |
 | Talk to players or run a command | [Live Chat](#6-live-chat) |
@@ -51,10 +51,11 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.24.0 | **Mixed Linux and Windows clusters**, SFTP on Windows, **Windows Hello** passkeys (or a phone), an easier first password on Windows, and **Remember this device** for 30 days. | [Clusters](#18-clusters), [Windows Hello](#windows-hello-passkeys), [Remember this device](#remember-this-device) |
 | 1.23.2 | **Remove RedstonePanel** under Panel Settings (and `sudo redstonepanel uninstall`) backs up every server and asks what happens to each one before the panel goes. | [Removing RedstonePanel](#removing-redstonepanel) |
 | 1.23.1 | **Port check** on the Port forwarding page: finds port conflicts, names the other program and fixes what it safely can. | [Port check](#port-check) |
-| 1.23.0 | **🪟 Windows, the whole machine**: Bedrock, more loaders and modpacks, limits, off-site backups, **Update now** and Windows account sign-in. | [On Windows (preview)](#on-windows-preview) |
-| 1.22.0 | **🪟 Windows preview**: an installer for Windows 11 and Windows Server 2022 or 2025 that runs Java servers on one computer. | [On Windows (preview)](#on-windows-preview) |
+| 1.23.0 | **🪟 Windows, the whole machine**: Bedrock, more loaders and modpacks, limits, off-site backups, **Update now** and Windows account sign-in. | [On Windows](#on-windows) |
+| 1.22.0 | **🪟 Windows preview**: an installer for Windows 11 and Windows Server 2022 or 2025 that runs Java servers on one computer. | [On Windows](#on-windows) |
 | 1.21.10 | **⌨️ Terminal**: a shell on the machine in your browser, for admins, as a Linux account. | [Terminal](#terminal) |
 | 1.21.9 | **🔗 Join pages** can sit behind HAProxy or Cloudflare, on your own domain. | [Join pages through a proxy](#join-pages-through-a-proxy-haproxy-or-cloudflare-1219) |
 | 1.21.6 | **Player packs**: the mods players need, as one download on the join page that follows the server. | [Player packs](#player-packs) |
@@ -87,7 +88,7 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
 **Contents**
 
 1. [Install](#1-install)
-   - [On Windows (preview)](#on-windows-preview)
+   - [On Windows](#on-windows)
    - [On Windows with WSL](#on-windows-with-wsl)
 2. [Sign in](#2-sign-in)
 3. [The dashboard](#3-the-dashboard)
@@ -125,7 +126,7 @@ RedstonePanel runs on **Ubuntu 24.04, 26.04 or 26.10**, **Linux Mint 22 or 23**,
 Raspberry Pi, it runs **Java servers only**, because Mojang makes Bedrock Dedicated Server for
 x86-64 only (see [On a Raspberry Pi](#on-a-raspberry-pi)). Ubuntu 25.04 and 25.10 still work
 but no longer get updates; Debian 12, Linux Mint 21 and 32-bit systems aren't supported. From 1.22 there is also
-a Windows installer, as a preview (see [On Windows (preview)](#on-windows-preview)). On Linux, the quickest way is
+a Windows installer (see [On Windows](#on-windows)). On Linux, the quickest way is
 the installer, which adds
 the signed qrussell-repo apt repository (checking its key) and installs the panel:
 
@@ -205,27 +206,38 @@ offers Java 21, which some old versions and modpacks don't start on.
 **Cooling.** A Pi 5 needs its active cooler (or a case with a fan) to run a server all day
 without slowing itself down.
 
-### On Windows (preview)
+### On Windows
 
 From 1.22 RedstonePanel also installs on **Windows 11** and **Windows Server 2022 or 2025**
 (64-bit Intel or AMD) with its own installer, no WSL needed. From 1.23 it runs everything one
 computer needs: Java servers of every type and Bedrock servers, with backups and off-site
 copies, schedules, the console, Live Chat, the file manager, add-ons, the firewall, memory and
-processor limits, crash explanations, webhooks, two-factor sign-in and **Update now**. It stays
-a **preview** until clusters and SFTP arrive in 1.24; until then the panel leaves those out.
-The [terminal](#terminal) is Linux-only by design: on Windows, open a command prompt on the PC.
+processor limits, crash explanations, webhooks, two-factor sign-in and **Update now**. From 1.24
+it is no longer a preview: a Windows PC can be a cluster's master or one of its nodes, next to
+Linux machines (see [Clusters](#18-clusters)), and [SFTP](#sftp-filezilla-winscp) works there
+too. The [terminal](#terminal) is Linux-only by design: on Windows, open a command prompt on
+the PC.
 
 1. Download `RedstonePanel-x.y.z-x64.msi` from the
    [latest release](https://github.com/qrussell/redstonepanel/releases/latest) and open it.
-   The preview isn't signed yet, so SmartScreen says **Windows protected your PC**: choose
+   The installer isn't signed yet, so SmartScreen says **Windows protected your PC**: choose
    **More info**, then **Run anyway**. The release lists the file's SHA-256 next to it.
 2. The installer asks where servers, backups and settings are kept. The default is
    `C:\ProgramData\RedstonePanel`; the folder's name can't have a space in it.
-3. Open **http://localhost:8080**. The user name is **admin**, and the password is in
-   `first-sign-in.txt` in that folder (open it as an administrator). Change the password under
-   **Users**, then delete the file. You can also sign in with your own Windows account if it is
-   in **Administrators** (an admin), or in a local group named **RedstonePanel** that you make
-   for the people you want to let in.
+3. Leave **Open RedstonePanel in my browser** ticked and click **Finish**. On a first install
+   the browser opens a page to **choose a password** for the panel account **admin** (from 1.24;
+   the link works once, for 7 days, and only for you). Type it twice and click
+   **Set Password and Sign In**. If you skip it, the random password is in `first-sign-in.txt`
+   in that folder (open it as an administrator); choosing your own deletes that file. Later,
+   open **RedstonePanel** from the Start menu; it follows the panel if you change its port or
+   turn on HTTPS. You can also sign in with your own Windows account if it is in
+   **Administrators**, or in a local group named **RedstonePanel** that you make, and add
+   **Windows Hello** (face, fingerprint or PIN) to skip the password; see
+   [Windows Hello](#windows-hello-passkeys). A Microsoft account signs in with its email
+   address and its Microsoft account password; the Windows PIN is not a password Windows checks
+   for other programs. If you never use a password (a passwordless Microsoft account), sign in
+   as **admin** once and add Windows Hello there. Windows accounts always sign in as admins; for
+   people who should only run some servers, make panel accounts under **Users**.
 
 Java (Eclipse Temurin) is downloaded the first time a server needs it. Each game server is a
 Windows service (`minecraft-<name>`) running as its own account that can reach only its own
@@ -235,7 +247,7 @@ the dashboard (from 1.23; game servers stop for about a minute), or run the newe
 Needs attention also warns when the PC is set to sleep, when Windows Update waits to restart it,
 and when a server's port is in a range Hyper-V, WSL or Docker Desktop reserved. To remove it, use **Settings → Apps → Installed apps**. Your worlds and backups stay
 in the folder from step 2. More detail is in the wiki's
-[Installation](https://github.com/qrussell/redstonepanel/wiki/Installation#on-windows-preview)
+[Installation](https://github.com/qrussell/redstonepanel/wiki/Installation#on-windows)
 page.
 
 If the machine already runs Minecraft servers that something else set up, **New server** lists
@@ -309,9 +321,32 @@ There are two kinds of account:
   `sudo`, run `sudo usermod -aG redstonepanel alice`.
 - **Panel accounts** exist only in the panel. Admins create them under **👥 Users** (see
   [Users](#16-users)), or root creates one with `sudo redstonepanel add-user alice --role user`.
+  Forgot the password and no other admin can reset it under **Users**? Run
+  `sudo redstonepanel reset-password NAME` on the server (in an administrator prompt on
+  Windows, without `sudo`); it signs that account out everywhere.
+
+On **Windows** the first kind is **Windows accounts** in **Administrators** or a local group named
+**RedstonePanel**, with their Windows password, and both kinds can add
+[Windows Hello](#windows-hello-passkeys).
 
 Admins can turn sign-in off for devices on your home network; see
 [Panel Settings](#17-panel-settings-name-https-sign-in).
+
+### Remember this device
+
+From 1.24, tick **Remember this device for 30 days** when you sign in (with a password, a
+two-factor code or [Windows Hello](#windows-hello-passkeys)) on your own computer or phone, and
+that browser stays signed in for 30 days instead of 12 hours. Each panel remembers you on its
+own, so tick it on every panel you use. Don't tick it on a shared or borrowed computer.
+
+Your remembered devices are listed under **🔑 Password → Remembered devices**, by browser and
+system (for example *Edge on Windows*), with when and from where each was last used. **Forget**
+signs one out at once (use it for a lost phone), and **Forget All Other Devices** signs out
+every one but the device you are using. Signing out on a device forgets it too. A new password,
+a disabled or deleted account forgets all of them. After 30 days the device asks you to sign in
+again.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/remembered-devices.png"><img src="images/remembered-devices.png" alt="Remembered devices under the Password button" width="420"></picture>
 
 ### Two-factor sign-in
 
@@ -335,7 +370,37 @@ for Linux accounts too). Wrong codes count towards the same limit as wrong passw
 in ten minutes and that account and address wait a few minutes.
 
 Admins can make it compulsory for every admin; see
-[Panel Settings](#17-panel-settings-name-https-sign-in).
+[Panel Settings](#17-panel-settings-name-https-sign-in). A [Windows Hello](#windows-hello-passkeys)
+sign-in counts as both steps.
+
+### Windows Hello (passkeys)
+
+From 1.24, on a panel installed on **Windows**, any account (Windows or panel) can sign in with
+**Windows Hello**: your face, fingerprint or Windows Hello PIN, instead of a password. The panel
+keeps only a public key (a *passkey*); the PIN or fingerprint never leaves Windows. Linux panels
+keep Linux accounts, panel accounts and two-factor codes.
+
+1. Sign in as usual, click **🔑 Password**, and under **Passkeys (Windows Hello)** type your
+   password, give the passkey a name if you like (for example *Desk PC*) and click
+   **Add Passkey**. Windows asks for your face, fingerprint or PIN.
+2. Next time, click **Sign in with Windows Hello** on the sign-in page. No user name needed:
+   the passkey says whose it is.
+
+<p><picture><source media="(prefers-color-scheme: light)" srcset="images/light/windows-hello.png"><img src="images/windows-hello.png" alt="The sign-in page of a Windows panel, with Sign in with Windows Hello" width="300"></picture> <picture><source media="(prefers-color-scheme: light)" srcset="images/light/passkeys.png"><img src="images/passkeys.png" alt="Passkeys (Windows Hello) under the Password button" width="340"></picture></p>
+
+A passkey can also live on your **phone** (Android or iPhone) or a security key. When you click
+**Add Passkey**, choose **Use another device** in the Windows window, scan the QR code with the
+phone's camera and let it save the passkey; Bluetooth must be on on both. To sign in, click
+**Sign in with Windows Hello**, choose the phone and scan the code again.
+
+It counts as two-factor sign-in on its own (the PC's key plus your face, finger or PIN), so it
+also meets **Require two-factor sign-in for admins**. Browsers allow passkeys only at a name,
+not an IP address, and only over HTTPS or at `http://localhost`, so it works at
+`http://localhost:8080` on the PC itself, or from other machines at a host name with a trusted
+certificate (see [HTTPS](#17-panel-settings-name-https-sign-in)). A passkey belongs to the
+address it was added at: one added at `localhost` works there only. Each account can have up to
+ten. **Remove** takes one away; an admin's **Reset two-factor** (or **Remove passkeys**) under
+**👥 Users**, or `redstonepanel reset-2fa NAME` in an administrator prompt, removes them all.
 
 ### On a phone
 
@@ -1598,7 +1663,7 @@ instead of the browser. SFTP is **off** until an admin turns it on under
   program with them filled in, and **Copy** copies the `sftp://` address.
 - **Username**: your account, a dot, and the server, such as `alex.minecraft-java`. Each
   sign-in reaches one server's folder and nothing else.
-- **Password**: your panel password (or Linux password, for a Linux account).
+- **Password**: your panel password (or Linux or Windows password, for such an account).
 - Admins reach every server. A user account needs **Files** on the server
   (see [What a helper may do](#what-a-helper-may-do)); taking it away ends their open session
   within 30 seconds.
@@ -1615,13 +1680,17 @@ Good to know:
 
 - It is SFTP only: no shell, no commands, no port forwarding. Files go through the same
   safety checks as the Files tab (nothing outside the folder, symlinks never followed) and
-  belong to the `minecraft` user.
+  belong to the `minecraft` user. On Windows they get the server's own account's rights, and
+  names Windows can't hold (`CON`, `a:b`, a name ending in a dot) are refused.
 - Uploads, deletes and renames are in the activity log (`[SFTP] alex uploaded …`), and wrong
   passwords count towards the same limit as the sign-in page (5 in 10 minutes).
-- Turning SFTP on opens its port in this machine's firewall (ufw); turning it off closes it.
-  For people outside your home, forward the port on your router too.
-- It needs the `python3-paramiko` package, which is installed with the panel unless you
-  installed without recommended packages; the setting tells you if it is missing.
+- Turning SFTP on opens its port in this machine's firewall (ufw, or Windows Defender
+  Firewall); turning it off closes it. For people outside your home, forward the port on your
+  router too.
+- On Linux it needs the `python3-paramiko` package, which is installed with the panel unless
+  you installed without recommended packages; the setting tells you if it is missing. On
+  Windows (from 1.24) the installer carries it, and SFTP runs as the Windows service
+  **redstonepanel-sftp**.
 - **On a cluster**, each machine serves SFTP for its own servers. For a server on a node, turn
   SFTP on in that node's own panel and sign in with an account of that panel; the master's
   accounts don't reach node servers over SFTP.
@@ -1968,7 +2037,10 @@ dashboard** or **Hide it** (see [The dashboard](#3-the-dashboard)).
   Download its CA certificate from here and install it on your devices once to get rid of
   the browser warning.
 - **HTTPS with my own certificate**: point it at a certificate and key you already have, for
-  example from certbot.
+  example from certbot on Linux or [win-acme](https://www.win-acme.com) on Windows (choose to
+  store the certificate as **PEM files**, then give the `-chain.pem` and `-key.pem` files here).
+  When the certificate is renewed, the panel notices within ten minutes and restarts itself to
+  serve the new one *(1.24)*; no hook script is needed.
 
 In a cluster, the choices are different (as in the screenshot): a node always uses the
 cluster's HTTPS, and a master chooses between **HTTPS from the cluster** and **HTTPS with my
@@ -2128,8 +2200,28 @@ to the node.
 
    <picture><source media="(prefers-color-scheme: light)" srcset="images/light/cluster-find.png"><img src="images/cluster-find.png" alt="Find panels on your network"></picture>
 3. On each node: paste the code under **Settings → Cluster → Join a cluster**, and click
-   **Join**.
+   **Join**. Or run the command shown with the code: `sudo redstonepanel join '…'` on Linux, or
+   `redstonepanel join …` in a command prompt opened as administrator on Windows.
 4. Download the cluster CA from **Settings → Cluster** and install it on your devices once.
+
+**Linux and Windows together** *(1.24)*: a cluster can mix Ubuntu, Debian, Raspberry Pi and
+Windows machines, and any of them can be the master. Each member says which system it runs
+(**Settings → Cluster** and the **🌐 Cluster** page show *Linux* or *Windows*). Everything above
+works between them, including moves, copies and backup copies:
+
+- **Java servers** move both ways as they are. A Forge or NeoForge server starts with the
+  arguments file for the system it lands on.
+- **Bedrock servers** get the new machine's own Bedrock program, of the version they ran when
+  minecraft.net still offers it (else the newest), downloaded during the move; worlds, packs and
+  settings come along, and the other system's program is removed.
+- **File names Windows can't hold.** Linux allows names Windows refuses or reads differently:
+  device names (`CON`, `NUL`, `COM1`, also as `con.txt`), a colon or `< > " | ? *`, a name ending
+  in a dot or space, and two names that differ only in upper and lower case. Before a server
+  moves or is copied to a Windows machine, the old machine checks its folder and the move is
+  refused with the list, before anything is stopped. Rename or remove them (in **Files**) and
+  try again. A Windows panel checks the same when it restores a backup or imports an archive.
+- Both machines need RedstonePanel 1.24 or later for a Windows member; Linux members on 1.16 or
+  later still move servers between themselves.
 
 **Creating a server on a node:** in **New Server**, pick the node under **Where**. A template
 you choose is copied to the node first, ports are picked on the node, and if the node doesn't have
@@ -2175,13 +2267,34 @@ later for this.
 master's templates to a node. Templates a node made on its own panel are listed under its name,
 with **Copy to this panel**.
 
-**Who can do what:** admins on the master are admins on the nodes; users on the master have a
-user's rights there (no file manager, Java or Phantom). Both panels' consoles log each change
-with the master user's name, e.g. `[CLUSTER] alex@Main: …`. The master can never change a node's
-users, settings or HTTPS, or erase a server's files.
+### Accounts in a cluster
+
+Each panel keeps **its own accounts**. Joining a cluster doesn't copy, share or sync them, on
+Linux or Windows:
+
+- **You manage the cluster from the master, with the master's accounts.** Sign in there with a
+  panel account, or with a system account the master accepts (on Linux, in **sudo** or
+  **redstonepanel**; on Windows, in **Administrators** or **RedstonePanel**). A Windows account
+  can't sign in to a Linux master, and a Linux account can't sign in to a Windows master: only
+  the machine an account belongs to can check its password.
+- **Admins on the master manage the whole cluster:** every server on every node, moves and
+  copies, backup copies, templates and the cluster's settings. They need no account on the
+  nodes; a node trusts its master through the cluster certificate.
+- **User accounts on the master** get only what you tick for them under **Users → Servers**,
+  and that includes node servers (the master keeps those ticks too; see
+  [What a helper may do](#what-a-helper-may-do)). Moving servers and choosing backup copies stay
+  with admins.
+- **Every change is logged with the master user's name**, on the master and on the node, e.g.
+  `[CLUSTER] alex@Main: start minecraft-java on Garage`.
+- **A node's own accounts keep working on the node.** Signing in at a node's own address shows
+  only that machine, as a standalone panel would. The master can never change a node's users,
+  settings or HTTPS, or erase a server's files.
+- **So:** give each person one account, on the master. Keep a working admin on every node too
+  (the one made at install is enough), for when the master is down.
 
 **Certificates:** the master renews the nodes' certificates, and its own, 30 days before they
-expire. A master on the internet can serve its own certificate (certbot) to browsers: **Settings →
+expire. A master on the internet can serve its own certificate (certbot, or win-acme on Windows)
+to browsers: **Settings →
 Connection → HTTPS with my own certificate**. A node with its own public certificate can join too;
 under **Settings → Cluster** it shows as checked with "the system's trust store".
 
@@ -2192,10 +2305,12 @@ plus join codes, the cluster backup and **Nightly backups**.
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/panel-settings.png"><img src="images/panel-settings.png" alt="Cluster settings on the master: the node list"></picture>
 
 **Nightly backups** write an encrypted cluster backup after 3:00 every night to
-`/var/lib/redstonepanel/cluster/backups/` and keep the last 7. Turning them on asks for a
+`/var/lib/redstonepanel/cluster/backups/` (on Windows, `data\cluster\backups` in the panel's
+folder) and keep the last 7. Turning them on asks for a
 passphrase, which is stored on the master (readable only by root) so the backup can run
 unattended; turning them off forgets it. Download one now and then and keep it off the master:
-it's what lets `sudo redstonepanel cluster promote FILE` make another panel the master.
+it's what lets `sudo redstonepanel cluster promote FILE` make another panel the master (Linux or
+Windows: a backup made on one opens on the other).
 Below them, **Connection** lets a master choose between the cluster's HTTPS and its own
 certificate.
 

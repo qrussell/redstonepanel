@@ -6,11 +6,14 @@
     redstonepanel status              show the address, HTTPS/sign-in mode and panel users
     redstonepanel add-user NAME [--role admin|user]
                                       create a panel account (asks for the password)
+    redstonepanel reset-password NAME set a panel account's new password (asks for it, or reads one
+                                      line from stdin) and sign it out everywhere
     redstonepanel set-name "NAME"     name shown in the panel to tell servers apart
                                       ("" = use this server's host name)
     redstonepanel reset-security      recovery: plain HTTP on 8080, sign-in required, restart
     redstonepanel reset-2fa NAME      recovery: turn off two-factor sign-in for an account
-                                      (panel or Linux) that lost its authenticator app
+                                      (panel or Linux) that lost its authenticator app, and
+                                      remove its passkeys (Windows Hello)
     redstonepanel terminal on|off     turn the panel's terminal on or off (Panel Settings > Terminal);
                                       off closes open terminals within a minute
     redstonepanel removed             list game servers uninstalled with "Keep World"
@@ -61,7 +64,7 @@ os.chdir(APP_DIR)
 sys.path.insert(0, APP_DIR)
 
 from core import settings  # noqa: E402
-from core.platform import services, system  # noqa: E402
+from core.platform import paths, services, system  # noqa: E402
 
 
 def reset_security():
@@ -93,9 +96,15 @@ def reset_2fa(name):
               f"code it can't give. Moved it to {twofactor.TOTP_FILE}.damaged: every account now signs in "
               "with its password only and can set up two-factor again.")
         return
+    from core import passkeys
     name = name.strip()
     removed = [src for src in ("panel", "linux") if twofactor.remove(twofactor.account_key(src, name))]
+    keys_removed = [src for src in ("panel", "linux") if passkeys.remove_all(twofactor.account_key(src, name))]
+    if keys_removed:
+        print(f"Removed {name}'s passkeys (Windows Hello); they can add them again after signing in.")
     if not removed:
+        if keys_removed:
+            return
         sys.exit(f"'{name}' doesn't have two-factor sign-in set up.")
     print(f"Two-factor sign-in turned off for {name}. They sign in with their password and can set it up "
           "again under the Password button" + (" (it is required for admins on this panel, so they will be "
@@ -105,6 +114,12 @@ def reset_2fa(name):
         manager.write_log(f"[AUTH] two-factor sign-in reset for '{name}' from the command line")
     except Exception:
         pass
+
+
+def local_url(scheme, port):
+    """The panel's address in a browser on this computer."""
+    default = 443 if scheme == "https" else 80
+    return f"{scheme}://localhost" + ("" if int(port) == default else f":{port}") + "/"
 
 
 def main():
@@ -148,6 +163,11 @@ def main():
     else:
         settings.RUNTIME.update(scheme="http", port=s["http_port"], https_error=error)
         port = s["http_port"]
+    # 1.24, Windows: the Start menu's RedstonePanel and the installer's Finish page open this
+    try:
+        system.write_open_link(local_url(settings.RUNTIME["scheme"], port))
+    except OSError as e:
+        print(f"[redstonepanel] Couldn't write the link to the panel: {e}", file=sys.stderr)
 
     from main import app
     from core import playerlog
@@ -157,6 +177,11 @@ def main():
     from core import cluster_client, manager
     import main as main_module
     cluster_client.maintenance(manager.write_log, main_module._restart_soon)
+    # 1.24: "HTTPS with my own certificate" renewed by certbot or win-acme: restart to serve it
+    if ssl_args and s["https_mode"] == "custom":
+        from core import tls
+        tls.watch_own_certificate(ssl_args["ssl_certfile"], ssl_args["ssl_keyfile"], manager.write_log,
+                                  main_module._restart_soon)
     # Cluster masters: copy backups to the member chosen on each server's Backups tab (1.16.8)
     from core import backup_copies
     backup_copies.sweeper()
@@ -226,13 +251,16 @@ def status():
     print(f"HTTPS:     {s['https_mode']}" + (f" (HTTP port {s['http_port']} redirects)" if s["https_mode"] != "off" else ""))
     print(f"Sign-in:   {'required' if s['login_mode'] == 'required' else 'not required from ' + ', '.join(s['trusted_networks'])}"
           + ("; two-factor required for admins" if s.get("require_2fa_admins") else ""))
-    print(f"Linux:     members of {' or '.join(auth.ALLOWED_LINUX_GROUPS)} can sign in")
+    if paths.WINDOWS:
+        print("Windows:   members of Administrators or RedstonePanel can sign in (as admins)")
+    else:
+        print(f"Linux:     members of {' or '.join(auth.ALLOWED_LINUX_GROUPS)} can sign in (as admins)")
     users = auth.list_panel_users()
     print(f"Panel users: {', '.join(u['username'] + ' (' + u['role'] + (', 2FA' if u['two_factor'] else '') + (', disabled' if u['disabled'] else '') + ')' for u in users) or 'none'}")
     from core import twofactor
     linux_2fa = sorted(k.split(":", 1)[1] for k in twofactor.enabled_keys() if k.startswith("linux:"))
     if linux_2fa:
-        print(f"Two-factor (Linux accounts): {', '.join(linux_2fa)}")
+        print(f"Two-factor ({'Windows' if paths.WINDOWS else 'Linux'} accounts): {', '.join(linux_2fa)}")
     from core import cluster
     st = cluster.state()
     print(f"Cluster:   {st['role']}" + (f" of '{st.get('name') or st.get('cluster_name')}'" if st["role"] != "standalone" else "")
@@ -277,13 +305,45 @@ def add_user(args):
     print(f"Created panel user '{args[0].strip().lower()}' ({role}).")
 
 
+def reset_password(args):
+    """Sets a panel account's password from an admin prompt or SSH (forgotten password, no other
+    admin). Signs the account out everywhere. Windows and Linux accounts change theirs in the system."""
+    import getpass
+    from core import auth
+    if len(args) != 1:
+        sys.exit("Usage: redstonepanel reset-password NAME")
+    name = args[0].strip().lower()
+    if not any(u["username"] == name for u in auth.list_panel_users()):
+        where = "in Windows" if paths.WINDOWS else "with passwd"
+        sys.exit(f"'{name}' isn't a panel account. " + (f"Windows and Linux accounts change their password {where}."
+                                                        if auth.linux_account_exists(args[0].strip()) else
+                                                        "See the accounts with: redstonepanel status"))
+    if sys.stdin.isatty():
+        pw = getpass.getpass(f"New password for {name}: ")
+        if pw != getpass.getpass("Repeat it: "):
+            sys.exit("Passwords do not match.")
+    else:
+        pw = sys.stdin.readline().rstrip("\r\n")   # e.g. echo "$PW" | redstonepanel reset-password NAME
+    try:
+        auth.update_panel_user(name, password=pw)
+    except auth.AuthError as e:
+        sys.exit(str(e))
+    print(f"Password changed for '{name}'. They were signed out everywhere; two-factor sign-in, if on, still applies.")
+    try:
+        from core import manager
+        manager.write_log(f"[AUTH] password reset for panel user '{name}' from the command line")
+    except Exception:
+        pass
+
+
 def _restart_service(what):
     """The panel only picks up HTTPS changes when it restarts."""
     if system.is_admin() and services.available():
         if services.restart_panel() == 0:
             print(f"Restarted redstonepanel {what}.")
             return
-    print("Restart the panel to apply it: sudo systemctl restart redstonepanel")
+    print("Restart the panel to apply it: " + ("Restart-Service redstonepanel (PowerShell as administrator)"
+                                               if paths.WINDOWS else "sudo systemctl restart redstonepanel"))
 
 
 def _log(msg):
@@ -292,6 +352,8 @@ def _log(msg):
 
 
 def _actor():
+    if paths.WINDOWS:
+        return f"{os.environ.get('USERNAME') or 'administrator'} (command line)"
     return f"{os.environ.get('SUDO_USER') or 'root'} (command line)"
 
 
@@ -317,7 +379,7 @@ def cluster_cmd(args):
             st = cluster.create_cluster(args[1], _actor())
             _log(f"{_actor()} created cluster '{st['name']}'; this panel is its master.")
             print(f"Created cluster '{st['name']}'. This panel is its master and now uses cluster HTTPS.")
-            print("Add nodes with: sudo redstonepanel cluster join-code")
+            print("Add nodes with: " + ("" if paths.WINDOWS else "sudo ") + "redstonepanel cluster join-code")
             _restart_service("with cluster HTTPS")
         elif args == ["status"]:
             st = cluster.state()
@@ -345,8 +407,10 @@ def cluster_cmd(args):
             _log(f"{_actor()} made a join code ({j['id']}), valid for one hour.")
             print(f"Join code (single use, valid until {_when(j['expires'])}). Keep it secret.\n")
             print(j["code"] + "\n")
-            print("On the new server (Ubuntu with RedstonePanel installed), run:\n")
-            print("  " + j["command"])
+            print("On the new server (with RedstonePanel installed), run on Linux:\n")
+            print("  " + j["command"] + "\n")
+            print("or on Windows, in a command prompt opened as administrator:\n")
+            print("  " + j["windows_command"])
         elif args[:1] == ["backup"] and len(args) == 2:
             data = cluster.make_backup(_passphrase(confirm=True), _actor())
             fd = os.open(args[1], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -667,6 +731,8 @@ if __name__ == "__main__":
         terminal_cmd(rest[0])
     elif cmd == "status" and not rest:
         status()
+    elif cmd == "reset-password":
+        reset_password(rest)
     elif cmd == "add-user":
         add_user(rest)
     elif cmd == "removed" and not rest:

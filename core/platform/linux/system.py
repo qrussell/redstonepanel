@@ -821,3 +821,9 @@ def can_bind(port, proto):
             return True
         except OSError:
             return False
+
+
+def write_open_link(url, folder=None):
+    """The installer's "open the panel" link (Windows, 1.24). Linux has no installer window or
+    Start menu: the package prints the address instead."""
+    return None

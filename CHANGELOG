@@ -4,6 +4,20 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.24.0 (2026-11-26)
+
+Release notes: release-notes/v1.24.0.md
+
+- Mixed Linux and Windows clusters: a Windows PC can be a cluster's master or a node next to Linux machines. The Cluster page and Panel Settings say Linux or Windows for each member.
+- Java and Bedrock servers move both ways; a Bedrock server gets the new machine's own program. A move or restore onto Windows is refused, with the list, when the server holds file names Windows can't.
+- Backup copies, restores and encrypted cluster backups work across systems.
+- SFTP on Windows, and HTTPS with your own certificate (win-acme or certbot) picks up a renewed certificate by itself. Windows is no longer a preview.
+- Windows sign-in: Windows Hello (face, fingerprint or PIN) or a phone through passkeys, added under Password; it counts as two-factor sign-in.
+- The Windows installer's Finish page opens a one-use link to choose the admin password, and the Start menu gets RedstonePanel.
+- Remember this device: a 30-day sign-in on your own computer or phone, listed under Password with Forget.
+- `redstonepanel reset-password NAME` sets a forgotten panel password.
+- A server moved away and back keeps its name; start, stop and restart on a node wait for its answer.
+
 ## 1.23.2 (2026-11-25)
 
 Release notes: release-notes/v1.23.2.md

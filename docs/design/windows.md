@@ -1,6 +1,6 @@
 # RedstonePanel on Windows
 
-Status: preview; 1.22 Java servers on one computer, 1.23 the whole single machine · Author: Quentin Russell
+Status: built; 1.22 Java servers on one computer (preview), 1.23 the whole single machine, 1.24 mixed clusters and SFTP · Author: Quentin Russell
 
 The plan and the list of what maps to what are in the [roadmap](roadmap.md) under "1.21 to
 1.24". This page says how the Windows side is built, for whoever changes it next.
@@ -36,6 +36,8 @@ C:\ProgramData\RedstonePanel\          the home folder (kept by an uninstall), o
     journal\<unit>\                    output.log, status.json, usage.json, events\ (the journal)
     java\java-21-openjdk-amd64\        Java (/usr/lib/jvm)
     first-sign-in.txt                  the first account's password, until it is deleted
+    open-panel.url                     what the installer's Finish opens: the one-use "choose your password"
+                                       link (1.24) until it is used, then the panel's address
 ```
 
 The home folder can't have a space in its name: unit files split command lines on spaces.
@@ -163,13 +165,46 @@ test sets another folder, makes a server there, checks its rights and removes it
   error in Needs attention and under **Fix these first** on the Port forwarding page, which
   also lists the ranges.
 
-## Not in the preview
+## 1.24: clusters and SFTP
 
-Refused with one sentence by the API (`WINDOWS_NOT_YET` in `main.py`) and hidden in the page
-(`not_yet` in `/api/auth/me`): clusters and SFTP (roadmap 1.24).
+Nothing is held back any more: `WINDOWS_NOT_YET` and the page's `not_yet` list are gone, and so
+is the word "preview". Installing a new version still stops the game servers while the files
+are replaced and starts them again afterwards.
 
-Installing a new version stops the game servers while the files are replaced and starts them
-again afterwards.
+- **Clusters.** A Windows panel is a master or a node like a Linux one; members say which
+  system they run (`platform` in the hello and the join request, `CLUSTER_API` 9). The cluster
+  code is unchanged: it spells its certificate work as openssl command lines, and `certs.py`
+  does those with the `cryptography` library. 1.24 added the ones clusters use: `req -verify`
+  (a node's request is signed by its key), `x509 -ext subjectAltName`, `verify -attime` (with
+  not-yet-valid), and `enc -aes-256-cbc -pbkdf2` for the encrypted cluster backup, written in
+  OpenSSL's own format (`Salted__`, the salt, AES-256-CBC with key and IV from PBKDF2-HMAC-SHA256),
+  so a backup made on one system opens on the other. Unit tests run these against the real
+  `openssl`: a CA with name constraints made the Windows way is accepted by openssl and
+  Python's `ssl` (which Linux members use), and the other way round.
+- **File names Windows can't hold** (`core/winnames.py`, shared with the file manager's
+  `dirfd.py`): devices (`CON`, `NUL`, `COM1`, also as `con.txt`), `< > : " / \ | ? *` and control
+  characters, a trailing dot or space, and names that differ only by case. A move or copy to a
+  Windows member asks the source to check its folder before it stops the server
+  (`transfer.export(for_windows=True)`) and fails with the list; a node before 1.24 ignores the
+  field, and the Windows target's own check of the archive then refuses it. A Windows panel
+  checks every archive it unpacks (import, move, copy), a pre-copy's changes, and the world in a
+  backup it restores, before changing anything.
+- **Bedrock across systems.** A Bedrock folder that arrives without this system's program gets
+  it downloaded, of the version it ran when minecraft.net still has that one
+  (`updates.fetch_bedrock(prefer=...)`, the same URL with the version swapped), else the newest;
+  the other system's `bedrock_server`/`.exe` and its symbols file are removed. Java servers need
+  nothing: the unit is written again on arrival, and Forge/NeoForge pick `win_args.txt` or
+  `unix_args.txt` there.
+- **SFTP.** `redstonepanel-sftp.service` is a unit like the panel's (`ExecStart=redstonepanel
+  sftp-serve`), so the runner hosts it as the Windows service `redstonepanel-sftp` as the system
+  account; it checks Windows passwords as the panel does and writes through the file manager's
+  code, so new files take the server account's rights by inheritance. Python on Windows has no
+  `os.pread`/`os.pwrite`: each SFTP handle seeks and reads under its own lock instead. The
+  installer carries paramiko (with bcrypt, PyNaCl and invoke).
+- **Let's Encrypt.** certbot doesn't run on Windows; win-acme does, and writes PEM files the
+  panel's "HTTPS with my own certificate" takes. On both systems the panel now looks at those
+  files every ten minutes and restarts itself when a renewed pair loads (`tls.watch_own_certificate`),
+  so no client needs a hook script.
 
 ## No terminal on Windows
 
@@ -196,7 +231,8 @@ The installer isn't signed yet, so SmartScreen warns; the release carries SHA-25
 
 - `tests/test_windows.py` runs anywhere: the Windows side has every function the Linux side
   has with the same arguments, and the plain logic (units, schedules, firewall text, refused
-  names, service account ids, what the preview refuses).
+  names, service account ids). `tests/test_mixed_cluster.py` (1.24) runs the certificate code
+  against the real `openssl`, and the cluster and name checks.
 - `packaging/test/test-windows.py` is the install test, the Windows `test-install.sh`: a real
   install, Java from Adoptium, a real Vanilla server, and then what a person would do.
 - `.github/workflows/windows.yml` runs both on GitHub's `windows-2022` and `windows-2025`

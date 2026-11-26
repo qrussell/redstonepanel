@@ -9,6 +9,21 @@ the dashboard.
 
 ---
 
+## 1.24.0: mixed Linux and Windows clusters *(November 2026)*
+
+- A Windows PC can be a cluster's **master or a node** next to Linux machines. Java and Bedrock
+  servers move both ways (Bedrock gets the new machine's program), and a move onto Windows is
+  refused, with the list, when the server holds file names Windows can't.
+- Backup copies and restores work across systems. **SFTP** works on Windows. Windows is no
+  longer a preview.
+- Windows panels: **Sign in with Windows Hello** (face, fingerprint, PIN or your phone) once you add a
+  passkey under **🔑 Password**, and the installer opens a page to **choose the admin password**.
+- **Remember this device** at sign-in keeps your own computer or phone signed in for 30 days;
+  forget one under **🔑 Password**.
+- `redstonepanel reset-password NAME` sets a forgotten panel password.
+
+[Release notes](../../release-notes/v1.24.0.md)
+
 ## 1.23.2: removing the panel safely *(November 2026)*
 
 - **Panel Settings → Remove RedstonePanel** and `sudo redstonepanel uninstall` back up every
@@ -51,7 +66,7 @@ the dashboard.
 
 - **A Windows installer** for Windows 11 and Windows Server 2022 or 2025, no WSL needed: Java
   servers on one computer, with nearly everything the Linux panel has. See
-  [On Windows (preview)](Installation.md#on-windows-preview).
+  [On Windows](Installation.md#on-windows).
 - Bedrock, more loaders, modpacks, limits, off-site backups, SFTP, the terminal and clusters
   follow on Windows in 1.23 and 1.24.
 - **Found on this computer** says what it saw and can't manage, and when nothing was found.
