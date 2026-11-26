@@ -252,6 +252,7 @@ def main():
           and not any("Users:" in l and ("(M)" in l or "(F)" in l or "(W)" in l) for l in out.splitlines()), out[:600])
     code, out = run(["icacls", os.path.join(home, "data")])
     check("ordinary users can't read the panel's data", "BUILTIN\\Users" not in out, out[:400])
+    password = first_sign_in(p, home, note, password)
     code, me = p.get("/api/auth/me")
     check("the API refuses a visitor who isn't signed in", code == 401, f"{code} {me}")
     code, who = p.post("/api/auth/login", {"username": "admin", "password": "wrong-password"})
@@ -1230,6 +1231,53 @@ def windows_names(p):
         code, out = e.code, e.read().decode("utf-8", "replace")
     check("importing a Linux archive with such names is refused, listing them",
           code == 400 and "plugins/aux.yml" in out and "notes:1.txt" in out and "world/Level.dat" in out, f"{code} {out[:400]}")
+
+
+def first_link(home):
+    """1.24: the URL in open-panel.url in the home folder (what the installer's Finish page opens)."""
+    try:
+        with open(os.path.join(home, "open-panel.url"), encoding="utf-8") as f:
+            return next((l.strip()[4:] for l in f if l.startswith("URL=")), "")
+    except OSError as e:
+        return str(e)
+
+
+def first_sign_in(p, home, note, password):
+    """1.24: the one-use link to choose the first password. Returns the password admin has now."""
+    link = first_link(home)
+    check("the Finish page's link is the one-use 'choose your password' link", "/static/login.html#first=" in link, link)
+    code, out = run(["icacls", os.path.join(home, "open-panel.url")])
+    check("ordinary users can't read that link", "BUILTIN\\Users" not in out and "Everyone" not in out, out[:400])
+    if "#first=" not in link:
+        return password
+    token = link.split("#first=", 1)[1]
+    code, r = p.post("/api/auth/first-sign-in/check", {"token": token + "x"})
+    check("a wrong first sign-in token is refused", code == 400, f"{code} {r}")
+    code, r = p.post("/api/auth/first-sign-in/check", {"token": token})
+    check("the link is for the admin account", code == 200 and r.get("username") == "admin", f"{code} {r}")
+    code, r = p.post("/api/auth/first-sign-in", {"token": token, "password": "short"})
+    check("a too-short password is refused, and the link still works", code == 400
+          and p.post("/api/auth/first-sign-in/check", {"token": token})[0] == 200, f"{code} {r}")
+    chosen = password + "-mine"
+    code, r = p.post("/api/auth/first-sign-in", {"token": token, "password": chosen})
+    check("choosing a password with the link signs in as admin", code == 200 and p.cookie
+          and (r or {}).get("username") == "admin", f"{code} {r}")
+    check("the link works only once", p.post("/api/auth/first-sign-in/check", {"token": token})[0] == 400)
+    check("first-sign-in.txt is deleted (its random password no longer works)", not os.path.isfile(note))
+    check("open-panel.url now goes to the panel's address", first_link(home) == local_url(p.base), first_link(home))
+    code, r = Panel(p.base).post("/api/auth/login", {"username": "admin", "password": password})
+    check("the random password no longer signs in", code == 401, f"{code}")
+    code, r = Panel(local_url(p.base).rstrip("/")).get("/api/auth/passkeys/available")
+    check("Windows Hello sign-in is offered at localhost", code == 200 and r.get("supported") and r.get("usable"),
+          f"{code} {r}")
+    code, r = p.get("/api/auth/passkeys/available")
+    check("... and explained, not offered, at an IP address", code == 200 and r.get("supported")
+          and not r.get("usable") and "IP address" in (r.get("why") or ""), f"{code} {r}")
+    # Later steps, and the run after an upgrade, read admin's password from first-sign-in.txt
+    with open(note, "w", encoding="utf-8") as f:
+        f.write(f"Password:  {chosen}\n")
+    p.cookie = None
+    return chosen
 
 
 def open_link():

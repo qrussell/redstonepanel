@@ -1846,6 +1846,26 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     both ways with a restore across, the cluster backup read by `openssl` on both systems, and
     SFTP on the node, all passing.
 
+    **Sign-in on Windows, added to 1.24 (Quentin, 26 Nov 2026; first planned as 1.24.1):**
+    Windows panels sign in with Windows accounts and panel accounts, optional two-factor, and
+    **Windows Hello passkeys** (WebAuthn, `core/passkeys.py`): any account adds one under
+    **🔑 Password** after typing its password, and **Sign in with Windows Hello** needs no user
+    name. Only the public key is kept (`data/passkeys.json`); ES256 and RS256; user verification
+    required, so a passkey sign-in counts as both steps (and meets "require two-factor for
+    admins"); one-use 2-minute challenges; the origin and host name are checked, and a counter
+    that goes backwards is refused. Browsers allow passkeys at `localhost` or a host name over
+    HTTPS, never a bare IP, which the panel explains where it can't offer them. `reset-2fa` and
+    the admin's reset remove passkeys too. Linux panels are unchanged (Linux accounts, panel
+    accounts, optional two-factor). Two small fixes came with it: the installer's Finish page now
+    opens a **one-use link to choose the admin password** (`core/firstsignin.py`, 7 days, the
+    token after `#`, the file readable only by the person who ran the installer; using it deletes
+    `first-sign-in.txt`), and `redstonepanel reset-password NAME` sets a forgotten panel
+    password from an administrator prompt. Google, GitHub and Apple sign-in stay out of the free
+    panel (the paid Teams bundle's roadmap). Tests: unit tests with a synthetic authenticator
+    (ES256 and RS256, replay, wrong origin or host, no user verification, bad signature, counter,
+    disabled account, rate limit), the first sign-in link and `reset-password`; the Windows test
+    walks the link on Server 2022 and 2025.
+
 **Alongside 1.18 to 1.20:** new code that runs `systemctl`, `ufw`, `apt` or a shell tool goes
 in a small helper function, with no new hard-coded `/opt` or `/var` paths, so the port doesn't
 grow. A runner prototype on a Windows PC (start a Paper server as a service, send it `stop`,

@@ -16,6 +16,9 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .B redstonepanel reset-2fa
 .I NAME
 .br
+.B redstonepanel reset-password
+.I NAME
+.br
 .B redstonepanel terminal
 .BR on | off
 .br
@@ -121,6 +124,14 @@ On a cluster member this cuts the panel off from the cluster until
 .B cluster-https
 is run.
 .TP
+.BI "reset-password " NAME
+Recovery: set a new password for the panel account
+.I NAME
+(for example a forgotten one, with no other admin to reset it under Users). It asks for the
+password twice, or reads one line from standard input when that isn't a terminal. The account is
+signed out everywhere; two\-factor sign\-in, if on, still applies. Linux (and Windows) accounts
+change their password in the system instead.
+.TP
 .BI "reset-2fa " NAME
 Recovery: turn off two\-factor sign\-in for the panel or Linux account
 .IR NAME ,
@@ -130,7 +141,8 @@ it for admins). If
 .I /var/lib/redstonepanel/totp.json
 can't be read, it is moved aside to
 .I totp.json.damaged
-instead, which turns two\-factor off for every account.
+instead, which turns two\-factor off for every account. On Windows panels it also removes the
+account's passkeys (Windows Hello sign\-in).
 .TP
 .BR terminal " on|" off
 Turn the panel's terminal on or off (the same switch as Panel Settings > Terminal). When it is

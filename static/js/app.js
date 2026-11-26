@@ -57,6 +57,10 @@ const ServerApp = {
         this.applyTheme();
         this.setupDropZones();
         this.setupPhone();
+        // 1.24: just chose the first password with the installer's link: offer Windows Hello next
+        let welcome = false;
+        try { welcome = sessionStorage.getItem('rp_welcome') === '1'; sessionStorage.removeItem('rp_welcome'); } catch (e) {}
+        if (welcome && this.onWindows()) setTimeout(() => this.openAccountModal({}), 0);
         // Many actions open the console; remember what was clicked so it can be kept in view
         document.addEventListener('click', e => {
             const el = e.target.closest && e.target.closest('button, a, input, select, label');
@@ -8074,7 +8078,7 @@ const ServerApp = {
 		document.getElementById('modal-content').innerHTML = `
 			${password}${forcedIntro}
 			<div id="tf-box"><p class="text-sm text-gray-500">Loading two-factor sign-in...</p></div>
-			${this.accountForced ? '' : '<div id="ssh-box" class="mt-6"></div>'}
+			${this.accountForced ? '' : '<div id="pk-box" class="mt-6 hidden"></div><div id="ssh-box" class="mt-6"></div>'}
 			${footer}`;
 		document.getElementById('modal-overlay').classList.remove('hidden');
 		const res = await fetch('/api/auth/2fa');
@@ -8082,7 +8086,56 @@ const ServerApp = {
 		this.tfStatus = await res.json();
 		if (this.accountForced && !this.tfStatus.enabled) return this.startTwoFactorSetup();
 		this.renderTwoFactor();
+		this.loadPasskeys();
 		this.loadSshKeys();
+	},
+
+	// --- 1.24: passkeys (Windows Hello) on Windows panels (🔑 Password → Passkeys) ---
+	async loadPasskeys(message, ok) {
+		const box = document.getElementById('pk-box');
+		if (!box) return;
+		const res = await fetch('/api/auth/passkeys');
+		if (!res.ok) { box.classList.add('hidden'); return; }
+		const d = await res.json();
+		if (!d.supported) { box.classList.add('hidden'); return; }
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white mb-2';
+		const when = t => t ? new Date(t * 1000).toLocaleDateString() : 'never';
+		const list = d.passkeys.map(k => `
+			<div class="flex items-start justify-between gap-2 p-2 mb-2 rounded border border-gray-200 dark:border-gray-700">
+				<div class="min-w-0 text-sm">
+					<div class="font-bold text-gray-900 dark:text-white truncate">${esc(k.name)} <span class="font-normal text-xs text-gray-500">${esc(k.rp_id)}</span></div>
+					<div class="text-xs text-gray-500 dark:text-gray-400">Added ${esc(when(k.created))} · last used ${esc(when(k.last_used))}</div>
+				</div>
+				<button data-id="${esc(k.id)}" onclick="ServerApp.removePasskey(this.dataset.id)" class="px-2 py-1 rounded text-xs bg-red-600 hover:bg-red-700 text-white shrink-0">Remove</button>
+			</div>`).join('');
+		const can = d.usable && window.rpPasskey && rpPasskey.browserCan();
+		box.innerHTML = `
+			<h4 class="font-bold text-gray-900 dark:text-white mb-1">Passkeys (Windows Hello)</h4>
+			<p class="text-sm text-gray-500 dark:text-gray-400 mb-3">Sign in with your face, fingerprint or Windows Hello PIN instead of your password. A passkey works at the address it was added at (${esc(location.hostname)}), in this browser's Windows account.</p>
+			${list}
+			${can ? `<input type="password" id="pk-password" autocomplete="current-password" placeholder="Your password, to add a passkey" class="${field}">
+			<input id="pk-name" maxlength="60" placeholder="Name (optional), e.g. Desk PC" class="${field}">` :
+			`<p class="text-sm text-yellow-700 dark:text-yellow-300 mb-2">${esc(d.why || 'This browser can\'t make passkeys here.')}</p>`}
+			<p id="pk-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-2">${esc(message || '')}</p>
+			${can ? '<button onclick="ServerApp.addPasskey()" class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white">Add Passkey</button>' : ''}`;
+		box.classList.remove('hidden');
+	},
+
+	async addPasskey() {
+		try {
+			await rpPasskey.add(document.getElementById('pk-password').value, document.getElementById('pk-name').value);
+		} catch (e) {
+			if (rpPasskey.cancelled(e)) return this.loadPasskeys('Cancelled: no passkey was added.', false);
+			return this.loadPasskeys(e.message || 'The passkey was not added.', false);
+		}
+		this.loadPasskeys('Passkey added. Next time, choose Sign in with Windows Hello.', true);
+	},
+
+	async removePasskey(id) {
+		if (!confirm('Remove this passkey? Windows Hello may still list it; it just won\'t sign in to this panel any more.')) return;
+		const res = await fetch(`/api/auth/passkeys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+		this.loadPasskeys(res.ok ? 'Passkey removed.' : await this.apiError(res), res.ok);
 	},
 
 	// --- 1.18: SSH keys for SFTP (🔑 Password → SSH keys) ---
@@ -8140,6 +8193,9 @@ const ServerApp = {
 		if (pw) pw.classList.toggle('hidden', !!focused);
 		const ssh = document.getElementById('ssh-box');
 		if (ssh) ssh.classList.toggle('hidden', !!focused);
+		const pk = document.getElementById('pk-box');
+		if (pk && focused) pk.classList.add('hidden');
+		else if (pk && !focused && pk.innerHTML.trim()) pk.classList.remove('hidden');
 	},
 
 	renderTwoFactor() {
@@ -8319,6 +8375,7 @@ const ServerApp = {
 						<span class="font-bold text-gray-900 dark:text-white">${esc(u.username)}</span>
 						${u.disabled ? '<span class="text-xs ml-1 px-2 py-0.5 rounded border border-red-400 text-red-500">disabled</span>' : ''}
 						${u.two_factor ? '<span class="text-xs ml-1 px-2 py-0.5 rounded border border-green-500 text-green-600 dark:text-green-400" title="Two-factor sign-in is on">2FA</span>' : ''}
+						${u.passkeys ? `<span class="text-xs ml-1 px-2 py-0.5 rounded border border-green-500 text-green-600 dark:text-green-400" title="Can sign in with Windows Hello">${u.passkeys === 1 ? 'passkey' : `${u.passkeys} passkeys`}</span>` : ''}
 						${self ? '<span class="text-xs ml-1 text-gray-500">(you)</span>' : ''}
 						<div class="text-xs text-gray-500 dark:text-gray-400">Last sign-in: ${esc(when(u.last_login))}</div>
 						<div class="text-xs text-gray-500 dark:text-gray-400">${u.role === 'admin' ? 'Everything on every server' : esc(this.grantsSummary(u.grants))}</div>
@@ -8331,7 +8388,7 @@ const ServerApp = {
 				<div class="flex flex-wrap gap-2 mt-2 text-xs">
 					${u.role === 'user' ? `<button data-user="${esc(u.username)}" onclick="ServerApp.openUserGrants(this.dataset.user)" class="px-2 py-1 rounded bg-theme hover-bg-theme text-white font-bold">Servers</button>` : ''}
 					<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserPassword(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset password</button>
-					${u.two_factor && !self ? `<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserTwoFactor(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Reset two-factor</button>` : ''}
+					${(u.two_factor || u.passkeys) && !self ? `<button data-user="${esc(u.username)}" onclick="ServerApp.resetUserTwoFactor(this.dataset.user)" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">${u.two_factor ? 'Reset two-factor' : 'Remove passkeys'}</button>` : ''}
 					${self ? '' : `<button data-user="${esc(u.username)}" onclick="ServerApp.updateUser(this.dataset.user, {disabled: ${!u.disabled}})" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">${u.disabled ? 'Enable' : 'Disable'}</button>
 					<button data-user="${esc(u.username)}" onclick="ServerApp.deleteUser(this.dataset.user)" class="px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white">Delete</button>`}
 				</div>
@@ -8340,7 +8397,7 @@ const ServerApp = {
 
 		content.innerHTML = `
 			<h3 class="text-xl font-bold mb-1 text-gray-900 dark:text-white">Panel Users</h3>
-			${this.onWindows() ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Windows accounts in the <b>Administrators</b> group, or in a local group named <b>RedstonePanel</b>, can also sign in (as admins) with their Windows password (not a PIN); they are managed in Windows, not here (two-factor for them: in an administrator prompt, <span class="font-mono">redstonepanel reset-2fa NAME</span>).</p>`
+			${this.onWindows() ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Windows accounts in the <b>Administrators</b> group, or in a local group named <b>RedstonePanel</b>, can also sign in (as admins) with their Windows password, or with Windows Hello (face, fingerprint or PIN) once they add a passkey under 🔑 Password; they are managed in Windows, not here (to reset their two-factor and passkeys: in an administrator prompt, <span class="font-mono">redstonepanel reset-2fa NAME</span>).</p>`
 			: `<p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Linux accounts in the ${data.linux_groups.map(g => `<b>${esc(g)}</b>`).join(' or ')} group can also sign in (as admins); they are managed on the server, not here (two-factor for them: <span class="font-mono">sudo redstonepanel reset-2fa NAME</span>).</p>`}
 			<div class="max-h-72 overflow-y-auto mb-4">${rows}</div>
 			<div class="border-t border-gray-200 dark:border-gray-700 pt-4">
@@ -8490,7 +8547,7 @@ const ServerApp = {
 	},
 
 	async resetUserTwoFactor(username) {
-		if (!confirm(`Turn off two-factor sign-in for '${username}'? Use this when they lost their phone: they sign in with their password and set it up again.`)) return;
+		if (!confirm(`Turn off two-factor sign-in for '${username}' and remove their passkeys (Windows panels)? Use this when they lost their phone or PC: they sign in with their password and set it up again.`)) return;
 		const res = await fetch(`/api/users/${encodeURIComponent(username)}/reset-2fa`, { method: 'POST' });
 		if (!res.ok) alert(`Not reset: ${await this.apiError(res)}`);
 		this.openUsersModal();

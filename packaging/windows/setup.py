@@ -14,7 +14,10 @@ install is safe to run again (an upgrade, a repair). It:
   * registers the event source, the `redstonepanel` Windows service (starts with Windows) and
     a Defender Firewall rule for the panel's own port;
   * on a first install, makes the panel account `admin` with a random password and writes it
-    to first-sign-in.txt in the home folder (administrators only);
+    to first-sign-in.txt in the home folder (administrators only), plus a one-use link to choose
+    a password instead (1.24, core/firstsignin.py): open-panel.url, which the Finish page opens.
+    --for-sid (the installer passes [UserSID]) lets the person who ran the installer read both
+    without an elevated prompt;
   * starts the panel.
 
 stop stops the panel and the game servers and changes nothing else: the installer runs it
@@ -28,6 +31,7 @@ tasks and the firewall rules. Worlds, backups and settings stay in the home fold
 import argparse
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -156,7 +160,9 @@ WantedBy=multi-user.target
         s["http_port"] = port
         settings.save(s)
     note = os.path.join(home, "first-sign-in.txt")
+    first_created, first_name = False, None
     if first and not auth.list_panel_users():
+        first_created = True
         password = "-".join(secrets.token_hex(3) for _ in range(3))
         first_name = "admin"
         if auth.linux_account_exists(first_name):          # a Windows account is called admin already
@@ -167,7 +173,9 @@ WantedBy=multi-user.target
                     f"Open:      http://localhost:{port}\n"
                     f"User name: {first_name}\n"
                     f"Password:  {password}\n\n"
-                    "Change the password after signing in (the Password button), then delete this file.\n"
+                    "Easier: the installer's Finish page opened a link to choose your own password\n"
+                    "(open-panel.url in this folder, for 7 days). Using it deletes this file.\n"
+                    "Otherwise change the password after signing in (the Password button), then delete this file.\n"
                     "More accounts: Users in the panel, or `redstonepanel add-user NAME` in an administrator prompt.\n")
         say(f"Account '{first_name}' created; its password is in {note}")
 
@@ -211,6 +219,22 @@ WantedBy=multi-user.target
     # the panel writes it again on every start (a new port or HTTPS)
     try:
         system.write_open_link(url + "/", folder=os.path.dirname(APP_DIR))
+    except OSError as e:
+        say(f"Couldn't write the link to the panel: {e}")
+    # 1.24: the Finish page opens open-panel.url: the one-use "choose your password" link while the
+    # first account still has its random password, else the panel's address
+    from core import firstsignin
+    first_user = firstsignin.pending() or (first_name if first_created else None)
+    target = url + "/"
+    if first_user:
+        target = f"{url}/static/login.html#first={firstsignin.create(first_user)}"
+    try:
+        link = firstsignin.write_open_link(target, home)
+        sid = (args.for_sid or "").strip()
+        if re.fullmatch(r"S-1-\d+(-\d+)+", sid) and sid not in (SYSTEM_SID, ADMINS_SID, USERS_SID):
+            for f in (link, note):
+                if os.path.exists(f):
+                    run(["icacls", f, "/grant", f"*{sid}:(R)", "/C", "/Q"])
     except OSError as e:
         say(f"Couldn't write the link to the panel: {e}")
     say(f"RedstonePanel is installed. Open {url}")
@@ -296,6 +320,7 @@ def main():
     i.add_argument("--port", type=int)
     i.add_argument("--no-start", action="store_true")
     i.add_argument("--no-firewall", action="store_true")
+    i.add_argument("--for-sid", help="the Windows account (SID) that ran the installer: may read the first sign-in link")
     u = sub.add_parser("uninstall")
     u.add_argument("--purge", action="store_true")
     sub.add_parser("stop")

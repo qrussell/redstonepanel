@@ -220,14 +220,17 @@ the PC.
    **More info**, then **Run anyway**. The release lists the file's SHA-256 next to it.
 2. The installer asks where servers, backups and settings are kept. The default is
    `C:\ProgramData\RedstonePanel`; the folder's name can't have a space in it.
-3. Leave **Open RedstonePanel in my browser** ticked and click **Finish**: the sign-in page opens
-   (http://localhost:8080). Later, open **RedstonePanel** from the Start menu; it follows the
-   panel if you change its port or turn on HTTPS. The user name is **admin**, and the password is in
-   `first-sign-in.txt` in that folder (open it as an administrator). Change the password under
-   **Users**, then delete the file. You can also sign in with your own Windows account if it is
-   in **Administrators**, or in a local group named **RedstonePanel** that you make. Windows
-   accounts always sign in as admins; for people who should only run some servers, make panel
-   accounts under **Users**.
+3. Leave **Open RedstonePanel in my browser** ticked and click **Finish**. On a first install
+   the browser opens a page to **choose a password** for the panel account **admin** (from 1.24;
+   the link works once, for 7 days, and only for you). Type it twice and click
+   **Set Password and Sign In**. If you skip it, the random password is in `first-sign-in.txt`
+   in that folder (open it as an administrator); choosing your own deletes that file. Later,
+   open **RedstonePanel** from the Start menu; it follows the panel if you change its port or
+   turn on HTTPS. You can also sign in with your own Windows account if it is in
+   **Administrators**, or in a local group named **RedstonePanel** that you make, and add
+   **Windows Hello** (face, fingerprint or PIN) to skip the password; see
+   [Windows Hello](#windows-hello-passkeys). Windows accounts always sign in as admins; for
+   people who should only run some servers, make panel accounts under **Users**.
 
 Java (Eclipse Temurin) is downloaded the first time a server needs it. Each game server is a
 Windows service (`minecraft-<name>`) running as its own account that can reach only its own
@@ -311,6 +314,13 @@ There are two kinds of account:
   `sudo`, run `sudo usermod -aG redstonepanel alice`.
 - **Panel accounts** exist only in the panel. Admins create them under **👥 Users** (see
   [Users](#16-users)), or root creates one with `sudo redstonepanel add-user alice --role user`.
+  Forgot the password and no other admin can reset it under **Users**? Run
+  `sudo redstonepanel reset-password NAME` on the server (in an administrator prompt on
+  Windows, without `sudo`); it signs that account out everywhere.
+
+On **Windows** the first kind is **Windows accounts** in **Administrators** or a local group named
+**RedstonePanel**, with their Windows password, and both kinds can add
+[Windows Hello](#windows-hello-passkeys).
 
 Admins can turn sign-in off for devices on your home network; see
 [Panel Settings](#17-panel-settings-name-https-sign-in).
@@ -337,7 +347,30 @@ for Linux accounts too). Wrong codes count towards the same limit as wrong passw
 in ten minutes and that account and address wait a few minutes.
 
 Admins can make it compulsory for every admin; see
-[Panel Settings](#17-panel-settings-name-https-sign-in).
+[Panel Settings](#17-panel-settings-name-https-sign-in). A [Windows Hello](#windows-hello-passkeys)
+sign-in counts as both steps.
+
+### Windows Hello (passkeys)
+
+From 1.24, on a panel installed on **Windows**, any account (Windows or panel) can sign in with
+**Windows Hello**: your face, fingerprint or Windows Hello PIN, instead of a password. The panel
+keeps only a public key (a *passkey*); the PIN or fingerprint never leaves Windows. Linux panels
+keep Linux accounts, panel accounts and two-factor codes.
+
+1. Sign in as usual, click **🔑 Password**, and under **Passkeys (Windows Hello)** type your
+   password, give the passkey a name if you like (for example *Desk PC*) and click
+   **Add Passkey**. Windows asks for your face, fingerprint or PIN.
+2. Next time, click **Sign in with Windows Hello** on the sign-in page. No user name needed:
+   the passkey says whose it is.
+
+It counts as two-factor sign-in on its own (the PC's key plus your face, finger or PIN), so it
+also meets **Require two-factor sign-in for admins**. Browsers allow passkeys only at a name,
+not an IP address, and only over HTTPS or at `http://localhost`, so it works at
+`http://localhost:8080` on the PC itself, or from other machines at a host name with a trusted
+certificate (see [HTTPS](#17-panel-settings-name-https-sign-in)). A passkey belongs to the
+address it was added at: one added at `localhost` works there only. Each account can have up to
+ten. **Remove** takes one away; an admin's **Reset two-factor** (or **Remove passkeys**) under
+**👥 Users**, or `redstonepanel reset-2fa NAME` in an administrator prompt, removes them all.
 
 ### On a phone
 

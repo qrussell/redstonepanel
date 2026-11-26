@@ -941,7 +941,8 @@ class OpenLink(unittest.TestCase):
         with open(os.path.join(ROOT, "packaging", "windows", "redstonepanel.wxs"), encoding="utf-8") as f:
             wxs = f.read()
         self.assertIn('Target="[INSTALLDIR]RedstonePanel.url"', wxs)
-        self.assertIn('WixShellExecTarget" Value="[INSTALLDIR]RedstonePanel.url"', wxs)
+        self.assertIn('WixShellExecTarget" Value="[DATAFOLDER]open-panel.url"', wxs)
+        self.assertIn('--for-sid &quot;[UserSID]&quot;', wxs)
         self.assertIn('Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="OpenPanel"', wxs)
         self.assertNotIn("localhost:8080", wxs)        # the address depends on the panel's settings
 

@@ -81,7 +81,7 @@
                  Value="&quot;[APPFOLDER]python\python.exe&quot; -X utf8 -B &quot;[APPFOLDER]app\packaging\windows\setup.py&quot; uninstall" />
     <CustomAction Id="RemovePanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="ignore" />
     <SetProperty Id="SetUpPanel" Sequence="execute" Before="SetUpPanel"
-                 Value="&quot;[INSTALLDIR]python\python.exe&quot; -X utf8 -B &quot;[INSTALLDIR]app\packaging\windows\setup.py&quot; install --home &quot;[DATAFOLDER].&quot;" />
+                 Value="&quot;[INSTALLDIR]python\python.exe&quot; -X utf8 -B &quot;[INSTALLDIR]app\packaging\windows\setup.py&quot; install --home &quot;[DATAFOLDER].&quot; --for-sid &quot;[UserSID]&quot;" />
     <CustomAction Id="SetUpPanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="check" />
     <!-- A failed install takes the service out again -->
     <SetProperty Id="UndoPanel" Sequence="execute" Before="UndoPanel"
@@ -99,11 +99,13 @@
 
     <Property Id="WIXUI_INSTALLDIR" Value="DATAFOLDER" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
-              Value="RedstonePanel is running. Sign in as admin; the password is in the file first-sign-in.txt in the folder you chose (C:\ProgramData\RedstonePanel unless you changed it). Later, open RedstonePanel from the Start menu. To remove the panel, start with Panel Settings &gt; Remove RedstonePanel (or redstonepanel uninstall as administrator): it backs up and asks what happens to each server first." />
+              Value="RedstonePanel is running. On a first install, Finish opens the panel to choose your password for the admin account (or use the one in first-sign-in.txt in the folder you chose). Later, open RedstonePanel from the Start menu. To remove the panel, start with Panel Settings &gt; Remove RedstonePanel (or redstonepanel uninstall as administrator): it backs up and asks what happens to each server first." />
     <!-- 1.24: Finish opens the sign-in page (ticked by default) -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open RedstonePanel in my browser" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
-    <Property Id="WixShellExecTarget" Value="[INSTALLDIR]RedstonePanel.url" />
+    <!-- open-panel.url in the data folder (setup.py): the one-use "choose your password" link on a
+         first install, else the panel's address; readable by the person who ran the installer -->
+    <Property Id="WixShellExecTarget" Value="[DATAFOLDER]open-panel.url" />
     <CustomAction Id="OpenPanel" BinaryKey="WixCA" DllEntry="WixShellExec" Impersonate="yes" Return="ignore" />
     <UI>
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="OpenPanel"><![CDATA[WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed]]></Publish>

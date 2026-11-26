@@ -231,6 +231,11 @@ public   GET     /api/health
 public   GET     /api/panel-info
 public   POST    /api/auth/login
 public   POST    /api/auth/login/code
+public   GET     /api/auth/passkeys/available
+public   POST    /api/auth/passkey/options
+public   POST    /api/auth/passkey/login
+public   POST    /api/auth/first-sign-in/check
+public   POST    /api/auth/first-sign-in
 public   POST    /api/auth/logout
 public   GET     /api/cluster/ca
 public   GET     /api/cluster/ca.crt
@@ -242,6 +247,10 @@ user     POST    /api/auth/2fa/setup
 user     POST    /api/auth/2fa/confirm
 user     POST    /api/auth/2fa/recovery-codes
 user     POST    /api/auth/2fa/disable
+signed   GET     /api/auth/passkeys
+signed   POST    /api/auth/passkeys/options
+signed   POST    /api/auth/passkeys
+signed   DELETE  /api/auth/passkeys/{{cred_id}}
 signed   POST    /api/auth/password
 signed   GET     /api/auth/ssh-keys
 signed   POST    /api/auth/ssh-keys

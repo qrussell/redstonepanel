@@ -26,7 +26,7 @@ import threading
 import time
 
 from core import settings as panel_settings
-from core import twofactor
+from core import passkeys, twofactor
 from core.settings import DATA_DIR   # <app>/data (RP_DATA_DIR overrides it for test instances)
 from core.platform import paths, system
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
@@ -107,7 +107,8 @@ def _find(users, username):
 def _public(u):
     return {"username": u["username"], "role": u["role"], "disabled": bool(u.get("disabled")),
             "created": u.get("created"), "last_login": u.get("last_login"),
-            "two_factor": twofactor.is_enabled(twofactor.account_key("panel", u["username"]))}
+            "two_factor": twofactor.is_enabled(twofactor.account_key("panel", u["username"])),
+            "passkeys": passkeys.count(twofactor.account_key("panel", u["username"])) if passkeys.supported() else 0}
 
 def linux_account_exists(username):
     return system.system_account_exists(username)
@@ -166,6 +167,7 @@ def delete_panel_user(username):
             raise AuthError(f"Panel user '{username}' not found.")
         _save_users([u for u in users if u["username"] != username])
     twofactor.remove(twofactor.account_key("panel", username))
+    passkeys.remove_all(twofactor.account_key("panel", username))
 
 def change_own_password(username, current, new):
     with _lock:
@@ -335,6 +337,37 @@ def login(username, password, client_ip):
     return identity
 
 
+def check_account_password(source, username, password):
+    """True if this is the signed-in account's own password (before adding a passkey)."""
+    if not password:
+        return False
+    if source == "panel":
+        u = _find(_load_users(), username)
+        return bool(u) and verify_password(password, u["password_hash"])
+    if source == "linux":
+        return pam_authenticate(username, password)
+    return False
+
+
+def passkey_identity(key):
+    """The session identity for an account that just signed in with a passkey. The passkey checked
+    the person (face, fingerprint or PIN) on the device that holds the key, so it counts as both
+    steps (m=1). Raises AuthError if the account may not sign in any more."""
+    src, _, name = key.partition(":")
+    if src not in ("panel", "linux") or account_role(src, name) is None:
+        raise AuthError("This account can't sign in to the panel any more.")
+    v = 0
+    if src == "panel":
+        v = _find(_load_users(), name).get("session_version", 1)
+        with _lock:
+            users = _load_users()
+            u = _find(users, name)
+            if u:
+                u["last_login"] = int(time.time())
+                _save_users(users)
+    return {"u": name, "src": src, "v": v, "m": 1, "pk": 1}
+
+
 def complete_two_factor(ticket, code, client_ip):
     """Second step of signing in. Returns the session identity, or raises AuthError."""
     identity = read_pending_token(ticket)
@@ -399,7 +432,7 @@ def _unsign(token, purpose):
     return payload
 
 def _identity_fields(identity):
-    return {k: identity[k] for k in ("u", "src", "v", "m") if k in identity}
+    return {k: identity[k] for k in ("u", "src", "v", "m", "pk") if k in identity}
 
 def make_session_token(identity):
     # n: each sign-in's cookie is its own, even two in the same second (signing one out, which
@@ -452,5 +485,8 @@ def read_session_token(token):
     if tf and not payload.get("m"):
         return None
     user["two_factor"] = tf
-    user["needs_2fa_setup"] = not tf and two_factor_required_for(user["role"])
+    # A passkey sign-in (1.24, Windows panels) is two factors already: the device's key plus face,
+    # fingerprint or PIN, so "require two-factor for admins" is met by it.
+    user["passkey"] = bool(payload.get("pk"))
+    user["needs_2fa_setup"] = not tf and not user["passkey"] and two_factor_required_for(user["role"])
     return user

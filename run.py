@@ -6,11 +6,14 @@
     redstonepanel status              show the address, HTTPS/sign-in mode and panel users
     redstonepanel add-user NAME [--role admin|user]
                                       create a panel account (asks for the password)
+    redstonepanel reset-password NAME set a panel account's new password (asks for it, or reads one
+                                      line from stdin) and sign it out everywhere
     redstonepanel set-name "NAME"     name shown in the panel to tell servers apart
                                       ("" = use this server's host name)
     redstonepanel reset-security      recovery: plain HTTP on 8080, sign-in required, restart
     redstonepanel reset-2fa NAME      recovery: turn off two-factor sign-in for an account
-                                      (panel or Linux) that lost its authenticator app
+                                      (panel or Linux) that lost its authenticator app, and
+                                      remove its passkeys (Windows Hello)
     redstonepanel terminal on|off     turn the panel's terminal on or off (Panel Settings > Terminal);
                                       off closes open terminals within a minute
     redstonepanel removed             list game servers uninstalled with "Keep World"
@@ -93,9 +96,15 @@ def reset_2fa(name):
               f"code it can't give. Moved it to {twofactor.TOTP_FILE}.damaged: every account now signs in "
               "with its password only and can set up two-factor again.")
         return
+    from core import passkeys
     name = name.strip()
     removed = [src for src in ("panel", "linux") if twofactor.remove(twofactor.account_key(src, name))]
+    keys_removed = [src for src in ("panel", "linux") if passkeys.remove_all(twofactor.account_key(src, name))]
+    if keys_removed:
+        print(f"Removed {name}'s passkeys (Windows Hello); they can add them again after signing in.")
     if not removed:
+        if keys_removed:
+            return
         sys.exit(f"'{name}' doesn't have two-factor sign-in set up.")
     print(f"Two-factor sign-in turned off for {name}. They sign in with their password and can set it up "
           "again under the Password button" + (" (it is required for admins on this panel, so they will be "
@@ -294,6 +303,37 @@ def add_user(args):
     except auth.AuthError as e:
         sys.exit(str(e))
     print(f"Created panel user '{args[0].strip().lower()}' ({role}).")
+
+
+def reset_password(args):
+    """Sets a panel account's password from an admin prompt or SSH (forgotten password, no other
+    admin). Signs the account out everywhere. Windows and Linux accounts change theirs in the system."""
+    import getpass
+    from core import auth
+    if len(args) != 1:
+        sys.exit("Usage: redstonepanel reset-password NAME")
+    name = args[0].strip().lower()
+    if not any(u["username"] == name for u in auth.list_panel_users()):
+        where = "in Windows" if paths.WINDOWS else "with passwd"
+        sys.exit(f"'{name}' isn't a panel account. " + (f"Windows and Linux accounts change their password {where}."
+                                                        if auth.linux_account_exists(args[0].strip()) else
+                                                        "See the accounts with: redstonepanel status"))
+    if sys.stdin.isatty():
+        pw = getpass.getpass(f"New password for {name}: ")
+        if pw != getpass.getpass("Repeat it: "):
+            sys.exit("Passwords do not match.")
+    else:
+        pw = sys.stdin.readline().rstrip("\r\n")   # e.g. echo "$PW" | redstonepanel reset-password NAME
+    try:
+        auth.update_panel_user(name, password=pw)
+    except auth.AuthError as e:
+        sys.exit(str(e))
+    print(f"Password changed for '{name}'. They were signed out everywhere; two-factor sign-in, if on, still applies.")
+    try:
+        from core import manager
+        manager.write_log(f"[AUTH] password reset for panel user '{name}' from the command line")
+    except Exception:
+        pass
 
 
 def _restart_service(what):
@@ -691,6 +731,8 @@ if __name__ == "__main__":
         terminal_cmd(rest[0])
     elif cmd == "status" and not rest:
         status()
+    elif cmd == "reset-password":
+        reset_password(rest)
     elif cmd == "add-user":
         add_user(rest)
     elif cmd == "removed" and not rest:

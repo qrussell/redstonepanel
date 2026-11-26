@@ -88,13 +88,17 @@ command prompt on the PC.
 2. The installer asks one question: **where servers, backups and settings are kept**. The
    default is `C:\ProgramData\RedstonePanel`; pick another drive if that is where the room is.
    The folder's name can't have a space in it.
-3. Leave **Open RedstonePanel in my browser** ticked and click **Finish**: the sign-in page
-   opens (http://localhost:8080). Later, **RedstonePanel** in the Start menu opens it, at the
-   right address even after you change the port or turn on HTTPS. The user name is **admin** and the password
-   is in `first-sign-in.txt` in the folder from step 2. Change the password under **Users**,
-   then delete the file. A Windows account in **Administrators** can also sign in, as an admin;
-   so can members of a local group named **RedstonePanel**. Windows accounts always sign in as
-   admins; give everyone else a panel account under **Users**.
+3. Leave **Open RedstonePanel in my browser** ticked and click **Finish**. On a first install
+   the browser opens a page to **choose a password** for the panel account **admin** (a one-use
+   link, for 7 days, readable only by you and administrators). If you skip it, the random
+   password is in `first-sign-in.txt` in the folder from step 2; choosing your own deletes that
+   file. Later, **RedstonePanel** in the Start menu opens the panel, at the right address even
+   after you change the port or turn on HTTPS. A Windows account in **Administrators** can also
+   sign in, as an admin; so can members of a local group named **RedstonePanel**. Windows
+   accounts always sign in as admins; give everyone else a panel account under **Users**. Any
+   account can then add **Windows Hello** (face, fingerprint or PIN) under **🔑 Password** and
+   use **Sign in with Windows Hello**. Forgot the password? In an administrator prompt,
+   `redstonepanel reset-password admin`.
 
 What you get is ordinary Windows: the panel is the service **RedstonePanel**, each game server
 is its own service (`minecraft-<name>`) running as its own account that can reach only its own

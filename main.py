@@ -28,6 +28,8 @@ import core.convert as convert
 import core.auth as auth
 import core.settings as panel_settings
 import core.twofactor as twofactor
+import core.passkeys as passkeys
+import core.firstsignin as firstsignin
 import core.qr as qr
 import core.portforward as portforward
 import core.portaudit as portaudit
@@ -118,6 +120,8 @@ async def no_stale_static(request: Request, call_next):
 # /api/panel-info only says which panel this is (shown on the sign-in page), nothing more.
 # /api/cluster/ca(.crt) is the cluster's public CA certificate; /api/cluster/join checks a join code.
 PUBLIC_API = {"/api/auth/login", "/api/auth/login/code", "/api/auth/logout", "/api/health", "/api/panel-info",
+              "/api/auth/passkeys/available", "/api/auth/passkey/options", "/api/auth/passkey/login",
+              "/api/auth/first-sign-in", "/api/auth/first-sign-in/check",
               "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join"}
 ADMIN_API = ("/api/users", "/api/settings")
 NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates",
@@ -422,6 +426,166 @@ def two_factor_disable_api(req: CodeRequest, request: Request):
     manager.write_log(f"[AUTH] {user['username']} ({user['source']}) turned off two-factor sign-in")
     return {"status": "success"}
 
+# --- 1.24: the first sign-in after installing on Windows: a one-use link to choose a password ---
+class FirstSignInRequest(BaseModel):
+    token: str
+    password: Optional[str] = None
+
+def _first_throttle(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    keys = (f"ip:{ip}",)
+    if auth._throttled(keys):
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.")
+    return ip, keys
+
+@app.post("/api/auth/first-sign-in/check")
+def first_sign_in_check_api(req: FirstSignInRequest, request: Request):
+    ip, keys = _first_throttle(request)
+    try:
+        return {"username": firstsignin.check(req.token)}
+    except firstsignin.FirstSignInError as e:
+        auth._record_fail(keys)
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/auth/first-sign-in")
+def first_sign_in_api(req: FirstSignInRequest, request: Request, response: Response):
+    ip, keys = _first_throttle(request)
+    try:
+        firstsignin.check(req.token)
+    except firstsignin.FirstSignInError as e:
+        auth._record_fail(keys)
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        name = firstsignin.use(req.token, req.password or "",
+                               lambda user, pw: auth.update_panel_user(user, password=pw),
+                               plain_url=re.sub(r"//(127\.0\.0\.1|\[::1\])(?=[:/])", "//localhost", str(request.base_url)))
+    except (auth.AuthError, firstsignin.FirstSignInError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    u = next((x for x in auth._load_users() if x["username"] == name), None)
+    if not u:
+        raise HTTPException(status_code=400, detail="That account no longer exists.")
+    manager.write_log(f"[AUTH] {name} chose a password with the first sign-in link, from {ip}")
+    return auth.read_session_token(_set_session_cookie(request, response, {"u": name, "src": "panel",
+                                                                           "v": u.get("session_version", 1)}))
+
+# --- 1.24: passkeys (Windows Hello) on Windows panels (core/passkeys.py) ---
+def _pk_site(request: Request):
+    if not passkeys.supported():
+        raise HTTPException(status_code=404, detail="Passkeys are for panels on Windows.")
+    try:
+        return passkeys.site(request.url.scheme, request.url.hostname, request.url.port)
+    except passkeys.PasskeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/auth/passkeys/available")
+def passkeys_available_api(request: Request):
+    """Whether the sign-in page offers "Sign in with a passkey" (Windows panels, at a name, over HTTPS)."""
+    if not passkeys.supported():
+        return {"supported": False}
+    try:
+        passkeys.site(request.url.scheme, request.url.hostname, request.url.port)
+    except passkeys.PasskeyError as e:
+        return {"supported": True, "usable": False, "why": str(e)}
+    return {"supported": True, "usable": True}
+
+@app.post("/api/auth/passkey/options")
+def passkey_login_options_api(request: Request):
+    rp_id, origin = _pk_site(request)
+    ip = request.client.host if request.client else "unknown"
+    if auth._throttled((f"ip:{ip}",)):
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.")
+    try:
+        return passkeys.login_options(rp_id, origin)
+    except passkeys.PasskeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class PasskeyLoginRequest(BaseModel):
+    id: str
+    client_data: str
+    authenticator_data: str
+    signature: str
+    user_handle: Optional[str] = None
+
+@app.post("/api/auth/passkey/login")
+def passkey_login_api(req: PasskeyLoginRequest, request: Request, response: Response):
+    rp_id, origin = _pk_site(request)
+    ip = request.client.host if request.client else "unknown"
+    keys = (f"ip:{ip}",)
+    if auth._throttled(keys):
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.")
+    try:
+        key = passkeys.authenticate(req.id, req.client_data, req.authenticator_data, req.signature,
+                                    req.user_handle, rp_id, origin)
+        identity = auth.passkey_identity(key)
+    except (passkeys.PasskeyError, auth.AuthError) as e:
+        auth._record_fail(keys)
+        manager.write_log(f"[AUTH] Failed passkey sign-in from {ip}: {e}")
+        raise HTTPException(status_code=401, detail=str(e))
+    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip} with a passkey")
+    return auth.read_session_token(_set_session_cookie(request, response, identity))
+
+def _pk_account(request: Request):
+    user = request.state.user
+    if user["source"] not in ("panel", "linux"):
+        raise HTTPException(status_code=400, detail="Sign in with your account to add a passkey.")
+    return user, twofactor.account_key(user["source"], user["username"])
+
+@app.get("/api/auth/passkeys")
+def passkeys_list_api(request: Request):
+    user, key = _pk_account(request)
+    out = {"supported": passkeys.supported(), "passkeys": passkeys.list_for(key) if passkeys.supported() else []}
+    if passkeys.supported():
+        try:
+            passkeys.site(request.url.scheme, request.url.hostname, request.url.port)
+            out["usable"] = True
+        except passkeys.PasskeyError as e:
+            out.update(usable=False, why=str(e))
+    return out
+
+class PasskeyAddOptionsRequest(BaseModel):
+    password: str
+
+@app.post("/api/auth/passkeys/options")
+def passkey_add_options_api(req: PasskeyAddOptionsRequest, request: Request):
+    """Adding a passkey asks for the account's password again: a passkey outlives the session."""
+    rp_id, origin = _pk_site(request)
+    user, key = _pk_account(request)
+    ip = request.client.host if request.client else "unknown"
+    keys = (f"user:{user['username'].lower()}", f"ip:{ip}")
+    if auth._throttled(keys):
+        raise HTTPException(status_code=429, detail="Too many wrong passwords. Try again in a few minutes.")
+    if not auth.check_account_password(user["source"], user["username"], req.password):
+        auth._record_fail(keys)
+        raise HTTPException(status_code=400, detail="That password is wrong.")
+    try:
+        return passkeys.registration_options(key, user["username"], user["username"], rp_id, origin)
+    except passkeys.PasskeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class PasskeyAddRequest(BaseModel):
+    client_data: str
+    attestation_object: str
+    name: Optional[str] = ""
+
+@app.post("/api/auth/passkeys")
+def passkey_add_api(req: PasskeyAddRequest, request: Request):
+    rp_id, origin = _pk_site(request)
+    user, key = _pk_account(request)
+    try:
+        pk = passkeys.register(key, req.client_data, req.attestation_object, rp_id, origin, req.name)
+    except passkeys.PasskeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) added a passkey ({pk['name']}) for {rp_id}")
+    return pk
+
+@app.delete("/api/auth/passkeys/{cred_id}")
+def passkey_remove_api(cred_id: str, request: Request):
+    user, key = _pk_account(request)
+    if not passkeys.remove(key, cred_id):
+        raise HTTPException(status_code=404, detail="No such passkey.")
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) removed a passkey")
+    return {"status": "success"}
+
 @app.get("/api/auth/me")
 def me_api(request: Request):
     user = dict(request.state.user)
@@ -671,7 +835,8 @@ def change_password_api(req: PasswordChange, request: Request, response: Respons
     # The change signs out all sessions, so issue a fresh cookie for this browser
     u = next(x for x in auth._load_users() if x["username"] == user["username"])
     _set_session_cookie(request, response, {"u": u["username"], "src": "panel", "v": u["session_version"],
-                                            "m": 1 if user.get("two_factor") else 0})
+                                            "m": 1 if user.get("two_factor") or user.get("passkey") else 0,
+                                            **({"pk": 1} if user.get("passkey") else {})})
     return {"status": "success"}
 
 # --- Panel user management (admins only; enforced in the middleware) ---
@@ -741,9 +906,12 @@ def reset_user_2fa_api(username: str, request: Request):
         raise HTTPException(status_code=400, detail="Use the Password button to change your own two-factor sign-in.")
     if not any(u["username"] == username for u in auth._load_users()):
         raise HTTPException(status_code=404, detail=f"Panel user '{username}' not found.")
-    if not twofactor.remove(twofactor.account_key("panel", username)):
-        raise HTTPException(status_code=400, detail=f"'{username}' doesn't have two-factor sign-in set up.")
-    manager.write_log(f"[AUTH] {me['username']} reset two-factor sign-in for panel user '{username}'")
+    had_tf = twofactor.remove(twofactor.account_key("panel", username))
+    had_pk = passkeys.remove_all(twofactor.account_key("panel", username))
+    if not had_tf and not had_pk:
+        raise HTTPException(status_code=400, detail=f"'{username}' doesn't have two-factor sign-in or passkeys set up.")
+    manager.write_log(f"[AUTH] {me['username']} reset two-factor sign-in" + (" and passkeys" if had_pk else "")
+                      + f" for panel user '{username}'")
     return {"status": "success"}
 
 @app.delete("/api/users/{username}")

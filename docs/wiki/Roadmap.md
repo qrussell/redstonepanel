@@ -45,6 +45,10 @@ show everything the panel does. It arrives in four releases:
   machine's program; a move to Windows is refused, with the list, when the folder holds file
   names Windows can't (checked before anything stops). SFTP on Windows, and Let's Encrypt
   through win-acme (a renewed certificate is picked up by itself). Windows stops being a preview.
+  Sign-in on Windows panels: Windows accounts and panel accounts, optional two-factor, and
+  **Windows Hello** (face, fingerprint or PIN) through passkeys; the installer's Finish page
+  opens a one-use link to choose the admin password, and `redstonepanel reset-password NAME`
+  resets a forgotten one. Linux panels keep Linux accounts, panel accounts and two-factor.
 
 A few things work differently on Windows and are documented: Windows accounts without a password can't sign in to the panel (panel accounts
 can), and Windows 10 installs with an end-of-support note. Windows on ARM comes later.

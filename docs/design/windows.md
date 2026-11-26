@@ -36,6 +36,8 @@ C:\ProgramData\RedstonePanel\          the home folder (kept by an uninstall), o
     journal\<unit>\                    output.log, status.json, usage.json, events\ (the journal)
     java\java-21-openjdk-amd64\        Java (/usr/lib/jvm)
     first-sign-in.txt                  the first account's password, until it is deleted
+    open-panel.url                     what the installer's Finish opens: the one-use "choose your password"
+                                       link (1.24) until it is used, then the panel's address
 ```
 
 The home folder can't have a space in its name: unit files split command lines on spaces.
