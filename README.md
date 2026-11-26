@@ -107,6 +107,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.25
+
+**API tokens** let a script or a Discord bot start servers or make backups, limited to the servers and permissions you choose and never an admin. A **Start at boot** switch on each server's Maintenance tab keeps a server stopped after a reboot. **Open dashboard** on the master's Cluster page opens a node's own panel already signed in. On Windows, **Update now** works again. See the [1.25.0 release notes](release-notes/v1.25.0.md).
+
 ## What's new in 1.24
 
 **Mixed Linux and Windows clusters**. A Windows PC can be a cluster's master or a node next to Linux machines, with servers and backup copies moving between them (Bedrock gets the new machine's own program, and a move onto Windows checks file names first). Windows gets SFTP, **Windows Hello** sign-in and an easier first password, and is no longer a preview. Any panel can **remember your device** for 30 days. `redstonepanel reset-password` resets a forgotten panel password. See the [1.24.0 release notes](release-notes/v1.24.0.md). **1.24.1** opens the HTTPS port in Windows Defender Firewall when a Windows PC joins a cluster, shows a server created on a node without a reload, and loads a master's Dashboard and Cluster page much faster ([release notes](release-notes/v1.24.1.md)).
