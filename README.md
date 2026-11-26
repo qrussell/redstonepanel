@@ -17,7 +17,8 @@ On Windows it is one installer, and every game server is a Windows service.
 
 **[🚀 Quick start](#quick-start)** · **[⬇️ Install](#install)** · **[📖 User manual](docs/guide/README.md)** ·
 **[✨ What's new](docs/wiki/Whats-New.md)** · **[❓ Is it right for me?](docs/wiki/FAQ.md)** ·
-**[🛣️ Roadmap](docs/wiki/Roadmap.md)** · **[📚 Wiki](docs/wiki/Home.md)**
+**[🛣️ Roadmap](docs/wiki/Roadmap.md)** · **[📚 Wiki](docs/wiki/Home.md)** ·
+**[💬 Discord](https://discord.gg/B5YkQm3zaX)**
 
 ## Quick start
 

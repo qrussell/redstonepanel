@@ -17,6 +17,22 @@ Website: <https://redstonepanel.cielocloud.org> (GitHub Pages, `docs/CNAME`).
 If `gitlab.cielocloud.dev` answers 502 (the home internet connection is down), the same GitLab
 is reachable at `https://gitlab-cf.cielocloud.dev` (a Cloudflare tunnel), for git and the API.
 
+### Discord
+
+The RedstonePanel Discord lives on the Cielo Cloud server. The public invite
+(`https://discord.gg/B5YkQm3zaX`, channel #rp-general) is linked from the website header, hero and
+footer, the README, the wiki (Home, FAQ, Roadmap, sidebar, Discord setup) and CONTRIBUTING.md.
+To change it, replace that link everywhere (`grep -rn discord.gg`); make the new invite with
+**Expire after: Never**.
+
+Each release tag posts an announcement to **#announcements** from the GitLab job
+`discord-announce` (`packaging/discord_announce.py`, after `release`): the first paragraph of
+`release-notes/vX.Y.Z.md`, the bold titles of its New and Fixed items, and links. The webhook URL
+is the masked, protected GitLab CI variable `DISCORD_RELEASE_WEBHOOK` (Settings → CI/CD →
+Variables), never in the repository. Without it, or if Discord refuses, the job warns and
+passes. To post one again by hand:
+`DISCORD_RELEASE_WEBHOOK=<url> python3 packaging/discord_announce.py vX.Y.Z`.
+
 ### Rules
 
 1. **Never push or merge on GitHub.** The mirror overwrites GitHub's branches with GitLab's on

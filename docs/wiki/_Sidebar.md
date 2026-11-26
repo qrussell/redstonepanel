@@ -24,4 +24,4 @@
 - [Command line](../guide/README.md#19-command-line)
 - [Troubleshooting](../guide/README.md#20-troubleshooting)
 
-[GitHub repository](https://github.com/qrussell/redstonepanel)
+[GitHub repository](https://github.com/qrussell/redstonepanel) · [Discord](https://discord.gg/B5YkQm3zaX)
