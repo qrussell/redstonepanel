@@ -275,9 +275,41 @@ def _add_tree(tar, d, skip_dirs=(), full=False):
                 # Read as the game account: a file swapped for a link mid-walk can't add a
                 # root-only file to a backup anyone with access to it can download
                 with system.game_files():
-                    tar.add(path, arcname=rel, recursive=False)
+                    _add_file(tar, path, rel)
             except FileNotFoundError:
                 pass          # deleted by the running server while we walked
+
+
+class _AtLength:
+    """Reads exactly `size` bytes from f: a file the running server cut shorter while it was
+    copied is filled out with zeros, so the archive stays readable (tarfile otherwise stops
+    with "unexpected end of data" after writing the header, and the whole backup fails)."""
+
+    def __init__(self, f, size):
+        self.f, self.left, self.short = f, size, False
+
+    def read(self, n=-1):
+        n = self.left if n is None or n < 0 else min(n, self.left)
+        data = self.f.read(n)
+        if len(data) < n:
+            self.short = True
+            data += b"\0" * (n - len(data))
+        self.left -= n
+        return data
+
+
+def _add_file(tar, path, rel):
+    """Adds one file (or link) at the length it had when it was looked at."""
+    info = tar.gettarinfo(path, arcname=rel)
+    if not info.isreg():
+        tar.addfile(info)
+        return
+    with open(path, "rb") as f:
+        src = _AtLength(f, info.size)
+        tar.addfile(info, src)
+    if src.short:
+        manager.write_log(f"[WARNING] {rel} got shorter while it was backed up; the backup has it "
+                          f"filled out with zeros. The server was writing it.")
 
 def _java_rcon(d):
     props = manager.read_properties(d)
