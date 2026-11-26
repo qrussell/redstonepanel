@@ -747,6 +747,43 @@ class PanelUpdate(unittest.TestCase):
                 mock.patch.object(packages, "installed_version", return_value="1.23.0"):
             self.assertFalse(self.p.install(out=lines.append, spawn=lambda *a, **k: self.fail("spawned")))
 
+    def test_the_installer_starts_as_a_scheduled_task(self):
+        """1.24.2: started with DETACHED_PROCESS, powershell.exe had no console and ran nothing.
+        Task Scheduler runs it now, as the system account, outside the panel's Job Object."""
+        import subprocess
+        ran, seen = [], {}
+
+        def run(cmd):
+            ran.append(cmd)
+            if "/XML" in cmd:
+                with open(cmd[cmd.index("/XML") + 1], encoding="utf-16") as f:
+                    seen["xml"] = f.read()
+            return subprocess.CompletedProcess(cmd, 0)
+        argv = [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", "-NoProfile", "-File",
+                r"C:\ProgramData\RedstonePanel\data\upgrade\install.ps1"]
+        with mock.patch.object(subprocess, "Popen", side_effect=AssertionError("not as a process")):
+            self.assertEqual(self.p.start_installer(argv, self.d, run=run), "task")
+        self.assertEqual([c[:2] for c in ran], [["schtasks.exe", "/Create"], ["schtasks.exe", "/Run"]])
+        self.assertIn(self.p.TASK_NAME, ran[1])
+        xml = seen["xml"]
+        self.assertIn("<Triggers />", xml)
+        self.assertIn("<UserId>S-1-5-18</UserId>", xml)
+        self.assertIn("<Command>" + argv[0] + "</Command>", xml)
+        self.assertIn("install.ps1", xml)
+        self.assertEqual(os.listdir(self.d), [], "the task's XML isn't left behind")
+        script = self.p.installer_script("a.msi", "l", "r", "h", [])
+        self.assertTrue(script.rstrip().endswith("schtasks.exe /Delete /TN 'RedstonePanel update' /F | Out-Null"))
+
+    def test_without_task_scheduler_a_hidden_powershell_never_detached(self):
+        import subprocess
+        from core.platform.windows import _win
+        flags = []
+        with mock.patch.object(subprocess, "Popen", lambda argv, creationflags=0, **kw: flags.append(creationflags)):
+            self.assertEqual(self.p.start_installer(["powershell.exe"], self.d,
+                                                    run=lambda cmd: subprocess.CompletedProcess(cmd, 1)), "process")
+        self.assertTrue(flags[0] & _win.CREATE_NO_WINDOW)
+        self.assertFalse(flags[0] & _win.DETACHED_PROCESS, "powershell.exe exits at once without a console")
+
     def test_the_candidate_is_the_newest_release(self):
         from core.platform.windows import packages
         with mock.patch.object(packages, "installed_version", return_value="1.22.0"), \
