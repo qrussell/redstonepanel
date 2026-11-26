@@ -123,7 +123,7 @@ class Api(Base):
 
     def test_turn_off_and_on(self):
         self.enabled.add("minecraft")
-        self.assertEqual(self.client.get("/api/servers/minecraft/boot").json(), {"enabled": True})
+        self.assertEqual(self.client.get("/api/servers/minecraft/boot").json(), {"enabled": True, "sleep": False})
         r = self.client.put("/api/servers/minecraft/boot", json={"enabled": False})
         self.assertEqual(r.json(), {"enabled": False}, r.text)
         self.assertIn("[SERVICE] quentin turned Start at boot off for minecraft.", self.log)

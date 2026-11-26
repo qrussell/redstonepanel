@@ -6,6 +6,10 @@ choice in DATA_DIR/boot.json ({"off": ["minecraft-x", ...]}, root-only), so the 
 a server up again keep it: restore, import, Restore of a removed server, taking over a server
 found on the machine, and a move to another cluster member (the move's details carry it).
 Starting, stopping and restarting by hand, schedules and crash restarts are not affected.
+
+Sleep mode (1.26): a server with sleep mode on is never started by the system at boot, whatever
+this choice says. The panel puts it to sleep after the machine starts when the choice is on, and
+leaves it stopped when it's off (core/sleep.py). The choice is kept as it is meanwhile.
 """
 import json
 import os
@@ -59,10 +63,18 @@ def forget(server):
     remember(server, True)
 
 
+def _sleeps(server):
+    try:
+        from core import sleep
+        return sleep.enabled(server)
+    except Exception:
+        return False
+
+
 def apply(server, quiet=False):
     """Enables or disables the server's unit as chosen. Where the panel used to enable every
-    server it set up, it calls this instead."""
-    if wanted(server):
+    server it set up, it calls this instead. Sleep mode on: always disabled (the panel wakes it)."""
+    if wanted(server) and not _sleeps(server):
         services.enable(server, quiet=quiet)
     else:
         services.disable(server, quiet=quiet)
@@ -73,8 +85,14 @@ def enabled(server):
     return services.unit_state(services.unit(server), "is-enabled", timeout=10) == "enabled"
 
 
+def shown(server):
+    """What the Start at boot switch shows: the choice while sleep mode is on (the unit is
+    disabled then), else what the system says."""
+    return wanted(server) if _sleeps(server) else enabled(server)
+
+
 def turn(server, on):
-    """Turns Start at boot on or off for a server now. Returns what the system says after."""
+    """Turns Start at boot on or off for a server now. Returns what the switch shows after."""
     remember(server, bool(on))
     apply(server, quiet=True)          # the caller logs who did it; systemctl's "Created symlink" is noise
-    return enabled(server)
+    return shown(server)

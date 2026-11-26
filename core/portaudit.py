@@ -186,6 +186,15 @@ def listeners(fresh=False, max_age=LISTEN_CACHE):
     return found
 
 
+def _asleep_on(port, proto):
+    """The asleep server whose game port the panel holds (sleep mode, 1.26), or None."""
+    try:
+        from core import sleep
+        return sleep.holds(port, proto) or sleep.asleep_ports().get((port, proto))
+    except Exception:
+        return None
+
+
 def owner(listener, server_names):
     """Whose a listening socket is: ("server", name), ("panel", None), ("phantom", None) or
     ("other", None)."""
@@ -196,6 +205,9 @@ def owner(listener, server_names):
     if name in server_names:
         return ("server", name)
     if name == "redstonepanel" or name.startswith("redstonepanel-") or listener.get("pid") == os.getpid():
+        sleeper = _asleep_on(listener.get("port"), listener.get("proto"))
+        if sleeper in server_names:
+            return ("server", sleeper)         # sleep mode (1.26): the panel holds it for the server
         return ("panel", None)
     if name.startswith("phantom"):
         return ("phantom", None)

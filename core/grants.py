@@ -319,6 +319,9 @@ settings POST    {_S}/properties/raw
 settings PUT     {_S}/restarts
 view     GET     {_S}/boot
 settings PUT     {_S}/boot
+view     GET     {_S}/sleep
+settings PUT     {_S}/sleep
+power    POST    {_S}/sleep/now
 settings PUT     {_S}/updates
 settings POST    {_S}/updates/check
 view     GET     {_S}/convert

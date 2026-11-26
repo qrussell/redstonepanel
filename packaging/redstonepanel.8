@@ -30,6 +30,11 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .I NAME
 .BR on | off
 .br
+.B redstonepanel sleep
+.I NAME
+.BR on | off
+.RI [ MINUTES ]
+.br
 .B redstonepanel removed
 .br
 .B redstonepanel restore
@@ -155,6 +160,16 @@ Whether the game server
 .I NAME
 starts by itself when the machine starts (the Maintenance tab's Start at boot). Off, it stays
 stopped after a reboot until someone starts it.
+.TP
+.BI "sleep " "NAME " on | off " \fR[\fPMINUTES\fR]\fP"
+Sleep mode (the Maintenance tab's Sleep Mode): on, the game server
+.I NAME
+stops after
+.I MINUTES
+(15 if not given, 1 to 1440) with nobody playing, and the panel listens on its game port and
+starts it when a player joins. The system then never starts it at boot; the panel puts it to
+sleep after the machine starts if Start at boot is on. State in
+.IR /var/lib/redstonepanel/sleep.json .
 .TP
 .BI "reset-password " NAME
 Recovery: set a new password for the panel account

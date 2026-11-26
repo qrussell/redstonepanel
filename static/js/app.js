@@ -401,12 +401,12 @@ const ServerApp = {
                           ['other', 'Unknown / Other', s => s.edition !== 'Java' && s.edition !== 'Bedrock']];
 
         const serverRow = srv => {
-            const dot = srv.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off';
+            const lamp = this.lamp(srv);
             const isActive = this.sameServer(this.activeServer, srv) ? 'rp-active bg-gray-200 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800';
             return `
                 <div onclick="ServerApp.openWorkspace(${JSON.stringify(srv).replace(/"/g, '&quot;')})"
                      class="p-3 rounded cursor-pointer transition flex items-center gap-3 ${isActive}">
-                    <span class="${dot}">●</span>
+                    ${lamp}
                     <div class="min-w-0">
                         <div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(srv.name)}${this.hasProxyProblem(srv) || this.hasConnectProblem(srv) ? ' <span class="text-yellow-600" title="Players may not be able to connect: see Overview">⚠</span>' : ''}</div>
                         <div class="text-xs text-gray-500">${esc(srv.edition)}${srv.version ? ' ' + esc(srv.version) : ''} • Port ${srv.port}${this.updateBadge(srv)}</div>
@@ -467,8 +467,10 @@ const ServerApp = {
         this.applyPerms(srv);
         document.getElementById('ws-title').innerText = srv.name;
         document.getElementById('ws-subtitle').innerText = srv.node ? `🌐 ${srv.nodeName}: ${srv.directory}` : srv.directory;
-        document.getElementById('ws-status').innerText = srv.status === 'online' ? '🟢' : '🔴';
-        this.setMobileTitle(`${srv.status === 'online' ? '🟢' : '🔴'} ${srv.name}`, srv.node ? `🌐 ${srv.nodeName}` : `${srv.edition}${srv.version ? ' ' + srv.version : ''}`);
+        const wsIcon = srv.status === 'online' ? '🟢' : srv.sleeping ? '💤' : '🔴';
+        document.getElementById('ws-status').innerText = wsIcon;
+        document.getElementById('ws-status').title = srv.sleeping ? 'Asleep: starts when a player joins' : '';
+        this.setMobileTitle(`${wsIcon} ${srv.name}`, srv.node ? `🌐 ${srv.nodeName}` : `${srv.edition}${srv.version ? ' ' + srv.version : ''}`);
         
         // Populate the live chat RCON port badge
         const rconBadge = document.getElementById('chat-rcon-port');
@@ -492,7 +494,7 @@ const ServerApp = {
             versionNote += `<p class="text-xs mt-1"><button onclick="ServerApp.switchTab('maintenance')" class="text-theme underline" title="Open Maintenance to update">⬆ Update available: ${esc(srv.update.label)}</button></p>`;
         }
         document.getElementById('overview-stats').innerHTML = `
-            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Status</p><p class="font-bold uppercase ${srv.status === 'online' ? 'text-green-500' : 'text-red-500'}">${srv.status}</p></div>
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Status</p><p class="font-bold uppercase ${srv.status === 'online' ? 'text-green-500' : srv.sleeping ? 'text-blue-600 dark:text-blue-400' : 'text-red-500'}">${srv.status === 'online' ? srv.status : srv.sleeping ? 'asleep' : srv.status}</p>${srv.sleeping ? '<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Starts when a player joins</p>' : ''}</div>
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Engine</p><p class="font-bold text-blue-600 dark:text-blue-400">${srv.edition}</p></div>
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Minecraft Version</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.version ? esc(srv.version) : 'Unknown'}</p>${versionNote}</div>
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded shadow-sm"><p class="text-gray-500 dark:text-gray-400 text-xs">Port (TCP/UDP)</p><p class="font-bold text-gray-900 dark:text-gray-200">${srv.port}</p></div>
@@ -677,7 +679,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab(this.firstConfigSubTab());
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadBoot(); this.loadRestarts(); this.loadUpdateOptions().then(() => this.loadModpack()); this.loadAutoUpdate(); this.loadConvert(); this.loadJavaChoice(); this.loadResources(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadBoot(); this.loadSleep(); this.loadRestarts(); this.loadUpdateOptions().then(() => this.loadModpack()); this.loadAutoUpdate(); this.loadConvert(); this.loadJavaChoice(); this.loadResources(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
@@ -4630,6 +4632,7 @@ const ServerApp = {
                     <span><span class="font-bold text-gray-900 dark:text-white">Start this server when the machine starts</span><br>
                     <span class="text-xs text-gray-500 dark:text-gray-400">Turn it off for a server you only run now and then: after a reboot it stays stopped until you start it. Start, Stop and Restart, schedules and restarts after a crash work as before.</span></span>
                 </label>
+                ${info.sleep ? `<p class="text-xs text-blue-600 dark:text-blue-400 mt-3">☾ Sleep mode is on, so the machine never starts this server by itself. ${info.enabled ? 'After a reboot it goes to sleep and starts when a player joins.' : 'After a reboot it stays stopped, and doesn\'t wake until you start it.'}</p>` : ''}
             </div>`;
     },
 
@@ -4642,6 +4645,98 @@ const ServerApp = {
         box.disabled = false;
         if (!res.ok) alert(`Couldn't change Start at boot: ${await this.apiError(res)}`);
         this.loadBoot();
+    },
+
+    // 1.26: a server's lamp in lists: green running, a blue moon asleep (sleep mode), grey stopped
+    lamp(srv) {
+        if (srv.status !== 'online' && srv.sleeping) {
+            return '<span class="text-blue-600 dark:text-blue-400" title="Asleep: starts when a player joins">☾</span>';
+        }
+        return `<span class="${srv.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off'}">●</span>`;
+    },
+
+    // --- 1.26: Sleep mode. Stops the server after N minutes with nobody on; the panel then
+    // answers on its port and starts it when someone joins. Hidden on a node older than 1.26 (404).
+    async loadSleep() {
+        const card = document.getElementById('sleep-card');
+        if (!this.activeServer) return;
+        const name = this.activeServer.name;
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/sleep`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        if (res.status === 404) { card.classList.add('hidden'); return; }
+        card.classList.remove('hidden');
+        const box = document.getElementById('sleep-content');
+        const esc = t => this.escapeHtml(String(t ?? ''));
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">${esc(await this.apiError(res))}</p>`;
+            return;
+        }
+        const s = await res.json();
+        const perms = this.activeServer.perms || [];
+        const may = this.isAdmin() || perms.includes('settings');
+        const mayPower = this.isAdmin() || perms.includes('power');
+        const java = this.activeServer.edition === 'Java';
+        const nethernet = !java && this.activeServer.transport === 'nethernet';
+        const when = t => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        let state = '';
+        if (s.enabled) {
+            if (s.state === 'asleep') {
+                state = `<p class="text-sm"><span class="text-blue-600 dark:text-blue-400 font-bold">☾ Asleep</span>${s.since ? ' since ' + esc(when(s.since)) : ''}. `
+                    + (s.listening ? `The panel answers on port ${esc(this.activeServer.port)} and starts the server when a player joins.`
+                                   : `<span class="text-red-500">It can't wake right now: ${esc(s.error || 'the panel isn\'t listening on its port')}.</span> The panel tries again every 30 seconds.`)
+                    + '</p>';
+            } else if (s.state === 'awake' && s.empty_since) {
+                state = `<p class="text-sm">Running. Nobody has played since ${esc(when(s.empty_since))}: it goes to sleep at ${esc(when(s.empty_since + s.minutes * 60))} unless someone joins.</p>`;
+            } else if (s.state === 'awake') {
+                state = '<p class="text-sm">Running. It goes to sleep once nobody has played for the time below.</p>';
+            } else {
+                state = '<p class="text-sm">Stopped. It doesn\'t wake when a player joins until you start it, or press <b>Sleep now</b>.</p>';
+            }
+        }
+        const why = s.why_not ? `<p class="text-sm text-yellow-600 dark:text-yellow-400 mt-2">${esc(s.why_not)}</p>` : '';
+        box.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm space-y-3">
+                <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" id="sleep-enabled" class="mt-1" ${s.enabled ? 'checked' : ''} ${may && (s.enabled || !s.why_not) ? '' : 'disabled'}
+                        onchange="ServerApp.saveSleep()">
+                    <span><span class="font-bold text-gray-900 dark:text-white">Sleep when nobody is playing</span><br>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">Saves memory and CPU: the server stops after the time below with nobody on, and starts again when someone joins. ${java
+                        ? 'The server list shows it as sleeping; joining starts it and tells the player to join again in about 30 seconds.'
+                        : nethernet ? 'The first try to join starts it; the player joins again once it runs (about 30 seconds). Minecraft can\'t show it as sleeping in the server list.'
+                        : 'The server list shows it as sleeping; the first try to join starts it, then the player joins again (about 30 seconds).'}
+                    It doesn't start at boot while this is on: it goes to sleep instead (if Start at Boot is on).</span></span>
+                </label>
+                <label class="flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300">After
+                    <input type="number" id="sleep-minutes" min="${s.min}" max="${s.max}" value="${s.minutes}" ${may ? '' : 'disabled'}
+                        class="w-24 p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+                    minutes with nobody on
+                    ${may && s.enabled ? '<button type="button" onclick="ServerApp.saveSleep()" class="px-3 py-2 rounded text-xs font-bold text-white bg-gray-500 hover:bg-gray-600">Save</button>' : ''}
+                </label>
+                ${state}
+                ${s.enabled && mayPower && s.state !== 'asleep' ? '<button type="button" onclick="ServerApp.sleepNow(this)" class="px-3 py-2 rounded text-xs font-bold text-white bg-blue-600 hover:bg-blue-700">☾ Sleep now</button>' : ''}
+                ${why}
+            </div>`;
+    },
+
+    async saveSleep() {
+        const enabled = document.getElementById('sleep-enabled').checked;
+        const minutes = parseInt(document.getElementById('sleep-minutes').value, 10);
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/sleep`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled, minutes: Number.isFinite(minutes) ? minutes : null })
+        });
+        if (!res.ok) alert(`Couldn't change sleep mode: ${await this.apiError(res)}`);
+        this.loadSleep();
+        this.loadBoot();
+    },
+
+    async sleepNow(button) {
+        const srv = this.activeServer;
+        if (srv.status === 'online' && !confirm(`Put ${srv.name} to sleep now? It stops (players on it are disconnected) and starts again when someone joins.`)) return;
+        button.disabled = true;
+        const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/sleep/now`, { method: 'POST' });
+        if (!res.ok) alert(`Couldn't put it to sleep: ${await this.apiError(res)}`);
+        setTimeout(() => { this.loadSleep(); this.loadServers(); }, 3000);
     },
 
     async loadRestarts() {
@@ -6686,8 +6781,8 @@ const ServerApp = {
 		const td = 'px-3 py-2 whitespace-nowrap';
 		const serverRows = servers.map(s => {
 			const crash = s.crash_loop;
-			const dot = s.status === 'online' ? 'rp-lamp-on' : crash || s.state === 'failed' ? 'text-red-500' : 'text-gray-400';
-			const stateText = crash ? 'crash loop' : s.state === 'failed' ? 'failed' : s.status;
+			const dot = s.status === 'online' ? 'rp-lamp-on' : crash || s.state === 'failed' ? 'text-red-500' : s.sleeping ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400';
+			const stateText = crash ? 'crash loop' : s.state === 'failed' ? 'failed' : s.sleeping && s.status !== 'online' ? 'asleep' : s.status;
 			const lb = s.last_backup;
 			const backupNote = lb ? (lb.ok ? `last ${this.fmtWhen(lb.at)}` : '<span class="text-red-500">last failed</span>') : 'none yet';
 			return `
@@ -7140,7 +7235,8 @@ const ServerApp = {
 			body: JSON.stringify({ member, server, enabled: id('enabled').checked, slug: id('slug').value.trim(),
 				unlisted: id('unlisted').checked, new_link: !!newLink, address: id('address').value.trim(),
 				note: id('note').value, link_url: id('link-url').value.trim(), link_label: id('link-label').value.trim(),
-				pack_url: id('pack-url') ? id('pack-url').value.trim() : '', show_players: id('players').checked }) });
+				pack_url: id('pack-url') ? id('pack-url').value.trim() : '', show_players: id('players').checked,
+				allow_start: id('start').checked }) });
 		if (!res.ok) {
 			button.disabled = false;
 			const note = id('msg');
@@ -7265,6 +7361,10 @@ const ServerApp = {
 				<label class="flex items-start gap-2 text-sm cursor-pointer">
 					<input type="checkbox" id="join-players-${id}" ${p.show_players ? 'checked' : ''} class="mt-1">
 					<span><b class="text-gray-900 dark:text-white">Show who is playing</b><br><span class="${note}">Off: only the number of players is shown, never their names.</span></span>
+				</label>
+				<label class="flex items-start gap-2 text-sm cursor-pointer">
+					<input type="checkbox" id="join-start-${id}" ${p.allow_start ? 'checked' : ''} class="mt-1">
+					<span><b class="text-gray-900 dark:text-white">Let visitors start the server</b><br><span class="${note}">Shows <b>Start the server</b> on the page while it is stopped, so a friend can start it and join. Anyone who can open the page can press it: one start every 2 minutes per server, and 3 an hour per visitor. It never stops a server${s.sleep ? '' : '; with Sleep mode (Maintenance tab) it stops by itself again when nobody plays'}.</span></span>
 				</label>
 				<label class="${note} block">A note for players (rules, when you play)<textarea id="join-note-${id}" rows="3" maxlength="600" class="${field} w-full mt-1">${esc(p.note)}</textarea></label>
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -7689,7 +7789,7 @@ const ServerApp = {
 			const rows = (n.servers || []).map(s => `
 				<div class="flex items-center justify-between gap-3 p-3 border-t border-gray-200 dark:border-gray-700">
 					<div class="flex items-center gap-3 min-w-0">
-						<span class="${s.status === 'online' ? 'rp-lamp-on' : 'rp-lamp-off'}">●</span>
+						${this.lamp(s)}
 						<div class="min-w-0">
 							<div class="font-bold text-gray-900 dark:text-gray-200 truncate">${esc(s.name)}</div>
 							<div class="text-xs text-gray-500">${esc(s.edition)}${s.version ? ' ' + esc(s.version) : ''} • Port ${esc(s.port)}${this.updateBadge(s)}</div>

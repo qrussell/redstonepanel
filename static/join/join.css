@@ -3,12 +3,14 @@
   --bg: #f4f4f5; --card: #ffffff; --text: #18181b; --muted: #6b7280; --line: #e4e4e7;
   --accent: #dc2626; --accent-text: #ffffff; --code: #f4f4f5; --on: #15803d; --on-bg: #dcfce7;
   --off: #52525b; --off-bg: #e4e4e7; --warn: #854d0e; --warn-bg: #fef9c3;
+  --sleep: #1d4ed8; --sleep-bg: #dbeafe;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #111113; --card: #1c1c1f; --text: #f4f4f5; --muted: #a1a1aa; --line: #2e2e33;
     --accent: #ef4444; --accent-text: #ffffff; --code: #111113; --on: #86efac; --on-bg: #14532d;
     --off: #d4d4d8; --off-bg: #3f3f46; --warn: #fde68a; --warn-bg: #422006;
+    --sleep: #93c5fd; --sleep-bg: #1e3a8a;
   }
 }
 * { box-sizing: border-box; }
@@ -32,6 +34,12 @@ li { margin-bottom: 0.35rem; }
 .pill { display: inline-block; padding: 0.1rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700; }
 .pill.on { color: var(--on); background: var(--on-bg); }
 .pill.off { color: var(--off); background: var(--off-bg); }
+.pill.sleeping { color: var(--sleep); background: var(--sleep-bg); }
+.pill.starting { color: var(--warn); background: var(--warn-bg); }
+[hidden] { display: none !important; }
+#wake { margin-top: 0.5rem; }
+#wake .buttons { margin: 0; }
+button.btn:disabled { opacity: 0.6; cursor: default; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
 .card > :last-child { margin-bottom: 0; }
 .copy { display: flex; gap: 0.75rem; align-items: center; justify-content: space-between; background: var(--code);

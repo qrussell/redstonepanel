@@ -7,11 +7,14 @@ It listens on its own port (Panel Settings > Join pages, 8444 by default) and an
     GET /join/<link>/status.json    the part that refreshes (online, player count)
     GET /join/<link>/icon.png       the server's icon
     GET /join/assets/join.css|js    the page's own stylesheet and script
+    POST /join/<link>/start         start the server (1.26, only if the admin allowed it on that page)
 
 Everything else is "Not found": there is no sign-in page, no API and none of the panel's files
 on this port, so forwarding it on the router shows the internet nothing but these pages. It
 sets no cookies, reads no request bodies and takes nothing from the visitor but the path (and,
 only from a reverse proxy the admin listed, X-Forwarded-For: see client_ip()).
+The one POST (1.26) is POST /join/<link>/start, the page's Start button, only where the admin
+allowed it; it needs the header X-Join-Start: 1, which a form on another site can't send.
 Pages are built here from joinpage.public_view(), with every value escaped.
 
 It runs as a thread of the panel, not as a service of its own, so there is nothing to install
@@ -132,9 +135,27 @@ def _asset_version():
     return _asset_v["v"]
 
 
+STATES = {"online": ("on", "Online"), "starting": ("starting", "Starting"), "sleeping": ("sleeping", "Asleep"),
+          "offline": ("off", "Offline")}
+
+
 def _status_pill(view):
-    on = view["status"] == "online"
-    return (f'<span id="status" class="pill {"on" if on else "off"}">{"Online" if on else "Offline"}</span>')
+    cls, label = STATES.get(view["status"], STATES["offline"])
+    return f'<span id="status" class="pill {cls}">{label}</span>'
+
+
+def _start_block(view):
+    """1.26: the Start button (where the admin allowed it) and what an asleep server does."""
+    base = f'/join/{quote(view["path"], safe="")}'
+    hide = "" if view["status"] != "online" else " hidden"
+    note = {"sleeping": "The server is asleep to save power. It starts by itself when you join; then join again "
+                        "in about 30 seconds.",
+            "starting": "The server is starting. This page shows Online when you can join."}.get(view["status"], "")
+    out = f'<div id="wake"{hide}><p id="wake-note" class="small">{e(note)}</p>'
+    if view.get("can_start"):
+        out += (f'<p class="buttons"><button type="button" id="start" class="btn primary" data-start="{e(base)}/start"'
+                f'{" disabled" if view["status"] == "starting" else ""}>Start the server</button></p>')
+    return out + "</div>"
 
 
 def _players_text(view):
@@ -304,7 +325,7 @@ def render_page(view):
     head = (f'<header class="top">{icon}<div><h1>{e(view["title"])}</h1>'
             f'<p class="sub"><span id="version">{sub}</span></p>'
             f'<p class="state">{_status_pill(view)} <span id="players">{e(_players_text(view))}</span></p>'
-            f'<p id="names" class="small">{_names_html(view)}</p></div></header>')
+            f'<p id="names" class="small">{_names_html(view)}</p>{_start_block(view)}</div></header>')
     body = head
     if view["note"] or view["link"]:
         body += '<section class="card note">'
@@ -336,7 +357,7 @@ def render_index(views):
     rows = "".join(
         f'<a class="row" href="/join/{e(quote(v["path"], safe=""))}"><span><b>{e(v["title"])}</b>'
         f'<span class="muted">{e(" · ".join(x for x in (v["edition"], v["loader"] if v["needs"] == "mods" else "", v["minecraft"]) if x))}</span></span>'
-        f'<span class="pill {"on" if v["status"] == "online" else "off"}">{"Online" if v["status"] == "online" else "Offline"}</span></a>'
+        f'<span class="pill {STATES.get(v["status"], STATES["offline"])[0]}">{STATES.get(v["status"], STATES["offline"])[1]}</span></a>'
         for v in views)
     body = ('<header class="top"><div><h1>Minecraft servers</h1><p class="sub">Pick a server to see how to join.</p>'
             '</div></header><section class="card list">' + (rows or "<p>No servers are listed yet.</p>") + "</section>")
@@ -347,7 +368,7 @@ def render_index(views):
 # Requests
 # ---------------------------------------------------------------------------
 def _view(key, cfg):
-    return joinpage.public_view(cfg, joinpage.summary(key))
+    return joinpage.public_view(cfg, joinpage.summary(key), key=key)
 
 
 def _ip(text):
@@ -389,11 +410,13 @@ def client_ip(peer, forwarded, proxies, cf_ip=None, use_cloudflare=False):
     return str(ip), True
 
 
-def handle(method, path, ip, forwarded=None, s=None, cf_ip=None):
-    """One request -> Answer. Only GET and HEAD, only under /join. `ip` is the address the
-    connection came from; `forwarded` (X-Forwarded-For) and `cf_ip` (CF-Connecting-IP) are
-    used only from a proxy the admin named."""
-    if method not in ("GET", "HEAD") or len(path) > 200:
+def handle(method, path, ip, forwarded=None, s=None, cf_ip=None, start_header=None):
+    """One request -> Answer. Only GET and HEAD, only under /join, and POST .../start (1.26).
+    `ip` is the address the connection came from; `forwarded` (X-Forwarded-For) and `cf_ip`
+    (CF-Connecting-IP) are used only from a proxy the admin named."""
+    if method not in ("GET", "HEAD", "POST") or len(path) > 200:
+        return not_found()
+    if method == "POST" and not path.endswith("/start"):
         return not_found()
     s = s or panel_settings.load()
     if s.get("join_cloudflare"):
@@ -435,6 +458,8 @@ def handle(method, path, ip, forwarded=None, s=None, cf_ip=None):
     if not hit:
         return not_found()
     key, cfg = hit
+    if method == "POST" or (len(parts) == 2 and parts[1] == "start"):
+        return _start(method, key, cfg, ip, start_header, len(parts))
     try:
         if len(parts) == 1:
             return Answer(render_page(_view(key, cfg)), content_type="text/html; charset=utf-8")
@@ -470,6 +495,23 @@ def handle(method, path, ip, forwarded=None, s=None, cf_ip=None):
     return not_found()
 
 
+def _start(method, key, cfg, ip, start_header, n):
+    import json
+    if method != "POST" or n != 2 or not cfg.get("allow_start"):
+        return not_found()
+    if start_header != "1":
+        return Answer("Use the page's Start button.\n", 400)
+    try:
+        state = joinpage.start_from_page(key, ip or "?")
+    except joinpage.JoinError as e:
+        return Answer(json.dumps({"error": str(e)}), 429, content_type="application/json; charset=utf-8")
+    except Exception:
+        return Answer(json.dumps({"error": "The server can't be started right now."}), 503,
+                      content_type="application/json; charset=utf-8")
+    return Answer(json.dumps({"status": state}), 202 if state == "starting" else 200,
+                  content_type="application/json; charset=utf-8")
+
+
 async def app(scope, receive, send):
     """The whole public web server: every request goes through handle()."""
     if scope["type"] != "http":
@@ -479,8 +521,9 @@ async def app(scope, receive, send):
     headers = scope.get("headers") or []
     forwarded = ",".join(v.decode("latin-1") for k, v in headers if k == b"x-forwarded-for")
     cf_ip = next((v.decode("latin-1") for k, v in headers if k == b"cf-connecting-ip"), None)
+    start_header = next((v.decode("latin-1") for k, v in headers if k == b"x-join-start"), None)
     answer = await run_in_threadpool(handle, scope.get("method", ""), scope.get("path", ""), client[0], forwarded,
-                                     None, cf_ip)
+                                     None, cf_ip, start_header)
     await send({"type": "http.response.start", "status": answer.status, "headers": answer.headers()})
     await send({"type": "http.response.body", "body": b"" if scope.get("method") == "HEAD" else answer.body})
 

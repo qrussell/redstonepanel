@@ -546,6 +546,7 @@ def _servers(listed, shown, unit_cpu, fw):
                        if not ufw_allows_spec(fw["rules"], p, proto)]
         rows.append({
             "name": name, "edition": s["edition"], "version": s.get("version"), "status": s["status"],
+            "sleeping": bool(s.get("sleeping")),
             "state": u.get("ActiveState"), "sub_state": u.get("SubState"), "restarts": _int(u.get("NRestarts")),
             "crash_loop": crash_looping(u),
             "uptime": _unit_uptime(u), "cpu_percent": unit_cpu.get(f"{name}.service"),

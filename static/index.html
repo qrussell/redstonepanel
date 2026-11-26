@@ -287,6 +287,11 @@
                     <h3 class="text-lg font-bold mb-2 text-theme">Start at Boot</h3>
                     <div id="boot-content"></div>
                 </div>
+                <!-- Sleep mode (1.26; filled by ServerApp.loadSleep, hidden on a node older than 1.26) -->
+                <div id="sleep-card" class="hidden">
+                    <h3 class="text-lg font-bold mb-2 text-theme">Sleep Mode</h3>
+                    <div id="sleep-content"></div>
+                </div>
                 <!-- Scheduled restarts (filled by ServerApp.loadRestarts) -->
                 <div>
                     <h3 class="text-lg font-bold mb-2 text-theme">Scheduled Restarts</h3>
