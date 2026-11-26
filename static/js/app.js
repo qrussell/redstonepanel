@@ -677,7 +677,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab(this.firstConfigSubTab());
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions().then(() => this.loadModpack()); this.loadAutoUpdate(); this.loadConvert(); this.loadJavaChoice(); this.loadResources(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadBoot(); this.loadRestarts(); this.loadUpdateOptions().then(() => this.loadModpack()); this.loadAutoUpdate(); this.loadConvert(); this.loadJavaChoice(); this.loadResources(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
@@ -4603,6 +4603,45 @@ const ServerApp = {
         button.disabled = false;
         if (!res.ok) return alert(`Couldn't save the schedule: ${await this.apiError(res)}`);
         this.loadBackups();
+    },
+
+    // --- 1.25: Start at boot. Off: the server stays stopped after the machine starts, until
+    // someone starts it (here, a schedule or the API). Hidden on a node older than 1.25 (404).
+    async loadBoot() {
+        const card = document.getElementById('boot-card');
+        if (!this.activeServer) return;
+        const name = this.activeServer.name;
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/boot`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        if (res.status === 404) { card.classList.add('hidden'); return; }
+        card.classList.remove('hidden');
+        const box = document.getElementById('boot-content');
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        const info = await res.json();
+        const may = this.isAdmin() || (this.activeServer.perms || []).includes('settings');
+        box.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm">
+                <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" id="boot-enabled" class="mt-1" ${info.enabled ? 'checked' : ''} ${may ? '' : 'disabled'}
+                        onchange="ServerApp.saveBoot(this)">
+                    <span><span class="font-bold text-gray-900 dark:text-white">Start this server when the machine starts</span><br>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">Turn it off for a server you only run now and then: after a reboot it stays stopped until you start it. Start, Stop and Restart, schedules and restarts after a crash work as before.</span></span>
+                </label>
+            </div>`;
+    },
+
+    async saveBoot(box) {
+        const enabled = box.checked;
+        box.disabled = true;
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/boot`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled })
+        });
+        box.disabled = false;
+        if (!res.ok) alert(`Couldn't change Start at boot: ${await this.apiError(res)}`);
+        this.loadBoot();
     },
 
     async loadRestarts() {

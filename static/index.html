@@ -282,6 +282,11 @@
 
             <!-- Maintenance cards lightened in dark mode (bg-gray-800 instead of bg-gray-900) -->
             <div id="tab-maintenance" class="hidden-tab space-y-6">
+                <!-- Start at boot (1.25; filled by ServerApp.loadBoot, hidden on a node older than 1.25) -->
+                <div id="boot-card" class="hidden">
+                    <h3 class="text-lg font-bold mb-2 text-theme">Start at Boot</h3>
+                    <div id="boot-content"></div>
+                </div>
                 <!-- Scheduled restarts (filled by ServerApp.loadRestarts) -->
                 <div>
                     <h3 class="text-lg font-bold mb-2 text-theme">Scheduled Restarts</h3>

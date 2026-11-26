@@ -43,6 +43,8 @@ import core.backup_copies as backup_copies
 import core.backup_targets as backup_targets
 import core.perf as perf
 import core.crashes as crashes
+import core.bootstart as bootstart
+import core.apitokens as apitokens
 import core.grants as grants
 import core.sshkeys as sshkeys
 import core.sftp as sftp
@@ -125,6 +127,8 @@ PUBLIC_API = {"/api/auth/login", "/api/auth/login/code", "/api/auth/logout", "/a
               "/api/auth/first-sign-in", "/api/auth/first-sign-in/check",
               "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join"}
 ADMIN_API = ("/api/users", "/api/settings")
+# What an API token (1.25) never reaches, whatever its grants: the account routes and the terminal
+TOKEN_REFUSED_API = ("/api/auth/", "/api/terminal")
 NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates",
                  "/api/cluster/transfers", "/api/cluster/held-backups")
 CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster/nodes/", "/api/cluster/moves",
@@ -142,7 +146,20 @@ async def access_control(request: Request, call_next):
         if path not in PUBLIC_API:
             ip = request.client.host if request.client else None
             bearer = request.headers.get("authorization", "")
-            if bearer.lower().startswith("bearer "):
+            if bearer.lower().startswith("bearer ") and bearer[7:].strip().startswith(apitokens.PREFIX):
+                # 1.25: an API token, acting as a `user` account with the token's own grants
+                user = await run_in_threadpool(apitokens.read, bearer[7:].strip(), ip)
+                if not user:
+                    return JSONResponse({"detail": "This API token is wrong, revoked or expired."}, status_code=401)
+                if path.startswith(TOKEN_REFUSED_API) and path != "/api/auth/me":
+                    return JSONResponse({"detail": "An API token can't do this. Sign in to the panel."},
+                                        status_code=403)
+                if path.startswith(NODE_ONLY_API) or path.startswith(ADMIN_API):
+                    return JSONResponse({"detail": "Only admins can do this, and an API token is never an admin."},
+                                        status_code=403)
+                if request.method in STATE_CHANGING:
+                    manager.write_log(f"[API] {user['username']}: {request.method} {path} (from {ip})")
+            elif bearer.lower().startswith("bearer "):
                 user = await run_in_threadpool(cluster.read_node_token, bearer[7:].strip(),
                                                request.headers.get("x-redstonepanel-epoch"), ip)
                 if not user:
@@ -224,6 +241,8 @@ def _rule_refusal(user, rule, params, member=None):
     if user["role"] == "admin" or rule in ("user", "public", "proxy"):
         return None
     if rule == "signed":
+        if user.get("source") == "token":
+            return "An API token can't change an account. Sign in to do this."
         return "Sign in to do this." if user.get("source") == "trusted" else None
     if rule == "node":
         return None if user.get("source") == "cluster" else "Only the cluster's master can use this."
@@ -655,7 +674,9 @@ def me_api(request: Request):
     user.pop("perms", None)
     if user["role"] != "admin":
         user["grants"] = (grants.get(user["username"]) if user["source"] == "panel"
+                          else (user.get("grants") or {}) if user["source"] == "token"
                           else {grants.ALL_SERVERS: list(grants.LEGACY)})
+    user.pop("token_id", None)
     return user
 
 # --- 1.18: SSH keys for SFTP (each account's own; Password > SSH keys) ---
@@ -1024,6 +1045,32 @@ def set_resources(request: Request, server_name: str, req: ResourcesUpdate):
     _require_admin(request, "change a server's memory or limits")
     return _perf_call(perf.set_resources, server_name, xms=req.xms, xmx=req.xmx, memory=req.memory, cpu=req.cpu,
                       restart=req.restart, actor=request.state.user["username"])
+
+# --- 1.25: Start at boot (core/bootstart.py)
+class BootUpdate(BaseModel):
+    enabled: bool
+
+def _boot_server(server_name):
+    try:
+        manager._check_server(server_name)
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/api/servers/{server_name}/boot")
+def get_boot(server_name: str):
+    _boot_server(server_name)
+    return {"enabled": bootstart.enabled(server_name)}
+
+@app.put("/api/servers/{server_name}/boot")
+def set_boot(request: Request, server_name: str, req: BootUpdate):
+    _boot_server(server_name)
+    on = bootstart.turn(server_name, req.enabled)
+    manager.write_log(f"[SERVICE] {request.state.user['username']} turned Start at boot "
+                      f"{'on' if req.enabled else 'off'} for {server_name}.")
+    if on != req.enabled:
+        raise HTTPException(status_code=500, detail=f"The system still says Start at boot is {'on' if on else 'off'} "
+                                                    f"for {server_name}; see the action console.")
+    return {"enabled": on}
 
 # --- 1.17.1: why did it crash? (core/crashes.py)
 class CrashFix(BaseModel):
@@ -3224,6 +3271,39 @@ def cluster_save_template_api(node_id: str, server_name: str, request: Request, 
     return {"status": "success"}
 
 # --- Panel Settings > Cluster (admins only: under /api/settings)
+# --- 1.25: API tokens (core/apitokens.py). Admins make and revoke them here; scripts send
+# `Authorization: Bearer rpa_...` and act with the token's per-server permissions.
+class TokenCreate(BaseModel):
+    name: str
+    grants: dict
+    days: Optional[int] = None
+
+@app.get("/api/settings/api-tokens")
+def api_tokens_api():
+    return {"tokens": apitokens.list_tokens(), "perms": list(grants.PERMS), "labels": grants.PERM_LABELS}
+
+@app.post("/api/settings/api-tokens")
+def api_token_create_api(request: Request, req: TokenCreate):
+    me = request.state.user["username"]
+    try:
+        out = apitokens.create(req.name, req.grants, req.days, actor=me)
+    except apitokens.TokenError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    shown = ", ".join(f"{k}: {'/'.join(v)}" for k, v in out["grants"].items())
+    manager.write_log(f"[API] {me} made the API token {out['name']} ({shown}"
+                      + (f"; expires {time.strftime('%Y-%m-%d', time.localtime(out['expires']))}" if out["expires"] else "")
+                      + ").")
+    return out
+
+@app.delete("/api/settings/api-tokens/{token_id}")
+def api_token_revoke_api(request: Request, token_id: str):
+    try:
+        name = apitokens.revoke(token_id)
+    except apitokens.TokenError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    manager.write_log(f"[API] {request.state.user['username']} revoked the API token {name}.")
+    return {"status": "success"}
+
 @app.get("/api/settings/cluster")
 def cluster_settings_api(request: Request):
     from core import tls

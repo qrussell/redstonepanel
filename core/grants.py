@@ -147,6 +147,8 @@ def forget_server(key):
                 users[name] = g
         if changed:
             _save(users)
+    from core import apitokens                    # API tokens (1.25) lose it too
+    apitokens.forget_server(key)
 
 
 def rename_server(old_key, new_key):
@@ -163,6 +165,8 @@ def rename_server(old_key, new_key):
             users[name] = g
         if changed:
             _save(users)
+    from core import apitokens                    # API tokens (1.25) follow it too
+    apitokens.rename_server(old_key, new_key)
 
 
 def migrate_existing_users(usernames):
@@ -187,6 +191,9 @@ def perms_for(user, key):
     if src == "panel":
         g = get(user["username"])
         return set(g.get(ALL_SERVERS, ())) | set(g.get(key, ()))
+    if src == "token":                            # API tokens (1.25) carry their own
+        g = user.get("grants") or {}
+        return set(g.get(ALL_SERVERS, ())) | set(g.get(key, ()))
     if src == "cluster":
         # A node trusts its master, which checked its own user's grants before passing the
         # request on and says what they are for this server. A master older than 1.18 sends
@@ -204,7 +211,7 @@ def can(user, perm, server, member=None):
 
 def limited(user):
     """True for an account whose view is cut down to the servers it was granted."""
-    return user.get("role") != "admin" and user.get("source") == "panel"
+    return user.get("role") != "admin" and user.get("source") in ("panel", "token")
 
 
 def parse_header(value):
@@ -309,6 +316,8 @@ settings POST    {_S}/properties
 settings GET     {_S}/properties/raw
 settings POST    {_S}/properties/raw
 settings PUT     {_S}/restarts
+view     GET     {_S}/boot
+settings PUT     {_S}/boot
 settings PUT     {_S}/updates
 settings POST    {_S}/updates/check
 view     GET     {_S}/convert
