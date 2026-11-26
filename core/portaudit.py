@@ -399,9 +399,14 @@ def unseen_holder(claim, holders, names):
     if any(owner(h, names) == ("server", claim["server"]) for h in holders):
         return False
     try:
-        return not system.can_bind(claim["port"], claim["proto"])
+        if system.can_bind(claim["port"], claim["proto"]):
+            return False
     except Exception:
         return False
+    # The list may be older than this bind test (the dashboard reuses one for up to 3 minutes): a
+    # server that started since then holds its port now. Only a fresh list that still shows nobody
+    # on it means a holder the system can't name.
+    return not any(l["port"] == claim["port"] and l["proto"] == claim["proto"] for l in listeners(fresh=True))
 
 
 def _dedupe(holders):
