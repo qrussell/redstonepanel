@@ -53,9 +53,21 @@ show everything the panel does. It arrives in four releases:
 A few things work differently on Windows and are documented: Windows accounts without a password can't sign in to the panel (panel accounts
 can), and Windows 10 installs with an end-of-support note. Windows on ARM comes later.
 
-### 1.25: an API for scripts and bots
+### 1.25: an API for scripts and bots, and Start at boot
 
-- **API tokens** with a limited set of allowed routes and servers, shown once and revocable.
+- **API tokens** for scripts and bots (a Discord bot that starts a server, a script that backs
+  one up): made in Panel Settings or with `redstonepanel token create`, limited to the servers
+  and permissions you choose, never an admin, shown once, expiring, revocable, and logged under
+  the token's name.
+- **Start at boot**, per server, on the Maintenance tab: turn it off for a server you only play
+  now and then and it stays stopped after a reboot until someone starts it. Works on Linux and
+  Windows, and is kept through restores, reinstalls and moves to another node.
+
+### 1.26: sleep mode
+
+- **Start when a player joins.** A server nobody is playing on stops after a time you choose,
+  and the panel answers on its port instead ("Sleeping: join to wake it"). When someone joins,
+  it starts again and they join a minute later. For Java and Bedrock, per server, off by default.
 
 ## Ideas under consideration
 
