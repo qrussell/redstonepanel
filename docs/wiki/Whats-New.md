@@ -9,6 +9,18 @@ the dashboard.
 
 ---
 
+## 1.25.0: API tokens, Start at boot, and one click into a node *(November 2026)*
+
+- **API tokens** for scripts and bots, limited to the servers and permissions you choose, never
+  an admin, shown once, expiring and revocable (**Panel Settings → API tokens**).
+- **Start at boot** on each server's **Maintenance** tab: off, the server stays stopped after a
+  reboot. Works on Linux and Windows and survives restores and moves.
+- **Open dashboard, signed in:** an admin on the master opens a node's own panel without an
+  account there. Each node can turn it off.
+- **Update now works on Windows again.** Panels on 1.24.x need 1.25.0 installed by hand once.
+
+[Release notes](../../release-notes/v1.25.0.md)
+
 ## 1.24.1: Windows cluster fixes *(November 2026)*
 
 - A Windows PC that joins or creates a cluster now opens the panel's HTTPS port (8443) in

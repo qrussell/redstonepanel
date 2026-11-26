@@ -1,6 +1,6 @@
 # Roadmap
 
-What's being built now and what's planned after **1.23.2**, the latest release. Version numbers are targets, not promises, and your feedback
+What's being built now and what's planned after **1.25.0**, the latest release. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -53,7 +53,7 @@ show everything the panel does. It arrives in four releases:
 A few things work differently on Windows and are documented: Windows accounts without a password can't sign in to the panel (panel accounts
 can), and Windows 10 installs with an end-of-support note. Windows on ARM comes later.
 
-### 1.25: an API for scripts and bots, and Start at boot
+### 1.25: an API for scripts and bots, and Start at boot *(released)*
 
 - **API tokens** for scripts and bots (a Discord bot that starts a server, a script that backs
   one up): made in Panel Settings or with `redstonepanel token create`, limited to the servers

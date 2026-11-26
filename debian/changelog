@@ -1,3 +1,22 @@
+redstonepanel (1.25.0) noble; urgency=medium
+
+  * API tokens for scripts and bots: Panel Settings > API tokens, or
+    `redstonepanel token create`. A token may do only what you tick, on the
+    servers you choose (cluster nodes' servers too), like a helper account.
+    It is never an admin, is shown once, expires, can be revoked, and every
+    change it makes is logged under its name.
+  * Start at boot, per server, on the Maintenance tab (and `redstonepanel
+    boot NAME on|off`). Off, a server stays stopped after a reboot until
+    someone starts it. Kept through restores, reinstalls and moves.
+  * Open dashboard, signed in: an admin on the master opens a node's own
+    panel already signed in, with no account there. Each node can turn it
+    off under Settings > Cluster.
+  * Windows: Update now on the dashboard installs the update again. It
+    downloaded the installer but never started it. Panels on 1.24.x need
+    this update installed once by hand.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Thu, 26 Nov 2026 16:00:00 +0000
+
 redstonepanel (1.24.1) noble; urgency=medium
 
   * Windows: creating, joining or leaving a cluster opens or closes the

@@ -4,6 +4,15 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.25.0 (2026-11-26)
+
+Release notes: release-notes/v1.25.0.md
+
+- API tokens for scripts and bots: Panel Settings > API tokens, or `redstonepanel token create`. A token may do only what you tick, on the servers you choose (cluster nodes' servers too), like a helper account. It is never an admin, is shown once, expires, can be revoked, and every change it makes is logged under its name.
+- Start at boot, per server, on the Maintenance tab (and `redstonepanel boot NAME on|off`). Off, a server stays stopped after a reboot until someone starts it. Kept through restores, reinstalls and moves.
+- Open dashboard, signed in: an admin on the master opens a node's own panel already signed in, with no account there. Each node can turn it off under Settings > Cluster.
+- Windows: Update now on the dashboard installs the update again. It downloaded the installer but never started it. Panels on 1.24.x need this update installed once by hand.
+
 ## 1.24.1 (2026-11-26)
 
 Release notes: release-notes/v1.24.1.md
