@@ -59,13 +59,13 @@ def forget(server):
     remember(server, True)
 
 
-def apply(server):
+def apply(server, quiet=False):
     """Enables or disables the server's unit as chosen. Where the panel used to enable every
     server it set up, it calls this instead."""
     if wanted(server):
-        services.enable(server)
+        services.enable(server, quiet=quiet)
     else:
-        services.disable(server)
+        services.disable(server, quiet=quiet)
 
 
 def enabled(server):
@@ -76,5 +76,5 @@ def enabled(server):
 def turn(server, on):
     """Turns Start at boot on or off for a server now. Returns what the system says after."""
     remember(server, bool(on))
-    apply(server)
+    apply(server, quiet=True)          # the caller logs who did it; systemctl's "Created symlink" is noise
     return enabled(server)
