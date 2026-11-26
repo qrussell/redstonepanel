@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.23**. Version numbers are targets, not promises, and your feedback
+What's being built now and what's planned after **1.23.2**, the latest release. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 

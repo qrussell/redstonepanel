@@ -1747,7 +1747,7 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     GitHub matrix on the branch (install tests on all four systems and ARM64, the cluster and
     feature scripts). Not tested: nothing runs on Windows yet.
 
-27. **1.22: Windows preview.** One machine, Java servers. The MSI installer with bundled
+27. **1.22: Windows preview** *(released 24 Nov 2026)*. One machine, Java servers. The MSI installer with bundled
     Python, the panel service, the runner, Java from Adoptium, Defender Firewall, Task
     Scheduler schedules, backups and restore, console, file manager (refusing symlinks,
     junctions and Windows trap names such as `CON` and `name:stream`), catalog, webhooks,
@@ -1774,7 +1774,7 @@ installs with an end-of-support note and isn't tested. Windows on ARM is left fo
     Windows PC. The release attaches the MSI and its SHA-256; the MSI isn't signed yet
     (SignPath application pending).
 
-28. **1.23: the whole single machine.** Bedrock and its auto-update, Phantom, hard limits and
+28. **1.23: the whole single machine** *(released 25 Nov 2026)*. Bedrock and its auto-update, Phantom, hard limits and
     performance history, crash explanations with Windows causes, off-site backups over `sftp`
     and S3, self-update, Windows account sign-in, the port forwarding guide and diagnostics
     (including port ranges reserved by Hyper-V or WSL), and Needs attention notes when the PC
@@ -2314,7 +2314,7 @@ and the refusals were checked read-only against the real servers of the Windows 
     has tokens limited by a route allowlist. Reuse that: admin-created tokens with a named set
     of allowed routes and, after 1.18, the servers they may touch. Shown once, revocable, and
     logged under the token's name. Per-server permissions moved to 1.18; if nothing else joins
-    this release, it can ship as a 1.20.x point release instead.
+    this release, it can ship as a point release after 1.24 instead.
 
 ## Groundwork (do alongside, before promoting)
 
