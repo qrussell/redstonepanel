@@ -1204,6 +1204,8 @@ that's running.
 again when someone tries to join. It saves memory and CPU on a machine that holds several
 servers, without anyone having to open the panel to start one.
 
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/sleep-mode.png"><img src="images/sleep-mode.png" alt="The Sleep Mode card on the Maintenance tab"></picture>
+
 Tick **Sleep when nobody is playing** and choose how long the server may sit empty (15 minutes
 unless you change it, from 1 minute to a day). After that time with nobody on, the panel stops
 the server and listens on its game port itself. The server is then **asleep**: a blue moon ☾

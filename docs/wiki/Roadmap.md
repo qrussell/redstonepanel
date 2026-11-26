@@ -1,6 +1,6 @@
 # Roadmap
 
-What's being built now and what's planned after **1.25.0**, the latest release. Version numbers are targets, not promises, and your feedback
+What's being built now and what's planned after **1.26.0**, the latest release. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) or on
 [Discord](https://discord.gg/B5YkQm3zaX) what you'd use first.
@@ -66,7 +66,7 @@ can), and Windows 10 installs with an end-of-support note. Windows on ARM comes 
 - **Open dashboard, signed in:** an admin on the master opens a node's own panel already signed
   in, without an account there. Each node can turn it off.
 
-### 1.26: sleep mode, and Start on the join page
+### 1.26: sleep mode, and Start on the join page *(released)*
 
 - **Start when a player joins.** A server nobody is playing on stops after a time you choose,
   and the panel answers on its port instead ("Sleeping: join to start it"). When someone joins,

@@ -9,6 +9,19 @@ the dashboard.
 
 ---
 
+## 1.26.0: sleep mode, and Start on the join page *(November 2026)*
+
+- **Sleep mode** on each server's **Maintenance** tab: a server nobody plays on stops after the
+  minutes you choose, and the panel answers on its port. Java shows **Sleeping: join to start
+  it** in the server list; joining starts it and the player joins again about 30 seconds later.
+  Bedrock starts on the first try to join. Linux, Windows and cluster nodes.
+- **Let visitors start the server** on a join page: a **Start the server** button for a stopped
+  server, off by default, with a cooldown.
+- A sleeping server never starts at boot; it goes back to sleep if **Start at boot** is on.
+- No more false "another program holds it" port alert right after a server starts.
+
+[Release notes](../../release-notes/v1.26.0.md)
+
 ## 1.25.0: API tokens, Start at boot, and one click into a node *(November 2026)*
 
 - **API tokens** for scripts and bots, limited to the servers and permissions you choose, never

@@ -533,6 +533,20 @@ class Shooter:
             self.close_modals()
         step("api tokens", api_tokens)
 
+        # 1.26: the Sleep Mode card, turned on for the shot and off again (on, it would stop the
+        # demo's Paper server once it had sat empty for that long)
+        def sleep_mode():
+            self.ctx.request.put(BASE + "/api/servers/minecraft-java/sleep", data={"enabled": True, "minutes": 30})
+            try:
+                self.open_server("minecraft-java", tab="maintenance")
+                page.wait_for_selector("#sleep-card:not(.hidden) #sleep-enabled:checked", timeout=15000)
+                page.evaluate("document.getElementById('sleep-card').scrollIntoView({block: 'center'})")
+                page.wait_for_timeout(500)
+                shot("sleep-mode", element="#sleep-card")
+            finally:
+                self.ctx.request.put(BASE + "/api/servers/minecraft-java/sleep", data={"enabled": False})
+        step("sleep mode", sleep_mode)
+
         # 1.16.11: off-site copies of the Paper server's backups on the SSH storage
         def offsite():
             self.open_server("minecraft-java", tab="backups")

@@ -108,6 +108,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.26
+
+**Sleep mode** stops a server nobody is playing on and starts it again when a player joins: Java shows "Sleeping: join to start it" in the server list, and Bedrock starts on the first try to join. A join page can now have a **Start the server** button for a stopped server. See the [1.26.0 release notes](release-notes/v1.26.0.md).
+
 ## What's new in 1.25
 
 **API tokens** let a script or a Discord bot start servers or make backups, limited to the servers and permissions you choose and never an admin. A **Start at boot** switch on each server's Maintenance tab keeps a server stopped after a reboot. **Open dashboard** on the master's Cluster page opens a node's own panel already signed in. On Windows, **Update now** works again. See the [1.25.0 release notes](release-notes/v1.25.0.md).
