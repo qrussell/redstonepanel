@@ -1172,6 +1172,8 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
 
 ### Start at boot
 
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/start-at-boot.png"><img src="images/start-at-boot.png" alt="The Start at boot switch on the Maintenance tab"></picture>
+
 At the top of the tab. Ticked (the default), the server starts by itself whenever the machine
 starts. Untick it for a server you only play now and then: after a reboot it stays stopped until
 someone clicks **Start**. Nothing else changes: **Start**, **Stop**, **Restart**, scheduled
@@ -2207,6 +2209,8 @@ users or panel settings, create or delete servers, open the terminal or change a
    30 or 90 days, or in a year).
 3. Click **Make token** and copy it straight away. It is shown only once; the panel keeps only a
    fingerprint of it.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/api-tokens.png"><img src="images/api-tokens.png" alt="API tokens in Panel Settings: a new token shown once, two tokens and the New token form"></picture>
 
 A script sends it in a header:
 
