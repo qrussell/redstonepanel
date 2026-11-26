@@ -716,8 +716,10 @@ def _gb(n):
 
 def _build():
     try:
-        # Opening the dashboard also follows server.properties edited outside the panel
-        if manager.sync_firewall():
+        # Opening the dashboard also follows server.properties edited outside the panel. The
+        # port check stays with the firewall watcher (every 2 minutes): listing every socket takes
+        # about 5 seconds on Windows, which made a master's dashboard and Cluster page wait (1.24.1)
+        if manager.sync_firewall(ports=False):
             _cache.pop("ufw", None)
     except Exception as e:
         manager.write_log(f"[FIREWALL] Checking the firewall failed: {e}")

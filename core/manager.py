@@ -336,16 +336,17 @@ def open_server_firewall(server_name, edition, d):
     firewall_record(server_name, rules)
 
 
-def sync_firewall():
+def sync_firewall(ports=True):
     """Keeps ufw in step with server.properties when it changed without the panel: a server whose
     ports or transport were edited by hand gets its new rules and loses the old ones; a server
     whose unit is gone loses its rules. Rules another server or a Phantom still needs stay.
     A server seen for the first time is only noted (the dashboard names rules it lacks)."""
-    try:                                       # first, the Port check: ports that clash (1.23.1)
-        from core import portaudit
-        portaudit.sweep()
-    except Exception as e:
-        write_log(f"[PORTS] Checking ports failed: {e}")
+    if ports:                                  # first, the Port check: ports that clash (1.23.1)
+        try:                                   # (not when the dashboard asks: 1.24.1, see host._build)
+            from core import portaudit
+            portaudit.sweep()
+        except Exception as e:
+            write_log(f"[PORTS] Checking ports failed: {e}")
     if not firewall.installed():
         return []
     done = []
