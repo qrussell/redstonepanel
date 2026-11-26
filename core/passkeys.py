@@ -79,7 +79,7 @@ def site(scheme, host, port):
     host = (host or "").strip().lower().rstrip(".")
     if host.startswith("[") or ":" in host:
         raise PasskeyError("Passkeys don't work at an IP address. Open the panel by its name "
-                           "(https://localhost on this PC, or a host name with a trusted certificate).")
+                           "(localhost on this PC, or a host name with a trusted certificate).")
     try:
         ipaddress.ip_address(host)
         is_ip = True
@@ -87,7 +87,7 @@ def site(scheme, host, port):
         is_ip = False
     if is_ip:
         raise PasskeyError("Passkeys don't work at an IP address. Open the panel by its name "
-                           "(https://localhost on this PC, or a host name with a trusted certificate).")
+                           "(localhost on this PC, or a host name with a trusted certificate).")
     if not host:
         raise PasskeyError("Open the panel by its name to use a passkey.")
     if scheme != "https" and host != "localhost":
