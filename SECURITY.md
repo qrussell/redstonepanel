@@ -16,7 +16,7 @@ releases often, so please update before reporting (`sudo redstonepanel upgrade`,
 
 ## Reporting a vulnerability
 
-**Please do not open a public issue, discussion or merge request for a security problem.**
+**Please do not open a public issue, discussion or merge request, or post in Discord, for a security problem.**
 
 Report it privately on GitHub:
 [**Report a vulnerability**](https://github.com/qrussell/redstonepanel/security/advisories/new)

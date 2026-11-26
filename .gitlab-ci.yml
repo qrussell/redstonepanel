@@ -154,6 +154,20 @@ release:
   script:
     - python3 packaging/gitlab-release.py "$CI_COMMIT_TAG" "dist/redstonepanel_${CI_COMMIT_TAG#v}_all.deb"
 
+# Posts the release to the RedstonePanel Discord's #announcements channel once the GitLab
+# release exists (packaging/discord_announce.py). Needs the masked, protected variable
+# DISCORD_RELEASE_WEBHOOK; without it, or if Discord can't be reached, the job says so and passes.
+discord-announce:
+  stage: release
+  image: python:3.12-slim
+  interruptible: false
+  needs: [release]
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+  script:
+    - python3 packaging/discord_announce.py "$CI_COMMIT_TAG"
+
 release-from-github:
   stage: release
   image: python:3.12-slim
