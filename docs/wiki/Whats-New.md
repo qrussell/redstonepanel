@@ -18,6 +18,8 @@ the dashboard.
   longer a preview.
 - Windows panels: **Sign in with Windows Hello** (face, fingerprint, PIN or your phone) once you add a
   passkey under **🔑 Password**, and the installer opens a page to **choose the admin password**.
+- **Remember this device** at sign-in keeps your own computer or phone signed in for 30 days;
+  forget one under **🔑 Password**.
 - `redstonepanel reset-password NAME` sets a forgotten panel password.
 
 [Release notes](../../release-notes/v1.24.0.md)

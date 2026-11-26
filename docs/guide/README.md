@@ -51,6 +51,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.24.0 | **Mixed Linux and Windows clusters**, SFTP on Windows, **Windows Hello** passkeys (or a phone), an easier first password on Windows, and **Remember this device** for 30 days. | [Clusters](#18-clusters), [Windows Hello](#windows-hello-passkeys), [Remember this device](#remember-this-device) |
 | 1.23.0 | **🪟 Windows, the whole machine**: Bedrock, more loaders and modpacks, limits, off-site backups, **Update now** and Windows account sign-in. | [On Windows](#on-windows) |
 | 1.21.10 | **⌨️ Terminal**: a shell on the machine in your browser, for admins, as a Linux account. | [Terminal](#terminal) |
 | 1.21.9 | **🔗 Join pages** can sit behind HAProxy or Cloudflare, on your own domain. | [Join pages through a proxy](#join-pages-through-a-proxy-haproxy-or-cloudflare-1219) |
