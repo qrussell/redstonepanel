@@ -54,7 +54,7 @@ CHECK_EVERY = 30                # seconds between player counts of awake servers
 WATCH_EVERY = 2                 # seconds between looks at asleep servers' units (started from outside?)
 CONNECT_TIMEOUT = 5             # a Java client gets this long to say what it wants
 MAX_CLIENTS = 32                # Java connections handled at once; more are closed
-BOOT_SLACK = 120                # seconds two boot times may differ and still be the same boot
+BOOT_SLACK = 5                  # seconds two boot times may differ and still be the same boot (Windows rounds)
 RAKNET_MAGIC = bytes.fromhex("00ffff00fefefefefdfdfdfd12345678")
 NAME_RE = re.compile(r"^minecraft[A-Za-z0-9_.@-]*$")
 

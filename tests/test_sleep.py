@@ -369,7 +369,7 @@ class Boot(Base):
         Z._set_state("minecraft-java", "asleep")
         bootstart.remember("minecraft-java", False)
         fake.state.servers["minecraft-java"]["state"] = "inactive"
-        fake.state.boot_time += 3600
+        fake.state.boot_time += 30                          # a quick restart is still a restart
         with mock.patch.object(Z, "_open") as op:
             Z.resume()
         op.assert_not_called()

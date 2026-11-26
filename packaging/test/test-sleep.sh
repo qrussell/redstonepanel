@@ -203,11 +203,7 @@ if dx "test -e /proc/net/if_inet6"; then          # Bedrock over RakNet won't st
     is "  Sleep now" 200 "$(code POST /api/servers/$B/sleep/now)"
     wait_for 120 "  asleep, the panel holds UDP $BP" listens "$BP" u
     has "  the RakNet pong says sleeping" "sleeping" "$(raknet "$BP")"
-    py "
-    import socket, os
-    from core import sleep as Z
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.sendto(b'\x05' + Z.RAKNET_MAGIC + b'\x0b' + bytes(400), ('127.0.0.1', $BP))"
+    py "import socket; from core import sleep as Z; s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.sendto(b'\x05' + Z.RAKNET_MAGIC + b'\x0b' + bytes(400), ('127.0.0.1', $BP))"
     wait_for 60 "  a connection request starts it" active $B
     wait_for 60 "  the real server answers the ping" realpong "$BP"
 else
