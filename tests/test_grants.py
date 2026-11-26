@@ -442,7 +442,7 @@ class Cluster(unittest.TestCase):
         ov = {"cluster": "Home", "epoch": 1, "nodes": [
             {"id": "local", "local": True, "servers": [{"name": "minecraft"}, {"name": "minecraft-2"}]},
             {"id": "n-abc123", "servers": [{"name": "minecraft"}, {"name": "minecraft-2"}]}]}
-        with mock.patch.object(self.main.cluster_client, "overview", lambda fn: ov):
+        with mock.patch.object(self.main.cluster_client, "overview", lambda fn, fresh=False: ov):
             got = self.client.get("/api/cluster/overview").json()["nodes"]
         self.assertEqual([[(s["name"], s["perms"]) for s in n["servers"]] for n in got],
                          [[("minecraft", ["view", "power"])], [("minecraft-2", ["view"])]])

@@ -636,6 +636,7 @@ def _set_https(mode):
     s = panel_settings.load()
     s["https_mode"] = mode
     panel_settings.save(s)
+    panel_settings.sync_panel_firewall(s)    # Windows: open (or close) the HTTPS port with it
 
 
 def dissolve(actor):

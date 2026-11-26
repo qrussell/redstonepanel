@@ -234,11 +234,14 @@ const ServerApp = {
         };
     },
 
+    // Asks every node afresh: it runs after a change (a new, moved or removed server), so the
+    // master's 10-second copy of a node's list would hide it (1.24.1). The Cluster page's timer
+    // uses that copy.
     async loadServers() {
         let servers = null;
         if (this.isMaster()) {
             try {
-                const res = await fetch('/api/cluster/overview');
+                const res = await fetch('/api/cluster/overview?fresh=1');
                 if (res.ok) {
                     const ov = await res.json();
                     this.clusterNodes = ov.nodes.filter(n => !n.local);

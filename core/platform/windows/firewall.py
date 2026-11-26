@@ -108,15 +108,20 @@ PANEL_GROUP = "RedstonePanel panel"
 def panel_rule_script(ports, only_if_present=True):
     """The PowerShell that makes the panel's own rule (group "RedstonePanel panel") open exactly
     these TCP ports. With only_if_present, nothing happens when there is no such rule (the panel
-    was installed with --no-firewall)."""
+    was installed with --no-firewall) or when it already opens exactly these ports."""
     ports = sorted({int(p) for p in ports if 0 < int(p) < 65536})
     name = _win.ps_quote(f"RedstonePanel web panel ({', '.join(str(p) for p in ports)}/tcp)")
     group = _win.ps_quote(PANEL_GROUP)
     make = (f"Get-NetFirewallRule -Group {group} -ErrorAction SilentlyContinue | Remove-NetFirewallRule; "
             f"New-NetFirewallRule -DisplayName {name} -Group {group} -Direction Inbound -Action Allow "
             f"-Protocol TCP -LocalPort {','.join(str(p) for p in ports)} -Profile Any | Out-Null")
-    if only_if_present:
-        return f"if (Get-NetFirewallRule -Group {group} -ErrorAction SilentlyContinue) {{ {make} }}"
+    if only_if_present:                 # and left alone when it already opens exactly these ports
+        want = _win.ps_quote(",".join(str(p) for p in ports))
+        have = (f"(@($r | Get-NetFirewallPortFilter | ForEach-Object {{ $_.LocalPort }}) | "
+                "Sort-Object { [int]$_ } -Unique) -join ','")
+        return (f"if (Get-NetFirewallRule -Group {group} -ErrorAction SilentlyContinue) {{ "
+                f"$r = @(Get-NetFirewallRule -Group {group}); "
+                f"if ($r.Count -ne 1 -or ({have}) -ne {want}) {{ {make} }} }}")
     return make
 
 
