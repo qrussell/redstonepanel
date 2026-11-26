@@ -1217,8 +1217,8 @@ next to it in the server list, the Dashboard and the Cluster page.
 - **Bedrock over RakNet** (`transport=raknet`): the server list shows it as sleeping; the first
   try to join starts it, and the player joins again once it runs.
 - **Bedrock over NetherNet** (the default since Bedrock 1.26.50): there is no server list answer
-  to give, so the first connection starts it. Opening the **Servers** tab in Minecraft may
-  already count as one.
+  to give, so the server shows as offline in the **Servers** tab (looking at it doesn't start
+  it). Pressing **Join** starts it; the player joins again once it runs.
 
 What else to know:
 
