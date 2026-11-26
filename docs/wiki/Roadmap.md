@@ -1,6 +1,6 @@
 # Roadmap
 
-What's planned after **1.23**. Version numbers are targets, not promises, and your feedback
+What's being built now and what's planned after **1.23.2**, the latest release. Version numbers are targets, not promises, and your feedback
 decides the order: tell us in the
 [discussions](https://github.com/qrussell/redstonepanel/discussions) what you'd use first.
 
@@ -40,8 +40,13 @@ show everything the panel does. It arrives in four releases:
   `sudo redstonepanel uninstall` back up your servers and ask what happens to each one (stop it
   and keep its files, keep it running, or delete it) before removing the panel, so no server is
   left running with nothing to manage it by accident.
-- **1.24: mixed clusters.** Windows and Linux machines in one cluster, with either as the
-  master, and servers and backup copies moving between them. Windows stops being a preview.
+- **1.24: mixed clusters** *(in progress: built, in final testing)*. Windows and Linux
+  machines in one cluster, with either as the master, and servers and backup copies moving
+  between them. SFTP on Windows, and Let's Encrypt through a Windows client. Windows panels
+  also get **Sign in with Windows Hello** (passkeys on the PC, a phone or a security key),
+  **Remember this device** for 30 days, a one-use link from the installer to choose the admin
+  password, and `redstonepanel reset-password` for a forgotten one. Linux panels keep Linux
+  accounts, panel accounts and two-factor. Windows stops being a preview.
 
 A few things work differently on Windows and are documented: Let's Encrypt comes with 1.24, Windows accounts without a password can't sign in to the panel (panel accounts
 can), and Windows 10 installs with an end-of-support note. Windows on ARM comes later.

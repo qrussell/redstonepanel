@@ -1,7 +1,7 @@
 # RedstonePanel user manual
 
 How to set up RedstonePanel and use each of its features, step by step. It's written for
-version **1.17.0**. The screenshots come from a demo cluster: a panel called "Survival Box"
+version **1.23.2**. The screenshots come from a demo cluster: a panel called "Survival Box"
 (the master) running a Paper server with plugins and a Bedrock server, and a node called
 "Creative Lab" running a Fabric server with mods.
 
@@ -47,11 +47,14 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Manage servers on several machines | [Clusters](#18-clusters) |
 | Fix "players can't connect" or a lock-out | [Troubleshooting](#20-troubleshooting) |
 
-**New in 1.16**
+**New since 1.16**
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.23.2 | **Remove RedstonePanel** under Panel Settings (and `sudo redstonepanel uninstall`) backs up every server and asks what happens to each one before the panel goes. | [Removing RedstonePanel](#removing-redstonepanel) |
+| 1.23.1 | **Port check** on the Port forwarding page: finds port conflicts, names the other program and fixes what it safely can. | [Port check](#port-check) |
 | 1.23.0 | **🪟 Windows, the whole machine**: Bedrock, more loaders and modpacks, limits, off-site backups, **Update now** and Windows account sign-in. | [On Windows (preview)](#on-windows-preview) |
+| 1.22.0 | **🪟 Windows preview**: an installer for Windows 11 and Windows Server 2022 or 2025 that runs Java servers on one computer. | [On Windows (preview)](#on-windows-preview) |
 | 1.21.10 | **⌨️ Terminal**: a shell on the machine in your browser, for admins, as a Linux account. | [Terminal](#terminal) |
 | 1.21.9 | **🔗 Join pages** can sit behind HAProxy or Cloudflare, on your own domain. | [Join pages through a proxy](#join-pages-through-a-proxy-haproxy-or-cloudflare-1219) |
 | 1.21.6 | **Player packs**: the mods players need, as one download on the join page that follows the server. | [Player packs](#player-packs) |
