@@ -850,13 +850,16 @@ class RouterAndPanelRule(unittest.TestCase):
         self.assertIn("'RedstonePanel web panel (8080, 8443/tcp)'", script)
         self.assertTrue(script.startswith("if (Get-NetFirewallRule -Group 'RedstonePanel panel'"))
         self.assertNotIn("if (", firewall.panel_rule_script([8080], only_if_present=False))
+        self.assertIn("-ne '8080,8443')", script, "left alone when it already opens these ports")
 
     def test_setup_and_settings_use_it(self):
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with open(os.path.join(here, "packaging", "windows", "setup.py"), encoding="utf-8") as f:
             self.assertIn("firewall.panel_rule_script(ports, only_if_present=False)", f.read())
         with open(os.path.join(here, "main.py"), encoding="utf-8") as f:
-            self.assertIn("firewall.panel_ports(", f.read())
+            self.assertIn("panel_settings.sync_panel_firewall(s)", f.read())
+        with open(os.path.join(here, "run.py"), encoding="utf-8") as f:
+            self.assertIn("settings.sync_panel_firewall()", f.read(), "checked at every start")
 
 
 class MachineNotes(unittest.TestCase):

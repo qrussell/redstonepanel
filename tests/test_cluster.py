@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 _TMP = tempfile.mkdtemp(prefix="rp-test-cluster-")
 os.environ.setdefault("RP_LOG_FILE", os.path.join(_TMP, "panel.log"))
@@ -208,6 +209,28 @@ class ClusterFlow(unittest.TestCase):
         self.assertEqual(node["name"], settings.host_name())   # the node's panel name (default: host name)
         self.assertEqual(C.list_joins(), [], "the join code is used up")
         self.assertNotIn("token", C.public_node(node))
+
+    def test_https_ports_follow_into_the_firewall(self):
+        """1.24.1: on Windows, creating, joining and leaving a cluster turn HTTPS on or off, and the
+        panel's own firewall rule follows (1.24.0 left 8443 closed on a fresh Windows node)."""
+        from core.platform import firewall
+        seen = []
+        with mock.patch.object(firewall, "panel_ports", lambda ports, only_if_present=True: seen.append(ports) or 0):
+            self.p.use("other")
+            settings.save(dict(settings.load(), https_mode="off"))
+            C.create_cluster("Elsewhere", "dave")
+            self.assertEqual(seen[-1], [8080, 8443])
+            C.dissolve("dave")
+            self.assertEqual(seen[-1], [8080, 8443], "self-signed HTTPS stays on after dissolving")
+            settings.save(dict(settings.load(), https_mode="off"))
+            self.p.use("master")
+            code = C.create_join("alice", "https://192.168.1.10:8443")["code"]
+            self.p.use("other")
+            seen.clear()
+            C.join(code, "dave", FakeClient(self.p, node_ip="192.168.1.30"))
+            self.assertEqual(seen, [[8080, 8443]])
+            C.leave()
+            self.assertEqual(seen[-1], [8080, 8443])
 
     def test_join_code_is_single_use(self):
         self.p.use("master")

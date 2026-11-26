@@ -355,6 +355,24 @@ def port_free(port):
             return False
 
 
+def panel_ports(s=None):
+    """The TCP ports the panel itself listens on: HTTP, and HTTPS when it's on."""
+    s = s or load()
+    return [s["http_port"]] + ([s["https_port"]] if s["https_mode"] != "off" else [])
+
+
+def sync_panel_firewall(s=None):
+    """Windows: makes the panel's own firewall rule open exactly panel_ports() (Linux leaves the
+    panel's ports to the administrator). Called whenever HTTPS or the ports change, and when the
+    panel starts. 1.24.1: creating or joining a cluster turned HTTPS on without opening its port,
+    so a fresh Windows node couldn't be reached by its master. Never raises; returns 0 when done."""
+    try:
+        from core.platform import firewall
+        return firewall.panel_ports(panel_ports(s))
+    except Exception:
+        return 1
+
+
 def panel_url(s, host):
     """The address the panel will be reachable at with settings s, for a browser that used `host`."""
     name = host_only(host) or "localhost"

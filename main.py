@@ -843,11 +843,7 @@ def update_settings_api(request: Request, new: dict = Body(...)):
                                                     "(Password button), so this doesn't lock you out.")
     panel_settings.save(s)
     if restart:                                      # Windows: the panel's firewall rule follows its ports
-        from core.platform import firewall, CommandError
-        try:
-            firewall.panel_ports([s["http_port"]] + ([s["https_port"]] if s["https_mode"] != "off" else []))
-        except CommandError:
-            pass
+        panel_settings.sync_panel_firewall(s)
     me = request.state.user["username"]
     manager.write_log(f"[SETTINGS] {me} changed panel settings: HTTPS={s['https_mode']}, "
                       f"ports {s['http_port']}/{s['https_port']}, sign-in={s['login_mode']}, "
@@ -2718,9 +2714,9 @@ def _need_master():
         raise HTTPException(status_code=404, detail="This panel isn't a cluster master.")
 
 @app.get("/api/cluster/overview")
-def cluster_overview_api(request: Request):
+def cluster_overview_api(request: Request, fresh: bool = False):
     _need_master()
-    ov = cluster_client.overview(manager.list_servers)
+    ov = cluster_client.overview(manager.list_servers, fresh=fresh)
     user = request.state.user
     if user["role"] != "admin":
         ov = dict(ov, nodes=[dict(n, servers=_visible_servers(user, n.get("servers") or [],

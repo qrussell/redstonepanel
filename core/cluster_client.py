@@ -23,6 +23,8 @@ LAST_OK_EVERY = 60
 
 _cache_lock = threading.Lock()
 _cache = {}          # node id -> (time, result)
+_forgotten = {}      # node id -> how many times forget_cached() dropped it (a fetch that started
+                     # before a change mustn't put its older answer back afterwards)
 
 
 class NodeError(Exception):
@@ -201,12 +203,13 @@ def upload(node, path, chunks, length, actor=None, role=None):
     return _answer(res.status, raw)
 
 
-def _node_servers(node):
+def _node_servers(node, fresh=False):
     now = time.time()
     with _cache_lock:
         hit = _cache.get(node["id"])
-        if hit and now - hit[0] < OVERVIEW_TTL:
+        if hit and now - hit[0] < OVERVIEW_TTL and not fresh:
             return hit[1]
+        generation = _forgotten.get(node["id"], 0)
     base = {"id": node["id"], "name": node["name"], "url": node["url"], "platform": node.get("platform"),
             "machine": node.get("machine"), "version": node.get("version"), "cert_expires": node.get("cert_expires"),
             "cluster_api": node.get("cluster_api"), "verify": cluster.node_verify(node),
@@ -225,7 +228,8 @@ def _node_servers(node):
     except NodeError as e:
         result = dict(base, state=e.state, error=str(e), servers=[])
     with _cache_lock:
-        _cache[node["id"]] = (now, result)
+        if _forgotten.get(node["id"], 0) == generation:
+            _cache[node["id"]] = (now, result)
     return result
 
 
@@ -258,6 +262,7 @@ def _node_host(node, summarize):
         hit = _cache.get(key)
         if hit and now - hit[0] < OVERVIEW_TTL:
             return hit[1]
+        generation = _forgotten.get(node["id"], 0)
     base = {"id": node["id"], "name": node["name"], "url": node["url"], "version": node.get("version")}
     try:
         rep = call_node(node, "GET", "/api/host", timeout=15)
@@ -267,7 +272,8 @@ def _node_host(node, summarize):
     except Exception as e:                      # a node's odd answer mustn't break the page
         result = dict(base, state="error", error=f"{type(e).__name__}: {e}", summary=None)
     with _cache_lock:
-        _cache[key] = (now, result)
+        if _forgotten.get(node["id"], 0) == generation:
+            _cache[key] = (now, result)
     return result
 
 
@@ -287,6 +293,9 @@ def hosts(local_summary, summarize):
 
 def forget_cached(node_id=None):
     with _cache_lock:
+        ids = [n["id"] for n in cluster.load_nodes()] if node_id is None else [node_id]
+        for i in ids:
+            _forgotten[i] = _forgotten.get(i, 0) + 1
         if node_id is None:
             _cache.clear()
         else:
@@ -294,8 +303,10 @@ def forget_cached(node_id=None):
             _cache.pop(("host", node_id), None)
 
 
-def overview(list_local_servers):
-    """Every node's servers, the master's own first. list_local_servers is manager.list_servers."""
+def overview(list_local_servers, fresh=False):
+    """Every node's servers, the master's own first. list_local_servers is manager.list_servers.
+    fresh asks every node now instead of using an answer from the last OVERVIEW_TTL seconds
+    (1.24.1: the server list after creating a server on a node, which could miss it)."""
     st = cluster.state()
     try:
         local = {"id": "local", "name": panel_settings.display_name(), "state": "ok", "local": True,
@@ -305,7 +316,7 @@ def overview(list_local_servers):
                  "error": str(e), "servers": []}
     nodes = cluster.load_nodes()
     with ThreadPoolExecutor(max_workers=8) as pool:
-        others = list(pool.map(_node_servers, nodes)) if nodes else []
+        others = list(pool.map(lambda n: _node_servers(n, fresh), nodes)) if nodes else []
     return {"cluster": st.get("name"), "epoch": st.get("epoch"), "nodes": [local] + others}
 
 

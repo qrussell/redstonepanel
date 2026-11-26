@@ -200,6 +200,9 @@ def main():
         manager.upgrade_bedrock_firewall()
     except Exception as e:
         manager.write_log(f"[FIREWALL] Bedrock firewall check failed: {e}")
+    # Windows: the panel's own firewall rule opens its HTTP and HTTPS ports (1.24.1: a cluster
+    # created or joined on 1.24.0 turned HTTPS on without opening it). Changes nothing when it matches.
+    settings.sync_panel_firewall()
     # Follow server.properties edited outside the panel, and servers removed by hand (1.16.11)
     manager.firewall_watcher()
     # The update check timer (1.16.12): written here so upgrading the package sets it up
