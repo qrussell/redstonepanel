@@ -178,5 +178,79 @@ class Api(Fresh):
         self.assertEqual(r.status_code, 401, "a bad token isn't rescued by a cookie")
 
 
+
+@unittest.skipUnless(HAVE_FASTAPI, "needs fastapi")
+class ThroughTheMaster(Api):
+    """A token made on the master reaches a node's servers through the master's proxy, with the
+    same per-server check as a helper; the node is told the token's name and permissions."""
+    NODE = {"id": "n-abc123", "name": "Basement", "url": "https://192.168.1.20:8443",
+            "token": "rpn_" + "x" * 43, "cluster_api": 6, "version": "1.25.0"}
+
+    def setUp(self):
+        super().setUp()
+        self.calls = []
+
+        class Answer:
+            status, headers = 200, {"content-type": "application/json"}
+
+            def chunks(inner):
+                yield b'{"ok": true}'
+
+            def read_all(inner, limit=None):
+                return b'{"ok": true}'
+
+            def close(inner):
+                pass
+
+        def open_proxy(node, method, path, body, length, content_type, actor, role, perms=None):
+            self.calls.append({"path": path, "actor": actor, "role": role, "perms": perms})
+            return Answer()
+        main = self.main
+        for p in (mock.patch.object(main.cluster, "role", lambda: "master"),
+                  mock.patch.object(main.cluster, "find_node", lambda i: dict(self.NODE) if i == self.NODE["id"] else None),
+                  mock.patch.object(main.cluster_client, "open_proxy", open_proxy),
+                  mock.patch.object(main.cluster_client, "forget_cached", lambda *a: None),
+                  mock.patch.object(main.panel_settings, "display_name", lambda *a: "Main")):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def url(self, tail):
+        return f"/api/cluster/nodes/{self.NODE['id']}/proxy{tail}"
+
+    def test_a_nodes_server(self):
+        t = self.make({"n-abc123/minecraft-java-1": ["power"]})["token"]
+        r = self.call(t, "POST", self.url("/api/servers/minecraft-java-1/action"), json={"action": "restart"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.calls, [{"path": "/api/servers/minecraft-java-1/action", "actor": "token:bot",
+                                       "role": "user", "perms": {"view", "power"}}])
+        self.assertTrue(any("[API] token:bot: POST /api/cluster/nodes/n-abc123/proxy/api/servers/minecraft-java-1/action"
+                            in l for l in self.log), self.log)
+
+    def test_every_server_includes_the_nodes(self):
+        t = self.make({"*": ["view", "backups"]})["token"]
+        self.assertEqual(self.call(t, "GET", self.url("/api/servers/minecraft-java-1/backups")).status_code, 200)
+        self.assertEqual(self.calls[0]["perms"], {"view", "backups"})
+
+    def test_not_another_server_or_the_nodes_admin_side(self):
+        t = self.make({"n-abc123/minecraft-java-1": list(G.PERMS), "minecraft": list(G.PERMS)})["token"]
+        for method, path in (("POST", "/api/servers/minecraft-other/action"), ("POST", "/api/servers/deploy"),
+                             ("DELETE", "/api/servers/minecraft-java-1"), ("GET", "/api/users"),
+                             ("PUT", "/api/settings")):
+            r = self.call(t, method, self.url(path), json={"action": "stop"})
+            self.assertEqual(r.status_code, 403, f"{method} {path}: {r.text}")
+        r = self.call(t, "POST", "/api/cluster/nodes/n-ffff/proxy/api/servers/minecraft-java-1/action", json={"action": "stop"})
+        self.assertIn(r.status_code, (403, 404), "a grant on one node isn't a grant on another")
+        self.assertEqual(self.calls, [])
+
+    def test_the_overview_lists_only_its_servers(self):
+        t = self.make({"n-abc123/minecraft-2": ["view"]})["token"]
+        ov = {"cluster": "Home", "epoch": 1, "nodes": [
+            {"id": "local", "local": True, "servers": [{"name": "minecraft"}]},
+            {"id": "n-abc123", "servers": [{"name": "minecraft"}, {"name": "minecraft-2"}]}]}
+        with mock.patch.object(self.main.cluster_client, "overview", lambda fn, fresh=False: ov):
+            got = self.call(t, "GET", "/api/cluster/overview").json()["nodes"]
+        self.assertEqual([[s["name"] for s in n["servers"]] for n in got], [[], ["minecraft-2"]])
+
+
 if __name__ == "__main__":
     unittest.main()
