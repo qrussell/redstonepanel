@@ -13,7 +13,7 @@
   <Product Id="*" Name="RedstonePanel" Language="1033" Version="$(var.Version)" Manufacturer="Quentin Russell"
            UpgradeCode="$(var.UpgradeCode)">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
-             Description="RedstonePanel $(var.Version): a web panel for Minecraft servers (Windows preview)" />
+             Description="RedstonePanel $(var.Version): a web panel for Minecraft servers" />
     <MajorUpgrade Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes"
                   DowngradeErrorMessage="A newer RedstonePanel is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
@@ -36,6 +36,7 @@
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLDIR" Name="RedstonePanel" />
       </Directory>
+      <Directory Id="ProgramMenuFolder" />
       <Directory Id="CommonAppDataFolder">
         <Directory Id="DATAFOLDER" Name="RedstonePanel" />
       </Directory>
@@ -54,9 +55,22 @@
       </Component>
     </DirectoryRef>
 
+    <!-- 1.24: RedstonePanel in the Start menu opens the panel in the browser. It points at
+         RedstonePanel.url next to the program, which setup.py writes and the panel rewrites on every
+         start, so it follows a changed port or HTTPS. -->
+    <DirectoryRef Id="ProgramMenuFolder">
+      <Component Id="StartMenu" Guid="7C2F5A0E-6B1D-4E59-9A43-2D8E61B0C4F7" Win64="yes">
+        <Shortcut Id="OpenPanel" Name="RedstonePanel" Description="Open RedstonePanel in your browser"
+                  Target="[INSTALLDIR]RedstonePanel.url" Icon="panel.ico" />
+        <!-- HKCU as the key path, as Windows Installer wants for a shortcut (ICE38/43/57) -->
+        <RegistryValue Root="HKCU" Key="Software\RedstonePanel" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
     <Feature Id="Panel" Title="RedstonePanel" Level="1" Absent="disallow">
       <ComponentGroupRef Id="PanelFiles" />
       <ComponentRef Id="Remembered" />
+      <ComponentRef Id="StartMenu" />
     </Feature>
 
     <!-- setup.py does the work. Its output goes to the installer's log (msiexec /l*v file.log). -->
@@ -67,7 +81,7 @@
                  Value="&quot;[APPFOLDER]python\python.exe&quot; -X utf8 -B &quot;[APPFOLDER]app\packaging\windows\setup.py&quot; uninstall" />
     <CustomAction Id="RemovePanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="ignore" />
     <SetProperty Id="SetUpPanel" Sequence="execute" Before="SetUpPanel"
-                 Value="&quot;[INSTALLDIR]python\python.exe&quot; -X utf8 -B &quot;[INSTALLDIR]app\packaging\windows\setup.py&quot; install --home &quot;[DATAFOLDER].&quot;" />
+                 Value="&quot;[INSTALLDIR]python\python.exe&quot; -X utf8 -B &quot;[INSTALLDIR]app\packaging\windows\setup.py&quot; install --home &quot;[DATAFOLDER].&quot; --for-sid &quot;[UserSID]&quot;" />
     <CustomAction Id="SetUpPanel" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Impersonate="no" Return="check" />
     <!-- A failed install takes the service out again -->
     <SetProperty Id="UndoPanel" Sequence="execute" Before="UndoPanel"
@@ -85,7 +99,17 @@
 
     <Property Id="WIXUI_INSTALLDIR" Value="DATAFOLDER" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
-              Value="RedstonePanel is running. Open http://localhost:8080 in a browser on this computer. The user name is admin; the password is in the file first-sign-in.txt in the folder you chose (C:\ProgramData\RedstonePanel unless you changed it). To remove the panel later, start with Panel Settings &gt; Remove RedstonePanel (or redstonepanel uninstall as administrator): it backs up and asks what happens to each server first." />
+              Value="RedstonePanel is running. On a first install, Finish opens the panel to choose your password for the admin account (or use the one in first-sign-in.txt in the folder you chose). Later, open RedstonePanel from the Start menu. To remove the panel, start with Panel Settings &gt; Remove RedstonePanel (or redstonepanel uninstall as administrator): it backs up and asks what happens to each server first." />
+    <!-- 1.24: Finish opens the sign-in page (ticked by default) -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open RedstonePanel in my browser" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <!-- open-panel.url in the data folder (setup.py): the one-use "choose your password" link on a
+         first install, else the panel's address; readable by the person who ran the installer -->
+    <Property Id="WixShellExecTarget" Value="[DATAFOLDER]open-panel.url" />
+    <CustomAction Id="OpenPanel" BinaryKey="WixCA" DllEntry="WixShellExec" Impersonate="yes" Return="ignore" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="OpenPanel"><![CDATA[WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed]]></Publish>
+    </UI>
     <UIRef Id="WixUI_InstallDir" />
     <UIRef Id="WixUI_ErrorProgressText" />
   </Product>

@@ -115,6 +115,7 @@ def call_node(node, method, path, body=None, actor=None, timeout=TIMEOUT, role=N
 # ---------------------------------------------------------------------------
 # The proxy: a master user's request passed on to a node (every tab of a node's server)
 # ---------------------------------------------------------------------------
+ACTION_TIMEOUT = 180            # start, stop, restart on a node: a server saving its world takes a while
 PROXY_TIMEOUT = 900             # deploying, updating or installing Java can take minutes
 PASS_BACK = ("content-type", "content-disposition", "content-length", "cache-control")
 
@@ -244,6 +245,8 @@ def _hello_fields(node):
         out["cert_expires"] = h["cert_expires"]
     if cluster.clean_machine(h.get("machine")):
         out["machine"] = h["machine"]
+    if h.get("platform"):
+        out["platform"] = cluster.clean_system(h.get("platform"))
     out["terminal"] = cluster.clean_terminal(h.get("terminal"))      # None from a node before 1.21.10
     return out
 

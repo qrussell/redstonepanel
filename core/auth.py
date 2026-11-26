@@ -26,7 +26,7 @@ import threading
 import time
 
 from core import settings as panel_settings
-from core import twofactor
+from core import devices, passkeys, twofactor
 from core.settings import DATA_DIR   # <app>/data (RP_DATA_DIR overrides it for test instances)
 from core.platform import paths, system
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
@@ -107,7 +107,8 @@ def _find(users, username):
 def _public(u):
     return {"username": u["username"], "role": u["role"], "disabled": bool(u.get("disabled")),
             "created": u.get("created"), "last_login": u.get("last_login"),
-            "two_factor": twofactor.is_enabled(twofactor.account_key("panel", u["username"]))}
+            "two_factor": twofactor.is_enabled(twofactor.account_key("panel", u["username"])),
+            "passkeys": passkeys.count(twofactor.account_key("panel", u["username"])) if passkeys.supported() else 0}
 
 def linux_account_exists(username):
     return system.system_account_exists(username)
@@ -155,9 +156,11 @@ def update_panel_user(username, password=None, role=None, disabled=None):
         if disabled is not None:
             u["disabled"] = bool(disabled)
         if password is not None or disabled:
-            # Sign the user out everywhere
+            # Sign the user out everywhere, remembered devices too
             u["session_version"] = int(u.get("session_version", 1)) + 1
         _save_users(users)
+    if password is not None or disabled:
+        devices.remove_all(twofactor.account_key("panel", u["username"]))
 
 def delete_panel_user(username):
     with _lock:
@@ -166,6 +169,8 @@ def delete_panel_user(username):
             raise AuthError(f"Panel user '{username}' not found.")
         _save_users([u for u in users if u["username"] != username])
     twofactor.remove(twofactor.account_key("panel", username))
+    passkeys.remove_all(twofactor.account_key("panel", username))
+    devices.remove_all(twofactor.account_key("panel", username))
 
 def change_own_password(username, current, new):
     with _lock:
@@ -335,6 +340,37 @@ def login(username, password, client_ip):
     return identity
 
 
+def check_account_password(source, username, password):
+    """True if this is the signed-in account's own password (before adding a passkey)."""
+    if not password:
+        return False
+    if source == "panel":
+        u = _find(_load_users(), username)
+        return bool(u) and verify_password(password, u["password_hash"])
+    if source == "linux":
+        return pam_authenticate(username, password)
+    return False
+
+
+def passkey_identity(key):
+    """The session identity for an account that just signed in with a passkey. The passkey checked
+    the person (face, fingerprint or PIN) on the device that holds the key, so it counts as both
+    steps (m=1). Raises AuthError if the account may not sign in any more."""
+    src, _, name = key.partition(":")
+    if src not in ("panel", "linux") or account_role(src, name) is None:
+        raise AuthError("This account can't sign in to the panel any more.")
+    v = 0
+    if src == "panel":
+        v = _find(_load_users(), name).get("session_version", 1)
+        with _lock:
+            users = _load_users()
+            u = _find(users, name)
+            if u:
+                u["last_login"] = int(time.time())
+                _save_users(users)
+    return {"u": name, "src": src, "v": v, "m": 1, "pk": 1}
+
+
 def complete_two_factor(ticket, code, client_ip):
     """Second step of signing in. Returns the session identity, or raises AuthError."""
     identity = read_pending_token(ticket)
@@ -399,29 +435,50 @@ def _unsign(token, purpose):
     return payload
 
 def _identity_fields(identity):
-    return {k: identity[k] for k in ("u", "src", "v", "m") if k in identity}
+    return {k: identity[k] for k in ("u", "src", "v", "m", "pk") if k in identity}
 
-def make_session_token(identity):
+def make_session_token(identity, device=None):
     # n: each sign-in's cookie is its own, even two in the same second (signing one out, which
-    # closes its terminals, must not touch the other)
-    return _sign(dict(_identity_fields(identity), exp=int(time.time()) + SESSION_SECONDS, n=secrets.token_hex(8)),
-                 "session")
+    # closes its terminals, must not touch the other). device (1.24): a remembered device's id;
+    # the cookie then lasts devices.REMEMBER_SECONDS and works only while the device is remembered.
+    now = int(time.time())
+    fields = dict(_identity_fields(identity), iat=now, n=secrets.token_hex(8))
+    if device:
+        fields.update(d=device, exp=now + devices.REMEMBER_SECONDS)
+    else:
+        fields["exp"] = now + SESSION_SECONDS
+    return _sign(fields, "session")
+
+def session_seconds(token):
+    """How long the cookie for this session token should be kept."""
+    payload = _unsign(token, "session")
+    return devices.REMEMBER_SECONDS if payload and payload.get("d") else SESSION_SECONDS
+
+def session_device(token):
+    """(account key, device id) of a remembered session, else None."""
+    payload = _unsign(token, "session")
+    if not payload or not payload.get("d"):
+        return None
+    return twofactor.account_key(payload.get("src"), payload.get("u")), payload["d"]
 
 def session_started(token):
-    """When a valid session cookie was signed in (epoch seconds), else None. A session is only
-    ever made at sign-in, so it is its expiry less its length."""
+    """When a valid session cookie was signed in (epoch seconds), else None."""
     payload = _unsign(token, "session")
-    return payload["exp"] - SESSION_SECONDS if payload else None
+    if not payload:
+        return None
+    return payload.get("iat") or payload["exp"] - SESSION_SECONDS
 
-def make_pending_token(identity):
+def make_pending_token(identity, remember=False):
     fields = {k: identity[k] for k in ("u", "src", "v")}
+    if remember:
+        fields["r"] = 1          # "Remember this device" was ticked with the password
     return _sign(dict(fields, exp=int(time.time()) + PENDING_SECONDS), "two-factor pending")
 
 def read_pending_token(token):
     payload = _unsign(token, "two-factor pending")
     if not payload or payload.get("src") not in ("panel", "linux"):
         return None
-    return {k: payload.get(k) for k in ("u", "src", "v")}
+    return {k: payload.get(k) for k in ("u", "src", "v", "r")}
 
 def two_factor_required_for(role):
     return role == "admin" and bool(panel_settings.load().get("require_2fa_admins"))
@@ -452,5 +509,13 @@ def read_session_token(token):
     if tf and not payload.get("m"):
         return None
     user["two_factor"] = tf
-    user["needs_2fa_setup"] = not tf and two_factor_required_for(user["role"])
+    # A passkey sign-in (1.24, Windows panels) is two factors already: the device's key plus face,
+    # fingerprint or PIN, so "require two-factor for admins" is met by it.
+    user["passkey"] = bool(payload.get("pk"))
+    user["needs_2fa_setup"] = not tf and not user["passkey"] and two_factor_required_for(user["role"])
+    # Remember this device (1.24): only while the device is still remembered
+    if payload.get("d"):
+        if not devices.valid(twofactor.account_key(src, username), payload["d"]):
+            return None
+        user["device"] = payload["d"]
     return user

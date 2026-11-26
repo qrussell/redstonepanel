@@ -1,7 +1,7 @@
 # RedstonePanel wiki
 
 **RedstonePanel** is a free, self-hosted web panel for Minecraft **Java** and **Bedrock**
-servers on your own Ubuntu or Debian machine or Raspberry Pi, and as a preview on a Windows PC.
+servers on your own Ubuntu or Debian machine, Raspberry Pi or Windows PC.
 Every game server is a plain systemd service (a Windows service on Windows); the panel
 installs and updates with `apt`. Latest version: see [Releases](https://github.com/qrussell/redstonepanel/releases/latest).
 
@@ -28,7 +28,7 @@ Then open `http://<your-server>:8080/` and sign in with a Linux account in the `
 
 On Windows, download `RedstonePanel-<version>-x64.msi` from the
 [latest release](https://github.com/qrussell/redstonepanel/releases/latest) and see
-[On Windows (preview)](Installation.md#on-windows-preview).
+[On Windows](Installation.md#on-windows).
 
 ## What it does
 

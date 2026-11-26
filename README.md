@@ -1,7 +1,7 @@
 <h1><picture><source media="(prefers-color-scheme: dark)" srcset="static/img/redstonepanel-logo-dark.svg"><img src="static/img/redstonepanel-logo.svg" alt="RedstonePanel" width="328" height="64"></picture></h1>
 
 **A free, self-hosted web panel for Minecraft Java and Bedrock servers on your own Ubuntu or
-Debian machine, a Raspberry Pi, or (as a preview) a Windows PC.** Create servers in a couple of clicks, add mods and plugins from a catalog, keep
+Debian machine, a Raspberry Pi, or a Windows PC.** Create servers in a couple of clicks, add mods and plugins from a catalog, keep
 your worlds backed up, and manage several machines from one place. No Docker, no database:
 every game server is a plain systemd service, and the panel installs and updates with `apt`.
 On Windows it is one installer, and every game server is a Windows service.
@@ -11,7 +11,7 @@ On Windows it is one installer, and every game server is a Windows service.
 ![Ubuntu 24.04, 26.04 and 26.10](https://img.shields.io/badge/Ubuntu-24.04%20%7C%2026.04%20%7C%2026.10-E95420?logo=ubuntu&logoColor=white)
 ![Debian 13](https://img.shields.io/badge/Debian-13-A81D33?logo=debian&logoColor=white)
 ![Raspberry Pi 4 and 5](https://img.shields.io/badge/Raspberry%20Pi-4%20%7C%205%20(64--bit)-C51A4A?logo=raspberrypi&logoColor=white)
-![Windows 11 and Server 2022/2025 (preview)](https://img.shields.io/badge/Windows-11%20%7C%20Server%202022%2F2025%20(preview)-0078D4)
+![Windows 11 and Server 2022/2025](https://img.shields.io/badge/Windows-11%20%7C%20Server%202022%2F2025-0078D4)
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/guide/images/light/hero.png"><img src="docs/guide/images/hero.png" alt="The RedstonePanel dashboard on a cluster master"></picture>
 
@@ -25,7 +25,7 @@ From a fresh Ubuntu, Debian or 64-bit Raspberry Pi OS machine (see
 [Supported systems](#supported-systems)) to players joining, in about five minutes. On a
 Windows PC, download `RedstonePanel-<version>-x64.msi` from the
 [latest release](https://github.com/qrussell/redstonepanel/releases/latest) instead and follow
-[On Windows (preview)](docs/wiki/Installation.md#on-windows-preview).
+[On Windows](docs/wiki/Installation.md#on-windows).
 
 **1. Install the panel.**
 
@@ -107,6 +107,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.24
+
+**Mixed Linux and Windows clusters**. A Windows PC can be a cluster's master or a node next to Linux machines, with servers and backup copies moving between them (Bedrock gets the new machine's own program, and a move onto Windows checks file names first). Windows gets SFTP, **Windows Hello** sign-in and an easier first password, and is no longer a preview. Any panel can **remember your device** for 30 days. `redstonepanel reset-password` resets a forgotten panel password. See the [1.24.0 release notes](release-notes/v1.24.0.md).
+
 ## What's new in 1.23
 
 **Removing the panel safely** *(1.23.2)*. **Panel Settings → Remove RedstonePanel** and `sudo redstonepanel uninstall` back up your servers and ask what happens to each one (stop it and keep its files, keep it running without the panel, or delete it) before removing the panel, so no server is left running with nothing to manage it by accident. See the [1.23.2 release notes](release-notes/v1.23.2.md).
@@ -117,7 +121,7 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.22
 
-**RedstonePanel on Windows (preview)**. A Windows installer for Windows 11 and Windows Server 2022 or 2025 runs Java servers on one computer, with backups, schedules, the console, Live Chat, the file manager, add-ons, join pages and more; each game server is an ordinary Windows service. Bedrock, modpacks, limits and clusters follow in 1.23 and 1.24. See [On Windows](docs/wiki/Installation.md#on-windows-preview) and the [1.22.0 release notes](release-notes/v1.22.0.md).
+**RedstonePanel on Windows (preview)**. A Windows installer for Windows 11 and Windows Server 2022 or 2025 runs Java servers on one computer, with backups, schedules, the console, Live Chat, the file manager, add-ons, join pages and more; each game server is an ordinary Windows service. Bedrock, modpacks, limits and clusters follow in 1.23 and 1.24. See [On Windows](docs/wiki/Installation.md#on-windows) and the [1.22.0 release notes](release-notes/v1.22.0.md).
 
 ## What's new in 1.21
 
@@ -344,12 +348,12 @@ curl -fsSL https://raw.githubusercontent.com/qrussell/redstonepanel/main/install
 (refusing it unless its fingerprint matches the one below) and source, and installs the panel.
 It does what the next section does by hand.
 
-### On Windows (preview)
+### On Windows
 
 Download `RedstonePanel-<version>-x64.msi` from the
 [latest release](https://github.com/qrussell/redstonepanel/releases/latest), open it, then open
-**http://localhost:8080**. The steps, what the preview does and doesn't do yet, and where
-things are kept: [On Windows (preview)](docs/wiki/Installation.md#on-windows-preview).
+**http://localhost:8080**. The steps, what works differently on Windows, and where things are
+kept: [On Windows](docs/wiki/Installation.md#on-windows).
 
 ### Supported systems
 
@@ -362,7 +366,7 @@ things are kept: [On Windows (preview)](docs/wiki/Installation.md#on-windows-pre
 | Debian 13 (trixie) | ✅ tested | ✅ tested | Debian packages Java 21 and 25 only (see [Java](#what-gets-installed)). |
 | Raspberry Pi OS, 64-bit (Debian 13 based) | | ✅ Pi 4 and Pi 5 | Java servers only. See [Raspberry Pi](#raspberry-pi). |
 | Ubuntu 25.04 and 25.10 | ✅ | ✅ | Still installs, but Ubuntu no longer updates them: upgrade to 26.04. |
-| Windows 11, Windows Server 2022 and 2025 | ✅ Server 2022 and 2025 tested | | **Preview** from 1.22, with its own installer: Java and Bedrock servers on one computer (1.23); clusters in 1.24. See [On Windows](docs/wiki/Installation.md#on-windows-preview). Windows 10 installs but isn't tested. |
+| Windows 11, Windows Server 2022 and 2025 | ✅ Server 2022 and 2025 tested | | From 1.22, with its own installer: Java and Bedrock servers on one computer (1.23), clusters with Linux machines and SFTP (1.24). See [On Windows](docs/wiki/Installation.md#on-windows). Windows 10 installs but isn't tested. |
 
 **Bedrock servers need an x86-64 machine.** Mojang only makes Bedrock Dedicated Server for
 64-bit Intel and AMD Linux, so on ARM64 (a Raspberry Pi, an ARM VPS) the panel hides Bedrock

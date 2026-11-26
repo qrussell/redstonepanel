@@ -99,6 +99,18 @@ the changes with the `data` filter, and carries on as a normal install. Every fa
 removes the staged folder (abort, a failed install, the day-old clean-up). Needs cluster
 contract 5 on both members; older members are refused a pre-copy with "update it to 1.16.13".
 
-## 7. Later
+## 7. Between Linux and Windows (1.24)
+
+Members say which system they run (cluster contract 9). When B is Windows, the master passes
+`for_windows: true` to A's export (the pre-copy and the final pass): A walks what it would pack
+and, before stopping anything, refuses with the list of names Windows can't hold (device names,
+`< > : " | ? *`, a trailing dot or space, names differing only by case; `core/winnames.py`).
+A node before 1.24 ignores the field; then B's own check of the archive before unpacking
+refuses it, and the usual failure path starts the server again on A. Nothing else changes:
+Java folders are the same on both systems (the unit is written again on B), and a Bedrock folder
+gets B's program, of the version it ran when minecraft.net still has it, while A's program is
+removed.
+
+## 8. Later
 
 - Moving several servers at once.

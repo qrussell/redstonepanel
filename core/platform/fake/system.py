@@ -287,3 +287,8 @@ def ephemeral_ports():
 
 def can_bind(port, proto):
     return (int(port), proto) not in getattr(fake.state, "unbindable", set())
+
+
+def write_open_link(url, folder=None):
+    """The installer's "open the panel" link: nothing to write here."""
+    return None

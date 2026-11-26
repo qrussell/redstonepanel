@@ -2,8 +2,8 @@
 
 Until 1.21 the panel called `systemctl`, `ufw`, `screen`, `apt` and friends from wherever it
 needed them. Those calls now live in one place per system, so a second system is a second folder
-next to `linux/`, not a change to every feature. `windows/` is that second system (a preview
-from 1.22).
+next to `linux/`, not a change to every feature. `windows/` is that second system (from
+1.22).
 
     from core.platform import services, firewall, console, packages, system, certs, terminal, paths
 
@@ -47,7 +47,7 @@ _state = {"name": None, "areas": {}}
 
 
 def default_system():
-    """The system this machine runs: "windows" (a preview from 1.22) or "linux"."""
+    """The system this machine runs: "windows" (from 1.22) or "linux"."""
     return "windows" if os.name == "nt" else "linux"
 
 

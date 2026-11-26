@@ -28,6 +28,9 @@ import core.convert as convert
 import core.auth as auth
 import core.settings as panel_settings
 import core.twofactor as twofactor
+import core.passkeys as passkeys
+import core.devices as devices
+import core.firstsignin as firstsignin
 import core.qr as qr
 import core.portforward as portforward
 import core.portaudit as portaudit
@@ -118,6 +121,8 @@ async def no_stale_static(request: Request, call_next):
 # /api/panel-info only says which panel this is (shown on the sign-in page), nothing more.
 # /api/cluster/ca(.crt) is the cluster's public CA certificate; /api/cluster/join checks a join code.
 PUBLIC_API = {"/api/auth/login", "/api/auth/login/code", "/api/auth/logout", "/api/health", "/api/panel-info",
+              "/api/auth/passkeys/available", "/api/auth/passkey/options", "/api/auth/passkey/login",
+              "/api/auth/first-sign-in", "/api/auth/first-sign-in/check",
               "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join"}
 ADMIN_API = ("/api/users", "/api/settings")
 NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates",
@@ -128,33 +133,12 @@ STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 # An admin who must set up two-factor (Panel Settings > Sign-in) can reach only these until they do
 TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
 
-# The Windows preview (1.22) runs Java servers on one machine. What it doesn't do yet is refused
-# here in one plain sentence (changes only: reading still works), and the page hides the buttons
-# (/api/auth/me lists the names under "not_yet").
-WINDOWS_NOT_YET = (
-    ("cluster", "Clusters aren't", re.compile(r"^/api/(settings/)?cluster(/|$)")),
-    ("sftp", "SFTP isn't", re.compile(r"^/api/settings/sftp$")),
-)
-
-def not_yet(method, path, windows=None):
-    """The sentence refusing this request on the Windows preview, or None when it may go ahead."""
-    if not (paths.WINDOWS if windows is None else windows) or method not in STATE_CHANGING:
-        return None
-    for _name, what, pattern in WINDOWS_NOT_YET:
-        if pattern.match(path):
-            return (f"{what} in the Windows preview yet. To get the new installer when it is, see "
-                    f"https://redstonepanel.cielocloud.org.")
-    return None
-
 @app.middleware("http")
 async def access_control(request: Request, call_next):
     path = request.url.path
     if path.startswith("/api/"):
         if request.method in STATE_CHANGING and panel_settings.same_origin(request.headers) is False:
             return JSONResponse({"detail": "Request blocked: it came from another website."}, status_code=403)
-        refused = not_yet(request.method, path)
-        if refused:
-            return JSONResponse({"detail": refused}, status_code=400)
         if path not in PUBLIC_API:
             ip = request.client.host if request.client else None
             bearer = request.headers.get("authorization", "")
@@ -318,12 +302,22 @@ def phone_qr_api(url: str):
 class LoginRequest(BaseModel):
     username: str
     password: str
+    remember: bool = False
 
-def _set_session_cookie(request: Request, response: Response, identity):
-    token = auth.make_session_token(identity)
-    response.set_cookie(auth.SESSION_COOKIE, token, max_age=auth.SESSION_SECONDS,
+def _set_session_cookie(request: Request, response: Response, identity, remember=False):
+    device = None
+    if remember:
+        # Remember this device (1.24): a 30-day sign-in that Forget (or signing out here) ends
+        device = devices.add(twofactor.account_key(identity["src"], identity["u"]),
+                             devices.describe(request.headers.get("user-agent")),
+                             request.client.host if request.client else "")
+    token = auth.make_session_token(identity, device)
+    response.set_cookie(auth.SESSION_COOKIE, token, max_age=auth.session_seconds(token),
                         httponly=True, samesite="strict", secure=request.url.scheme == "https", path="/")
     return token
+
+def _remembered(remember):
+    return " (remembering this device)" if remember else ""
 
 @app.post("/api/auth/login")
 def login_api(req: LoginRequest, request: Request, response: Response):
@@ -335,12 +329,12 @@ def login_api(req: LoginRequest, request: Request, response: Response):
         raise HTTPException(status_code=401, detail=str(e))
     if identity.get("pending"):
         # Right password; the session comes after the code (POST /api/auth/login/code)
-        response.set_cookie(auth.PENDING_COOKIE, auth.make_pending_token(identity), max_age=auth.PENDING_SECONDS,
+        response.set_cookie(auth.PENDING_COOKIE, auth.make_pending_token(identity, req.remember), max_age=auth.PENDING_SECONDS,
                             httponly=True, samesite="strict", secure=request.url.scheme == "https",
                             path="/api/auth/login")
         return {"code_needed": True}
-    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip}")
-    return auth.read_session_token(_set_session_cookie(request, response, identity))
+    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip}{_remembered(req.remember)}")
+    return auth.read_session_token(_set_session_cookie(request, response, identity, req.remember))
 
 class CodeRequest(BaseModel):
     code: str
@@ -357,8 +351,9 @@ def login_code_api(req: CodeRequest, request: Request, response: Response):
         raise HTTPException(status_code=401, detail=str(e))
     response.delete_cookie(auth.PENDING_COOKIE, path="/api/auth/login")
     how = "a recovery code" if identity["used"] == "recovery" else "an app code"
-    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip} with {how}")
-    user = auth.read_session_token(_set_session_cookie(request, response, identity))
+    remember = bool(identity.get("r"))
+    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip} with {how}{_remembered(remember)}")
+    user = auth.read_session_token(_set_session_cookie(request, response, identity, remember))
     if user and identity["used"] == "recovery":
         user["recovery_left"] = twofactor.status(twofactor.account_key(identity["src"], identity["u"]))["recovery_left"]
     return user
@@ -366,6 +361,9 @@ def login_code_api(req: CodeRequest, request: Request, response: Response):
 @app.post("/api/auth/logout")
 def logout_api(request: Request, response: Response):
     terminal.signed_out(request.cookies.get(auth.SESSION_COOKIE))      # its terminals close too
+    remembered = auth.session_device(request.cookies.get(auth.SESSION_COOKIE))
+    if remembered and auth.read_session_token(request.cookies.get(auth.SESSION_COOKIE)):
+        devices.remove(*remembered)                                     # signing out forgets this device
     response.delete_cookie(auth.SESSION_COOKIE, path="/")
     response.delete_cookie(auth.PENDING_COOKIE, path="/api/auth/login")
     return {"status": "success"}
@@ -443,6 +441,199 @@ def two_factor_disable_api(req: CodeRequest, request: Request):
     manager.write_log(f"[AUTH] {user['username']} ({user['source']}) turned off two-factor sign-in")
     return {"status": "success"}
 
+# --- 1.24: the first sign-in after installing on Windows: a one-use link to choose a password ---
+class FirstSignInRequest(BaseModel):
+    token: str
+    password: Optional[str] = None
+
+def _first_throttle(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    keys = (f"ip:{ip}",)
+    if auth._throttled(keys):
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.")
+    return ip, keys
+
+@app.post("/api/auth/first-sign-in/check")
+def first_sign_in_check_api(req: FirstSignInRequest, request: Request):
+    ip, keys = _first_throttle(request)
+    try:
+        return {"username": firstsignin.check(req.token)}
+    except firstsignin.FirstSignInError as e:
+        auth._record_fail(keys)
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/auth/first-sign-in")
+def first_sign_in_api(req: FirstSignInRequest, request: Request, response: Response):
+    ip, keys = _first_throttle(request)
+    try:
+        firstsignin.check(req.token)
+    except firstsignin.FirstSignInError as e:
+        auth._record_fail(keys)
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        name = firstsignin.use(req.token, req.password or "",
+                               lambda user, pw: auth.update_panel_user(user, password=pw),
+                               plain_url=re.sub(r"//(127\.0\.0\.1|\[::1\])(?=[:/])", "//localhost", str(request.base_url)))
+    except (auth.AuthError, firstsignin.FirstSignInError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    u = next((x for x in auth._load_users() if x["username"] == name), None)
+    if not u:
+        raise HTTPException(status_code=400, detail="That account no longer exists.")
+    manager.write_log(f"[AUTH] {name} chose a password with the first sign-in link, from {ip}")
+    return auth.read_session_token(_set_session_cookie(request, response, {"u": name, "src": "panel",
+                                                                           "v": u.get("session_version", 1)}))
+
+# --- 1.24: passkeys (Windows Hello) on Windows panels (core/passkeys.py) ---
+def _pk_site(request: Request):
+    if not passkeys.supported():
+        raise HTTPException(status_code=404, detail="Passkeys are for panels on Windows.")
+    try:
+        return passkeys.site(request.url.scheme, request.url.hostname, request.url.port)
+    except passkeys.PasskeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/auth/passkeys/available")
+def passkeys_available_api(request: Request):
+    """Whether the sign-in page offers "Sign in with a passkey" (Windows panels, at a name, over HTTPS)."""
+    if not passkeys.supported():
+        return {"supported": False}
+    try:
+        passkeys.site(request.url.scheme, request.url.hostname, request.url.port)
+    except passkeys.PasskeyError as e:
+        return {"supported": True, "usable": False, "why": str(e)}
+    return {"supported": True, "usable": True}
+
+@app.post("/api/auth/passkey/options")
+def passkey_login_options_api(request: Request):
+    rp_id, origin = _pk_site(request)
+    ip = request.client.host if request.client else "unknown"
+    if auth._throttled((f"ip:{ip}",)):
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.")
+    try:
+        return passkeys.login_options(rp_id, origin)
+    except passkeys.PasskeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class PasskeyLoginRequest(BaseModel):
+    id: str
+    client_data: str
+    authenticator_data: str
+    signature: str
+    user_handle: Optional[str] = None
+    remember: bool = False
+
+@app.post("/api/auth/passkey/login")
+def passkey_login_api(req: PasskeyLoginRequest, request: Request, response: Response):
+    rp_id, origin = _pk_site(request)
+    ip = request.client.host if request.client else "unknown"
+    keys = (f"ip:{ip}",)
+    if auth._throttled(keys):
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.")
+    try:
+        key = passkeys.authenticate(req.id, req.client_data, req.authenticator_data, req.signature,
+                                    req.user_handle, rp_id, origin)
+        identity = auth.passkey_identity(key)
+    except (passkeys.PasskeyError, auth.AuthError) as e:
+        auth._record_fail(keys)
+        manager.write_log(f"[AUTH] Failed passkey sign-in from {ip}: {e}")
+        raise HTTPException(status_code=401, detail=str(e))
+    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in from {ip} with a passkey"
+                      f"{_remembered(req.remember)}")
+    return auth.read_session_token(_set_session_cookie(request, response, identity, req.remember))
+
+# --- Remember this device (1.24): the signed-in account's remembered devices ---
+def _dev_account(request: Request):
+    user = request.state.user
+    if user["source"] not in ("panel", "linux"):
+        raise HTTPException(status_code=400, detail="Sign in with your account to see its remembered devices.")
+    return user, twofactor.account_key(user["source"], user["username"])
+
+@app.get("/api/auth/devices")
+def devices_list_api(request: Request):
+    user, key = _dev_account(request)
+    here = user.get("device")
+    return {"days": devices.REMEMBER_DAYS,
+            "devices": [dict(d, current=d["id"] == here) for d in reversed(devices.list_for(key))]}
+
+@app.delete("/api/auth/devices/{device_id}")
+def device_forget_api(device_id: str, request: Request):
+    user, key = _dev_account(request)
+    if not devices.remove(key, device_id):
+        raise HTTPException(status_code=404, detail="That device isn't remembered.")
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) forgot a remembered device")
+    return {"status": "success"}
+
+@app.delete("/api/auth/devices")
+def devices_forget_all_api(request: Request):
+    """Forgets every remembered device but this one (sign out here to forget it too)."""
+    user, key = _dev_account(request)
+    n = devices.remove_all(key, keep=user.get("device"))
+    if n:
+        manager.write_log(f"[AUTH] {user['username']} ({user['source']}) forgot {n} remembered device(s)")
+    return {"forgotten": n}
+
+def _pk_account(request: Request):
+    user = request.state.user
+    if user["source"] not in ("panel", "linux"):
+        raise HTTPException(status_code=400, detail="Sign in with your account to add a passkey.")
+    return user, twofactor.account_key(user["source"], user["username"])
+
+@app.get("/api/auth/passkeys")
+def passkeys_list_api(request: Request):
+    user, key = _pk_account(request)
+    out = {"supported": passkeys.supported(), "passkeys": passkeys.list_for(key) if passkeys.supported() else []}
+    if passkeys.supported():
+        try:
+            passkeys.site(request.url.scheme, request.url.hostname, request.url.port)
+            out["usable"] = True
+        except passkeys.PasskeyError as e:
+            out.update(usable=False, why=str(e))
+    return out
+
+class PasskeyAddOptionsRequest(BaseModel):
+    password: str
+
+@app.post("/api/auth/passkeys/options")
+def passkey_add_options_api(req: PasskeyAddOptionsRequest, request: Request):
+    """Adding a passkey asks for the account's password again: a passkey outlives the session."""
+    rp_id, origin = _pk_site(request)
+    user, key = _pk_account(request)
+    ip = request.client.host if request.client else "unknown"
+    keys = (f"user:{user['username'].lower()}", f"ip:{ip}")
+    if auth._throttled(keys):
+        raise HTTPException(status_code=429, detail="Too many wrong passwords. Try again in a few minutes.")
+    if not auth.check_account_password(user["source"], user["username"], req.password):
+        auth._record_fail(keys)
+        raise HTTPException(status_code=400, detail="That password is wrong.")
+    try:
+        return passkeys.registration_options(key, user["username"], user["username"], rp_id, origin)
+    except passkeys.PasskeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class PasskeyAddRequest(BaseModel):
+    client_data: str
+    attestation_object: str
+    name: Optional[str] = ""
+
+@app.post("/api/auth/passkeys")
+def passkey_add_api(req: PasskeyAddRequest, request: Request):
+    rp_id, origin = _pk_site(request)
+    user, key = _pk_account(request)
+    try:
+        pk = passkeys.register(key, req.client_data, req.attestation_object, rp_id, origin, req.name)
+    except passkeys.PasskeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) added a passkey ({pk['name']}) for {rp_id}")
+    return pk
+
+@app.delete("/api/auth/passkeys/{cred_id}")
+def passkey_remove_api(cred_id: str, request: Request):
+    user, key = _pk_account(request)
+    if not passkeys.remove(key, cred_id):
+        raise HTTPException(status_code=404, detail="No such passkey.")
+    manager.write_log(f"[AUTH] {user['username']} ({user['source']}) removed a passkey")
+    return {"status": "success"}
+
 @app.get("/api/auth/me")
 def me_api(request: Request):
     user = dict(request.state.user)
@@ -451,10 +642,9 @@ def me_api(request: Request):
     # Bedrock Dedicated Server is x86-64 only: the New Server form hides it on ARM64 (a Raspberry Pi)
     user["machine"] = platform.machine()
     user["bedrock_supported"] = manager.bedrock_supported()
-    # Which system the panel runs on. On Windows (a preview since 1.22) the page says so and hides
-    # what the preview doesn't do yet.
+    # Which system the panel runs on (Windows since 1.22; everything works there since 1.24, except
+    # the terminal, which is Linux-only by design)
     user["system"] = "windows" if paths.WINDOWS else "linux"
-    user["not_yet"] = [n for n, _w, _p in WINDOWS_NOT_YET] if paths.WINDOWS else []
     # Admins get told when HTTPS was requested but the panel had to fall back to HTTP
     if user["role"] == "admin":
         user["https_error"] = panel_settings.RUNTIME.get("https_error")
@@ -693,7 +883,8 @@ def change_password_api(req: PasswordChange, request: Request, response: Respons
     # The change signs out all sessions, so issue a fresh cookie for this browser
     u = next(x for x in auth._load_users() if x["username"] == user["username"])
     _set_session_cookie(request, response, {"u": u["username"], "src": "panel", "v": u["session_version"],
-                                            "m": 1 if user.get("two_factor") else 0})
+                                            "m": 1 if user.get("two_factor") or user.get("passkey") else 0,
+                                            **({"pk": 1} if user.get("passkey") else {})})
     return {"status": "success"}
 
 # --- Panel user management (admins only; enforced in the middleware) ---
@@ -763,9 +954,12 @@ def reset_user_2fa_api(username: str, request: Request):
         raise HTTPException(status_code=400, detail="Use the Password button to change your own two-factor sign-in.")
     if not any(u["username"] == username for u in auth._load_users()):
         raise HTTPException(status_code=404, detail=f"Panel user '{username}' not found.")
-    if not twofactor.remove(twofactor.account_key("panel", username)):
-        raise HTTPException(status_code=400, detail=f"'{username}' doesn't have two-factor sign-in set up.")
-    manager.write_log(f"[AUTH] {me['username']} reset two-factor sign-in for panel user '{username}'")
+    had_tf = twofactor.remove(twofactor.account_key("panel", username))
+    had_pk = passkeys.remove_all(twofactor.account_key("panel", username))
+    if not had_tf and not had_pk:
+        raise HTTPException(status_code=400, detail=f"'{username}' doesn't have two-factor sign-in or passkeys set up.")
+    manager.write_log(f"[AUTH] {me['username']} reset two-factor sign-in" + (" and passkeys" if had_pk else "")
+                      + f" for panel user '{username}'")
     return {"status": "success"}
 
 @app.delete("/api/users/{username}")
@@ -2567,8 +2761,10 @@ def cluster_node_action_api(node_id: str, server_name: str, req: ServerActionReq
     if req.action not in manager.POWER_ACTIONS:
         raise HTTPException(status_code=400, detail=f"Unknown action '{req.action}'.")
     try:
+        # Waits for the node's answer: a start on Windows returns once the service runs, a stop
+        # or restart once the server has saved and stopped (1.24: the 4 s default timed out)
         cluster_client.call_node(node, "POST", f"/api/servers/{server_name}/action",
-                                 {"action": req.action}, actor=me)
+                                 {"action": req.action}, actor=me, timeout=cluster_client.ACTION_TIMEOUT)
     except cluster_client.NodeError as e:
         raise HTTPException(status_code=502, detail=f"{node['name']}: {e}")
     finally:
@@ -2744,6 +2940,7 @@ class TransferExport(BaseModel):
     stop: bool
     precopy: bool = False                   # 1.16.13: pack it while it runs, listing every file
     base: Optional[str] = None              # 1.16.13: only what changed since that pre-copy
+    for_windows: bool = False               # 1.24: the target is Windows; refuse names it can't hold
 
 class TransferImport(BaseModel):
     size: int
@@ -2762,7 +2959,7 @@ class TransferInstall(BaseModel):
 
 @app.post("/api/cluster/transfers/export")
 def transfer_export_api(req: TransferExport, request: Request):
-    return _transfer_call(request, transfer.export, req.server, req.stop, req.precopy, req.base)
+    return _transfer_call(request, transfer.export, req.server, req.stop, req.precopy, req.base, req.for_windows)
 
 @app.get("/api/cluster/transfers/{tid}/archive")
 def transfer_archive_api(tid: str, request: Request):

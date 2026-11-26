@@ -186,6 +186,10 @@ for p in $PATHS / /static/index.html /static/login.html /static/js/app.js /stati
     [ "$c" = 404 ] || LEAK="$LEAK $p=$c"
 done
 [ -z "$LEAK" ] && [ "$N" -gt 150 ] && ok "all $N panel routes and files tried on the public port: Not found" || bad "the public port answered:$LEAK (tried $N)"
+# The sweep alone is close to the 240-a-minute limit (more than it since 1.24's sign-in routes):
+# start the panel again so the checks below aren't the ones slowed down.
+dx jp "systemctl restart redstonepanel"
+for _ in $(seq 1 40); do dx jp "curl -sf $URL/api/health" >/dev/null 2>&1 && listening jp 8444 && break; sleep 1; done
 LEAK=""
 for m in POST PUT DELETE PATCH OPTIONS; do
     for p in /join/survival /api/auth/login /join/survival/status.json; do

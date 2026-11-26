@@ -130,3 +130,53 @@ def cert_info(path):
         elif "fingerprint" in k:
             info["sha256"] = v.strip()
     return info
+
+
+# ---------------------------------------------------------------------------
+# 1.24: your own certificate (Let's Encrypt and the like) renewed on disk
+# ---------------------------------------------------------------------------
+RENEWAL_CHECK = 600             # seconds between looks at the certificate files
+
+
+def file_stamp(*paths):
+    """What says files haven't changed: (mtime, size) of each, None for a missing one."""
+    out = []
+    for p in paths:
+        try:
+            st = os.stat(p)
+            out.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            out.append(None)
+    return tuple(out)
+
+
+def renewed(stamp, cert, key):
+    """True when the certificate or key changed since `stamp` and the new pair loads, so the panel
+    can restart to serve it. A half-written or mismatched pair waits for the next look."""
+    now = file_stamp(cert, key)
+    return now != stamp and None not in now and check_pair(cert, key) is None
+
+
+def watch_own_certificate(cert, key, log, restart, every=RENEWAL_CHECK, sleep=None):
+    """A certificate client (certbot on Linux, win-acme on Windows) replaces the files the panel
+    serves ("HTTPS with my own certificate") every couple of months. The panel reads them when it
+    starts, so it looks every `every` seconds and restarts itself once a renewed pair loads; no
+    hook script is needed in the client. Runs in a daemon thread."""
+    import threading
+    import time
+    sleep = sleep or time.sleep
+    stamp = file_stamp(cert, key)
+
+    def loop():
+        while True:
+            sleep(every)
+            try:
+                if renewed(stamp, cert, key):
+                    log(f"[SYSTEM] The panel's certificate {cert} was renewed; restarting to serve it.")
+                    restart()
+                    return
+            except Exception as e:          # never let this take the panel down
+                log(f"[SYSTEM] Checking the panel's certificate for a renewal failed: {e}")
+    t = threading.Thread(target=loop, name="certificate-renewal", daemon=True)
+    t.start()
+    return t

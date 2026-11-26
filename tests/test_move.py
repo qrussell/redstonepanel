@@ -230,15 +230,17 @@ class Transfer(Member):
 
 class Ends:
     """A stand-in member for the master's job."""
-    def __init__(self, id, name, fail=None):
+    def __init__(self, id, name, fail=None, system="linux"):
         self.id, self.name, self.fail, self.calls = id, name, fail or {}, []
+        self.system, self.for_windows = system, []
 
     def _do(self, what, *args):
         self.calls.append((what,) + args)
         if what in self.fail:
             raise T.TransferError(self.fail[what])
 
-    def export(self, server, stop):
+    def export(self, server, stop, for_windows=False):
+        self.for_windows.append(for_windows)
         self._do("export", server, stop)
         return {"id": "e" * 32, "size": 6, "sha256": "f" * 64, "was_running": True, "meta": {"edition": "java"}}
 
@@ -307,6 +309,24 @@ class Job(unittest.TestCase):
         self.assertEqual(job["state"], "done")
         self.assertIn("uninstall it on Main yourself", job["warning"])
         self.assertEqual(b.calls[-1], ("confirm",))
+
+    def test_to_windows_the_source_checks_names_first(self):
+        """1.24: a move to a Windows member asks the source to refuse names Windows can't hold."""
+        a, b = Ends("local", "Main"), Ends("n1", "Gaming PC", system="windows")
+        job = self.run_job("move", a, b)
+        self.assertEqual(job["state"], "done", job.get("error"))
+        self.assertEqual(a.for_windows, [True])
+        a, b = Ends("n1", "Gaming PC", system="windows"), Ends("local", "Main")
+        self.run_job("move", a, b)
+        self.assertEqual(a.for_windows, [False])
+
+    def test_a_refusal_from_the_source_fails_the_job_before_anything_is_sent(self):
+        a = Ends("local", "Main", fail={"export": "2 file names in it can't be kept on Windows: a:b"})
+        b = Ends("n1", "Gaming PC", system="windows")
+        job = self.run_job("move", a, b)
+        self.assertEqual(job["state"], "failed")
+        self.assertIn("can't be kept on Windows", job["error"])
+        self.assertEqual(b.calls, [], "nothing was sent")
 
     def test_refusals(self):
         with self.assertRaises(moves.MoveError):
