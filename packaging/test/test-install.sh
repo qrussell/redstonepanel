@@ -324,6 +324,32 @@ check "perf: host history has points"     bash -c "curl -s -b $L $B/api/host/his
 check "  server ring file, fixed size, 0600" bash -c 'f=/var/lib/redstonepanel/metrics/minecraft-perfjava.ring; test "$(stat -c %a $f)" = 600 && test "$(stat -c %s $f)" = $((8 + 2112 * 24))'
 check "  metrics folder root-only"        test "$(stat -c %a /var/lib/redstonepanel/metrics)" = 700
 check "  dashboard rows carry TPS"        bash -c "curl -s -b $L $B/api/host | grep -q '\"tps\"'"
+# --- 1.25: Start at boot, and API tokens (the stand-in's hand-made unit is enabled like a deployed one)
+systemctl enable --quiet minecraft-perfjava
+check "boot: on by default"               bash -c "curl -s -b $L $PJ/boot | grep -q '\"enabled\":true'"
+c=$(code -b $L -X PUT $PJ/boot -H "$J" -H "$O" -d '{"enabled":false}')
+[ "$c" = 200 ] && grep -q '"enabled":false' /tmp/body && ok "  turned off" || bad "  turn off ($c $(cat /tmp/body))"
+check "  systemd: disabled"               test "$(systemctl is-enabled minecraft-perfjava)" = disabled
+check "  still running"                   systemctl is-active --quiet minecraft-perfjava
+check "  logged with who"                 grep -q '\[SERVICE\] rpadmin turned Start at boot off for minecraft-perfjava' /var/log/redstonepanel/panel.log
+check "  boot.json is 0600"               test "$(stat -c %a /var/lib/redstonepanel/boot.json)" = 600
+check "  on again from the CLI"           bash -c "redstonepanel boot minecraft-perfjava on >/dev/null && test \"\$(systemctl is-enabled minecraft-perfjava)\" = enabled"
+check "  off from the CLI"                bash -c "redstonepanel boot minecraft-perfjava off >/dev/null && test \"\$(systemctl is-enabled minecraft-perfjava)\" = disabled && grep -q 'off for minecraft-perfjava from the command line' /var/log/redstonepanel/panel.log"
+TOK=$(redstonepanel token create ci bot --perms power --servers minecraft-perfjava --days 1 | tail -1)
+check "token: made from the CLI"          bash -c "echo '$TOK' | grep -Eq '^rpa_[0-9a-f]{8}_[A-Za-z0-9_-]{43}$'"
+check "  api-tokens.json is 0600, no token in it" bash -c "test \"\$(stat -c %a /var/lib/redstonepanel/api-tokens.json)\" = 600 && ! grep -q '$TOK' /var/lib/redstonepanel/api-tokens.json"
+TA="Authorization: Bearer $TOK"
+check "  lists only its server"           bash -c "curl -s -H '$TA' $B/api/servers | grep -q minecraft-perfjava"
+check "  restarts its server"             test "$(code -H "$TA" -X POST $PJ/action -H "$J" -d '{"action":"restart"}')" = 200
+check "  logged as the token"             grep -q '\[API\] token:ci bot: POST /api/servers/minecraft-perfjava/action' /var/log/redstonepanel/panel.log
+check "  no settings permission -> 403"   test "$(code -H "$TA" -X PUT $PJ/boot -H "$J" -d '{"enabled":true}')" = 403
+check "  never an admin (users) -> 403"   test "$(code -H "$TA" $B/api/users)" = 403
+check "  can't make tokens -> 403"        test "$(code -H "$TA" -X POST $B/api/settings/api-tokens -H "$J" -d '{"name":"x","grants":{"*":["view"]}}')" = 403
+check "  can't change a password -> 403"  test "$(code -H "$TA" -X POST $B/api/auth/password -H "$J" -d '{}')" = 403
+check "  a wrong token -> 401"            test "$(code -H "Authorization: Bearer rpa_00000000_$(printf 'x%.0s' $(seq 43))" $B/api/servers)" = 401
+redstonepanel token revoke ci bot >/dev/null
+check "  revoked -> 401 at once"          test "$(code -H "$TA" $B/api/servers)" = 401
+systemctl restart redstonepanel; wait_up $B/api/health >/dev/null     # clears the wrong-token count
 c=$(code -b $L -X PUT $PJ/resources -H "$J" -H "$O" -d '{"cpu":1}')
 check "  limit set again before uninstall" test "$c" = 200
 check "  uninstall (keep world) removes the drop-in" bash -c "test \"\$(curl -s -o /dev/null -w '%{http_code}' -b $L -X DELETE -H '$O' '$PJ?keep_world=true')\" = 200 && test ! -e $DROPIN"

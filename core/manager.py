@@ -14,7 +14,7 @@ import threading
 import stat
 import tempfile
 from core.settings import DATA_DIR, LOG_FILE
-from core import properties, rcon, proxies, bedrock_net, javaservers
+from core import properties, rcon, proxies, bedrock_net, javaservers, bootstart
 from core.platform import console, firewall, paths, services, system
 
 TEMPLATE_FILE = os.path.join(DATA_DIR, "templates.json")
@@ -1348,6 +1348,7 @@ def remove_server(server_name, keep_world, note=None):
     backups.on_server_removed(server_name, purged=not keep_world)
     if not keep_world:
         deployopts.set_flags(server_name, None)     # kept with the folder, for a restore
+        bootstart.forget(server_name)               # Start at boot (1.25): the same
     restarts.on_server_removed(server_name, purged=not keep_world)
     updates.on_server_removed(server_name, purged=not keep_world)
     from core import convert
@@ -1559,7 +1560,7 @@ def restore_server(name, same_version=False):
         ensure_minecraft_user(d)
         system.give_to_game_account(d)
         _write_unit(name, d, edition, **heap, **({"java": java} if java else {}))
-        services.enable(name)
+        bootstart.apply(name)                 # Start at boot (1.25): as the server had it
         services.start(name)
         try:
             with system.game_files():
@@ -1587,6 +1588,7 @@ def delete_removed_server(name):
     system.delete_tree(d)
     from core import deployopts
     deployopts.set_flags(name, None)
+    bootstart.forget(name)
     write_log(f"[REMOVE] Deleted the files of removed server {name} ({d}).")
 
 def export_server(server_name):
@@ -1682,7 +1684,7 @@ def _import_unpacked(staging, root):
         ensure_minecraft_user(mc_dir)
         system.give_to_game_account(mc_dir)
         _write_unit(svc_name, mc_dir, edition, **({"java": java} if java else {}), jvm={})
-        services.enable(svc_name)
+        bootstart.apply(svc_name)
         services.start(svc_name)
         return svc_name
     finally:
@@ -1713,7 +1715,8 @@ def _reserve_like(prefer):
             return name
     return None
 
-def import_transferred(root, edition, prefer_name=None, heap=None, java=None, start=True, on_placed=None, jvm=None):
+def import_transferred(root, edition, prefer_name=None, heap=None, java=None, start=True, on_placed=None, jvm=None,
+                       boot=True):
     """A server folder moved or copied from another cluster member (1.16), unpacked at root.
     Keeps prefer_name and the server's ports when they're free here, else picks others.
     on_placed(name) is called once the folder is in place, so a failure after it can be undone.
@@ -1748,7 +1751,8 @@ def import_transferred(root, edition, prefer_name=None, heap=None, java=None, st
         ensure_minecraft_user(mc_dir)
         system.give_to_game_account(mc_dir)
         _write_unit(name, mc_dir, edition, **heap, **({"java": java} if java else {}), jvm=jvm or {})
-        services.enable(name)
+        bootstart.remember(name, boot is not False)      # Start at boot (1.25): as it was on the old member
+        bootstart.apply(name)
         if start:
             services.start(name)
         write_log(f"[MOVE] Installed {name} here (port {port}"
@@ -1988,7 +1992,7 @@ def deploy_server(edition, template_id=None, loader="vanilla", version=None, adv
                 write_log(f"[WARNING] {svc_name}: hard limits not set: {e}")
         # The ports it needs, from what server.properties says now (a template may set the transport)
         open_server_firewall(svc_name, edition, mc_dir)
-        services.enable(svc_name)
+        bootstart.apply(svc_name)
         services.start(svc_name)
         return svc_name
     finally:

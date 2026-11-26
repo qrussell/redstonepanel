@@ -435,7 +435,7 @@ def _unsign(token, purpose):
     return payload
 
 def _identity_fields(identity):
-    return {k: identity[k] for k in ("u", "src", "v", "m", "pk") if k in identity}
+    return {k: identity[k] for k in ("u", "src", "v", "m", "pk", "e") if k in identity}
 
 def make_session_token(identity, device=None):
     # n: each sign-in's cookie is its own, even two in the same second (signing one out, which
@@ -492,6 +492,10 @@ def read_session_token(token):
         return None
 
     username, src = payload.get("u"), payload.get("src")
+    if src == "master":
+        # 1.25: an admin of the cluster's master, signed in here from the master's Open dashboard
+        from core import mastersignin
+        return mastersignin.session_user(payload)
     if src == "linux":
         if not linux_user_allowed(username):
             return None

@@ -509,6 +509,7 @@ class RouteCoverage(unittest.TestCase):
     Phase 2 (1.15) gives the master every route of a single server (/api/servers/{server_name}/...),
     so each server tab works from the master. Anything else must be listed here on purpose."""
     EXPECTED = {("GET", "/api/cluster/hello"), ("DELETE", "/api/cluster/membership"),
+                ("POST", "/api/cluster/sign-in"),                 # 1.25: Open dashboard, signed in
                 ("POST", "/api/cluster/cert/csr"), ("PUT", "/api/cluster/cert"),
                 ("GET", "/api/servers"), ("GET", "/api/logs"), ("GET", "/api/templates"), ("GET", "/api/host"),
                 ("GET", "/api/host/history"),

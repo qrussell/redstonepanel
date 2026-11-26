@@ -147,6 +147,8 @@ def forget_server(key):
                 users[name] = g
         if changed:
             _save(users)
+    from core import apitokens                    # API tokens (1.25) lose it too
+    apitokens.forget_server(key)
 
 
 def rename_server(old_key, new_key):
@@ -163,6 +165,8 @@ def rename_server(old_key, new_key):
             users[name] = g
         if changed:
             _save(users)
+    from core import apitokens                    # API tokens (1.25) follow it too
+    apitokens.rename_server(old_key, new_key)
 
 
 def migrate_existing_users(usernames):
@@ -187,6 +191,9 @@ def perms_for(user, key):
     if src == "panel":
         g = get(user["username"])
         return set(g.get(ALL_SERVERS, ())) | set(g.get(key, ()))
+    if src == "token":                            # API tokens (1.25) carry their own
+        g = user.get("grants") or {}
+        return set(g.get(ALL_SERVERS, ())) | set(g.get(key, ()))
     if src == "cluster":
         # A node trusts its master, which checked its own user's grants before passing the
         # request on and says what they are for this server. A master older than 1.18 sends
@@ -204,7 +211,7 @@ def can(user, perm, server, member=None):
 
 def limited(user):
     """True for an account whose view is cut down to the servers it was granted."""
-    return user.get("role") != "admin" and user.get("source") == "panel"
+    return user.get("role") != "admin" and user.get("source") in ("panel", "token")
 
 
 def parse_header(value):
@@ -237,6 +244,7 @@ public   POST    /api/auth/passkey/login
 public   POST    /api/auth/first-sign-in/check
 public   POST    /api/auth/first-sign-in
 public   POST    /api/auth/logout
+public   GET     /api/auth/master-sign-in
 public   GET     /api/cluster/ca
 public   GET     /api/cluster/ca.crt
 public   POST    /api/cluster/join
@@ -309,6 +317,8 @@ settings POST    {_S}/properties
 settings GET     {_S}/properties/raw
 settings POST    {_S}/properties/raw
 settings PUT     {_S}/restarts
+view     GET     {_S}/boot
+settings PUT     {_S}/boot
 settings PUT     {_S}/updates
 settings POST    {_S}/updates/check
 view     GET     {_S}/convert
@@ -410,6 +420,7 @@ proxy            DELETE  /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 power@node_id    POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/action
 settings@node_id POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/template
 admin            POST    /api/cluster/nodes/{{node_id}}/templates
+admin            POST    /api/cluster/nodes/{{node_id}}/sign-in
 backups@member_id GET    /api/cluster/backup-copies/{{member_id}}/{{server_name}}
 backups@member_id POST   /api/cluster/backup-copies/{{member_id}}/{{server_name}}/sync
 backups@panel    GET     /api/cluster/backup-copies/file/{{holder}}/{{panel}}/{{server_name}}/{{filename}}
@@ -423,6 +434,7 @@ admin            GET     /api/cluster/moves/{{job_id}}
 admin            DELETE  /api/cluster/moved/{{member_id}}/{{server_name}}
 
 node     GET     /api/cluster/hello
+node     POST    /api/cluster/sign-in
 node     DELETE  /api/cluster/membership
 node     POST    /api/cluster/cert/csr
 node     PUT     /api/cluster/cert

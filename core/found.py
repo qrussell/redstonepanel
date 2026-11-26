@@ -294,7 +294,8 @@ def manage(folder, actor="?"):
             manager.ensure_minecraft_user(folder)
             system.give_to_game_account(folder)
             manager._write_unit(name, folder, edition, **heap, **({"java": java} if java else {}), jvm={})
-            services.enable(name)
+            from core import bootstart
+            bootstart.apply(name)
             system.adopt_folder(folder)               # Windows: the server's account exists only now
             services.start(name)
             deadline = time.time() + START_WAIT

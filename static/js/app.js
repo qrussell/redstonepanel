@@ -677,7 +677,7 @@ const ServerApp = {
         }
         
         if (tabId === 'properties') this.switchConfigSubTab(this.firstConfigSubTab());
-        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadRestarts(); this.loadUpdateOptions().then(() => this.loadModpack()); this.loadAutoUpdate(); this.loadConvert(); this.loadJavaChoice(); this.loadResources(); }
+        if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadBoot(); this.loadRestarts(); this.loadUpdateOptions().then(() => this.loadModpack()); this.loadAutoUpdate(); this.loadConvert(); this.loadJavaChoice(); this.loadResources(); }
         if (tabId === 'world') this.loadWorldName();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
@@ -4605,6 +4605,45 @@ const ServerApp = {
         this.loadBackups();
     },
 
+    // --- 1.25: Start at boot. Off: the server stays stopped after the machine starts, until
+    // someone starts it (here, a schedule or the API). Hidden on a node older than 1.25 (404).
+    async loadBoot() {
+        const card = document.getElementById('boot-card');
+        if (!this.activeServer) return;
+        const name = this.activeServer.name;
+        const res = await api(`/api/servers/${encodeURIComponent(name)}/boot`);
+        if (!this.activeServer || this.activeServer.name !== name) return;
+        if (res.status === 404) { card.classList.add('hidden'); return; }
+        card.classList.remove('hidden');
+        const box = document.getElementById('boot-content');
+        if (!res.ok) {
+            box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`;
+            return;
+        }
+        const info = await res.json();
+        const may = this.isAdmin() || (this.activeServer.perms || []).includes('settings');
+        box.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl shadow-sm">
+                <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" id="boot-enabled" class="mt-1" ${info.enabled ? 'checked' : ''} ${may ? '' : 'disabled'}
+                        onchange="ServerApp.saveBoot(this)">
+                    <span><span class="font-bold text-gray-900 dark:text-white">Start this server when the machine starts</span><br>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">Turn it off for a server you only run now and then: after a reboot it stays stopped until you start it. Start, Stop and Restart, schedules and restarts after a crash work as before.</span></span>
+                </label>
+            </div>`;
+    },
+
+    async saveBoot(box) {
+        const enabled = box.checked;
+        box.disabled = true;
+        const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/boot`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled })
+        });
+        box.disabled = false;
+        if (!res.ok) alert(`Couldn't change Start at boot: ${await this.apiError(res)}`);
+        this.loadBoot();
+    },
+
     async loadRestarts() {
         if (!this.activeServer) return;
         const name = this.activeServer.name;
@@ -5988,6 +6027,9 @@ const ServerApp = {
 			<h4 id="set-section-sftp" class="font-bold text-gray-900 dark:text-white mb-2">SFTP</h4>
 			<div id="set-sftp" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
+			<h4 id="set-section-api-tokens" class="font-bold text-gray-900 dark:text-white mb-2">API tokens</h4>
+			<div id="set-api-tokens" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+
 			<div id="set-terminal-wrap" class="hidden">
 			<h4 id="set-section-terminal" class="font-bold text-gray-900 dark:text-white mb-2">Terminal</h4>
 			<div id="set-terminal" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
@@ -6060,9 +6102,107 @@ const ServerApp = {
 		this.loadSetupSettings();
 		this.loadSftpSettings();
 		this.loadTerminalSettings();
+		this.loadApiTokens();
 		this.loadServersFolder();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
+	},
+
+	// --- 1.25: API tokens. A script or bot sends `Authorization: Bearer rpa_...` and may do on the
+	// chosen servers what the ticked permissions allow, like a user account. Never an admin.
+	async loadApiTokens(made) {
+		const box = document.getElementById('set-api-tokens');
+		if (!box) return;
+		const res = await fetch('/api/settings/api-tokens');
+		if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = await res.json(), esc = t => this.escapeHtml(String(t ?? ''));
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const when = t => t ? new Date(t * 1000).toLocaleDateString() : '';
+		const label = p => (d.labels || {})[p] || p;
+		const serverLabel = key => {
+			if (key === '*') return 'every server';
+			const [node, name] = key.includes('/') ? key.split('/') : [null, key];
+			const n = node && (this.clusterNodes || []).find(x => x.id === node);
+			return node ? `${name} on ${n ? n.name : node}` : name;
+		};
+		const rows = d.tokens.map(t => `
+			<div class="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded border border-gray-200 dark:border-gray-700">
+				<div class="flex-1 min-w-0">
+					<p class="text-sm font-bold text-gray-900 dark:text-white">${esc(t.name)}${t.expired ? ' <span class="text-xs font-normal text-red-500">expired</span>' : ''}</p>
+					<p class="${note}">${Object.entries(t.grants).map(([k, v]) => `${esc(serverLabel(k))}: ${v.map(p => esc(label(p))).join(', ')}`).join(' · ')}</p>
+					<p class="${note}">Made ${esc(when(t.created))} by ${esc(t.created_by || '?')} · ${t.last_used ? `last used ${esc(new Date(t.last_used * 1000).toLocaleString())} from ${esc(t.last_ip || '?')}` : 'never used'}${t.expires ? ` · ${t.expired ? 'expired' : 'expires'} ${esc(when(t.expires))}` : ''}</p>
+				</div>
+				<button onclick="ServerApp.revokeApiToken(${this.jsArg(t.id)}, ${this.jsArg(t.name)})" class="px-3 py-2 rounded text-sm font-bold text-white bg-red-600 hover:bg-red-700 self-start sm:self-auto">Revoke</button>
+			</div>`).join('');
+		const servers = (this.servers || []).map(s => ({ key: s.node ? `${s.node}/${s.name}` : s.name,
+			label: s.node ? `${s.name} (${s.nodeName || s.node})` : s.name }));
+		const origin = window.location.origin;
+		const insecure = origin.startsWith('https') ? ' Add <span class="font-mono">-k</span> while the panel\'s certificate is self-signed.' : '';
+		box.innerHTML = `
+			<p class="${note} mb-3">For scripts and bots, such as a Discord bot that starts a server or a script that backs one up. A token may do on the servers you choose only what you tick, like a user account. It can never manage users or panel settings, or create and delete servers. Everything it changes is logged as <span class="font-mono">token:NAME</span>. The API is described at <a href="/docs" target="_blank" rel="noopener" class="underline text-theme">/docs</a>.</p>
+			${made ? `<div class="p-3 mb-3 rounded border-2 border-green-500 bg-green-50 dark:bg-green-900/30">
+				<p class="text-sm font-bold text-gray-900 dark:text-white mb-1">Token ${esc(made.name)} made. Copy it now: it isn't shown again.</p>
+				<div class="flex gap-2 mb-2"><input id="api-token-made" readonly value="${esc(made.token)}" class="${field} font-mono"><button onclick="ServerApp.copyApiToken(this)" class="px-3 py-2 rounded text-sm font-bold text-white bg-theme hover-bg-theme">Copy</button></div>
+				<p class="${note}">Try it: <span class="font-mono break-all">curl -H "Authorization: Bearer ${esc(made.token)}" ${esc(origin)}/api/servers</span>.${insecure}</p>
+			</div>` : ''}
+			<div class="space-y-2 mb-3">${rows || `<p class="${note}">No tokens yet.</p>`}</div>
+			<details class="rounded border border-gray-200 dark:border-gray-700 p-3">
+				<summary class="text-sm font-bold text-gray-900 dark:text-white cursor-pointer">New token</summary>
+				<label class="${note} block mt-3">Name<input id="api-token-name" maxlength="40" placeholder="Discord bot" class="${field} mt-1"></label>
+				<p class="${note} mt-3 mb-1">Servers</p>
+				<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="radio" name="api-token-scope" value="all" checked onchange="ServerApp.apiTokenScope()"> Every server, including ones made later</label>
+				<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="radio" name="api-token-scope" value="some" onchange="ServerApp.apiTokenScope()"> Only these:</label>
+				<div id="api-token-servers" class="hidden ml-6 mt-1 grid grid-cols-1 sm:grid-cols-2 gap-1">
+					${servers.map(s => `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" class="api-token-server" value="${esc(s.key)}"> ${esc(s.label)}</label>`).join('') || `<p class="${note}">No servers yet.</p>`}
+				</div>
+				<p class="${note} mt-3 mb-1">It may</p>
+				<div class="grid grid-cols-2 sm:grid-cols-4 gap-1">
+					${d.perms.map(p => `<label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" class="api-token-perm" value="${esc(p)}" ${p === 'view' ? 'checked' : ''}> ${esc(label(p))}</label>`).join('')}
+				</div>
+				<label class="${note} block mt-3">Expires
+					<select id="api-token-days" class="${field} mt-1">
+						<option value="">Never</option><option value="30">In 30 days</option><option value="90" selected>In 90 days</option><option value="365">In a year</option>
+					</select></label>
+				<p id="api-token-error" class="hidden text-sm text-red-500 mt-2"></p>
+				<button onclick="ServerApp.createApiToken(this)" class="mt-3 px-4 py-2 rounded text-sm font-bold text-white bg-theme hover-bg-theme">Make token</button>
+			</details>`;
+	},
+
+	apiTokenScope() {
+		const some = (document.querySelector('input[name="api-token-scope"]:checked') || {}).value === 'some';
+		document.getElementById('api-token-servers').classList.toggle('hidden', !some);
+	},
+
+	async createApiToken(button) {
+		const err = document.getElementById('api-token-error');
+		const perms = [...document.querySelectorAll('.api-token-perm:checked')].map(b => b.value);
+		const some = (document.querySelector('input[name="api-token-scope"]:checked') || {}).value === 'some';
+		const keys = some ? [...document.querySelectorAll('.api-token-server:checked')].map(b => b.value) : ['*'];
+		const grants = Object.fromEntries(keys.map(k => [k, perms]));
+		const days = document.getElementById('api-token-days').value;
+		button.disabled = true;
+		const res = await fetch('/api/settings/api-tokens', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: document.getElementById('api-token-name').value, grants, days: days ? parseInt(days, 10) : null })
+		});
+		button.disabled = false;
+		if (!res.ok) { err.textContent = await this.apiError(res); err.classList.remove('hidden'); return; }
+		this.loadApiTokens(await res.json());
+	},
+
+	async copyApiToken(button) {
+		const input = document.getElementById('api-token-made');
+		try { await navigator.clipboard.writeText(input.value); }
+		catch (e) { input.select(); }
+		button.innerText = 'Copied';
+	},
+
+	async revokeApiToken(id, name) {
+		if (!confirm(`Revoke the token ${name}? Scripts using it stop working at once.`)) return;
+		const res = await fetch(`/api/settings/api-tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+		if (!res.ok) alert(`Couldn't revoke it: ${await this.apiError(res)}`);
+		this.loadApiTokens();
 	},
 
 	async loadSetupSettings() {
@@ -6413,6 +6553,27 @@ const ServerApp = {
 		const t = this.terminalInfo || {};
 		const name = nodeName || (this.dashData && this.dashData.host && (this.dashData.host.name || this.dashData.host.hostname));
 		RPTerminal.start({ node: nodeId || '', name, idleMinutes: t.idle_minutes });
+	},
+
+	// 1.25: a master admin opens a node's own panel signed in (the node allows it unless its admin
+	// turned it off under Panel Settings > Cluster)
+	canSignInToNode(n) {
+		return !!(this.isAdmin() && n.state === 'ok' && (n.cluster_api || 1) >= 10 && n.master_sign_in);
+	},
+
+	async openNodeSignedIn(nodeId, button) {
+		const win = window.open('', '_blank');          // now, while the click still counts (pop-up blockers)
+		button.disabled = true;
+		const res = await fetch(`/api/cluster/nodes/${encodeURIComponent(nodeId)}/sign-in`, { method: 'POST' });
+		button.disabled = false;
+		if (!res.ok) {
+			const msg = await this.apiError(res);
+			if (win) win.close();
+			alert(`Couldn't open it signed in: ${msg}`);
+			return;
+		}
+		const { url } = await res.json();
+		if (win) { win.opener = null; win.location.href = url; } else window.location.href = url;
 	},
 
 	canOpenNodeTerminal(n) {
@@ -7556,7 +7717,9 @@ const ServerApp = {
 						</div>
 						<div class="flex flex-wrap justify-end items-center gap-3">
 						${this.canOpenNodeTerminal(n) ? `<button onclick="ServerApp.openTerminal(${this.jsArg(n.local ? '' : n.id)}, ${this.jsArg(n.name)})" title="A shell on this machine, as a Linux account" class="${btn} bg-gray-500 hover:bg-gray-600">⌨️ Terminal</button>` : ''}
-						${n.local ? '' : `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-sm underline text-theme whitespace-nowrap">Open dashboard ↗</a>`}
+						${n.local ? '' : this.canSignInToNode(n)
+							? `<button onclick="ServerApp.openNodeSignedIn(${this.jsArg(n.id)}, this)" title="Opens ${esc(n.name)}'s own panel, signed in as you" class="text-sm underline text-theme whitespace-nowrap">Open dashboard ↗</button>`
+							: `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-sm underline text-theme whitespace-nowrap">Open dashboard ↗</a>`}
 						</div>
 					</div>
 					${ok ? '' : `<p class="mx-4 mb-3 text-sm p-2 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200">⚠️ ${esc(this.clusterStates[n.state] || n.state)}${n.error ? ` <span class="text-xs">(${esc(n.error)})</span>` : ''}</p>`}
@@ -7808,6 +7971,10 @@ const ServerApp = {
 			box.innerHTML = `
 				<p class="text-sm text-gray-700 dark:text-gray-300 mb-2">This panel is a <b>node</b> of cluster <b>${esc(d.name)}</b>. Its master, <b>${esc(d.master_name)}</b> (<span class="font-mono">${esc(d.master_url)}</span>), can see and manage its game servers (every tab, creating servers, Java and Phantom). It can't change this panel's users, settings or HTTPS, or erase a server's files.</p>
 				<p class="${note} mb-2">Last contact from the master: ${esc(this.fmtTime(d.last_used))}${d.last_ip ? ' from ' + esc(d.last_ip) : ''}.</p>
+				<label class="flex items-start gap-2 mb-3 text-sm cursor-pointer">
+					<input type="checkbox" id="cl-master-sign-in" ${d.master_sign_in ? 'checked' : ''} onchange="ServerApp.saveMasterSignIn(this)" class="mt-1">
+					<span><b class="text-gray-900 dark:text-white">Let the master's admins sign in here</b><br><span class="${note}">Admins on ${esc(d.master_name)} can click <b>Open dashboard</b> on its Cluster page and land on this panel signed in, as an admin, without an account here. Turn it off to make them sign in with an account of this panel.</span></span>
+				</label>
 				${caLine}
 				<button onclick="ServerApp.leaveCluster(false)" class="${small}">Leave cluster</button>
 				<p id="cl-error" class="hidden text-sm text-red-500 mt-2"></p>`;
@@ -7932,6 +8099,12 @@ const ServerApp = {
 		this.clusterError('Joining...');
 		const data = await this.clusterPost('/api/settings/cluster/join', { code });
 		if (data) this.showRestarting(data.url, 'Your browser will warn about the certificate until you import the cluster CA.');
+	},
+
+	async saveMasterSignIn(box) {
+		const res = await fetch('/api/settings/master-sign-in', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ enabled: box.checked }) });
+		if (!res.ok) { alert(await this.apiError(res)); box.checked = !box.checked; }
 	},
 
 	async leaveCluster(dissolve) {

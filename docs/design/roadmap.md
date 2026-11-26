@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.24.1 (26 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) removing the panel safely (1.23.2) and mixed Linux and Windows clusters with Windows Hello sign-in (1.24) with its Windows cluster fixes (1.24.1) shipped; API tokens (1.25) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.24.1 (26 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) removing the panel safely (1.23.2) and mixed Linux and Windows clusters with Windows Hello sign-in (1.24) with its Windows cluster fixes (1.24.1) shipped; API tokens and Start at boot (1.25) next, then sleep mode (1.26), with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -2337,6 +2337,68 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     of allowed routes and, after 1.18, the servers they may touch. Shown once, revocable, and
     logged under the token's name. Per-server permissions moved to 1.18. Planned as 2.0 until
     26 Nov 2026, when Quentin chose to keep numbering releases 1.24, 1.25 and on.
+
+    **As built (1.25):** Panel Settings has an **API tokens** section, and `redstonepanel token
+    list|create|revoke` does the same from a prompt. A token is a name, the servers it may touch
+    (every server, including later ones, or chosen ones, also on cluster nodes) and the same
+    permissions as a 1.18 helper account, with view always included, and an expiry (never, 30, 90
+    or 365 days; 90 by default). It looks like `rpa_<8 hex id>_<43 random characters>`, is shown
+    once, and is kept only as an scrypt hash in `api-tokens.json` (0600); checked hashes are
+    remembered for 60 seconds so a busy script doesn't cost a hash per request. A script sends
+    `Authorization: Bearer rpa_...`. Rather than a second allowlist, a token goes through the
+    same per-route rules as a helper (`core/grants.py`), so it can never reach the admin areas
+    (users, panel settings, node-only and cluster routes, creating or deleting servers), sign-in
+    and password routes or the terminal. Wrong tokens count towards the 5-in-10-minutes sign-in
+    limit per address. Every change a token makes is logged as `[API] token:NAME: METHOD path (from
+    ip)`; making and revoking tokens is logged with who did it. Renaming or deleting a server
+    updates or drops it from every token, as for helpers. Tests: `tests/test_apitokens.py`, and
+    `test-install.sh` (a token from the CLI restarts its server, gets 403 for users, settings,
+    tokens and passwords, 401 for a wrong token and at once after revoking; the file is 0600 and
+    holds no token).
+
+31. **Start at boot, per server.** Asked for by Quentin on 26 Nov 2026: some servers are only
+    played now and then and shouldn't start every time the machine does. **As built (1.25):** a
+    **Start at boot** switch at the top of the Maintenance tab (needs the settings permission;
+    hidden for nodes older than 1.25) and `redstonepanel boot NAME on|off`. On Linux it enables or
+    disables the server's systemd unit; on Windows it sets the service's start type to Automatic
+    or Manual. Start, Stop, Restart, scheduled restarts and restarts after a crash work as before.
+    The choice is kept in `boot.json` (only the servers turned off) and applied wherever the panel
+    sets a server up again, so a restore, a reinstall of the panel, taking over a found server
+    and a move to another node (the move carries it; an older member means on) keep it. Deleting a
+    server for good forgets it. Tests: `tests/test_bootstart.py`, and `test-install.sh` (off from
+    the page and the CLI, `systemctl is-enabled` follows, the server keeps running, logged).
+
+33. **Open dashboard, signed in, from the master.** Asked for by Quentin on 26 Nov 2026: a node
+    on a PC someone else was using had no account he knew, so he couldn't reach its Update now.
+    **As built (1.25):** an admin's **Open dashboard ↗** on the master's Cluster page asks the
+    node (`POST /api/cluster/sign-in`, node token, contract 10) for a ticket signed with the
+    node's own secret, good for 60 seconds and once. The browser opens
+    `/api/auth/master-sign-in?ticket=...` on the node, which sets an ordinary session cookie for
+    `<admin>@<master>` with the admin role (source `master`) through a small page that then loads
+    the dashboard. The session is checked on every request against the cluster state: it ends when
+    the node leaves, gets a new master (epoch) or turns **Let the master's admins sign in here**
+    off (Settings → Cluster on the node; on by default, so a node nobody can sign in to is still
+    reachable). It has no account on the node: `/api/auth/*` other than `me` and `logout` is
+    refused. Wrong or used tickets count towards the sign-in limit. This changes rule "a master
+    never changes a node's users or settings" for admins who click through, which is why the node
+    can turn it off. Tests: `tests/test_mastersignin.py`, and `test-cluster.sh` (link, admin on
+    the node, its Users page, no account to change, once only, off ends the session and refuses
+    new links, a promoted master ends the old master's sessions).
+
+### 1.26: sleep mode (start when a player joins)
+
+32. **Sleep mode.** Asked for by Quentin on 26 Nov 2026, after Start at boot: a server that
+    nobody is playing on stops by itself, and starts again when someone tries to join. It saves
+    memory and CPU on machines that hold several servers. **How:** after the server has been
+    empty for a chosen time (for example 15 minutes, read from the player count the panel already
+    has), the panel stops it and listens on its game port itself. For Java it answers the server
+    list ping with a "Sleeping: join to wake it" message and, when someone joins, starts the
+    server and tells them to join again in about a minute; for Bedrock it answers the RakNet ping
+    the same way and starts the server on the first connection attempt. The listener lets go of
+    the port before the server starts. Off by default, per server, on Linux and Windows, and
+    cluster nodes do it on their own (the master only shows "sleeping"). Works with Start at boot
+    off. Not for servers behind a proxy (Velocity or BungeeCord) or with Phantom until tested.
+    **Size:** about two weeks.
 
 ## Groundwork (do alongside, before promoting)
 

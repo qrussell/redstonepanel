@@ -30,6 +30,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Back up a world, or put one back | [Backups](#9-backups) |
 | Keep backups off this machine (NAS, Backblaze B2, S3) | [Off-site copies](#off-site-copies-ssh-or-s3-storage) |
 | Restart a server every night | [Scheduled restarts](#scheduled-restarts) |
+| Keep a server from starting when the machine starts | [Start at boot](#start-at-boot) |
 | Find out why a server lags | [Performance](#performance) |
 | Give a server more memory, or limit it | [Memory and limits](#memory-and-limits) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
@@ -43,6 +44,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Give a friend access to only some servers | [What a helper may do](#what-a-helper-may-do) |
 | Move files with FileZilla or WinSCP | [SFTP](#sftp-filezilla-winscp) |
 | Open a shell on the machine in the browser | [Terminal](#terminal) |
+| Let a script or Discord bot start servers or make backups | [API tokens](#api-tokens) |
 | Turn on HTTPS | [Panel Settings](#17-panel-settings-name-https-sign-in) |
 | Manage servers on several machines | [Clusters](#18-clusters) |
 | Fix "players can't connect" or a lock-out | [Troubleshooting](#20-troubleshooting) |
@@ -51,6 +53,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.25.0 | **API tokens** for scripts and bots, a per-server **Start at boot** switch, and **Open dashboard** from the master signed in on a node. | [API tokens](#api-tokens), [Start at boot](#start-at-boot), [Accounts in a cluster](#accounts-in-a-cluster) |
 | 1.24.1 | A Windows PC that joins or creates a cluster opens its HTTPS port (8443) in the firewall; a server created on a node shows without a reload; a master's Dashboard and Cluster page load much faster. | [Clusters](#18-clusters) |
 | 1.24.0 | **Mixed Linux and Windows clusters**, SFTP on Windows, **Windows Hello** passkeys (or a phone), an easier first password on Windows, and **Remember this device** for 30 days. | [Clusters](#18-clusters), [Windows Hello](#windows-hello-passkeys), [Remember this device](#remember-this-device) |
 | 1.23.2 | **Remove RedstonePanel** under Panel Settings (and `sudo redstonepanel uninstall`) backs up every server and asks what happens to each one before the panel goes. | [Removing RedstonePanel](#removing-redstonepanel) |
@@ -1167,6 +1170,23 @@ aren't allowed, and **Notifications** can send a message when a player joins or 
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/maintenance.png"><img src="images/maintenance.png" alt="Maintenance tab"></picture>
 
+### Start at boot
+
+At the top of the tab. Ticked (the default), the server starts by itself whenever the machine
+starts. Untick it for a server you only play now and then: after a reboot it stays stopped until
+someone clicks **Start**. Nothing else changes: **Start**, **Stop**, **Restart**, scheduled
+restarts and restarts after a crash work as before, and unticking it doesn't stop a server
+that's running.
+
+- On Linux it enables or disables the server's systemd service; on Windows it sets the service
+  to start **Automatic** or **Manual**.
+- The choice is kept when you restore the server, reinstall the panel or move the server to
+  another cluster member.
+- Helpers need the **Settings** permission for that server to change it.
+- From a prompt: `sudo redstonepanel boot minecraft-NAME off` (or `on`).
+
+### Templates, export, update and uninstall
+
 - **Save as Template**: saves this server's properties and permissions as a reusable
   template.
 - **Apply Template**: overwrites this server's settings with a template, keeping its ports.
@@ -2173,6 +2193,37 @@ go back to `/opt`.
   disk mounted read-only or `noexec`, or a folder the `minecraft` account can't get into.
 - In a cluster, each machine has its own servers folder, set in that machine's own panel.
 
+### API tokens
+
+For scripts and bots: a Discord bot that starts a server when someone asks, a script that makes
+a backup before you change something, a page that shows who is online. Each token may do only
+what you tick, on the servers you choose, in the same way as a
+[helper's permissions](#what-a-helper-may-do). A token is never an admin: it can't manage
+users or panel settings, create or delete servers, open the terminal or change a password.
+
+1. In **Panel Settings → API tokens**, open **New token**.
+2. Give it a name you'll recognise later (it shows in the log), choose **Every server** (including
+   ones made later) or **Only these**, tick what it may do, and pick when it expires (never, in
+   30 or 90 days, or in a year).
+3. Click **Make token** and copy it straight away. It is shown only once; the panel keeps only a
+   fingerprint of it.
+
+A script sends it in a header:
+
+```bash
+curl -H "Authorization: Bearer rpa_..." https://panel.example:8443/api/servers
+curl -H "Authorization: Bearer rpa_..." -H "Content-Type: application/json"      -d '{"action":"restart"}' https://panel.example:8443/api/servers/minecraft-survival/action
+```
+
+Every route is described at `/docs` on your panel. Add `-k` while the panel's certificate is
+self-signed. The list shows when each token was last used and from where. **Revoke** stops a
+token at once. Everything a token changes is in the panel log as `token:NAME`. Wrong tokens count
+towards the sign-in limit (5 in 10 minutes from one address).
+
+From a prompt: `sudo redstonepanel token list`, `sudo redstonepanel token create "Discord bot"
+--perms view,power --servers minecraft-survival --days 90`, and `sudo redstonepanel token
+revoke "Discord bot"`.
+
 ## 18. Clusters
 
 Running RedstonePanel on several machines? One panel can be the **master** of a cluster and
@@ -2293,6 +2344,14 @@ Linux or Windows:
 - **A node's own accounts keep working on the node.** Signing in at a node's own address shows
   only that machine, as a standalone panel would. The master can never change a node's users,
   settings or HTTPS, or erase a server's files.
+- **Open dashboard, signed in (1.25).** On the master's Cluster page, an admin's
+  **Open dashboard ↗** on a node opens that node's own panel in a new tab, already signed in as
+  `you@<master>` with the admin role, so you can reach its Users, Settings and **Update now**
+  without an account there. The master gets a one-use link from the node that works for a
+  minute. The sign-in has no account on the node, so it can't change a password or two-factor
+  there, and it ends when the node leaves the cluster or gets a new master. Each node decides:
+  **Settings → Cluster → Let the master's admins sign in here** (on by default) on the node.
+  Both panels log it.
 - **So:** give each person one account, on the master. Keep a working admin on every node too
   (the one made at install is enough), for when the master is down.
 

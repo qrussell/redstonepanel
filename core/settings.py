@@ -77,6 +77,7 @@ DEFAULTS = {
     "terminal_recent_minutes": 15,        # a Linux sign-in opens with no password for this long
     "terminal_allow_root": False,         # typing root at the login prompt
     "terminal_from_master": False,        # on a cluster node: the master may open terminals here
+    "master_sign_in": True,               # 1.25, on a cluster node: the master's admins may open it signed in
 }
 JOIN_PROXIES_MAX = 8
 TERMINAL_KEYS = ("terminal_enabled", "terminal_idle_minutes", "terminal_recent_minutes", "terminal_allow_root",
@@ -213,6 +214,8 @@ def validate(new):
         raise SettingsError("Enter the proxy's address (or turn on Cloudflare) before allowing only the proxy.")
     s["join_url"] = clean_join_url(s["join_url"])
 
+    if not isinstance(s["master_sign_in"], bool):
+        raise SettingsError("Letting the master's admins sign in must be on or off.")
     for key in ("terminal_enabled", "terminal_allow_root", "terminal_from_master"):
         if not isinstance(s[key], bool):
             raise SettingsError("Terminal settings must be on or off.")

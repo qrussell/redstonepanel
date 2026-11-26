@@ -123,6 +123,32 @@ code_for() { dx rpa "curl -sk -o /dev/null -w '%{http_code}' -X $1 -H 'Authoriza
 [ "$(dx rpa "curl -sk -o /dev/null -w '%{http_code}' https://$B:8443/api/cluster/hello")" = 401 ] \
     && ok "hello needs the token" || bad "hello needs the token"
 
+# --- 1.25: Open dashboard, signed in. rpa stands in for the admin's browser (cookie jar /tmp/rpbjar).
+r=$(api rpa POST "/api/cluster/nodes/$rpb_id/sign-in")
+url=$(echo "$r" | json "d['url']" 2>/dev/null)
+echo "$url" | grep -q "^https://$B:8443/api/auth/master-sign-in?ticket=" && ok "sign-in: the master gives a link to rpb" \
+    || { bad "sign-in: the master gives a link to rpb"; echo "$r"; }
+check "  the link signs in on rpb" dx rpa "curl -skf -c /tmp/rpbjar '$url' | grep -q 'url=/'"
+me=$(dx rpa "curl -sk -b /tmp/rpbjar https://$B:8443/api/auth/me")
+echo "$me" | json "(d['username'], d['role'], d['source'])" | grep -q "('admin@.*', 'admin', 'master')" \
+    && ok "  as the master's admin, an admin on rpb" || { bad "  as the master's admin"; echo "$me"; }
+[ "$(dx rpa "curl -sk -o /dev/null -w '%{http_code}' -b /tmp/rpbjar https://$B:8443/api/users")" = 200 ] \
+    && ok "  rpb's Users page opens" || bad "  rpb's Users page opens"
+[ "$(dx rpa "curl -sk -o /dev/null -w '%{http_code}' -b /tmp/rpbjar -H 'Content-Type: application/json' -d '{}' https://$B:8443/api/auth/password")" = 403 ] \
+    && ok "  no account on rpb to change" || bad "  no account on rpb to change"
+[ "$(dx rpa "curl -sk -o /dev/null -w '%{http_code}' '$url'")" = 403 ] && ok "  the link works once" || bad "  the link works once"
+check "  rpb logged it" dx rpb "grep -q '\[AUTH\] admin@.* signed in from .* with Open dashboard' /var/log/redstonepanel/panel.log"
+dx rpb "python3 -c \"import json;f='/var/lib/redstonepanel/settings.json';s=json.load(open(f));s['master_sign_in']=False;json.dump(s,open(f,'w'))\""
+sleep 2   # the settings cache
+[ "$(dx rpa "curl -sk -o /dev/null -w '%{http_code}' -b /tmp/rpbjar https://$B:8443/api/users")" = 401 ] \
+    && ok "  turned off on rpb: the session ends" || bad "  turned off on rpb: the session ends"
+api rpa POST "/api/cluster/nodes/$rpb_id/sign-in" | grep -q "doesn't let the master's admins sign in" \
+    && ok "  and the master gets no link" || bad "  and the master gets no link"
+dx rpb "python3 -c \"import json;f='/var/lib/redstonepanel/settings.json';s=json.load(open(f));s['master_sign_in']=True;json.dump(s,open(f,'w'))\""
+sleep 2
+url=$(api rpa POST "/api/cluster/nodes/$rpb_id/sign-in" | json "d['url']")
+dx rpa "curl -skf -c /tmp/rpbjar '$url'" >/dev/null && ok "  on again: signed in again" || bad "  on again: signed in again"
+
 # --- renew rpb's certificate from the master
 r=$(api rpa POST "/api/settings/cluster/nodes/$rpb_id/renew")
 echo "$r" | grep -q '"cert_expires"' && ok "renewed rpb's certificate" || { bad "renewed rpb's certificate"; echo "$r"; }
@@ -140,6 +166,8 @@ login rpc
 ov=$(api rpc GET /api/cluster/overview)
 echo "$ov" | json "' '.join(n['state'] for n in d['nodes'])" | grep -qx "ok ok" && ok "new master sees itself and rpb" \
     || { bad "new master sees itself and rpb"; echo "$ov"; }
+[ "$(dx rpa "curl -sk -o /dev/null -w '%{http_code}' -b /tmp/rpbjar https://$B:8443/api/users")" = 401 ] \
+    && ok "a sign-in from the old master ends on rpb" || bad "a sign-in from the old master ends on rpb"
 sleep 11   # the old master's overview cache
 ov=$(api rpa GET /api/cluster/overview)
 echo "$ov" | json "[n['state'] for n in d['nodes'] if n.get('url','').startswith('https://$B')][0]" | grep -qx rejected \
