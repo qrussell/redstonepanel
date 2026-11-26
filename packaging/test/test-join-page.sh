@@ -183,6 +183,10 @@ for p in $PATHS / /static/index.html /static/login.html /static/js/app.js /stati
          /join/survival/status.json/x /join/nope /favicon.ico /robots.txt /.env /join/assets/ ; do
     N=$((N + 1))
     c=$(dx jp "curl -s --path-as-is -m 10 -o /dev/null -w '%{http_code}' '$PUB$p'")
+    if [ "$c" = 429 ]; then          # more routes than the 240-a-minute limit: wait it out, ask again
+        sleep 61
+        c=$(dx jp "curl -s --path-as-is -m 10 -o /dev/null -w '%{http_code}' '$PUB$p'")
+    fi
     [ "$c" = 404 ] || LEAK="$LEAK $p=$c"
 done
 [ -z "$LEAK" ] && [ "$N" -gt 150 ] && ok "all $N panel routes and files tried on the public port: Not found" || bad "the public port answered:$LEAK (tried $N)"
