@@ -490,6 +490,18 @@ class JoinPages(Base):
         self.assertNotIn(b'id="stop"', self.req("/join/survival", cookie=pat).body)
         self.assertEqual(self.req("/join/survival/stop", "POST", cookie=pat, start="1").status, 403)
 
+    def test_where_a_form_came_from(self):
+        # Browsers send "Origin: null" under Referrer-Policy no-referrer; Sec-Fetch-Site still says
+        def head_of(**h):
+            return lambda name: h.get(name.decode().replace("-", "_"))
+        self.assertEqual(S._origin_of(head_of(origin="http://localhost:18444")), "http://localhost:18444")
+        self.assertEqual(S._origin_of(head_of(origin="null", sec_fetch_site="same-origin", host="localhost:18444")),
+                         "//localhost:18444")
+        self.assertIsNone(S._origin_of(head_of(origin="null", sec_fetch_site="cross-site", host="localhost:18444")))
+        self.assertTrue(S._same_site(S._origin_of(head_of(origin="null", sec_fetch_site="same-origin",
+                                                          host="localhost:18444")), "localhost:18444"))
+        self.assertEqual(S.SECURITY_HEADERS["Referrer-Policy"], "same-origin")
+
     def test_permissions_see_start_stop(self):
         grants.set_user("pat", {"minecraft-survival": ["view", "power"]})
         self.page(access="permission", signin_panel=True,

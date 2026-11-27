@@ -61,7 +61,10 @@ SECURITY_HEADERS = {
                                "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
+    # same-origin, not no-referrer (1.28): with no-referrer browsers send "Origin: null" on the
+    # sign-in and sign-out forms, which then can't be told from a form on another site. Other sites
+    # (Discord, Modrinth) still get no Referer.
+    "Referrer-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
     "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
 }
@@ -896,6 +899,20 @@ def _stop(method, key, cfg, ip, start_header, visitor):
                   content_type="application/json; charset=utf-8")
 
 
+def _origin_of(head):
+    """Where a form was posted from: Origin, else Referer. An "Origin: null" (an older page with
+    no-referrer, a privacy setting) counts as this site only when the browser itself says so in
+    Sec-Fetch-Site, which a page can't set."""
+    origin = head(b"origin")
+    if origin and origin != "null":
+        return origin
+    if head(b"referer"):
+        return head(b"referer")
+    if head(b"sec-fetch-site") == "same-origin" and head(b"host"):
+        return "//" + head(b"host")
+    return None
+
+
 async def app(scope, receive, send):
     """The whole public web server: every request goes through handle()."""
     if scope["type"] != "http":
@@ -916,7 +933,7 @@ async def app(scope, receive, send):
             more = msg.get("more_body", False)
     answer = await run_in_threadpool(handle, scope.get("method", ""), path, client[0], forwarded,
                                      None, head(b"cf-connecting-ip"), head(b"x-join-start"), head(b"cookie"),
-                                     body[:BODY_MAX], head(b"origin") or head(b"referer"), head(b"host"),
+                                     body[:BODY_MAX], _origin_of(head), head(b"host"),
                                      (scope.get("query_string") or b"").decode("latin-1"))
     await send({"type": "http.response.start", "status": answer.status, "headers": answer.headers()})
     await send({"type": "http.response.body", "body": b"" if scope.get("method") == "HEAD" else answer.body})
