@@ -32,7 +32,8 @@ try:
 except (ImportError, RuntimeError):
     HAVE_FASTAPI = False
 
-TOKEN = "MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GaBcDe.abcdefghijklmnopqrstuvwxyz0123456789AB"
+# Not a real token, and built so secret scanners (GitHub push protection) don't take it for one
+TOKEN = "-".join(["not", "a", "real", "discord", "bot", "token"]) + "_" + "x" * 40
 GUILD, OTHER_GUILD, ROLE = "111111111111111111", "222222222222222222", "333333333333333333"
 
 
