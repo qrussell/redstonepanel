@@ -2494,6 +2494,8 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     authorization code with `identify guilds.members.read`, the token thrown away after reading the
     member, re-checks through the 1.27 bot when it's there; the same Discord application as the bot.
     Plan: [discord-sign-in.md](discord-sign-in.md). **Size:** about two and a half weeks.
+    **Built** 27 Nov 2026 on `feature/discord-sign-in` (see "As built" in the plan); released with
+    1.28.0.
 
 ## Groundwork (do alongside, before promoting)
 

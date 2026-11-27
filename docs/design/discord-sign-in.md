@@ -1,7 +1,6 @@
 # Sign in with Discord, and who can see a join page
 
-Status: **plan, waiting for Quentin's go** · Target: 1.28 (after 1.27 Discord /start is released) ·
-Written 27 Nov 2026
+Status: **built for 1.28** (go from Quentin 27 Nov 2026), not yet released · Written 27 Nov 2026
 
 Asked for by Quentin on 27 Nov 2026: "communities that selfhost would find this a useful feature".
 Discord sign-in moves into the free core. Microsoft, Google, GitHub, Apple and Steam sign-in stay in
@@ -248,6 +247,29 @@ choices, panel account sign-in on the page, the permission table and Stop about 
 1. **Can a Discord role make someone a panel admin?** **Decided 27 Nov 2026 (Quentin): no.**
    The panel runs as root (SYSTEM on Windows). Discord roles give helper permissions only; an admin
    signs in with Discord by **linking** their own admin account, which keeps its panel 2FA.
-2. **One release or two?** Recommended: both parts in 1.28, since they share the Discord sign-in
-   code and the join page is the part communities will notice. The other choice: 1.28 panel sign-in,
-   1.29 join pages.
+2. **One release or two?** Both parts in 1.28 (Quentin's go, 27 Nov 2026, "Go ahead to 1.28").
+
+## As built (27 Nov 2026)
+
+- **Code:** `core/discordauth.py` (settings in `discord-signin.json`, 0600; the OAuth2 code flow;
+  role grants; linked accounts; member re-checks through the 1.27 bot every 10 minutes, cached).
+  `core/auth.py` reads Discord sessions (`src: "discord"`, the name in `dn` because `n` is the
+  session nonce). `core/grants.py` treats Discord sign-ins like API tokens: their own grants, never
+  admin. `core/joinpage.py` has the access choices, `gate()`, `abilities()` and Stop;
+  `core/joinsite.py` the sign-in forms, the Discord callback on the join port and the `rp_join`
+  cookie. Everything goes through `core.platform` and runs the same on Linux and Windows.
+- **Routes:** `GET /api/auth/discord/{available,start,callback}` (public),
+  `GET/POST/DELETE /api/auth/discord/link`, `GET/PUT /api/settings/discord-signin`,
+  `PUT/DELETE /api/settings/discord-signin/accounts/{id}`; on the join port
+  `POST /join/_signin`, `/join/_signin/code`, `/join/_signout`, `GET /join/_discord/start` and
+  `/join/_discord/callback`, and `POST /join/<link>/stop`.
+- **Differences from the plan:** Discord visitors on a join page without the bot sign in again
+  after 30 minutes (roles can't be re-checked without it); the panel keeps roles for the sign-in
+  (12 hours) in that case. Role sign-ins can't change a password. The callback answers with a
+  short page that moves on, because the panel's Strict cookie isn't sent on Discord's redirect.
+  The sign-in form on the join port checks that the Origin matches the Host.
+- **Tests:** `tests/test_discordauth.py` (a Discord stand-in: settings, the flow, routes, join
+  pages); `packaging/test/test-join-page.sh` section "1.28" (panel account sign-in on a page,
+  See/Start/Stop by account, Stop and Start of a real server, cookie flags, forms from other sites).
+  Discord itself can't be reached from the cloud test containers; it was tested on a real Discord
+  server separately (see the merge request).

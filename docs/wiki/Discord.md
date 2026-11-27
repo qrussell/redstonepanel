@@ -154,6 +154,22 @@ servers, only the ones you choose, and only in the Discord servers and for the r
 Set it up in **Panel Settings → Discord**; the steps are in the User Manual under
 [Discord /start](../guide/README.md#discord-start).
 
+### Sign in with Discord, and join pages for your members
+
+From 1.28 your roles can do more than show channels:
+
+- **Sign in with Discord** on the panel. Give someone the **Staff** role and a role row in
+  **Panel Settings → Sign in with Discord** lets them, say, use the console and players tabs on
+  your servers. A role never makes anyone a panel admin; admins link their own account.
+- **Join pages for members only.** A server's join page can ask visitors to sign in with Discord
+  and to be in your Discord server, and show your invite link to those who aren't yet. Roles
+  decide who sees the address, who may **Start** the server and who may **Stop** it, for example
+  **Survival** may start it and **Staff** may also stop it.
+
+The steps are in the User Manual under
+[Sign in with Discord](../guide/README.md#sign-in-with-discord) and
+[Who can see a join page](../guide/README.md#who-can-see-a-join-page).
+
 ## 6. Let players pick their servers
 
 Players need the right roles to see a server's channels. Three ways to give them out:
