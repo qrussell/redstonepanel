@@ -7540,7 +7540,7 @@ const ServerApp = {
 		return `<div class="rounded border border-gray-200 dark:border-gray-700 p-3 space-y-2">
 			<p class="font-bold text-sm text-gray-900 dark:text-white">Who can see this page</p>
 			${radio('anyone', 'Anyone with the link', 'As before: no sign-in.')}
-			${radio('signed', 'Anyone who signs in', 'Visitors sign in first. Everyone signed in sees how to join, and can press Start if you allow it below.')}
+			${radio('signed', 'Anyone who signs in', 'Visitors sign in first. Everyone signed in sees how to join, and can press Start if you allow it below. Nobody gets Stop: for Stop, or different rights per role, choose Signed in, by permission.')}
 			${radio('permission', 'Signed in, by permission', 'Choose who may see how to join, who may start the server and who may stop it.')}
 			<div id="join-access-more-${id}" class="${p.access === 'anyone' ? 'hidden' : ''} space-y-2 pl-6">
 				<p class="${note}">How visitors sign in:</p>

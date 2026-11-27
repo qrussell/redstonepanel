@@ -682,7 +682,8 @@ who may press **Start** and **Stop**:
 
 - **Anyone with the link**: as before, no sign-in.
 - **Anyone who signs in**: visitors sign in first. Everyone signed in sees how to join, and can
-  press **Start the server** if **Let visitors start the server** is ticked.
+  press **Start the server** if **Let visitors start the server** is ticked. Nobody gets **Stop**
+  in this mode, and role rows don't count.
 - **Signed in, by permission**: you choose, row by row, who may **See how to join**, **Start**
   and **Stop**. Rows add up. A row can be anyone who signs in, a panel account, panel accounts
   by their permissions on this server (**View** lets them see, **Start only** lets them start,
