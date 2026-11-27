@@ -217,14 +217,14 @@ the join page for members, asking their Minecraft name once.
 - The join site's password form shares the panel's sign-in limits and refuses Windows and Linux
   accounts; it is off unless a page uses it.
 - A blocked Discord account stays blocked whatever its roles.
-- The role table can't give more than its rows say; no role ever gives Admin
+- The role table can't give more than its rows say; no role ever gives Admin.
   (below), and then only with Discord 2FA.
 
 ## Tests
 
 - **Unit** (`tests/test_discordauth.py`, stand-in Discord API like `test_discordbot.py`): the full
   OAuth flow, bad or reused `state`, token exchange failure, no member, wrong roles, several roles
-  adding up, Admin rows, Discord 2FA required, blocked accounts, linking and unlinking, re-check
+  adding up, no role giving Admin, Discord 2FA required, blocked accounts, linking and unlinking, re-check
   after a role is removed (signed out), sign-in limit, the node allowlist decision, settings that
   never return the secret. Join site: the three access choices with and without Discord set up, panel account sign-in and its
   2FA step and shared limit, each permission row (account, server permissions, Discord member,
