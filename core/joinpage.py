@@ -205,6 +205,7 @@ ACCESS_LABELS = {"anyone": "open to anyone with the link", "signed": "for visito
 RULES_MAX = 50
 INVITE_RE = re.compile(r"^https://(?:discord\.gg|(?:www\.)?discord(?:app)?\.com/invite)/[A-Za-z0-9-]{2,32}/?$")
 NOTHING = {"see": False, "start": False, "stop": False}
+ANYONE = "anyone"     # 1.28 row: visitors who aren't signed in (see and Start, never Stop)
 
 
 def clean_invite(value):
@@ -228,10 +229,13 @@ def _clean_rule(r):
     elif who.startswith("discord_role:"):
         if not discordbot.ID_RE.match(who[13:]):
             raise JoinError("Choose a Discord role for each Discord row.")
-    elif who not in ("signed", "panel_perms", "discord_member"):
+    elif who not in ("signed", "panel_perms", "discord_member", ANYONE):
         raise JoinError("Unknown kind of permission row.")
     row = {"who": who, "see": bool(r.get("see")), "start": bool(r.get("start")), "stop": bool(r.get("stop")),
            "name": " ".join(str(r.get("name") or "").split())[:100]}
+    if who == ANYONE:
+        row["stop"] = False                  # stopping always needs a sign-in
+        row["see"] = row["see"] or row["start"]
     return row
 
 
@@ -275,6 +279,8 @@ def _clean_access(cfg, new):
 
 
 def _row_matches(who, visitor, key):
+    if who == ANYONE:
+        return NOTHING_ALL                   # whoever may open the page without signing in
     if visitor["kind"] == "panel":
         if who == "signed":
             return NOTHING_ALL
@@ -297,9 +303,26 @@ def _row_matches(who, visitor, key):
 NOTHING_ALL = {"see": True, "start": True, "stop": True}       # the row's own ticks apply
 
 
+def _anonymous(cfg):
+    """What the "Visitors who aren't signed in" row gives on a page by permission."""
+    if cfg.get("access") != "permission":
+        return dict(NOTHING)
+    out = dict(NOTHING)
+    for row in cfg.get("rules") or []:
+        if row["who"] == ANYONE:
+            out = {"see": row["see"] or row["start"], "start": row["start"], "stop": False}
+    return out
+
+
 def gate(cfg, visitor):
     """Why a visitor (or nobody) can't use a page at all, or None. "signin", "member" (signed in
-    with Discord but not in the Discord server) or "nothing"."""
+    with Discord but not in the Discord server) or "nothing". A page whose "Visitors who aren't
+    signed in" row lets them see it is open to everyone: signing in only adds to that."""
+    why = _gate(cfg, visitor)
+    return None if why and _anonymous(cfg)["see"] else why
+
+
+def _gate(cfg, visitor):
     if cfg.get("access", "anyone") == "anyone":
         return None
     if not visitor:
@@ -318,8 +341,8 @@ def abilities(cfg, key, visitor):
     access = cfg.get("access", "anyone")
     if access == "anyone":
         return {"see": True, "start": bool(cfg.get("allow_start")), "stop": False}
-    if gate(cfg, visitor):
-        return dict(NOTHING)
+    if _gate(cfg, visitor):
+        return _anonymous(cfg)               # not signed in (or not in a way this page takes)
     if access == "signed":
         return {"see": True, "start": bool(cfg.get("allow_start")), "stop": False}
     if visitor["kind"] == "panel" and visitor.get("role") == "admin":

@@ -540,6 +540,27 @@ class JoinPages(Base):
         self.page(access="anyone")
         self.assertEqual(self.req("/join/survival/stop", "POST", cookie=pat, start="1").status, 404)
 
+    def test_visitors_who_arent_signed_in_see_and_start(self):
+        grants.set_user("pat", {"minecraft-survival": ["view", "power"]})
+        self.page(access="permission", signin_panel=True,
+                  rules=[{"who": "anyone", "see": True, "start": True, "stop": True},     # stop is dropped
+                         {"who": "panel_perms", "see": True, "start": True, "stop": True}])
+        cfg = J.page(J.page_key("local", "minecraft-survival"))
+        self.assertFalse(cfg["rules"][0]["stop"])
+        self.assertEqual(J._anonymous(cfg), {"see": True, "start": True, "stop": False})
+        page = self.req("/join/survival").body
+        self.assertIn(b"play.example.org", page)                 # no sign-in needed to see it
+        self.assertIn(b"signin-more", page)                      # but one is offered
+        self.assertNotIn(b'id="stop"', page)
+        self.summaries["minecraft-survival"]["status"] = "offline"
+        with mock.patch.object(J, "_start_server"):
+            self.assertEqual(self.req("/join/survival/start", "POST", start="1").status, 202)
+        self.summaries["minecraft-survival"]["status"] = "online"
+        self.assertEqual(self.req("/join/survival/stop", "POST", start="1").status, 403)
+        pat = self.cookie_of(self.sign_in("pat", "pat-password"))
+        self.assertIn(b'id="stop"', self.req("/join/survival", cookie=pat).body)
+        self.assertNotIn(b"signin-more", self.req("/join/survival", cookie=pat).body)
+
     def discord_visit(self, code, next_path="/join/survival"):
         a = self.req("/join/_discord/start", query="next=" + next_path)
         self.assertEqual(a.status, 302, a.body)

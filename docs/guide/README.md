@@ -689,7 +689,10 @@ who may press **Start** and **Stop**:
   by their permissions on this server (**View** lets them see, **Start only** lets them start,
   **Start/stop/restart** lets them start and stop, as set on the [Users](#what-a-helper-may-do)
   page), anyone in your Discord
-  server, or a Discord role. Panel admins can always do everything. For example: anyone in
+  server, a Discord role, or **Visitors who aren't signed in**. That last row lets everyone with the
+  link see the page and press **Start** without signing in, while signing in adds what other rows
+  give (for example **Stop** for moderators); it can never give Stop. Panel admins can always do
+  everything. For example: anyone in
   your Discord server sees the address and may start the server, the **Moderators** role may
   also stop it.
 

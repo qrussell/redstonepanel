@@ -444,6 +444,11 @@ def render_page(view, ctx=None):
     if not see:
         return _shell(view["title"], body + _gate_block(view, ctx or {}),
                       refresh_path=f'/join/{quote(view["path"], safe="")}/status.json')
+    if ctx and not ctx.get("visitor") and (ctx.get("panel") or ctx.get("discord")):
+        # 1.28: a page by permission that visitors may see without signing in; signing in adds more
+        body += ('<section class="card"><details class="signin-more"><summary>Sign in</summary>'
+                 '<p class="small">Signed-in members may be able to do more here, such as stop the server.</p>'
+                 + _signin_options(ctx) + '</details></section>')
     if ctx and ctx.get("invite"):
         body += f'<section class="card"><h2>Our Discord</h2>{_invite(ctx)}</section>'
     if view["note"] or view["link"]:

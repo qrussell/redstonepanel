@@ -7514,6 +7514,7 @@ const ServerApp = {
 	// --- 1.28: who can see a join page, and Start and Stop by permission ---
 	joinRuleLabel(who, signin, saved) {
 		if (who === 'signed') return 'Anyone who signs in';
+		if (who === 'anyone') return 'Visitors who aren\'t signed in';
 		if (who === 'panel_perms') return 'Panel accounts, by their permissions on this server';
 		if (who === 'discord_member') return 'Anyone in our Discord server';
 		if (who.startsWith('panel:')) return `Panel account: ${who.slice(6)}`;
@@ -7533,7 +7534,7 @@ const ServerApp = {
 		const field = 'p-2 rounded bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white text-base md:text-sm';
 		const radio = (v, label, help) => `<label class="flex items-start gap-2 text-sm cursor-pointer"><input type="radio" name="join-access-${id}" value="${v}" ${p.access === v ? 'checked' : ''} onchange="ServerApp.joinAccessShow('${esc(key)}')" class="mt-1"><span><b class="text-gray-900 dark:text-white">${label}</b><br><span class="${note}">${help}</span></span></label>`;
 		const dOk = signin.discord, dSetup = signin.discord_setup;
-		const opts = [['signed', 'Anyone who signs in'], ['panel_perms', 'Panel accounts, by their permissions on this server'],
+		const opts = [['anyone', 'Visitors who aren\'t signed in (see and Start only)'], ['signed', 'Anyone who signs in'], ['panel_perms', 'Panel accounts, by their permissions on this server'],
 			['discord_member', 'Anyone in our Discord server'],
 			...(signin.roles || []).map(r => [`discord_role:${r.id}`, `Discord role: ${r.name}`]),
 			...(signin.accounts || []).map(u => [`panel:${u}`, `Panel account: ${u}`])];
@@ -7587,7 +7588,7 @@ const ServerApp = {
 		const tick = (r, i, k, label) => `<label class="inline-flex items-center gap-1 text-sm cursor-pointer min-h-[44px] md:min-h-0"><input type="checkbox" id="join-rule-${k}-${id}-${i}" ${r[k] ? 'checked' : ''}> ${label}</label>`;
 		box.innerHTML = rows.length ? rows.map((r, i) => `<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 border-b border-gray-100 dark:border-gray-700/60">
 				<span class="text-sm font-bold text-gray-900 dark:text-white break-words min-w-0">${esc(this.joinRuleLabel(r.who, this.joinSignin || {}, r))}</span>
-				<span class="flex flex-wrap items-center gap-3">${tick(r, i, 'see', 'See how to join')}${tick(r, i, 'start', 'Start')}${tick(r, i, 'stop', 'Stop')}
+				<span class="flex flex-wrap items-center gap-3">${tick(r, i, 'see', 'See how to join')}${tick(r, i, 'start', 'Start')}${r.who === 'anyone' ? '<span class="text-xs text-gray-500 dark:text-gray-400">Stop needs a sign-in</span>' : tick(r, i, 'stop', 'Stop')}
 				<button type="button" onclick="ServerApp.joinRuleRemove('${esc(key)}', ${i})" class="text-sm underline text-red-600 dark:text-red-400 min-h-[44px] md:min-h-0">Remove</button></span>
 			</div>`).join('') : '<p class="text-sm text-gray-500 dark:text-gray-400">No rows yet: nobody signed in can see the page.</p>';
 	},
