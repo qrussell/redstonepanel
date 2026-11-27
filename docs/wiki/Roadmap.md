@@ -76,6 +76,13 @@ can), and Windows 10 installs with an end-of-support note. Windows on ARM comes 
 - **Start the server from its join page.** An admin can let visitors of a server's public join
   page start it while it's stopped, with limits so nobody can start it over and over.
 
+### 1.27: Discord /start *(next)*
+
+- **Start a server from Discord.** People in your Discord type `/start`, pick a server, and the
+  panel starts it (or wakes it from sleep mode), then says when it's online and where to join.
+  The panel itself is the bot: paste a bot token in Panel Settings, choose the Discord servers
+  and roles that may use it and the servers it may start. Nothing to forward, Linux and Windows.
+
 ## Ideas under consideration
 
 Suggested after 1.15 and not scheduled yet. Each one fits the panel's rules; the ones marked ⭐

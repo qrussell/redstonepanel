@@ -2447,6 +2447,39 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     `tests/test_sleep.py` and `test-sleep.sh`. A Discord `/start` with an API token is planned for
     1.27.
 
+### 1.27: Discord /start
+
+35. **Start a server from Discord.** Asked for by Quentin on 26 Nov 2026, after sleep mode and
+    API tokens: friends who want to play shouldn't need the panel or the join page to start a
+    stopped or sleeping server. **How:** a `/start` slash command in the owner's Discord, built on
+    the 1.25 API token rules (a chosen set of servers, never more than starting them, logged by
+    name) and 1.26 sleep mode (a sleeping server is woken). **Size:** about a week.
+    **As built (1.27):** `core/discordbot.py`. Quentin chose the bot inside the panel over a
+    separate program calling the API with a token: one place to set it up, nothing to forward,
+    the same code on Linux and Windows. Panel Settings has a **Discord** section: the bot token
+    (kept in `discord.json`, 0600, never sent back to the browser; only its last four characters
+    are shown), **Answer /start in Discord**, the Discord servers it answers in (none until ticked,
+    so a bot someone else adds answers nowhere), optionally the roles that may use it, and the
+    servers it may start (every server, `*`, or chosen ones, keyed like API token grants, so
+    deleting or moving a server updates it). The panel keeps one outgoing connection to Discord's
+    gateway (v10, GUILDS intent only, heartbeat, resume, reconnect with backoff; a refused token
+    stops it and says so) through a small standard-library websocket client, and registers
+    `/start` (guild-only, one optional `server` option with autocomplete) with a bulk overwrite at
+    each connect. `/start` answers within Discord's 3 seconds: already online gives the address
+    (the join page's or the Port forwarding page's public address); otherwise it starts the
+    server through the same code as the join page's Start button (`joinpage.start_server`: a local
+    server is woken from sleep or started, a node's through the node's action route) and edits
+    its answer when the server answers its ping (5 minutes at most). Limits: one start per server
+    every 2 minutes and 5 per Discord user an hour. Answers never mention anyone
+    (`allowed_mentions` empty). Logged as `[DISCORD] discord:NAME (id) started X from Discord
+    (guild)`. It never stops a server. **Tested:** `tests/test_discordbot.py` (35: settings and
+    the token kept private, deleted and moved servers, every refusal (Discord server, role, game
+    server, direct message, other commands), autocomplete, cooldown and per-user limit, wake and
+    node starts, the follow-up edit, the websocket client against a real socket (sizes, fragments,
+    ping, close codes, refused handshake), and the gateway with a stand-in connection: identify,
+    READY, roles, interactions, resume after a reconnect request, a refused token, a missed
+    heartbeat, an invalid session and Discord asking for a heartbeat).
+
 ## Groundwork (do alongside, before promoting)
 
 - **Tests for `core/manager.py`.** Deploy, import, remove, restore and port allocation run as

@@ -6125,6 +6125,9 @@ const ServerApp = {
 			<h4 id="set-section-api-tokens" class="font-bold text-gray-900 dark:text-white mb-2">API tokens</h4>
 			<div id="set-api-tokens" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
+			<h4 id="set-section-discord" class="font-bold text-gray-900 dark:text-white mb-2">Discord</h4>
+			<div id="set-discord" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+
 			<div id="set-terminal-wrap" class="hidden">
 			<h4 id="set-section-terminal" class="font-bold text-gray-900 dark:text-white mb-2">Terminal</h4>
 			<div id="set-terminal" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
@@ -6198,6 +6201,7 @@ const ServerApp = {
 		this.loadSftpSettings();
 		this.loadTerminalSettings();
 		this.loadApiTokens();
+		this.loadDiscordSettings();
 		this.loadServersFolder();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
@@ -6298,6 +6302,109 @@ const ServerApp = {
 		const res = await fetch(`/api/settings/api-tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
 		if (!res.ok) alert(`Couldn't revoke it: ${await this.apiError(res)}`);
 		this.loadApiTokens();
+	},
+
+	// --- 1.27: Discord /start. The panel is the bot: a bot token from Discord's Developer Portal,
+	// the game servers /start may start, the Discord servers it answers in and, if wanted, roles.
+	async loadDiscordSettings() {
+		const box = document.getElementById('set-discord');
+		if (!box) return;
+		const res = await fetch('/api/settings/discord');
+		if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = await res.json(), esc = t => this.escapeHtml(String(t ?? ''));
+		this.discordData = d;
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const check = 'flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300';
+		const st = d.status || {};
+		const state = !d.enabled ? (d.has_token ? 'Off.' : 'Not set up.')
+			: st.state === 'online' ? `<span class="text-green-600 dark:text-green-400 font-bold">● Connected</span> as <b>${esc(st.user || 'the bot')}</b>.`
+			: st.state === 'error' ? `<span class="text-red-500 font-bold">● Stopped:</span> ${esc(st.error)}`
+			: `<span class="text-yellow-600 dark:text-yellow-400 font-bold">● Connecting…</span>${st.error ? ' ' + esc(st.error) : ''}`;
+		const all = d.servers.includes('*');
+		const servers = (this.servers || []).map(s => ({ key: s.node ? `${s.node}/${s.name}` : s.name,
+			label: s.node ? `${s.name} (${s.nodeName || s.node})` : s.name }));
+		const guilds = st.guilds || [];
+		const known = new Set(guilds.map(g => g.id));
+		const gone = d.guilds.filter(id => !known.has(id));
+		const roles = guilds.filter(g => d.guilds.includes(g.id)).flatMap(g => (g.roles || []).map(r => ({ ...r, guild: g.name })));
+		const roleIds = new Set(roles.map(r => r.id));
+		box.innerHTML = `
+			<p class="${note} mb-3">Lets people in your Discord start a server with <span class="font-mono">/start</span>, or wake it from Sleep Mode. The panel itself is the bot: it connects out to Discord, so nothing has to be forwarded. It can only start the servers you choose, and everything it does is logged as <span class="font-mono">discord:NAME</span>.</p>
+			<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">${state}</p>
+			<details class="rounded border border-gray-200 dark:border-gray-700 p-3 mb-3" ${d.has_token ? '' : 'open'}>
+				<summary class="text-sm font-bold text-gray-900 dark:text-white cursor-pointer">How to make the bot</summary>
+				<ol class="${note} list-decimal ml-5 mt-2 space-y-1">
+					<li>Open the <a href="https://discord.com/developers/applications" target="_blank" rel="noopener" class="underline text-theme">Discord Developer Portal</a> and choose <b>New Application</b>. Its name is the bot's name.</li>
+					<li>Under <b>Installation</b>, set <b>Install Link</b> to <b>None</b>. Under <b>Bot</b>, turn <b>Public Bot</b> off so only you can add it to a Discord server.</li>
+					<li>Still under <b>Bot</b>, choose <b>Reset Token</b>, copy the token and paste it below. No privileged intents are needed.</li>
+					<li>Save. When it says Connected, use <b>Add the bot to your Discord server</b>, then tick that Discord server here.</li>
+				</ol>
+			</details>
+			<label class="${note} block">Bot token<input id="discord-token" type="password" autocomplete="off" placeholder="${d.has_token ? `Saved (ends in ${esc(d.token_hint)}). Paste a new one to change it.` : 'Paste the bot token'}" class="${field} mt-1 font-mono"></label>
+			<label class="${check} mt-3"><input type="checkbox" id="discord-enabled" ${d.enabled ? 'checked' : ''}> <b>Answer /start in Discord</b></label>
+			${d.invite ? `<p class="mt-3"><a href="${esc(d.invite)}" target="_blank" rel="noopener" class="inline-block px-3 py-2 rounded text-sm font-bold text-white bg-theme hover-bg-theme">Add the bot to your Discord server ↗</a></p>` : ''}
+			<p class="${note} mt-3 mb-1">Answer in these Discord servers</p>
+			<div class="ml-1 grid grid-cols-1 sm:grid-cols-2 gap-1">
+				${guilds.map(g => `<label class="${check}"><input type="checkbox" class="discord-guild" value="${esc(g.id)}" ${d.guilds.includes(g.id) ? 'checked' : ''}> ${esc(g.name)}</label>`).join('')}
+				${gone.map(id => `<label class="${check}"><input type="checkbox" class="discord-guild" value="${esc(id)}" checked> <span class="font-mono">${esc(id)}</span> <span class="${note}">(the bot isn't in it now)</span></label>`).join('')}
+				${guilds.length || gone.length ? '' : `<p class="${note}">${d.enabled && st.state === 'online' ? 'The bot isn\'t in any Discord server yet. Add it, then this list fills in.' : 'Shown once the bot is connected.'}</p>`}
+			</div>
+			<p class="${note} mt-3 mb-1">Who may use it</p>
+			<label class="${check}"><input type="radio" name="discord-who" value="all" ${d.roles.length ? '' : 'checked'} onchange="ServerApp.discordWho()"> Everyone in those Discord servers</label>
+			<label class="${check}"><input type="radio" name="discord-who" value="some" ${d.roles.length ? 'checked' : ''} onchange="ServerApp.discordWho()"> Only people with these roles:</label>
+			<div id="discord-roles" class="${d.roles.length ? '' : 'hidden'} ml-6 mt-1 grid grid-cols-1 sm:grid-cols-2 gap-1">
+				${roles.map(r => `<label class="${check}"><input type="checkbox" class="discord-role" value="${esc(r.id)}" ${d.roles.includes(r.id) ? 'checked' : ''}> ${esc(r.name)}${guilds.length > 1 ? ` <span class="${note}">(${esc(r.guild)})</span>` : ''}</label>`).join('')}
+				${d.roles.filter(id => !roleIds.has(id)).map(id => `<label class="${check}"><input type="checkbox" class="discord-role" value="${esc(id)}" checked> <span class="font-mono">${esc(id)}</span></label>`).join('')}
+				${roles.length || d.roles.length ? '' : `<p class="${note}">Tick a Discord server above and save to see its roles.</p>`}
+			</div>
+			<p class="${note} mt-3 mb-1">Servers /start may start</p>
+			<label class="${check}"><input type="radio" name="discord-scope" value="all" ${all ? 'checked' : ''} onchange="ServerApp.discordScope()"> Every server, including ones made later</label>
+			<label class="${check}"><input type="radio" name="discord-scope" value="some" ${all ? '' : 'checked'} onchange="ServerApp.discordScope()"> Only these:</label>
+			<div id="discord-servers" class="${all ? 'hidden' : ''} ml-6 mt-1 grid grid-cols-1 sm:grid-cols-2 gap-1">
+				${servers.map(s => `<label class="${check}"><input type="checkbox" class="discord-server" value="${esc(s.key)}" ${d.servers.includes(s.key) ? 'checked' : ''}> ${esc(s.label)}</label>`).join('') || `<p class="${note}">No servers yet.</p>`}
+			</div>
+			<p class="${note} mt-3">/start only starts servers; it never stops one (Sleep Mode does that). A server starts at most once every 2 minutes from Discord, and each person may ask 5 times an hour. Discord's own <b>Server Settings → Integrations</b> can also limit the command to some channels.</p>
+			<p id="discord-error" class="hidden text-sm text-red-500 mt-2"></p>
+			<div class="flex flex-wrap gap-2 mt-3">
+				<button onclick="ServerApp.saveDiscordSettings(this)" class="px-4 py-2 rounded text-sm font-bold text-white bg-theme hover-bg-theme">Save Discord settings</button>
+				${d.has_token ? `<button onclick="ServerApp.saveDiscordSettings(this, true)" class="px-4 py-2 rounded text-sm font-bold text-white bg-red-600 hover:bg-red-700">Remove the bot token</button>` : ''}
+				<button onclick="ServerApp.loadDiscordSettings()" class="px-4 py-2 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Refresh</button>
+			</div>`;
+		if (d.enabled && st.state === 'connecting' && !this.discordRetry) {
+			this.discordRetry = setTimeout(() => { this.discordRetry = null; this.loadDiscordSettings(); }, 3000);
+		}
+	},
+
+	discordScope() {
+		const some = (document.querySelector('input[name="discord-scope"]:checked') || {}).value === 'some';
+		document.getElementById('discord-servers').classList.toggle('hidden', !some);
+	},
+
+	discordWho() {
+		const some = (document.querySelector('input[name="discord-who"]:checked') || {}).value === 'some';
+		document.getElementById('discord-roles').classList.toggle('hidden', !some);
+	},
+
+	async saveDiscordSettings(button, forget) {
+		const err = document.getElementById('discord-error');
+		const ticked = cls => [...document.querySelectorAll(`.${cls}:checked`)].map(b => b.value);
+		const some = (document.querySelector('input[name="discord-scope"]:checked') || {}).value === 'some';
+		const someRoles = (document.querySelector('input[name="discord-who"]:checked') || {}).value === 'some';
+		if (forget && !confirm('Remove the bot token? /start stops working until you paste one again.')) return;
+		const body = forget ? { forget_token: true } : {
+			token: document.getElementById('discord-token').value.trim(),
+			enabled: document.getElementById('discord-enabled').checked,
+			servers: some ? ticked('discord-server') : ['*'],
+			guilds: ticked('discord-guild'),
+			roles: someRoles ? ticked('discord-role') : []
+		};
+		button.disabled = true;
+		const res = await fetch('/api/settings/discord', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+		button.disabled = false;
+		if (!res.ok) { err.textContent = await this.apiError(res); err.classList.remove('hidden'); return; }
+		setTimeout(() => this.loadDiscordSettings(), 1500);
+		this.loadDiscordSettings();
 	},
 
 	async loadSetupSettings() {

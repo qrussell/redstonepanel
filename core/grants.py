@@ -147,8 +147,9 @@ def forget_server(key):
                 users[name] = g
         if changed:
             _save(users)
-    from core import apitokens                    # API tokens (1.25) lose it too
+    from core import apitokens, discordbot        # API tokens (1.25) and Discord /start (1.27) lose it too
     apitokens.forget_server(key)
+    discordbot.forget_server(key)
 
 
 def rename_server(old_key, new_key):
@@ -165,8 +166,9 @@ def rename_server(old_key, new_key):
             users[name] = g
         if changed:
             _save(users)
-    from core import apitokens                    # API tokens (1.25) follow it too
+    from core import apitokens, discordbot        # API tokens (1.25) and Discord /start (1.27) follow it too
     apitokens.rename_server(old_key, new_key)
+    discordbot.rename_server(old_key, new_key)
 
 
 def migrate_existing_users(usernames):

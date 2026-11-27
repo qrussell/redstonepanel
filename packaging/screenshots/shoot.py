@@ -19,6 +19,7 @@ Linux account demo.sh adds with the demo admin's password, and run a few command
 The last step moves the demo's Bedrock server to the node and back (cluster-moved.png), with a
 pre-copy (1.16.13) so the picture shows how long it was down, so it runs after everything else.
 """
+import json
 import os
 import sys
 
@@ -532,6 +533,32 @@ class Shooter:
             shot("api-tokens", element="#set-api-tokens")
             self.close_modals()
         step("api tokens", api_tokens)
+
+        # 1.27: the Discord section. The demo has no Discord bot (and often no way out to
+        # Discord), so its settings come from canned data: a bot connected to one Discord server.
+        def discord_settings():
+            canned = {"enabled": True, "has_token": True, "token_hint": "x7Qa", "servers": ["*"],
+                      "guilds": ["111111111111111111"], "roles": ["333333333333333333"], "updated": None,
+                      "updated_by": "steve", "invite": "https://discord.com/oauth2/authorize?client_id=999999999999999999"
+                                                       "&scope=bot%20applications.commands&permissions=0",
+                      "status": {"state": "online", "error": None, "user": "Redstone Bot", "app_id": "999999999999999999",
+                                 "since": None, "guilds": [
+                                     {"id": "111111111111111111", "name": "Basement Crew",
+                                      "roles": [{"id": "333333333333333333", "name": "Players"},
+                                                {"id": "444444444444444444", "name": "Moderators"}]}]}}
+            route = "**/api/settings/discord"
+            page.route(route, lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(canned)))
+            try:
+                page.evaluate("ServerApp.openPanelSettings('discord')")
+                page.wait_for_selector("#set-discord #discord-token", timeout=20000)
+                page.evaluate("document.querySelector('#set-discord details').open = false")
+                page.evaluate("document.getElementById('set-section-discord').scrollIntoView({block: 'start'})")
+                page.wait_for_timeout(500)
+                shot("discord-settings", element="#set-discord")
+                self.close_modals()
+            finally:
+                page.unroute(route)
+        step("discord", discord_settings)
 
         # 1.26: the Sleep Mode card, turned on for the shot and off again (on, it would stop the
         # demo's Paper server once it had sat empty for that long)

@@ -630,10 +630,18 @@ def start_from_page(key, ip, now=None):
 
 
 def _start_server(member, server, ip):
+    start_server(member, server, f"a visitor of its join page ({ip})", actor="join page", tag="JOIN",
+                 where="from its join page")
+
+
+def start_server(member, server, who, actor, tag, where):
+    """Starts (or wakes) a server on this panel or on a cluster member. Used by the join page's
+    Start button (1.26) and Discord's /start (1.27). Runs in the caller's thread; a failure is
+    logged under `tag`, never raised. True when the start was asked for."""
     try:
         if member == "local":
             from core import sleep
-            if not sleep.wake(server, f"a visitor of its join page ({ip})"):
+            if not sleep.wake(server, who):
                 manager.control_server(server, "start")
         else:
             from core import cluster, cluster_client
@@ -641,10 +649,12 @@ def _start_server(member, server, ip):
             if not node:
                 raise JoinError("That cluster member is gone.")
             cluster_client.call_node(node, "POST", f"/api/servers/{quote(server, safe='')}/action", {"action": "start"},
-                                     actor="join page", timeout=cluster_client.ACTION_TIMEOUT)
+                                     actor=actor, timeout=cluster_client.ACTION_TIMEOUT)
             cluster_client.forget_cached(member)
+        return True
     except Exception as e:
-        manager.write_log(f"[JOIN] Starting {server} from its join page failed: {e}")
+        manager.write_log(f"[{tag}] Starting {server} {where} failed: {e}")
+        return False
     finally:
         _summary_cache.pop(page_key(member, server), None)
 
