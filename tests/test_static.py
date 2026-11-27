@@ -65,6 +65,14 @@ class Packaging(unittest.TestCase):
                 rel = os.path.relpath(os.path.join(dirpath, name), self.ROOT).replace(os.sep, "/")
                 self.assertIn(rel, listed, f"{rel} is not in debian/redstonepanel.install")
 
+    def test_every_core_module_is_installed(self):
+        # A module left out of the list makes a real install fail to start (ModuleNotFoundError)
+        with open(os.path.join(self.ROOT, "debian", "redstonepanel.install")) as f:
+            listed = {p for line in f for p in line.split()[:-1]}
+        for name in os.listdir(os.path.join(self.ROOT, "core")):
+            if name.endswith(".py"):
+                self.assertIn(f"core/{name}", listed, f"core/{name} is not in debian/redstonepanel.install")
+
     def test_pages_link_the_icons(self):
         for page in ("index.html", "login.html"):
             with open(os.path.join(self.ROOT, "static", page), encoding="utf-8") as f:
