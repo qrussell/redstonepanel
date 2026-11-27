@@ -29,12 +29,14 @@
   if (!url || !window.fetch) return;
   var pill = document.getElementById('status'), players = document.getElementById('players'), names = document.getElementById('names');
   var wake = document.getElementById('wake'), wakeNote = document.getElementById('wake-note'), startBtn = document.getElementById('start');
-  var STATES = { online: ['on', 'Online'], starting: ['starting', 'Starting'], sleeping: ['sleeping', 'Asleep'], offline: ['off', 'Offline'] };
+  var stopBtn = document.getElementById('stop'), lastPlayers = null;
+  var STATES = { online: ['on', 'Online'], starting: ['starting', 'Starting'], sleeping: ['sleeping', 'Asleep'], offline: ['off', 'Offline'], stopping: ['starting', 'Stopping'] };
   var fast = null;
   function show(d) {
     var on = d.status === 'online', st = STATES[d.status] || STATES.offline;
     if (pill) { pill.textContent = st[1]; pill.className = 'pill ' + st[0]; }
     var p = on ? d.players : null;
+    lastPlayers = p;
     if (players) {
       players.textContent = !p || p.online === null || p.online === undefined ? ''
         : p.max === null || p.max === undefined ? p.online + ' playing' : p.online + ' of ' + p.max + ' playing';
@@ -44,14 +46,22 @@
     if (wake) wake.hidden = on;
     if (wakeNote) {
       wakeNote.textContent = d.status === 'sleeping' ? 'The server is asleep to save power. It starts by itself when you join; then join again in about 30 seconds.'
-        : d.status === 'starting' ? 'The server is starting. This page shows Online when you can join.' : '';
+        : d.status === 'starting' ? 'The server is starting. This page shows Online when you can join.'
+        : d.status === 'stopping' ? 'The server is stopping.' : '';
     }
-    if (startBtn) startBtn.disabled = d.status === 'starting';
+    if (wake && d.status === 'stopping') wake.hidden = false;
+    if (startBtn) {
+      startBtn.disabled = d.status === 'starting';
+      // 1.28: on a page that needs sign-in, the visitor's permission says whether Start shows
+      if (d.can_start !== undefined && startBtn.hasAttribute('data-start')) startBtn.hidden = !d.can_start && d.status !== 'starting';
+    }
+    if (stopBtn && d.can_stop !== undefined) stopBtn.hidden = !d.can_stop;
     if (on && fast) { clearInterval(fast); fast = null; if (wakeNote) wakeNote.textContent = ''; }
+    if (d.status === 'offline' && fast && stopBtn) { clearInterval(fast); fast = null; }
   }
   function refresh() {
     if (document.hidden) return;
-    fetch(url, { cache: 'no-store', credentials: 'omit' })
+    fetch(url, { cache: 'no-store', credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) { if (d) show(d); })
       .catch(function () {});
@@ -59,7 +69,7 @@
   if (startBtn) {
     startBtn.addEventListener('click', function () {
       startBtn.disabled = true;
-      fetch(startBtn.getAttribute('data-start'), { method: 'POST', cache: 'no-store', credentials: 'omit', headers: { 'X-Join-Start': '1' } })
+      fetch(startBtn.getAttribute('data-start'), { method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: { 'X-Join-Start': '1' } })
         .then(function (r) { return r.json().catch(function () { return {}; }); })
         .then(function (d) {
           if (d.error) { if (wakeNote) wakeNote.textContent = d.error; startBtn.disabled = false; return; }
@@ -69,7 +79,25 @@
         .catch(function () { startBtn.disabled = false; });
     });
   }
+  // 1.28: Stop, for a signed-in visitor whose permission gives it
+  if (stopBtn) {
+    stopBtn.addEventListener('click', function () {
+      var n = lastPlayers && lastPlayers.online ? lastPlayers.online : 0;
+      if (n && !window.confirm(n + (n === 1 ? ' player is' : ' players are') + ' on the server. Stop it anyway?')) return;
+      stopBtn.disabled = true;
+      fetch(stopBtn.getAttribute('data-stop'), { method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: { 'X-Join-Start': '1' } })
+        .then(function (r) { return r.json().catch(function () { return {}; }); })
+        .then(function (d) {
+          stopBtn.disabled = false;
+          if (d.error) { if (wakeNote) { wakeNote.textContent = d.error; if (wake) wake.hidden = false; } return; }
+          show({ status: d.status === 'offline' ? 'offline' : 'stopping', players: null, can_stop: false });
+          if (!fast) fast = setInterval(refresh, 5000);
+        })
+        .catch(function () { stopBtn.disabled = false; });
+    });
+  }
   if (pill && pill.className.indexOf('starting') >= 0) fast = setInterval(refresh, 5000);
+  if (stopBtn) refresh();
   setInterval(refresh, 30000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
 })();

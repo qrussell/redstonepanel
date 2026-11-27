@@ -68,3 +68,17 @@ details ol { margin-top: 0.5rem; }
 ul.mods { margin: 0.5rem 0 0; padding-left: 1.2rem; columns: 2 14rem; column-gap: 1.5rem; font-size: 0.9rem; }
 ul.mods li { break-inside: avoid; margin-bottom: 0.15rem; overflow-wrap: anywhere; }
 .copy .value { overflow-wrap: anywhere; }
+
+/* Sign-in (1.28) */
+.gate p { margin-bottom: 0.75rem; }
+form.signin { display: grid; gap: 0.6rem; margin-top: 0.5rem; }
+form.signin label { display: grid; gap: 0.25rem; font-size: 0.9rem; font-weight: 600; }
+form.signin input { font: inherit; font-size: 16px; min-height: 44px; padding: 0.5rem 0.75rem; border-radius: 10px;
+                    border: 1px solid var(--line); background: var(--code); color: var(--text); }
+form.signin button { justify-self: start; }
+.or { margin: 0.75rem 0 0; }
+.btn.discord { background: #5865f2; border-color: #5865f2; color: #ffffff; }
+.signedin { margin: 0.5rem 0 0; }
+button.linkish { background: none; border: 0; padding: 0 0.25rem; min-height: 32px; color: var(--accent); font: inherit;
+                 text-decoration: underline; cursor: pointer; }
+.stop-row { margin: 0.5rem 0 0; }

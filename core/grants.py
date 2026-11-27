@@ -147,9 +147,10 @@ def forget_server(key):
                 users[name] = g
         if changed:
             _save(users)
-    from core import apitokens, discordbot        # API tokens (1.25) and Discord /start (1.27) lose it too
-    apitokens.forget_server(key)
+    from core import apitokens, discordauth, discordbot   # API tokens (1.25), Discord /start (1.27) and
+    apitokens.forget_server(key)                          # Discord roles (1.28) lose it too
     discordbot.forget_server(key)
+    discordauth.forget_server(key)
 
 
 def rename_server(old_key, new_key):
@@ -166,9 +167,10 @@ def rename_server(old_key, new_key):
             users[name] = g
         if changed:
             _save(users)
-    from core import apitokens, discordbot        # API tokens (1.25) and Discord /start (1.27) follow it too
-    apitokens.rename_server(old_key, new_key)
+    from core import apitokens, discordauth, discordbot   # API tokens (1.25), Discord /start (1.27) and
+    apitokens.rename_server(old_key, new_key)             # Discord roles (1.28) follow it too
     discordbot.rename_server(old_key, new_key)
+    discordauth.rename_server(old_key, new_key)
 
 
 def migrate_existing_users(usernames):
@@ -193,7 +195,7 @@ def perms_for(user, key):
     if src == "panel":
         g = get(user["username"])
         return set(g.get(ALL_SERVERS, ())) | set(g.get(key, ()))
-    if src == "token":                            # API tokens (1.25) carry their own
+    if src in ("token", "discord"):               # API tokens (1.25) and Discord roles (1.28) carry their own
         g = user.get("grants") or {}
         return set(g.get(ALL_SERVERS, ())) | set(g.get(key, ()))
     if src == "cluster":
@@ -213,7 +215,7 @@ def can(user, perm, server, member=None):
 
 def limited(user):
     """True for an account whose view is cut down to the servers it was granted."""
-    return user.get("role") != "admin" and user.get("source") in ("panel", "token")
+    return user.get("role") != "admin" and user.get("source") in ("panel", "token", "discord")
 
 
 def parse_header(value):
@@ -247,6 +249,9 @@ public   POST    /api/auth/first-sign-in/check
 public   POST    /api/auth/first-sign-in
 public   POST    /api/auth/logout
 public   GET     /api/auth/master-sign-in
+public   GET     /api/auth/discord/available
+public   GET     /api/auth/discord/start
+public   GET     /api/auth/discord/callback
 public   GET     /api/cluster/ca
 public   GET     /api/cluster/ca.crt
 public   POST    /api/cluster/join
@@ -265,6 +270,9 @@ signed   GET     /api/auth/devices
 signed   DELETE  /api/auth/devices
 signed   DELETE  /api/auth/devices/{{device_id}}
 signed   POST    /api/auth/password
+signed   GET     /api/auth/discord/link
+signed   POST    /api/auth/discord/link
+signed   DELETE  /api/auth/discord/link
 signed   GET     /api/auth/ssh-keys
 signed   POST    /api/auth/ssh-keys
 signed   DELETE  /api/auth/ssh-keys/{{fingerprint}}

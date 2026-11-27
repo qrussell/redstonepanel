@@ -99,7 +99,11 @@ def default_slug(server):
 def defaults(server):
     return {"enabled": False, "slug": default_slug(server), "unlisted": False, "token": "",
             "address": "", "note": "", "link_url": "", "link_label": "", "pack_url": "",
-            "show_players": False, "allow_start": False}
+            "show_players": False, "allow_start": False,
+            # 1.28: who can see the page (anyone / signed / permission), how visitors sign in, and
+            # what each signed-in visitor may do (rules)
+            "access": "anyone", "signin_panel": True, "signin_discord": False, "discord_member": False,
+            "discord_invite": "", "rules": []}
 
 
 def page(key, pages=None):
@@ -181,11 +185,160 @@ def save_page(member, server, new, actor="?"):
         cfg["link_url"] = clean_url(new.get("link_url"), "The link")
         cfg["link_label"] = _text(new.get("link_label"), LABEL_MAX, "The link's name")
         cfg["pack_url"] = clean_url(new.get("pack_url"), "The modpack link")
+        if "access" in new:                                       # 1.28; older forms leave it as it was
+            _clean_access(cfg, new)
         pages[key] = cfg
         _save(pages)
     manager.write_log(f"[JOIN] {actor} turned the join page for {server} {'on' if cfg['enabled'] else 'off'}"
-                      + (f" (link /join/{path_of(cfg)})" if cfg["enabled"] else "") + ".")
+                      + (f" (link /join/{path_of(cfg)})" if cfg["enabled"] else "")
+                      + (f", {ACCESS_LABELS[cfg['access']]}" if cfg["enabled"] and cfg["access"] != "anyone" else "")
+                      + ".")
     return cfg
+
+
+# ---------------------------------------------------------------------------
+# 1.28: who can see a page, and what a signed-in visitor may do
+# ---------------------------------------------------------------------------
+ACCESS = ("anyone", "signed", "permission")
+ACCESS_LABELS = {"anyone": "open to anyone with the link", "signed": "for visitors who sign in",
+                 "permission": "by permission"}
+RULES_MAX = 50
+INVITE_RE = re.compile(r"^https://(?:discord\.gg|(?:www\.)?discord(?:app)?\.com/invite)/[A-Za-z0-9-]{2,32}/?$")
+NOTHING = {"see": False, "start": False, "stop": False}
+
+
+def clean_invite(value):
+    url = str(value or "").strip()
+    if not url:
+        return ""
+    if not INVITE_RE.match(url):
+        raise JoinError("The Discord invite must be a link like https://discord.gg/abc123 (Discord: Invite People, "
+                        "then Edit invite link and set it to never expire).")
+    return url.rstrip("/")
+
+
+def _clean_rule(r):
+    from core import auth, discordbot
+    if not isinstance(r, dict):
+        raise JoinError("Each permission row needs who it's for.")
+    who = str(r.get("who") or "").strip()
+    if who.startswith("panel:"):
+        if not auth.USERNAME_RE.match(who[6:]):
+            raise JoinError(f"'{who[6:][:40]}' isn't a panel account name.")
+    elif who.startswith("discord_role:"):
+        if not discordbot.ID_RE.match(who[13:]):
+            raise JoinError("Choose a Discord role for each Discord row.")
+    elif who not in ("signed", "panel_perms", "discord_member"):
+        raise JoinError("Unknown kind of permission row.")
+    row = {"who": who, "see": bool(r.get("see")), "start": bool(r.get("start")), "stop": bool(r.get("stop")),
+           "name": " ".join(str(r.get("name") or "").split())[:100]}
+    return row
+
+
+def _clean_access(cfg, new):
+    from core import discordauth
+    access = str(new.get("access") or "anyone")
+    if access not in ACCESS:
+        raise JoinError("Choose who can see the page.")
+    cfg["access"] = access
+    cfg["signin_panel"] = bool(new.get("signin_panel"))
+    cfg["signin_discord"] = bool(new.get("signin_discord"))
+    cfg["discord_member"] = bool(new.get("discord_member")) and cfg["signin_discord"]
+    cfg["discord_invite"] = clean_invite(new.get("discord_invite"))
+    rules = new.get("rules") or []
+    if not isinstance(rules, (list, tuple)) or len(rules) > RULES_MAX:
+        raise JoinError(f"Use at most {RULES_MAX} permission rows.")
+    rows, seen = [], set()
+    for r in rules:
+        row = _clean_rule(r)
+        if row["who"] in seen:
+            raise JoinError("Each account or role can have one row.")
+        seen.add(row["who"])
+        rows.append(row)
+    cfg["rules"] = rows
+    if access == "anyone":
+        return
+    if not cfg["signin_panel"] and not cfg["signin_discord"]:
+        raise JoinError("Choose how visitors sign in: a panel account, Discord, or both.")
+    if cfg["signin_discord"]:
+        dcfg = discordauth.load()
+        if not discordauth.configured(dcfg):
+            raise JoinError("Set up Sign in with Discord first (Panel Settings, Discord).")
+        if not discordauth.join_base(dcfg):
+            raise JoinError("Enter the join pages address under Panel Settings, Discord, so Discord can send "
+                            "visitors back to the page.")
+        needs_guild = cfg["discord_member"] or any(r["who"].startswith("discord_") for r in rows)
+        if needs_guild and not dcfg["guild"]:
+            raise JoinError("Choose your Discord server under Panel Settings, Discord, to check who's a member.")
+    if access == "permission" and not any(r["see"] or r["start"] or r["stop"] for r in rows):
+        raise JoinError("Add at least one row that gives something, or choose another option.")
+
+
+def _row_matches(who, visitor, key):
+    if visitor["kind"] == "panel":
+        if who == "signed":
+            return NOTHING_ALL
+        if who == "panel:" + visitor["name"]:
+            return NOTHING_ALL
+        if who == "panel_perms":
+            from core import grants
+            perms = grants.perms_for({"role": visitor["role"], "source": "panel", "username": visitor["name"]}, key)
+            return {"see": "view" in perms, "start": "power" in perms, "stop": "power" in perms}
+        return None
+    if who == "signed":
+        return NOTHING_ALL
+    if not visitor.get("member"):
+        return None
+    if who == "discord_member" or (who.startswith("discord_role:") and who[13:] in (visitor.get("roles") or ())):
+        return NOTHING_ALL
+    return None
+
+
+NOTHING_ALL = {"see": True, "start": True, "stop": True}       # the row's own ticks apply
+
+
+def gate(cfg, visitor):
+    """Why a visitor (or nobody) can't use a page at all, or None. "signin", "member" (signed in
+    with Discord but not in the Discord server) or "nothing"."""
+    if cfg.get("access", "anyone") == "anyone":
+        return None
+    if not visitor:
+        return "signin"
+    if visitor["kind"] == "panel" and not cfg["signin_panel"]:
+        return "signin"
+    if visitor["kind"] == "discord" and not cfg["signin_discord"]:
+        return "signin"
+    if visitor["kind"] == "discord" and cfg["discord_member"] and not visitor.get("member"):
+        return "member"
+    return None
+
+
+def abilities(cfg, key, visitor):
+    """{"see", "start", "stop"} for this visitor (None = not signed in) on the page of `key`."""
+    access = cfg.get("access", "anyone")
+    if access == "anyone":
+        return {"see": True, "start": bool(cfg.get("allow_start")), "stop": False}
+    if gate(cfg, visitor):
+        return dict(NOTHING)
+    if access == "signed":
+        return {"see": True, "start": bool(cfg.get("allow_start")), "stop": False}
+    if visitor["kind"] == "panel" and visitor.get("role") == "admin":
+        return {"see": True, "start": True, "stop": True}
+    out = dict(NOTHING)
+    for row in cfg.get("rules") or []:
+        got = _row_matches(row["who"], visitor, key)
+        if got:
+            for k in out:
+                out[k] = out[k] or (got[k] and row[k])
+    return out
+
+
+def visitor_label(visitor):
+    if not visitor:
+        return "a visitor"
+    if visitor["kind"] == "discord":
+        return f"discord:{visitor['name']} ({visitor['id']})"
+    return visitor["name"]
 
 
 def forget(member, server):
@@ -547,8 +700,10 @@ def _player_pack_view(cfg, s):
             "ask": p["ask"]}
 
 
-def public_view(cfg, s, public_address=None, key=None):
-    """The page's whole content, from the fixed list of fields that may leave the machine."""
+def public_view(cfg, s, public_address=None, key=None, can=None):
+    """The page's whole content, from the fixed list of fields that may leave the machine.
+    can (1.28): what this visitor may do, from abilities(); left out = an open page's."""
+    can = can or abilities(cfg, key, None)
     loader = s.get("loader") or ""
     players = s.get("players") if s.get("status") == "online" else None
     title = s.get("motd") or default_slug(s.get("name") or "server")
@@ -562,7 +717,9 @@ def public_view(cfg, s, public_address=None, key=None):
         "minecraft": s.get("minecraft") or "",
         "needs": needs,
         "status": _public_state(key, s),
-        "can_start": bool(cfg.get("allow_start")) and s.get("status") != "online",
+        "can_start": bool(can["start"]) and s.get("status") != "online",
+        "can_stop": bool(can["stop"]) and s.get("status") == "online",
+        "can_see": bool(can["see"]),
         "players": None if not players else {
             "online": players.get("online"), "max": players.get("max"),
             "names": list(players.get("names") or [])[:NAMES_MAX] if cfg["show_players"] else None},
@@ -578,8 +735,8 @@ def public_view(cfg, s, public_address=None, key=None):
 
 def public_status(view):
     """The part of the page that refreshes by itself."""
-    return {"status": view["status"], "players": view["players"], "minecraft": view["minecraft"],
-            "can_start": view["can_start"]}
+    return {"status": view["status"], "players": view["players"] if view.get("can_see", True) else None,
+            "minecraft": view["minecraft"], "can_start": view["can_start"], "can_stop": view.get("can_stop", False)}
 
 
 # ---------------------------------------------------------------------------
@@ -588,45 +745,125 @@ def public_status(view):
 START_COOLDOWN = 120            # seconds: one start per server in this time, however many visitors press
 START_SHOWN = 240               # seconds the page says "Starting" after a start, until the server answers
 START_PER_IP = 3                # starts one address may ask for in an hour, over all servers
+START_PER_VISITOR = 5           # 1.28: starts one signed-in visitor may ask for in an hour (like Discord /start)
+STOP_COOLDOWN = 120             # 1.28: one stop per server from its page in this time
+STOP_SHOWN = 90                 # seconds the page says "Stopping" after a stop, until the server is down
 _starts = {}                    # key -> time of the last start asked from a page
-_starts_by_ip = {}              # ip -> [times]
+_starts_by_ip = {}              # ip (or "v:<visitor>") -> [times]
+_stops = {}                     # key -> time of the last stop asked from a page
 
 
 def _public_state(key, s):
-    """online, starting, sleeping or offline: what a visitor may know."""
+    """online, stopping, starting, sleeping or offline: what a visitor may know."""
     if s.get("status") == "online":
+        if key and time.time() - _stops.get(key, 0) < STOP_SHOWN:
+            return "stopping"
         return "online"
     if key and time.time() - _starts.get(key, 0) < START_SHOWN:
         return "starting"
     return "sleeping" if s.get("sleeping") else "offline"
 
 
-def start_from_page(key, ip, now=None):
+def start_from_page(key, ip, now=None, visitor=None):
     """A visitor pressed Start on the page of `key`. Returns "online", "starting" or raises JoinError.
-    The admin must have allowed it on that page. A start already asked in the last
-    START_COOLDOWN seconds is not repeated; an address gets START_PER_IP starts an hour."""
+    The admin must have allowed it on that page (1.26), or the visitor's permission must give it
+    (1.28). A start already asked in the last START_COOLDOWN seconds is not repeated; an address
+    gets START_PER_IP starts an hour, a signed-in visitor START_PER_VISITOR."""
     now = time.time() if now is None else now
     cfg = page(key)
-    if not cfg["enabled"] or not cfg.get("allow_start"):
+    if not cfg["enabled"] or not abilities(cfg, key, visitor)["start"]:
         raise JoinError("This server can't be started from its page.")
     s = summary(key, fresh=True)
     if s.get("status") == "online":
         return "online"
+    who_key = f"v:{visitor['kind']}:{visitor.get('id') or visitor['name']}" if visitor else ip
+    limit = START_PER_VISITOR if visitor else START_PER_IP
     with _lock:
         if now - _starts.get(key, 0) < START_COOLDOWN:
             return "starting"
-        times = [t for t in _starts_by_ip.get(ip, []) if now - t < 3600]
-        if len(times) >= START_PER_IP:
+        times = [t for t in _starts_by_ip.get(who_key, []) if now - t < 3600]
+        if len(times) >= limit:
             raise JoinError("You've started servers here a few times in the last hour. Try again later.")
         if len(_starts_by_ip) > 5000:
             _starts_by_ip.clear()
-        _starts_by_ip[ip] = times + [now]
+        _starts_by_ip[who_key] = times + [now]
         _starts[key] = now
+        _stops.pop(key, None)
     member, server = split_key(key)
-    manager.write_log(f"[JOIN] A visitor from {ip} started {server}"
+    who = f"{visitor_label(visitor)} (from {ip})" if visitor else f"A visitor from {ip}"
+    manager.write_log(f"[JOIN] {who} started {server}"
                       + ("" if member == "local" else f" on cluster member {member}") + " from its join page.")
     threading.Thread(target=_start_server, args=(member, server, ip), name=f"join-start-{server}", daemon=True).start()
     return "starting"
+
+
+def stop_from_page(key, ip, visitor, now=None):
+    """1.28: a signed-in visitor whose permission gives Stop pressed it. Returns "offline",
+    "stopping" or raises JoinError. A clean stop, like the panel's Stop (sleep mode then counts it
+    as stopped by hand); never while a backup, a move or a type change runs."""
+    now = time.time() if now is None else now
+    cfg = page(key)
+    if not cfg["enabled"] or not visitor or not abilities(cfg, key, visitor)["stop"]:
+        raise JoinError("This server can't be stopped from its page.")
+    s = summary(key, fresh=True)
+    if s.get("status") != "online":
+        return "offline"
+    member, server = split_key(key)
+    if member == "local":
+        busy = _busy(server)
+        if busy:
+            raise JoinError(busy)
+    with _lock:
+        if now - _stops.get(key, 0) < STOP_COOLDOWN:
+            return "stopping"
+        _stops[key] = now
+        _starts.pop(key, None)
+    manager.write_log(f"[JOIN] {visitor_label(visitor)} (from {ip}) stopped {server}"
+                      + ("" if member == "local" else f" on cluster member {member}") + " from its join page.")
+    threading.Thread(target=stop_server, args=(member, server, visitor_label(visitor)), name=f"join-stop-{server}",
+                     daemon=True).start()
+    return "stopping"
+
+
+def _busy(server):
+    """Why a server can't be stopped from its page right now, or None."""
+    from core import backups, sleep
+    why = sleep._busy(server)
+    if why:
+        return why
+    try:
+        fd = backups._lock(server)
+    except Exception:
+        return "A backup of the server is running. Try again in a few minutes."
+    os.close(fd)
+    return None
+
+
+def stop_server(member, server, who):
+    """Stops a server here (holding its backup lock, so no backup starts meanwhile) or on a
+    cluster member. A failure is logged, never raised."""
+    try:
+        if member == "local":
+            from core import backups
+            fd = backups._lock(server)
+            try:
+                manager.control_server(server, "stop")
+            finally:
+                os.close(fd)
+        else:
+            from core import cluster, cluster_client
+            node = cluster.find_node(member)
+            if not node:
+                raise JoinError("That cluster member is gone.")
+            cluster_client.call_node(node, "POST", f"/api/servers/{quote(server, safe='')}/action", {"action": "stop"},
+                                     actor="join page", timeout=cluster_client.ACTION_TIMEOUT)
+            cluster_client.forget_cached(member)
+        return True
+    except Exception as e:
+        manager.write_log(f"[JOIN] Stopping {server} for {who} from its join page failed: {e}")
+        return False
+    finally:
+        _summary_cache.pop(page_key(member, server), None)
 
 
 def _start_server(member, server, ip):

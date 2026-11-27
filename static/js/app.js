@@ -61,6 +61,16 @@ const ServerApp = {
         let welcome = false;
         try { welcome = sessionStorage.getItem('rp_welcome') === '1'; sessionStorage.removeItem('rp_welcome'); } catch (e) {}
         if (welcome && this.onWindows()) setTimeout(() => this.openAccountModal({}), 0);
+        // 1.28: back from Discord after Link Discord (or with why it didn't work)
+        if (location.hash.startsWith('#discord')) {
+            const h = location.hash;
+            history.replaceState(null, '', location.pathname);
+            setTimeout(async () => {
+                await this.openAccountModal({});
+                if (h === '#discord-linked') this.loadDiscordLink('Discord linked.', true);
+                else this.loadDiscordLink(decodeURIComponent(h.replace(/^#discord=/, '')), false);
+            }, 0);
+        }
         // Many actions open the console; remember what was clicked so it can be kept in view
         document.addEventListener('click', e => {
             const el = e.target.closest && e.target.closest('button, a, input, select, label');
@@ -6127,6 +6137,8 @@ const ServerApp = {
 
 			<h4 id="set-section-discord" class="font-bold text-gray-900 dark:text-white mb-2">Discord</h4>
 			<div id="set-discord" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+			<h4 id="set-section-discord-signin" class="font-bold text-gray-900 dark:text-white mb-2">Sign in with Discord</h4>
+			<div id="set-discord-signin" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
 			<div id="set-terminal-wrap" class="hidden">
 			<h4 id="set-section-terminal" class="font-bold text-gray-900 dark:text-white mb-2">Terminal</h4>
@@ -6201,7 +6213,7 @@ const ServerApp = {
 		this.loadSftpSettings();
 		this.loadTerminalSettings();
 		this.loadApiTokens();
-		this.loadDiscordSettings();
+		this.loadDiscordSettings().then(() => this.loadDiscordSignin());   // the sign-in part uses the bot's Discord servers
 		this.loadServersFolder();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
@@ -6406,6 +6418,144 @@ const ServerApp = {
 		if (!res.ok) { err.textContent = await this.apiError(res); err.classList.remove('hidden'); return; }
 		setTimeout(() => this.loadDiscordSettings(), 1500);
 		this.loadDiscordSettings();
+	},
+
+	// --- 1.28: Sign in with Discord (core/discordauth.py) ---
+	async loadDiscordSignin() {
+		const box = document.getElementById('set-discord-signin');
+		if (!box) return;
+		const res = await fetch('/api/settings/discord-signin');
+		if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = await res.json(), esc = t => this.escapeHtml(String(t ?? ''));
+		this.discordSignin = d;
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-base md:text-sm text-gray-900 dark:text-white';
+		const check = 'flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300';
+		const grey = 'px-3 py-2 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+		const bot = (this.discordData && this.discordData.status) || {};
+		const guilds = bot.guilds || [];
+		const guild = guilds.find(g => g.id === d.guild);
+		this.discordRows = (d.roles || []).map(r => ({ ...r }));
+		const panelUrl = d.panel_url || location.origin;
+		const redirect = `${panelUrl}/api/auth/discord/callback`;
+		const joinBase = d.join_url || d.join_base;
+		box.innerHTML = `
+			<p class="${note} mb-3">A <b>Sign in with Discord</b> button on the sign-in page. Admins and helpers link their own account to Discord under <b>🔑 Password</b> and sign in with it (their two-factor still applies). Roles in your Discord server can also give people permissions on chosen servers, like the <b>Users</b> page does; a role never makes anyone an admin. Join pages can use the same sign-in (Join pages, <b>Who can see this page</b>).</p>
+			<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">${d.enabled ? '<span class="text-green-600 dark:text-green-400 font-bold">● On</span>' : d.has_secret ? 'Off.' : 'Not set up.'}${d.bot_checks ? ' Roles are checked again every 10 minutes through the /start bot.' : d.guild ? ' Without the /start bot in your Discord server, roles are read at sign-in and kept for that sign-in (12 hours on the panel, 30 minutes on join pages).' : ''}</p>
+			<details class="rounded border border-gray-200 dark:border-gray-700 p-3 mb-3" ${d.has_secret ? '' : 'open'}>
+				<summary class="text-sm font-bold text-gray-900 dark:text-white cursor-pointer">How to set it up</summary>
+				<ol class="${note} list-decimal ml-5 mt-2 space-y-1">
+					<li>Open the <a href="https://discord.com/developers/applications" target="_blank" rel="noopener" class="underline text-theme">Discord Developer Portal</a> and choose your application (the /start bot's, or a <b>New Application</b>).</li>
+					<li>Under <b>OAuth2</b>, copy the <b>Client ID</b> and the <b>Client Secret</b> (<b>Reset Secret</b>) into the boxes below.</li>
+					<li>Still under <b>OAuth2</b>, <b>Add Redirect</b> for each address below, exactly as shown, and <b>Save Changes</b>.</li>
+					<li>Pick your Discord server, add role rows if you want roles to give access, tick <b>Show Sign in with Discord</b> and save.</li>
+				</ol>
+				<div class="mt-2 space-y-1">${[redirect, joinBase ? `${joinBase}/join/_discord/callback` : null].filter(Boolean).map(u => `<div class="flex flex-wrap items-center gap-2"><code class="text-xs font-mono break-all bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-2 py-1">${esc(u)}</code><button type="button" onclick="ServerApp.copyJoinLink('${esc(u)}', this)" class="${grey}">Copy</button></div>`).join('')}</div>
+			</details>
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+				<label class="${note} block">Client ID${bot.app_id && !d.client_id ? ` (empty: the /start bot's, ${esc(bot.app_id)})` : ''}<input id="dsi-client" inputmode="numeric" value="${esc(d.client_id)}" placeholder="${esc(bot.app_id || '123456789012345678')}" class="${field} mt-1 font-mono"></label>
+				<label class="${note} block">Client secret<input id="dsi-secret" type="password" autocomplete="off" placeholder="${d.has_secret ? `Saved (ends in ${esc(d.secret_hint)}). Paste a new one to change it.` : 'Paste the client secret'}" class="${field} mt-1 font-mono"></label>
+				<label class="${note} block">The address you open the panel at<input id="dsi-panel-url" value="${esc(panelUrl)}" class="${field} mt-1 font-mono"><span class="block mt-1">Discord sends people back here. Sign in with Discord starts from this address.</span></label>
+				<label class="${note} block">The join pages address<input id="dsi-join-url" value="${esc(d.join_url)}" placeholder="${esc(d.join_base || 'https://play.example.com:8444')}" class="${field} mt-1 font-mono"><span class="block mt-1">Only for join pages with Discord sign-in. Empty: ${d.join_base ? esc(d.join_base) + ', from Join pages' : 'not set'}.</span></label>
+			</div>
+			<label class="${note} block mt-3">Your Discord server (its roles count)
+				${guilds.length ? `<select id="dsi-guild" class="${field} mt-1"><option value="">None</option>${guilds.map(g => `<option value="${esc(g.id)}" ${g.id === d.guild ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}${d.guild && !guild ? `<option value="${esc(d.guild)}" selected>${esc(d.guild)}</option>` : ''}</select>`
+					: `<input id="dsi-guild" inputmode="numeric" value="${esc(d.guild)}" placeholder="Server ID (Developer Mode, right-click the server, Copy Server ID)" class="${field} mt-1 font-mono">`}
+			</label>
+			<p class="text-sm font-bold text-gray-900 dark:text-white mt-4 mb-1">What roles give on this panel</p>
+			<p class="${note} mb-2">People with no linked account sign in only if a row matches one of their roles. Rows add up. Leave the table empty to allow only linked accounts.</p>
+			<div id="dsi-rows"></div>
+			<div class="flex flex-wrap gap-2 mt-2">
+				${guild ? `<select id="dsi-add-role" class="${field} md:w-auto"><option value="*">Anyone in the Discord server</option>${(guild.roles || []).map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select>`
+					: `<input id="dsi-add-role" inputmode="numeric" placeholder="Role ID, or * for anyone in the server" class="${field} md:w-72 font-mono">`}
+				<button type="button" onclick="ServerApp.discordRowAdd()" class="${grey}">Add role</button>
+			</div>
+			<label class="${check} mt-3"><input type="checkbox" id="dsi-mfa" ${d.require_mfa ? 'checked' : ''} class="mt-1"> <span>Only Discord accounts with two-factor on<br><span class="${note}">For people signing in on their roles (linked accounts keep their own two-factor).</span></span></label>
+			<label class="${check} mt-2"><input type="checkbox" id="dsi-enabled" ${d.enabled ? 'checked' : ''} class="mt-1"> <b>Show Sign in with Discord on the sign-in page</b></label>
+			<p id="dsi-error" class="hidden text-sm text-red-500 mt-2"></p>
+			<div class="flex flex-wrap gap-2 mt-3">
+				<button onclick="ServerApp.saveDiscordSignin(this)" class="px-4 py-2 rounded text-sm bg-theme hover-bg-theme text-white font-bold">Save sign-in settings</button>
+				${d.has_secret ? `<button onclick="ServerApp.saveDiscordSignin(this, true)" class="${grey}">Remove the secret</button>` : ''}
+			</div>
+			${d.accounts.length ? `<p class="text-sm font-bold text-gray-900 dark:text-white mt-5 mb-1">Discord accounts that signed in</p>
+			<div class="divide-y divide-gray-100 dark:divide-gray-700/60">${d.accounts.map(a => `<div class="flex flex-wrap items-center justify-between gap-2 py-2">
+				<span class="text-sm min-w-0 break-words"><b class="text-gray-900 dark:text-white">${esc(a.name)}</b> <span class="${note}">${a.linked ? 'linked to ' + esc(a.linked.replace(/^(panel|linux):/, '')) + ' · ' : ''}${a.blocked ? '<b class="text-red-500">blocked</b> · ' : ''}last ${a.last ? new Date(a.last * 1000).toLocaleString() : 'never'}</span></span>
+				<span class="flex gap-2"><button onclick="ServerApp.discordBlock('${esc(a.id)}', ${!a.blocked}, this)" class="${grey}">${a.blocked ? 'Unblock' : 'Block'}</button></span>
+			</div>`).join('')}</div>` : ''}`;
+		this.renderDiscordRows();
+	},
+
+	renderDiscordRows() {
+		const box = document.getElementById('dsi-rows');
+		if (!box) return;
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const bot = (this.discordData && this.discordData.status) || {};
+		const guild = (bot.guilds || []).find(g => g.id === (this.discordSignin || {}).guild);
+		const roleName = r => r.role === '*' ? 'Anyone in the Discord server'
+			: ((guild && (guild.roles || []).find(x => x.id === r.role)) || {}).name || r.name || r.role;
+		const servers = [{ key: '*', label: 'Every server' }, ...(this.servers || []).map(s => ({ key: s.node ? `${s.node}/${s.name}` : s.name,
+			label: s.node ? `${s.name} (${s.nodeName || s.node})` : s.name }))];
+		const perms = [['view', 'View'], ['console', 'Console & chat'], ['power', 'Start/stop/restart'], ['players', 'Players'],
+			['files', 'Files'], ['mods', 'Mods'], ['settings', 'Settings'], ['backups', 'Backups']];
+		const rows = this.discordRows || [];
+		box.innerHTML = rows.length ? rows.map((r, i) => `<div class="rounded border border-gray-200 dark:border-gray-700 p-2 mb-2">
+			<div class="flex flex-wrap items-center justify-between gap-2"><b class="text-sm text-gray-900 dark:text-white break-words">${esc(roleName(r))}</b>
+				<button type="button" onclick="ServerApp.discordRowRemove(${i})" class="text-sm underline text-red-600 dark:text-red-400 min-h-[44px] md:min-h-0">Remove</button></div>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">On</p>
+			<div class="flex flex-wrap gap-x-3">${servers.map(s => `<label class="inline-flex items-center gap-1 text-sm min-h-[44px] md:min-h-0"><input type="checkbox" class="dsi-srv-${i}" value="${esc(s.key)}" ${r.servers.includes(s.key) ? 'checked' : ''}> ${esc(s.label)}</label>`).join('')}</div>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">May</p>
+			<div class="flex flex-wrap gap-x-3">${perms.map(([p, l]) => `<label class="inline-flex items-center gap-1 text-sm min-h-[44px] md:min-h-0"><input type="checkbox" class="dsi-perm-${i}" value="${p}" ${r.perms.includes(p) ? 'checked' : ''}> ${l}</label>`).join('')}</div>
+		</div>`).join('') : '<p class="text-sm text-gray-500 dark:text-gray-400">No role rows: only linked accounts can sign in with Discord.</p>';
+	},
+
+	discordRowsSync() {
+		(this.discordRows || []).forEach((r, i) => {
+			const got = cls => [...document.querySelectorAll(`.${cls}`)].filter(b => b.checked).map(b => b.value);
+			if (document.querySelector(`.dsi-srv-${i}`)) { r.servers = got(`dsi-srv-${i}`); r.perms = got(`dsi-perm-${i}`); }
+		});
+	},
+
+	discordRowAdd() {
+		const el = document.getElementById('dsi-add-role');
+		const role = (el.value || '').trim();
+		if (!role) return;
+		this.discordRowsSync();
+		const name = el.tagName === 'SELECT' ? el.options[el.selectedIndex].text : '';
+		this.discordRows.push({ role, name, servers: ['*'], perms: ['view', 'power'] });
+		this.renderDiscordRows();
+	},
+
+	discordRowRemove(i) {
+		this.discordRowsSync();
+		this.discordRows.splice(i, 1);
+		this.renderDiscordRows();
+	},
+
+	async saveDiscordSignin(button, forget) {
+		const err = document.getElementById('dsi-error');
+		err.classList.add('hidden');
+		if (forget && !confirm('Remove the client secret? Sign in with Discord stops working until you paste one again.')) return;
+		this.discordRowsSync();
+		const v = id => document.getElementById(id).value.trim();
+		const body = forget ? { forget_secret: true } : {
+			client_id: v('dsi-client'), secret: v('dsi-secret'), panel_url: v('dsi-panel-url'), join_url: v('dsi-join-url'),
+			guild: v('dsi-guild'), require_mfa: document.getElementById('dsi-mfa').checked,
+			enabled: document.getElementById('dsi-enabled').checked, roles: this.discordRows };
+		button.disabled = true;
+		const res = await fetch('/api/settings/discord-signin', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+		button.disabled = false;
+		if (!res.ok) { err.textContent = await this.apiError(res); err.classList.remove('hidden'); return; }
+		this.loadDiscordSignin();
+	},
+
+	async discordBlock(id, blocked, button) {
+		if (blocked && !confirm('Block this Discord account? It is signed out of the panel and join pages, and can\'t sign in with Discord until you unblock it.')) return;
+		button.disabled = true;
+		const res = await fetch(`/api/settings/discord-signin/accounts/${encodeURIComponent(id)}`, { method: 'PUT',
+			headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blocked }) });
+		button.disabled = false;
+		if (!res.ok) { alert(await this.apiError(res)); return; }
+		this.loadDiscordSignin();
 	},
 
 	async loadSetupSettings() {
@@ -7344,7 +7494,7 @@ const ServerApp = {
 				unlisted: id('unlisted').checked, new_link: !!newLink, address: id('address').value.trim(),
 				note: id('note').value, link_url: id('link-url').value.trim(), link_label: id('link-label').value.trim(),
 				pack_url: id('pack-url') ? id('pack-url').value.trim() : '', show_players: id('players').checked,
-				allow_start: id('start').checked }) });
+				allow_start: id('start').checked, ...this.joinAccessValues(key) }) });
 		if (!res.ok) {
 			button.disabled = false;
 			const note = id('msg');
@@ -7358,6 +7508,113 @@ const ServerApp = {
 	},
 
 	joinId(key) { return key.replace(/[^A-Za-z0-9_-]/g, '_'); },
+
+	// --- 1.28: who can see a join page, and Start and Stop by permission ---
+	joinRuleLabel(who, signin, saved) {
+		if (who === 'signed') return 'Anyone who signs in';
+		if (who === 'panel_perms') return 'Panel accounts, by their permissions on this server';
+		if (who === 'discord_member') return 'Anyone in our Discord server';
+		if (who.startsWith('panel:')) return `Panel account: ${who.slice(6)}`;
+		if (who.startsWith('discord_role:')) {
+			const r = (signin.roles || []).find(x => x.id === who.slice(13));
+			return `Discord role: ${r ? r.name : (saved && saved.name) || who.slice(13)}`;
+		}
+		return who;
+	},
+
+	joinAccessHtml(key, id, p, signin) {
+		this.joinRules = this.joinRules || {};
+		this.joinRules[key] = (p.rules || []).map(r => ({ ...r }));
+		this.joinSignin = signin;
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const field = 'p-2 rounded bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white text-base md:text-sm';
+		const radio = (v, label, help) => `<label class="flex items-start gap-2 text-sm cursor-pointer"><input type="radio" name="join-access-${id}" value="${v}" ${p.access === v ? 'checked' : ''} onchange="ServerApp.joinAccessShow('${esc(key)}')" class="mt-1"><span><b class="text-gray-900 dark:text-white">${label}</b><br><span class="${note}">${help}</span></span></label>`;
+		const dOk = signin.discord, dSetup = signin.discord_setup;
+		const opts = [['signed', 'Anyone who signs in'], ['panel_perms', 'Panel accounts, by their permissions on this server'],
+			['discord_member', 'Anyone in our Discord server'],
+			...(signin.roles || []).map(r => [`discord_role:${r.id}`, `Discord role: ${r.name}`]),
+			...(signin.accounts || []).map(u => [`panel:${u}`, `Panel account: ${u}`])];
+		return `<div class="rounded border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+			<p class="font-bold text-sm text-gray-900 dark:text-white">Who can see this page</p>
+			${radio('anyone', 'Anyone with the link', 'As before: no sign-in.')}
+			${radio('signed', 'Anyone who signs in', 'Visitors sign in first. Everyone signed in sees how to join, and can press Start if you allow it below.')}
+			${radio('permission', 'Signed in, by permission', 'Choose who may see how to join, who may start the server and who may stop it.')}
+			<div id="join-access-more-${id}" class="${p.access === 'anyone' ? 'hidden' : ''} space-y-2 pl-6">
+				<p class="${note}">How visitors sign in:</p>
+				<label class="flex items-start gap-2 text-sm cursor-pointer"><input type="checkbox" id="join-signin-panel-${id}" ${p.signin_panel ? 'checked' : ''} class="mt-1"><span>With a panel account<br><span class="${note}">Accounts from the Users page (a plain account with no server permissions is fine for a player). This computer's own accounts can't sign in on a public page.</span></span></label>
+				<label class="flex items-start gap-2 text-sm ${dOk || p.signin_discord ? 'cursor-pointer' : 'opacity-60'}"><input type="checkbox" id="join-signin-discord-${id}" ${p.signin_discord ? 'checked' : ''} ${dOk || p.signin_discord ? '' : 'disabled'} class="mt-1"><span>With Discord<br><span class="${note}">${dOk ? 'Uses Sign in with Discord from Panel Settings.' : dSetup ? 'Enter the join pages address under Panel Settings, Discord, first.' : 'Set up Sign in with Discord under Panel Settings, Discord, first.'}</span></span></label>
+				<label class="flex items-start gap-2 text-sm cursor-pointer ml-6"><input type="checkbox" id="join-discord-member-${id}" ${p.discord_member ? 'checked' : ''} ${signin.guild ? '' : 'disabled'} class="mt-1"><span>Must be in our Discord server<br><span class="${note}">${signin.guild ? 'Discord visitors who aren\'t in it see the invite below and Join our Discord first.' : 'Choose your Discord server under Panel Settings, Discord, first.'}</span></span></label>
+				<label class="${note} block ml-6">Discord invite link<input id="join-discord-invite-${id}" maxlength="80" value="${esc(p.discord_invite || '')}" placeholder="https://discord.gg/abc123" class="${field} w-full mt-1"><span class="block mt-1">Shown as <b>Join our Discord</b>. Make it one that never expires.</span></label>
+				<div id="join-rules-box-${id}" class="${p.access === 'permission' ? '' : 'hidden'}">
+					<p class="${note} mb-1">Who may do what (rows add up; panel admins can always do everything):</p>
+					<div id="join-rules-${id}"></div>
+					<div class="flex flex-wrap gap-2 mt-2">
+						<select id="join-rule-add-${id}" class="${field} min-w-0 max-w-full">${opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select>
+						<button type="button" onclick="ServerApp.joinRuleAdd('${esc(key)}')" class="px-3 py-2 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Add</button>
+					</div>
+					<p class="${note} mt-1">"By their permissions": <b>View</b> on this server lets them see how to join, <b>Start/stop/restart</b> lets them start and stop it (Users page).</p>
+				</div>
+			</div>
+		</div>`;
+	},
+
+	joinAccessShow(key) {
+		const id = this.joinId(key);
+		const v = (document.querySelector(`input[name="join-access-${id}"]:checked`) || {}).value || 'anyone';
+		document.getElementById(`join-access-more-${id}`).classList.toggle('hidden', v === 'anyone');
+		document.getElementById(`join-rules-box-${id}`).classList.toggle('hidden', v !== 'permission');
+		this.renderJoinRules(key);
+	},
+
+	joinRulesSync(key) {
+		const id = this.joinId(key);
+		(this.joinRules[key] || []).forEach((r, i) => {
+			['see', 'start', 'stop'].forEach(k => {
+				const box = document.getElementById(`join-rule-${k}-${id}-${i}`);
+				if (box) r[k] = box.checked;
+			});
+		});
+	},
+
+	renderJoinRules(key) {
+		const id = this.joinId(key), box = document.getElementById(`join-rules-${id}`);
+		if (!box) return;
+		const rows = this.joinRules[key] || [];
+		const tick = (r, i, k, label) => `<label class="inline-flex items-center gap-1 text-sm cursor-pointer min-h-[44px] md:min-h-0"><input type="checkbox" id="join-rule-${k}-${id}-${i}" ${r[k] ? 'checked' : ''}> ${label}</label>`;
+		box.innerHTML = rows.length ? rows.map((r, i) => `<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 border-b border-gray-100 dark:border-gray-700/60">
+				<span class="text-sm font-bold text-gray-900 dark:text-white break-words min-w-0">${esc(this.joinRuleLabel(r.who, this.joinSignin || {}, r))}</span>
+				<span class="flex flex-wrap items-center gap-3">${tick(r, i, 'see', 'See how to join')}${tick(r, i, 'start', 'Start')}${tick(r, i, 'stop', 'Stop')}
+				<button type="button" onclick="ServerApp.joinRuleRemove('${esc(key)}', ${i})" class="text-sm underline text-red-600 dark:text-red-400 min-h-[44px] md:min-h-0">Remove</button></span>
+			</div>`).join('') : '<p class="text-sm text-gray-500 dark:text-gray-400">No rows yet: nobody signed in can see the page.</p>';
+	},
+
+	joinRuleAdd(key) {
+		const id = this.joinId(key), sel = document.getElementById(`join-rule-add-${id}`);
+		this.joinRulesSync(key);
+		const rows = this.joinRules[key] = this.joinRules[key] || [];
+		if (!rows.some(r => r.who === sel.value)) {
+			const role = sel.value.startsWith('discord_role:') ? (sel.options[sel.selectedIndex].text || '').replace(/^Discord role: /, '') : '';
+			const all = sel.value === 'panel_perms';      // its ticks only cap what the account's permissions give
+			rows.push({ who: sel.value, see: true, start: all, stop: all, name: role });
+		}
+		this.renderJoinRules(key);
+	},
+
+	joinRuleRemove(key, i) {
+		this.joinRulesSync(key);
+		(this.joinRules[key] || []).splice(i, 1);
+		this.renderJoinRules(key);
+	},
+
+	joinAccessValues(key) {
+		const id = this.joinId(key), el = n => document.getElementById(`join-${n}-${id}`);
+		if (!el('signin-panel')) return {};
+		this.joinRulesSync(key);
+		return { access: (document.querySelector(`input[name="join-access-${id}"]:checked`) || {}).value || 'anyone',
+			signin_panel: el('signin-panel').checked, signin_discord: el('signin-discord').checked,
+			discord_member: el('discord-member').checked, discord_invite: el('discord-invite').value.trim(),
+			rules: this.joinRules[key] || [] };
+	},
 
 	copyJoinLink(url, button) {
 		const done = () => { const old = button.innerText; button.innerText = 'Copied'; setTimeout(() => { button.innerText = old; }, 1500); };
@@ -7474,6 +7731,7 @@ const ServerApp = {
 					<input type="checkbox" id="join-start-${id}" ${p.allow_start ? 'checked' : ''} class="mt-1">
 					<span><b class="text-gray-900 dark:text-white">Let visitors start the server</b><br><span class="${note}">Shows <b>Start the server</b> on the page while it is stopped, so a friend can start it and join. Anyone who can open the page can press it: one start every 2 minutes per server, and 3 an hour per visitor. It never stops a server${s.sleep ? '' : '; with Sleep mode (Maintenance tab) it stops by itself again when nobody plays'}.</span></span>
 				</label>
+				${this.joinAccessHtml(key, id, p, d.signin || {})}
 				<label class="${note} block">A note for players (rules, when you play)<textarea id="join-note-${id}" rows="3" maxlength="600" class="${field} w-full mt-1">${esc(p.note)}</textarea></label>
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 					<label class="${note}">A link of your own (Discord, a website)<input id="join-link-url-${id}" maxlength="300" value="${esc(p.link_url)}" placeholder="https://discord.gg/..." class="${field} w-full mt-1"></label>
@@ -7507,6 +7765,7 @@ const ServerApp = {
 		</div>`;
 
 		document.getElementById('join-body').innerHTML = listenerCard + proxyCard + addressCard + serversCard;
+		Object.keys(this.joinOpen || {}).filter(k => this.joinOpen[k]).forEach(k => this.renderJoinRules(k));
 		this.joinNote = null;
 	},
 
@@ -8465,10 +8724,20 @@ const ServerApp = {
 		const footer = this.accountForced
 			? `<button onclick="ServerApp.logout()" class="mt-4 w-full ${grey}">Sign out</button>`
 			: `<button onclick="ServerApp.closeModal()" class="mt-4 w-full ${grey}">Close</button>`;
+		if (me.source === 'discord') {
+			// 1.28: signed in with Discord on its roles: nothing to change here
+			document.getElementById('modal-content').innerHTML = `
+				<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Your Account</h3>
+				<p class="text-sm text-gray-600 dark:text-gray-300 mb-2">You signed in with Discord as <b>${this.escapeHtml(me.username.replace(/^discord:/, ''))}</b>. Your roles in the Discord server decide what you can do here.</p>
+				<p class="text-sm text-gray-500 dark:text-gray-400">There's no password or two-factor to set up on this panel: Discord's own two-factor protects the sign-in.</p>
+				${footer}`;
+			document.getElementById('modal-overlay').classList.remove('hidden');
+			return;
+		}
 		document.getElementById('modal-content').innerHTML = `
 			${password}${forcedIntro}
 			<div id="tf-box"><p class="text-sm text-gray-500">Loading two-factor sign-in...</p></div>
-			${this.accountForced ? '' : '<div id="pk-box" class="mt-6 hidden"></div><div id="dev-box" class="mt-6 hidden"></div><div id="ssh-box" class="mt-6"></div>'}
+			${this.accountForced ? '' : '<div id="pk-box" class="mt-6 hidden"></div><div id="dc-box" class="mt-6 hidden"></div><div id="dev-box" class="mt-6 hidden"></div><div id="ssh-box" class="mt-6"></div>'}
 			${footer}`;
 		document.getElementById('modal-overlay').classList.remove('hidden');
 		const res = await fetch('/api/auth/2fa');
@@ -8477,8 +8746,42 @@ const ServerApp = {
 		if (this.accountForced && !this.tfStatus.enabled) return this.startTwoFactorSetup();
 		this.renderTwoFactor();
 		this.loadPasskeys();
+		this.loadDiscordLink();
 		this.loadDevices();
 		this.loadSshKeys();
+	},
+
+	// --- 1.28: Link Discord (🔑 Password → Discord) ---
+	async loadDiscordLink(message, ok) {
+		const box = document.getElementById('dc-box');
+		if (!box) return;
+		const res = await fetch('/api/auth/discord/link');
+		if (!res.ok) { box.classList.add('hidden'); return; }
+		const d = await res.json();
+		if (!d.available && !d.linked) { box.classList.add('hidden'); return; }
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const grey = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white';
+		box.classList.remove('hidden');
+		box.innerHTML = `<h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Discord</h3>
+			${message ? `<p class="text-sm mb-2 ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}">${esc(message)}</p>` : ''}
+			${d.linked ? `<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Linked to the Discord account <b>${esc(d.linked)}</b>. <b>Sign in with Discord</b> signs you in as this account${this.tfStatus && this.tfStatus.enabled ? ', then asks for your two-factor code' : ''}.</p>
+				<button onclick="ServerApp.unlinkDiscord(this)" class="${grey}">Unlink Discord</button>`
+			: `<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Link your Discord account to sign in with <b>Sign in with Discord</b>. Your two-factor sign-in still applies.</p>
+				<button onclick="ServerApp.linkDiscord(this)" class="px-4 py-2 rounded text-white font-bold" style="background:#5865f2">Link Discord</button>`}`;
+	},
+
+	async linkDiscord(button) {
+		button.disabled = true;
+		const res = await fetch('/api/auth/discord/link', { method: 'POST' });
+		if (!res.ok) { button.disabled = false; return this.loadDiscordLink(await this.apiError(res), false); }
+		location.href = (await res.json()).url;
+	},
+
+	async unlinkDiscord(button) {
+		if (!confirm('Unlink Discord? Sign in with Discord stops signing you in as this account.')) return;
+		button.disabled = true;
+		const res = await fetch('/api/auth/discord/link', { method: 'DELETE' });
+		this.loadDiscordLink(res.ok ? 'Discord unlinked.' : await this.apiError(res), res.ok);
 	},
 
 	// --- 1.24: Remember this device (🔑 Password → Remembered devices) ---

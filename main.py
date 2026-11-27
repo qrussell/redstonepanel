@@ -48,6 +48,7 @@ import core.bootstart as bootstart
 import core.sleep as sleep
 import core.apitokens as apitokens
 import core.discordbot as discordbot
+import core.discordauth as discordauth
 import core.mastersignin as mastersignin
 import core.grants as grants
 import core.sshkeys as sshkeys
@@ -129,6 +130,7 @@ async def no_stale_static(request: Request, call_next):
 PUBLIC_API = {"/api/auth/login", "/api/auth/login/code", "/api/auth/logout", "/api/health", "/api/panel-info",
               "/api/auth/passkeys/available", "/api/auth/passkey/options", "/api/auth/passkey/login",
               "/api/auth/first-sign-in", "/api/auth/first-sign-in/check",
+              "/api/auth/discord/available", "/api/auth/discord/start", "/api/auth/discord/callback",
               "/api/cluster/ca", "/api/cluster/ca.crt", "/api/cluster/join", "/api/auth/master-sign-in"}
 ADMIN_API = ("/api/users", "/api/settings")
 # What an API token (1.25) never reaches, whatever its grants: the account routes and the terminal
@@ -661,6 +663,148 @@ def passkey_remove_api(cred_id: str, request: Request):
     manager.write_log(f"[AUTH] {user['username']} ({user['source']}) removed a passkey")
     return {"status": "success"}
 
+# --- 1.28: Sign in with Discord (core/discordauth.py) ---
+DISCORD_STATE_COOKIE = "rp_dstate"
+
+def _bounce(url):
+    """Sends the browser on with a page of its own, so the next request is this site's own (a
+    SameSite=Strict session cookie set on the way back from Discord is then sent with it)."""
+    u = html_text.escape(url, quote=True)
+    return HTMLResponse(f'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url={u}">'
+                        f'<title>Signing in</title><a href="{u}">Continue</a>',
+                        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+def _host_of(base):
+    u = urllib.parse.urlsplit(base)
+    default = {"https": 443, "http": 80}.get(u.scheme)
+    return (u.hostname or "") + ("" if not u.port or u.port == default else f":{u.port}")
+
+def _same_host(request: Request, base):
+    host = (request.headers.get("host") or "").strip().lower()
+    for d in (":443", ":80"):
+        if host.endswith(d):
+            host = host[:-len(d)]
+    return host == _host_of(base)
+
+def _discord_back(where, message=None):
+    target = "/static/login.html" if where == "login" else "/static/index.html"
+    return target + ("#discord=" + urllib.parse.quote(message, safe="") if message else "")
+
+@app.get("/api/auth/discord/available")
+def discord_available_api():
+    return {"panel": discordauth.panel_available()}
+
+@app.get("/api/auth/discord/start")
+def discord_start_api(request: Request):
+    cfg = discordauth.load()
+    if not discordauth.panel_available(cfg):
+        return _bounce(_discord_back("login", "Sign in with Discord is off on this panel."))
+    if not _same_host(request, cfg["panel_url"]):
+        # Discord sends people back to the panel's address set under Panel Settings: start there,
+        # so the state cookie is on the same site as the way back
+        return RedirectResponse(cfg["panel_url"] + "/api/auth/discord/start", status_code=303)
+    ip = request.client.host if request.client else "unknown"
+    if auth.throttled((f"ip:{ip}",)):
+        return _bounce(_discord_back("login", "Too many failed sign-in attempts. Try again in a few minutes."))
+    try:
+        state, url = discordauth.begin("panel", cfg["panel_url"], cfg=cfg)
+    except discordauth.DiscordAuthError as e:
+        return _bounce(_discord_back("login", str(e)))
+    response = RedirectResponse(url, status_code=303)
+    response.set_cookie(DISCORD_STATE_COOKIE, state, max_age=discordauth.STATE_SECONDS, httponly=True, samesite="lax",
+                        secure=cfg["panel_url"].startswith("https:"), path="/api/auth/discord")
+    return response
+
+@app.get("/api/auth/discord/callback")
+def discord_callback_api(request: Request, state: str = "", code: str = "", error: str = ""):
+    ip = request.client.host if request.client else "unknown"
+    cookie = request.cookies.get(DISCORD_STATE_COOKIE)
+    where = "login"
+    try:
+        rec, who = discordauth.finish(state, cookie, code, error)
+        if rec["purpose"] == "link":
+            where = "panel"
+            src, _, name = (rec["account"] or "").partition(":")
+            if auth.account_role(src, name) is None:
+                raise discordauth.DiscordAuthError("Sign in to the panel again, then link Discord.")
+            discordauth.link(rec["account"], who, f"{name} ({src})")
+            response = _bounce("/static/index.html#discord-linked")
+        elif rec["purpose"] != "panel":
+            raise discordauth.DiscordAuthError("That Discord sign-in didn't start here. Try again.")
+        else:
+            linked = discordauth.linked_account(who["id"])
+            if linked and not discordauth.blocked(who["id"]):
+                try:
+                    identity = auth.linked_identity(linked)
+                except auth.AuthError as e:
+                    raise discordauth.DiscordAuthError(str(e))
+            else:
+                identity = discordauth.panel_identity(who)
+            if identity.get("pending"):
+                # The linked account has two-factor on: its code next, as after a password
+                response = _bounce("/static/login.html#code")
+                response.set_cookie(auth.PENDING_COOKIE, auth.make_pending_token(identity), max_age=auth.PENDING_SECONDS,
+                                    httponly=True, samesite="strict", secure=request.url.scheme == "https",
+                                    path="/api/auth/login")
+                manager.write_log(f"[AUTH] Discord account {who['name']} ({who['id']}) passed Discord for "
+                                  f"{identity['u']} ({identity['src']}) from {ip}; waiting for its two-factor code")
+            else:
+                response = _bounce("/static/index.html")
+                _set_session_cookie(request, response, identity)
+                if identity["src"] == "discord":
+                    roles = ", ".join(who["roles"]) or "none"
+                    manager.write_log(f"[AUTH] discord:{who['name']} ({who['id']}) signed in with Discord from {ip} "
+                                      f"(roles {roles})")
+                else:
+                    manager.write_log(f"[AUTH] {identity['u']} ({identity['src']}) signed in with Discord "
+                                      f"({who['name']}) from {ip}")
+            auth.clear_fails((f"ip:{ip}",))
+    except discordauth.DiscordAuthError as e:
+        if where == "login":
+            auth.record_fail((f"ip:{ip}",))
+        manager.write_log(f"[AUTH] Discord sign-in refused from {ip}: {e}")
+        response = _bounce(_discord_back(where, str(e)))
+    response.delete_cookie(DISCORD_STATE_COOKIE, path="/api/auth/discord")
+    return response
+
+def _own_account(request: Request):
+    user = request.state.user
+    if user["source"] not in ("panel", "linux"):
+        raise HTTPException(status_code=400, detail="Only panel accounts and this computer's accounts can link Discord.")
+    return user, twofactor.account_key(user["source"], user["username"])
+
+@app.get("/api/auth/discord/link")
+def discord_link_status_api(request: Request):
+    user, key = _own_account(request)
+    cfg = discordauth.load()
+    got = discordauth.link_of(key, cfg)
+    return {"available": discordauth.panel_available(cfg), "linked": got[1] if got else None,
+            "panel_url": cfg["panel_url"]}
+
+@app.post("/api/auth/discord/link")
+def discord_link_api(request: Request, response: Response):
+    user, key = _own_account(request)
+    cfg = discordauth.load()
+    if not discordauth.panel_available(cfg):
+        raise HTTPException(status_code=400, detail="Sign in with Discord is off on this panel.")
+    if not _same_host(request, cfg["panel_url"]):
+        raise HTTPException(status_code=400, detail=f"Open the panel at {cfg['panel_url']} to link Discord "
+                                                    "(that's the address Discord sends you back to).")
+    try:
+        state, url = discordauth.begin("link", cfg["panel_url"], account=key, cfg=cfg)
+    except discordauth.DiscordAuthError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    response.set_cookie(DISCORD_STATE_COOKIE, state, max_age=discordauth.STATE_SECONDS, httponly=True, samesite="lax",
+                        secure=cfg["panel_url"].startswith("https:"), path="/api/auth/discord")
+    return {"url": url}
+
+@app.delete("/api/auth/discord/link")
+def discord_unlink_api(request: Request):
+    user, key = _own_account(request)
+    if not discordauth.unlink(key, f"{user['username']} ({user['source']})"):
+        raise HTTPException(status_code=400, detail="No Discord account is linked.")
+    return {"status": "success"}
+
 @app.get("/api/auth/me")
 def me_api(request: Request):
     user = dict(request.state.user)
@@ -682,7 +826,7 @@ def me_api(request: Request):
     user.pop("perms", None)
     if user["role"] != "admin":
         user["grants"] = (grants.get(user["username"]) if user["source"] == "panel"
-                          else (user.get("grants") or {}) if user["source"] == "token"
+                          else (user.get("grants") or {}) if user["source"] in ("token", "discord")
                           else {grants.ALL_SERVERS: list(grants.LEGACY)})
     user.pop("token_id", None)
     return user
@@ -900,6 +1044,8 @@ class PasswordChange(BaseModel):
 @app.post("/api/auth/password")
 def change_password_api(req: PasswordChange, request: Request, response: Response):
     user = request.state.user
+    if user["source"] == "discord":
+        raise HTTPException(status_code=400, detail="You signed in with Discord, so there's no password here to change.")
     if user["source"] != "panel":
         raise HTTPException(status_code=400, detail=("Windows accounts change their password in Windows." if paths.WINDOWS
                                                     else "Linux accounts change their password on the server (passwd)."))
@@ -2766,6 +2912,15 @@ def _join_view(request: Request):
     default = {"https": 443, "http": 80}[st["scheme"]]
     port = "" if st["port"] == default else f":{st['port']}"
     base = _join_base(request, st)
+    # 1.28: what the "Who can see this page" part of each page needs
+    dcfg = discordauth.load()
+    roles = []
+    for g in discordbot.public()["status"]["guilds"]:
+        if g["id"] == dcfg["guild"]:
+            roles = [{"id": r["id"], "name": r["name"]} for r in g.get("roles") or []]
+    out["signin"] = {"discord": discordauth.configured(dcfg) and bool(discordauth.join_base(dcfg)),
+                     "discord_setup": discordauth.configured(dcfg), "guild": bool(dcfg["guild"]),
+                     "roles": roles, "accounts": [u["username"] for u in auth.list_panel_users()]}
     return dict(out, listener=st, lan_url=f"{st['scheme']}://{host}{port}/join",
                 public_url=f"{base}/join" if base else None,
                 proxy={"addresses": s["join_proxies"], "only": s["join_proxy_only"], "url": s["join_url"],
@@ -3434,6 +3589,49 @@ def discord_settings_save_api(request: Request, req: DiscordUpdate):
         return discordbot.save_settings(new, actor=request.state.user["username"])
     except discordbot.DiscordError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+class DiscordSignInUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    client_id: Optional[str] = None
+    secret: Optional[str] = None
+    forget_secret: Optional[bool] = False
+    guild: Optional[str] = None
+    panel_url: Optional[str] = None
+    join_url: Optional[str] = None
+    require_mfa: Optional[bool] = None
+    roles: Optional[list] = None
+
+@app.get("/api/settings/discord-signin")
+def discord_signin_settings_api():
+    return discordauth.public()
+
+@app.put("/api/settings/discord-signin")
+def discord_signin_save_api(request: Request, req: DiscordSignInUpdate):
+    new = {k: getattr(req, k) for k in ("enabled", "client_id", "secret", "forget_secret", "guild", "panel_url",
+                                         "join_url", "require_mfa", "roles") if getattr(req, k) is not None}
+    try:
+        return discordauth.save_settings(new, actor=request.state.user["username"])
+    except discordauth.DiscordAuthError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class DiscordAccountBlock(BaseModel):
+    blocked: bool
+
+@app.put("/api/settings/discord-signin/accounts/{discord_id}")
+def discord_account_block_api(request: Request, discord_id: str, req: DiscordAccountBlock):
+    try:
+        discordauth.set_blocked(discord_id, req.blocked, actor=request.state.user["username"])
+    except discordauth.DiscordAuthError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return discordauth.public()
+
+@app.delete("/api/settings/discord-signin/accounts/{discord_id}")
+def discord_account_forget_api(request: Request, discord_id: str):
+    try:
+        discordauth.forget_account(discord_id, actor=request.state.user["username"])
+    except discordauth.DiscordAuthError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return discordauth.public()
 
 @app.get("/api/settings/cluster")
 def cluster_settings_api(request: Request):

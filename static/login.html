@@ -82,6 +82,14 @@
             </button>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Face, fingerprint, PIN or your phone, with a passkey you added under 🔑 Password.</p>
         </div>
+        <!-- 1.28: Sign in with Discord, when an admin turned it on -->
+        <div id="discord-area" class="hidden">
+            <div class="flex items-center gap-3 my-4 text-xs text-gray-400"><span class="flex-1 border-t border-gray-200 dark:border-gray-700"></span>or<span class="flex-1 border-t border-gray-200 dark:border-gray-700"></span></div>
+            <a id="discord-btn" href="/api/auth/discord/start" class="w-full flex items-center justify-center gap-2 py-2 rounded font-bold text-white transition hover:opacity-90" style="background:#5865f2">
+                <svg viewBox="0 0 24 24" class="w-5 h-5" fill="currentColor" aria-hidden="true"><path d="M19.6 5.2A17 17 0 0 0 15.4 4l-.5 1a15.7 15.7 0 0 0-5.8 0L8.6 4a17 17 0 0 0-4.2 1.3C1.7 9.3 1 13.2 1.3 17.1a17 17 0 0 0 5.2 2.6l1.1-1.8a11 11 0 0 1-1.7-.8l.4-.3a12.2 12.2 0 0 0 11.4 0l.4.3-1.7.8 1.1 1.8a17 17 0 0 0 5.2-2.6c.4-4.5-.7-8.4-3.1-11.9zM8.7 14.8c-1 0-1.9-1-1.9-2.1s.8-2.1 1.9-2.1 1.9 1 1.9 2.1-.8 2.1-1.9 2.1zm6.6 0c-1 0-1.9-1-1.9-2.1s.8-2.1 1.9-2.1 1.9 1 1.9 2.1-.8 2.1-1.9 2.1z"/></svg>
+                Sign in with Discord
+            </a>
+        </div>
         <p id="passkey-why" class="hidden text-xs text-gray-500 dark:text-gray-400 mt-4"></p>
         </div>
     </form>
@@ -130,6 +138,12 @@
         }).catch(() => {});
 
         const firstLinkGiven = location.hash.startsWith('#first=');
+        // 1.28: Sign in with Discord, and coming back from it (an error, or a linked account's code step)
+        fetch('/api/auth/discord/available').then(r => r.ok ? r.json() : null).then(d => {
+            if (d && d.panel && !firstLinkGiven) document.getElementById('discord-area').classList.remove('hidden');
+        }).catch(() => {});
+        const discordBack = location.hash;
+        if (discordBack.startsWith('#discord=') || discordBack === '#code') history.replaceState(null, '', location.pathname);
         // Windows panels: Windows accounts, and passkeys (Windows Hello) where the browser allows them
         fetch('/api/auth/passkeys/available').then(r => r.ok ? r.json() : null).then(pk => {
             if (!pk || !pk.supported) return;
@@ -205,6 +219,15 @@
             document.getElementById('password').required = !on;
             document.getElementById('code').value = '';
             if (on) document.getElementById('code').focus();
+        }
+
+        if (discordBack.startsWith('#discord=')) {
+            const err = document.getElementById('login-error');
+            err.innerText = decodeURIComponent(discordBack.slice(9));
+            err.classList.remove('hidden');
+        } else if (discordBack === '#code') {
+            showCodeStep(true);
+            document.getElementById('login-btn').innerText = 'Verify';
         }
 
         document.getElementById('login-form').addEventListener('submit', async (ev) => {
