@@ -92,6 +92,14 @@ can), and Windows 10 installs with an end-of-support note. Windows on ARM comes 
   **Start** the server and who may **Stop** it. A page can also require joining your Discord
   first and show its invite link. Discord is optional.
 
+### 1.29: web addresses through Cloudflare Tunnel *(planned)*
+
+- **Cloudflare Tunnel, set up for you.** With cloudflared running, pick your domain and names
+  (like `panel.example.org` and `play.example.org`) and the panel sets up the tunnel and DNS
+  itself: no router forwards for the web pages and a real certificate. In a cluster the master
+  serves every join page, so only the master needs a tunnel. Game ports still need port
+  forwarding.
+
 ## Ideas under consideration
 
 Suggested after 1.15 and not scheduled yet. Each one fits the panel's rules; the ones marked ⭐
