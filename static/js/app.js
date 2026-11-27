@@ -7733,7 +7733,7 @@ const ServerApp = {
 				</label>
 				<label class="flex items-start gap-2 text-sm cursor-pointer">
 					<input type="checkbox" id="join-start-${id}" ${p.allow_start ? 'checked' : ''} class="mt-1">
-					<span><b class="text-gray-900 dark:text-white">Let visitors start the server</b><br><span class="${note}">Shows <b>Start the server</b> on the page while it is stopped, so a friend can start it and join. Anyone who can open the page can press it: one start every 2 minutes per server, and 3 an hour per visitor. It never stops a server${s.sleep ? '' : '; with Sleep mode (Maintenance tab) it stops by itself again when nobody plays'}.</span></span>
+					<span><b class="text-gray-900 dark:text-white">Let visitors start the server</b><br><span class="${note}">Shows <b>Start the server</b> on the page while it is stopped, so a friend can start it and join. Anyone who can open the page can press it: one start every 2 minutes per server, and 3 an hour per visitor. On a page open to anyone it never stops a server (for Stop, see Who can see this page below)${s.sleep ? '' : '; with Sleep mode (Maintenance tab) it stops by itself again when nobody plays'}.</span></span>
 				</label>
 				${this.joinAccessHtml(key, id, p, d.signin || {})}
 				<label class="${note} block">A note for players (rules, when you play)<textarea id="join-note-${id}" rows="3" maxlength="600" class="${field} w-full mt-1">${esc(p.note)}</textarea></label>
