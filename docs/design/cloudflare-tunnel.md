@@ -1,6 +1,6 @@
 # Web addresses through Cloudflare Tunnel, set up by the panel
 
-Status: **plan, waiting for Quentin's go** · Target: 1.29 (after 1.28 Sign in with Discord) ·
+Status: **plan, all three decisions made, waiting for Quentin's go to build** · Target: 1.29 (after 1.28 Sign in with Discord) ·
 Written 27 Nov 2026
 
 Asked for by Quentin on 27 Nov 2026: once `cloudflared` runs on the machine, the panel should set
@@ -80,7 +80,7 @@ panel changes it.
 | DNS names | Made through the API | Through the API if there's a token, otherwise a command to copy |
 | If something goes wrong | The admin's other routes are never touched; Cloudflare refuses a bad list, so nothing breaks | The old file is put back and cloudflared restarted with it |
 | Works with cloudflared on another machine | Yes | No (the file is on that other machine); the panel shows the lines to paste, as 1.21.9 does |
-| Recommended | **Yes, for new setups**: what Cloudflare's dashboard makes by default, no restarts | Supported for people who already run one |
+| In 1.29 | Yes (decided 27 Nov 2026); **recommended for new setups**: what Cloudflare's dashboard makes by default, no restarts | Yes, for people who already run one |
 
 ### Walk-through: a tunnel managed in Cloudflare
 
@@ -271,8 +271,8 @@ sign-in limit through the tunnel (1 day), the card and docs (2 days), tests (2 d
 
 1. ~~Master serves every join page or each node its own.~~ Decided 27 Nov 2026: the master, and only
    the master is reachable from the internet.
-2. 1.29 with both tunnel kinds (recommended), or only tunnels managed in Cloudflare first. Quentin
-   asked for more detail first: see "The two kinds of tunnel" above.
+2. ~~Both tunnel kinds, or only tunnels managed in Cloudflare first.~~ Decided 27 Nov 2026: both
+   in 1.29, with tunnels managed in Cloudflare recommended for new setups.
 3. ~~Access on by default.~~ Decided 27 Nov 2026: the admin panel is public by default once
    Cloudflare is set up, with a switch to turn public access off. Cloudflare Access stays a
    recommended one-click option, off by default.
