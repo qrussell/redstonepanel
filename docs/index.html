@@ -303,7 +303,7 @@
                             REDSTONE<span class="redstone-glow-text">PANEL</span>
                         </span>
                         <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-pixel bg-redstone/20 text-redstone-bright border border-redstone/50 rounded w-fit">
-                            v1.26.0
+                            v1.27.0
                         </span>
                     </div>
                 </a>
@@ -393,7 +393,7 @@
             <!-- Status Pill -->
             <div class="inline-flex items-center gap-2.5 mc-slot rounded-full px-4 py-1.5 mb-7">
                 <span class="w-2.5 h-2.5 rounded-sm redstone-lamp"></span>
-                <span class="text-xs font-mono text-gray-300">Ubuntu &bull; Debian &bull; Raspberry Pi &bull; Windows &bull; Release v1.26.0</span>
+                <span class="text-xs font-mono text-gray-300">Ubuntu &bull; Debian &bull; Raspberry Pi &bull; Windows &bull; Release v1.27.0</span>
             </div>
 
             <!-- Main Headline -->
@@ -835,18 +835,26 @@
                     <!-- Vertical Redstone Wire Rail -->
                     <div class="absolute left-3 sm:left-5 top-2 bottom-2 w-1.5 rounded-full redstone-rail transition-all duration-300"></div>
 
-                    <!-- v1.26: current release -->
+                    <!-- v1.27: current release -->
                     <div class="relative">
                         <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] redstone-lamp"></div>
 
                         <div class="mc-panel redstone-wire-border rounded-xl p-6">
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.26.0 — Current Release</h3>
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.27.0 — Current Release</h3>
                                 <span class="px-2.5 py-1 text-[10px] font-pixel bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded">
                                     SHIPPING NOW
                                 </span>
                             </div>
                             <ul class="space-y-2 text-sm text-gray-300">
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Discord /start (1.27):</strong> people in your Discord type <code class="font-mono text-xs text-white">/start</code>, pick a server, and the panel starts it (or wakes it from sleep mode), then says when it&rsquo;s online and where to join.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>The panel is the bot (1.27):</strong> paste a bot token in Panel Settings and choose the Discord servers, roles and game servers it may use. Nothing to forward, on Linux and Windows; it only ever starts servers.</span>
+                                </li>
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
                                     <span><strong>Sleep mode (1.26):</strong> a server nobody plays on stops by itself to free memory and CPU, and starts again when a player joins, on Java and Bedrock; Java shows &ldquo;Sleeping: join to start it&rdquo; in the server list.</span>
@@ -907,31 +915,7 @@
                         </div>
                     </div>
 
-                    <!-- v1.27: next -->
-                    <div class="relative">
-                        <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] bg-[#2e3342]"></div>
-
-                        <div class="mc-panel rounded-xl p-6">
-                            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.27 — Discord /start</h3>
-                                <span class="px-2.5 py-1 text-[10px] font-pixel bg-[#2e3342] text-gray-300 border border-[#3a4052] rounded">
-                                    COMING NEXT
-                                </span>
-                            </div>
-                            <ul class="space-y-2 text-sm text-gray-300">
-                                <li class="flex items-start gap-2.5">
-                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
-                                    <span><strong>Start a server from Discord:</strong> people in your Discord type <code class="font-mono text-xs text-white">/start</code>, pick a server, and the panel starts it (or wakes it from sleep mode), then says when it&rsquo;s online and where to join.</span>
-                                </li>
-                                <li class="flex items-start gap-2.5">
-                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
-                                    <span><strong>The panel is the bot:</strong> paste a bot token in Panel Settings and choose the Discord servers and roles that may use it and the game servers it may start. Nothing to forward, on Linux and Windows.</span>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <!-- v1.28: planned -->
+                    <!-- v1.28: next -->
                     <div class="relative">
                         <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] bg-[#2e3342]"></div>
 
@@ -939,7 +923,7 @@
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                                 <h3 class="font-pixel text-lg sm:text-xl text-white">v1.28 — Sign in with Discord</h3>
                                 <span class="px-2.5 py-1 text-[10px] font-pixel bg-[#2e3342] text-gray-300 border border-[#3a4052] rounded">
-                                    PLANNED
+                                    COMING NEXT
                                 </span>
                             </div>
                             <ul class="space-y-2 text-sm text-gray-300">
@@ -954,6 +938,30 @@
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
                                     <span><strong>Join pages for your Discord members:</strong> a page can require joining your Discord first and show its invite link. Discord stays optional: everything works without it.</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- v1.29: planned -->
+                    <div class="relative">
+                        <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] bg-[#2e3342]"></div>
+
+                        <div class="mc-panel rounded-xl p-6">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.29 — Cloudflare Tunnel</h3>
+                                <span class="px-2.5 py-1 text-[10px] font-pixel bg-[#2e3342] text-gray-300 border border-[#3a4052] rounded">
+                                    PLANNED
+                                </span>
+                            </div>
+                            <ul class="space-y-2 text-sm text-gray-300">
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Web addresses set up for you:</strong> with cloudflared running, pick your domain and names (like <code class="font-mono text-xs text-white">panel.example.org</code> and <code class="font-mono text-xs text-white">play.example.org</code>) and the panel sets up the tunnel and DNS itself, with a real certificate and no router forwards for its web pages.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>One tunnel for a cluster:</strong> the master serves every join page, so only the master needs it. Game ports still need port forwarding.</span>
                                 </li>
                             </ul>
                         </div>
@@ -1526,7 +1534,7 @@
             syncSlidersToSelectedServer();
             renderServers();
             updateNodeGauges();
-            appendConsoleLog('RedstonePanel v1.26.0 Web Console initialized.', 'success');
+            appendConsoleLog('RedstonePanel v1.27.0 Web Console initialized.', 'success');
             appendConsoleLog('Connected to <strong>ubuntu-prod-01</strong> &bull; Type <strong>help</strong> or click a quick command.', 'info');
 
             setInterval(updateNodeGauges, 2800);
