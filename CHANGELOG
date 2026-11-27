@@ -6,6 +6,8 @@ it, are in `release-notes/` and on the releases page: https://github.com/qrussel
 
 ## 1.27.0 (2026-11-27)
 
+Release notes: release-notes/v1.27.0.md
+
 - Discord /start: people in your Discord type /start, pick a server, and the panel starts it (or wakes it from sleep mode), then edits its answer to say when the server is online and where to join. The panel itself is the bot: Panel Settings > Discord takes a bot token from the Discord Developer Portal, the Discord servers it answers in, optionally the roles that may use it, and the game servers it may start. It connects out to Discord, so nothing is forwarded, on Linux and Windows. It only ever starts servers: one start per server every 2 minutes and 5 per person an hour, logged as discord:NAME.
 
 ## 1.26.0 (2026-11-26)
