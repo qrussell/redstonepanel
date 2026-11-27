@@ -218,7 +218,6 @@ the join page for members, asking their Minecraft name once.
   accounts; it is off unless a page uses it.
 - A blocked Discord account stays blocked whatever its roles.
 - The role table can't give more than its rows say; no role ever gives Admin.
-  (below), and then only with Discord 2FA.
 
 ## Tests
 
