@@ -347,6 +347,16 @@ class Routes(Base):
         self.assertEqual(c.get("/api/auth/2fa").status_code, 400)
         self.assertTrue(any("discord:alice" in m and "signed in with Discord" in m for m in self.log))
 
+    def test_join_rules_offer_roles_without_the_bot(self):
+        self.configure()
+        self.go(self.client(), "alice")                     # alice's roles are remembered at sign-in
+        req = mock.Mock(headers={"host": "panel.example.org:8443"})
+        roles = self.main._join_view(req)["signin"]["roles"]
+        ids = [r["id"] for r in roles]
+        self.assertIn(MEMBER, ids)
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertNotIn(D.ANY_MEMBER, ids)
+
     def test_refused_sign_ins_count(self):
         self.configure()
         for _ in range(auth.MAX_FAILS):

@@ -2925,6 +2925,14 @@ def _join_view(request: Request):
     for g in discordbot.public()["status"]["guilds"]:
         if g["id"] == dcfg["guild"]:
             roles = [{"id": r["id"], "name": r["name"]} for r in g.get("roles") or []]
+    # Without the /start bot the names aren't known: offer the roles of the panel's role table and
+    # the roles people had when they signed in, by ID
+    known = {r["id"] for r in roles}
+    for rid, name in [(r["role"], r.get("name")) for r in dcfg["roles"]] \
+            + [(x, None) for a in dcfg["accounts"].values() for x in a.get("roles") or ()]:
+        if rid != discordauth.ANY_MEMBER and rid not in known:
+            known.add(rid)
+            roles.append({"id": rid, "name": name or f"role {rid}"})
     out["signin"] = {"discord": discordauth.configured(dcfg) and bool(discordauth.join_base(dcfg)),
                      "discord_setup": discordauth.configured(dcfg), "guild": bool(dcfg["guild"]),
                      "roles": roles, "accounts": [u["username"] for u in auth.list_panel_users()]}
