@@ -47,6 +47,7 @@ import core.crashes as crashes
 import core.bootstart as bootstart
 import core.sleep as sleep
 import core.apitokens as apitokens
+import core.discordbot as discordbot
 import core.mastersignin as mastersignin
 import core.grants as grants
 import core.sshkeys as sshkeys
@@ -3410,6 +3411,29 @@ def api_token_revoke_api(request: Request, token_id: str):
         raise HTTPException(status_code=404, detail=str(e))
     manager.write_log(f"[API] {request.state.user['username']} revoked the API token {name}.")
     return {"status": "success"}
+
+# --- 1.27: Discord /start (core/discordbot.py). The panel itself is the bot: an admin pastes a
+# bot token here and picks the servers /start may start and the Discord servers it answers in.
+class DiscordUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    token: Optional[str] = None
+    forget_token: Optional[bool] = False
+    servers: Optional[list] = None
+    guilds: Optional[list] = None
+    roles: Optional[list] = None
+
+@app.get("/api/settings/discord")
+def discord_settings_api():
+    return discordbot.public()
+
+@app.put("/api/settings/discord")
+def discord_settings_save_api(request: Request, req: DiscordUpdate):
+    new = {k: getattr(req, k) for k in ("enabled", "token", "forget_token", "servers", "guilds", "roles")
+           if getattr(req, k) is not None}
+    try:
+        return discordbot.save_settings(new, actor=request.state.user["username"])
+    except discordbot.DiscordError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/settings/cluster")
 def cluster_settings_api(request: Request):

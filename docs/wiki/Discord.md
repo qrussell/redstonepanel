@@ -146,6 +146,14 @@ from systemd, so they arrive even while the panel itself is stopped.
   `#server-status`. Keep the panel's alerts in the staff channel: they include details players
   don't need.
 
+### Let players start a server with /start
+
+From 1.27 the panel can also be a bot in your Discord: players type `/start`, pick a server,
+and it starts (or wakes from sleep mode) and the bot says when it's online. It only starts
+servers, only the ones you choose, and only in the Discord servers and for the roles you tick.
+Set it up in **Panel Settings → Discord**; the steps are in the User Manual under
+[Discord /start](../guide/README.md#discord-start).
+
 ## 6. Let players pick their servers
 
 Players need the right roles to see a server's channels. Three ways to give them out:

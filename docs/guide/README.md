@@ -47,6 +47,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Move files with FileZilla or WinSCP | [SFTP](#sftp-filezilla-winscp) |
 | Open a shell on the machine in the browser | [Terminal](#terminal) |
 | Let a script or Discord bot start servers or make backups | [API tokens](#api-tokens) |
+| Let friends start a server from Discord with /start | [Discord /start](#discord-start) |
 | Turn on HTTPS | [Panel Settings](#17-panel-settings-name-https-sign-in) |
 | Manage servers on several machines | [Clusters](#18-clusters) |
 | Fix "players can't connect" or a lock-out | [Troubleshooting](#20-troubleshooting) |
@@ -2283,6 +2284,56 @@ towards the sign-in limit (5 in 10 minutes from one address).
 From a prompt: `sudo redstonepanel token list`, `sudo redstonepanel token create "Discord bot"
 --perms view,power --servers minecraft-survival --days 90`, and `sudo redstonepanel token
 revoke "Discord bot"`.
+
+### Discord /start
+
+Let people in your Discord start a server, or wake it from [Sleep Mode](#sleep-mode), by typing
+`/start` in a channel. The panel itself is the bot: it connects out to Discord, so there is no
+port to forward and no website to publish, and it works the same on Linux and Windows. It only
+ever starts servers, and only the ones you choose; nobody can stop or change anything from
+Discord.
+
+**Make the bot (once, about five minutes):**
+
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and choose
+   **New Application**. Its name is the bot's name in your Discord.
+2. Under **Installation**, set **Install Link** to **None**. Under **Bot**, turn **Public Bot**
+   off, so only you can add it to a Discord server.
+3. Still under **Bot**, choose **Reset Token** and copy the token. No privileged intents are
+   needed.
+
+**Connect it to the panel:**
+
+1. In **Panel Settings → Discord**, paste the token into **Bot token**, tick **Answer /start in
+   Discord** and click **Save Discord settings**. After a few seconds it says **Connected as**
+   your bot's name.
+2. Click **Add the bot to your Discord server ↗**, pick your Discord server and click
+   **Authorize**. It asks for no permissions: it only answers its own command.
+3. Back in the panel, click **Refresh**, tick your Discord server under **Answer in these Discord
+   servers** and save. The bot answers nowhere until you tick a Discord server.
+4. Choose who may use it (everyone in those Discord servers, or only people with the roles you
+   tick) and which servers it may start (every server, including later ones, or only some).
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/discord-settings.png"><img src="images/discord-settings.png" alt="The Discord section of Panel Settings: connected as Redstone Bot, one Discord server ticked, only the Players role may use it, every server"></picture>
+
+**Using it:** type `/start` and pick the server from the list Discord shows (only the servers
+you allowed are listed). The bot answers in the channel, "Starting survival for Steve", and
+edits that message to "survival is online. Join at play.example.com" as soon as the server
+answers (it gives up after 5 minutes and says so). A server that's already online gets its
+address back; with only one server allowed, `/start` on its own starts it. The address is the
+one on the server's [join page](#join-pages), or the public address on the Port forwarding page.
+
+**Limits:** a server is started at most once every 2 minutes from Discord, and each person may
+ask 5 times an hour. Discord's own **Server Settings → Integrations → your bot** can also limit
+`/start` to some channels or roles. Everything is in the panel log as
+`[DISCORD] discord:NAME (Discord user id) started survival from Discord (your Discord server)`.
+
+**In a cluster**, set it up on the master: it can start servers on every node. A node can have a
+bot of its own, but needs a different bot token (one token is one connection).
+
+**If it doesn't connect:** "Discord refused the bot token" means the token was reset or copied
+wrongly: reset it again and paste the new one. The panel needs to reach `discord.com` and
+`gateway.discord.gg` on port 443. **Remove the bot token** turns it off and forgets the token.
 
 ## 18. Clusters
 

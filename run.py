@@ -184,6 +184,9 @@ def main():
     # Sleep mode (1.26): stop servers nobody plays on, listen on their ports, start them on a join
     from core import sleep
     sleep.start()
+    # Discord /start (1.27): the panel's own bot, when an admin turned it on
+    from core import discordbot
+    discordbot.start()
     # Cluster masters: renew node certificates 30 days before they expire, nightly cluster backup
     from core import cluster_client, manager
     import main as main_module
