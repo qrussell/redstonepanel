@@ -33,7 +33,10 @@ name to get on the servers".
 ## How it works
 
 **The player**
-1. Joins your Discord and types `/minecraft Steve` (the command's name is the bot's; see Decisions).
+1. Joins your Discord and presses **Link your Minecraft name** on a message the bot posts (and
+   admins pin) in #welcome or the onboarding channel. Discord opens a small form with one text box
+   (a modal), which works on phones and needs no typing of commands. `/minecraft Steve` does the
+   same, and is how a name is changed later (see Decisions for the command's name).
 2. The bot checks the name (Java: it must exist at Mojang, which also gives the UUID; Bedrock: a
    valid gamertag) and answers privately: "Linked **Steve**. You'll be let in once a moderator gives
    you the Member role." Running it again replaces the name; one Minecraft name per Discord
@@ -67,7 +70,8 @@ name to get on the servers".
 
 ## How it's built
 
-- **Bot (core/discordbot.py):** a second slash command, `/minecraft name:<text>`, registered next to
+- **Bot (core/discordbot.py):** a **Post the link button** action in the settings (picks a
+  channel; message with a button, custom id, answered with a modal), and a second slash command, `/minecraft name:<text>`, registered next to
   `/start`. Answers are ephemeral (flag 64), so names aren't shown in the channel.
 - **Links (core/discordauth.py, `discord-signin.json`):** `mc: {discord id: {"java": {"name",
   "uuid"}, "bedrock": {"name"}}}`, plus the record of panel-added entries
