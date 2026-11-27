@@ -24,6 +24,7 @@ os.environ.setdefault("RP_LOG_FILE", os.path.join(TMP, "panel.log"))
 os.environ.setdefault("RP_DATA_DIR", os.path.join(TMP, "data"))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core import discordbot as D, grants as G, joinpage  # noqa: E402
+REAL_APPLY = D.apply                    # setUp swaps it for a stand-in
 
 try:
     import fastapi  # noqa: F401
@@ -493,6 +494,24 @@ class GatewayFlow(Fresh):
         self.assertIsInstance(self.fatal, D.Fatal)
         self.assertIn("refused the bot token", str(self.fatal))
         self.assertEqual(len(conns), 1, "no reconnecting with a refused token")
+
+    def test_a_refused_members_intent_runs_without_it(self):
+        # 1.28.1: ticked under Whitelist by Discord but not turned on in the Developer Portal
+        hello = {"op": 10, "d": {"heartbeat_interval": 60000}}
+        wl = {"enabled": True, "members_intent": True}
+        with mock.patch("core.discordwl.load", lambda: wl):
+            g, conns, _ = self.run_gateway([[hello, D.Closed(4014, "Disallowed intent(s).")], [hello]])
+            self.assertIsNone(self.fatal)
+            self.assertEqual(len(conns), 2)
+            self.assertTrue(conns[0].sent[0]["d"]["intents"] & D.INTENT_MEMBERS)
+            self.assertFalse(conns[1].sent[0]["d"]["intents"] & D.INTENT_MEMBERS)
+            self.assertEqual(conns[1].sent[0]["op"], 2, "identifies again rather than resuming")
+            self.assertIn("Running without it", D._status["warning"])
+            with mock.patch.object(D, "_run", lambda token, stop: None), \
+                    mock.patch.object(D, "load", lambda: {"enabled": False, "token": ""}):
+                REAL_APPLY()                    # a save tries the intent again
+            self.assertIsNone(D._status["warning"])
+            self.assertTrue(D.intents() & D.INTENT_MEMBERS)
 
     def test_no_heartbeat_ack_reconnects(self):
         hello = {"op": 10, "d": {"heartbeat_interval": 50}}

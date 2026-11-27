@@ -198,6 +198,7 @@ About two weeks (approval requests and Discord buttons add half a week, invite â
 - The panel only removes names it added. A name already on a whitelist by hand is never claimed.
 - On a master it keeps node servers' whitelists too (through the node API, like the Whitelist tab).
 - Without the Server Members Intent, linked people's roles are read every 5 minutes; with it,
-  changes arrive at once and a full re-read runs daily. A refused intent stops the bot with a
-  message saying how to fix it.
+  changes arrive at once and a full re-read runs daily. If Discord refuses the intent (ticked in
+  the panel, not turned on in the Developer Portal), the bot runs without it and shows a warning
+  until the next save, so /start keeps working.
 - Tests: `tests/test_discordwl.py`.

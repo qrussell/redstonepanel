@@ -6594,7 +6594,8 @@ const ServerApp = {
 		const waiting = (d.accounts || []).filter(a => a.requests.length);
 		const serverName = k => k === '*' ? 'the servers' : k.split('/').pop();
 		const botNote = !d.bot_on ? 'Set up the bot under <b>Discord</b> above first: it answers the button and <code>/minecraft</code>.'
-			: d.bot.state !== 'online' ? `The bot isn't connected (${esc(d.bot.error || d.bot.state)}).` : '';
+			: d.bot.state !== 'online' ? `The bot isn't connected (${esc(d.bot.error || d.bot.state)}).`
+			: d.bot.warning ? `<b class="text-amber-600 dark:text-amber-400">${esc(d.bot.warning)}</b>` : '';
 		box.innerHTML = `
 			<p class="${note} mb-3">People link their Minecraft name in your Discord server (a <b>Link your Minecraft name</b> button, or <code>/minecraft</code>), and the panel adds it to the whitelist of each server they may play on, and takes it off when they lose the role, leave or are blocked. You choose per server who may play: anyone in your Discord, chosen roles, or only people a moderator approved. Names you add by hand on the Whitelist tab are never touched.</p>
 			<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">${d.enabled ? '<span class="text-green-600 dark:text-green-400 font-bold">● On</span>' : 'Off.'} ${d.accounts.length} linked account${d.accounts.length === 1 ? '' : 's'}${d.waiting ? `, <b>${d.waiting} waiting for a moderator</b>` : ''}. ${botNote}</p>

@@ -86,7 +86,8 @@ EPHEMERAL = 64
 
 _lock = threading.RLock()
 _bot = {"thread": None, "stop": None, "ws": None}
-_status = {"state": "off", "error": None, "user": None, "app_id": None, "guilds": {}, "since": None}
+_status = {"state": "off", "error": None, "user": None, "app_id": None, "guilds": {}, "since": None, "warning": None}
+_members_refused = threading.Event()  # 1.28.1: Discord refused the members intent; run without it until the next save
 _starts = {}                        # server key -> time of the last /start
 _starts_by_user = {}                # Discord user id -> [times]
 _servers_cache = {"at": 0, "list": []}
@@ -203,7 +204,7 @@ def public(cfg=None):
             "servers": cfg["servers"], "guilds": cfg["guilds"], "roles": cfg["roles"],
             "updated": cfg["updated"], "updated_by": cfg["updated_by"],
             "status": {"state": st["state"], "error": st["error"], "user": st["user"], "app_id": st["app_id"],
-                       "since": st["since"], "guilds": guilds},
+                       "since": st["since"], "guilds": guilds, "warning": st.get("warning")},
             "invite": invite}
 
 
@@ -762,6 +763,15 @@ class Gateway:
                     self.acked = False
                     next_beat = time.monotonic() + interval
         except Closed as e:
+            if e.code == 4014 and intents() & INTENT_MEMBERS:
+                # Ticked in the panel but not turned on in the Developer Portal: keep /start and the
+                # whitelist running without it (roles are then re-read every few minutes)
+                _members_refused.set()
+                _set_status(warning=FATAL_CLOSE[4014] + " Running without it for now.")
+                _log("[DISCORD] Discord refused the Server Members Intent; the bot runs without it. Turn it on "
+                     "in the Developer Portal (Bot, Privileged Gateway Intents), then save the Discord settings.")
+                self.session_id = self.seq = None
+                raise Reconnect("the Server Members Intent isn't turned on in the Developer Portal")
             if e.code in FATAL_CLOSE:
                 raise Fatal(FATAL_CLOSE[e.code])
             raise
@@ -841,7 +851,7 @@ def intents():
     wl = discordwl.load()
     if not wl["enabled"]:
         return INTENTS
-    return INTENTS | INTENT_INVITES | (INTENT_MEMBERS if wl["members_intent"] else 0)
+    return INTENTS | INTENT_INVITES | (INTENT_MEMBERS if wl["members_intent"] and not _members_refused.is_set() else 0)
 
 
 def commands():
@@ -887,6 +897,8 @@ def apply():
         if _bot["stop"]:
             _bot["stop"].set()
         _bot.update(thread=None, stop=None, ws=None)
+        _members_refused.clear()
+        _status["warning"] = None
         if not (cfg["enabled"] and cfg["token"]):
             _status.update(state="off", error=None, user=None, since=None, guilds={})
             return
