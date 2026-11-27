@@ -100,6 +100,13 @@ can), and Windows 10 installs with an end-of-support note. Windows on ARM comes 
   serves every join page, so only the master needs a tunnel. Game ports still need port
   forwarding.
 
+### 1.30: a world map *(planned)*
+
+- **A Map tab for every server.** One click adds a map to Paper, Fabric, Forge and NeoForge
+  servers (BlueMap in 3D, or the lighter squaremap on a Raspberry Pi). Vanilla and Bedrock
+  servers get a map drawn by the panel every night. It opens through the panel, so there's no
+  extra port to forward, and it can go on the join page (players hidden unless you choose).
+
 ## Ideas under consideration
 
 Suggested after 1.15 and not scheduled yet. Each one fits the panel's rules; the ones marked ⭐

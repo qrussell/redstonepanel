@@ -2510,6 +2510,19 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     admins and Cloudflare Access are recommended. Linux and Windows through `core.platform`. Plan:
     [cloudflare-tunnel.md](cloudflare-tunnel.md). **Size:** about two weeks.
 
+### 1.30: a world map in the panel *(planned, waiting for a go)*
+
+38. **A Map tab for every server.** Asked for by Quentin on 27 Nov 2026. Servers that run plugins
+    or mods get a map with one click (BlueMap, with squaremap as the light choice for a Pi); the
+    panel draws vanilla Java maps itself with BlueMap's standalone renderer on a schedule, and
+    Bedrock maps by converting a copy of the world with Chunker first. The map's own web server
+    listens only on the machine and opens through the panel's join site (its own address, never
+    the panel's), so there is nothing to forward; BlueMap maps still open while the server is
+    stopped or asleep, without waking it. Optional **Map** button on join pages, with 1.28's
+    permissions and players hidden by default. In a cluster the master shows nodes' maps through a
+    read-only node route. Linux and Windows through `core.platform`; Pi notes. Plan:
+    [world-map.md](world-map.md). **Size:** about two and a half weeks.
+
 ## Groundwork (do alongside, before promoting)
 
 - **Tests for `core/manager.py`.** Deploy, import, remove, restore and port allocation run as
