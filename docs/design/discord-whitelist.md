@@ -19,6 +19,14 @@ included.
 | **These roles** | Linked people with one of the ticked roles (for example Member, or a Player role that Discord's Onboarding hands out). | Most communities. |
 | **Moderator approval** | Linked people, after a moderator presses **Approve**. Roles can be ticked to skip approval. | A special server (hardcore, staff, events). |
 
+**Role per server is the default for a community** (Quentin, 19:59Z: "some play the peaceful
+server, and others play anarchy"): one Discord role per Minecraft server, as in the wiki's Discord
+guide, so the role opens the server's channels *and* its whitelist. Players pick open servers'
+roles themselves through an Onboarding question ("Which servers do you want to play?"); a moderated
+server's role isn't offered there, and the bot's **Ask to join Anarchy** button sends a request whose
+**Approve** gives that server's role. Removing the role (by the player or a moderator) removes the
+whitelist entry. Moderators manage everything with Discord roles and never need the panel.
+
 A **Moderators** role list says who may approve (panel admins always can). Approval happens in the
 panel (Whitelist & Access tab, **Requests**) or in Discord: the bot posts "quickfire314 asks to join
 hardcore as Steve [Approve] [Deny]" in the moderators' channel, and checks the clicker's roles.
