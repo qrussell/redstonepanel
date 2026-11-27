@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.27.0 (27 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) removing the panel safely (1.23.2) and mixed Linux and Windows clusters with Windows Hello sign-in (1.24) with its Windows cluster fixes (1.24.1), API tokens, Start at boot and Open dashboard signed in (1.25), sleep mode with Start on the join page (1.26), and a Discord /start command (1.27) shipped, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.27.0 (27 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) removing the panel safely (1.23.2) and mixed Linux and Windows clusters with Windows Hello sign-in (1.24) with its Windows cluster fixes (1.24.1), API tokens, Start at boot and Open dashboard signed in (1.25), sleep mode with Start on the join page (1.26), and a Discord /start command (1.27) shipped; Sign in with Discord and join pages by permission (1.28) next, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -2479,6 +2479,21 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     ping, close codes, refused handshake), and the gateway with a stand-in connection: identify,
     READY, roles, interactions, resume after a reconnect request, a refused token, a missed
     heartbeat, an invalid session and Discord asking for a heartbeat).
+
+### 1.28: Sign in with Discord, and who can see a join page *(next)*
+
+36. **Sign in with Discord, and join pages by permission.** Asked for by Quentin on 27 Nov 2026:
+    communities that host their own servers already organise people in Discord. Discord sign-in
+    moves into the free core (other outside sign-ins stay in the paid Teams bundle). Two parts:
+    **Sign in with Discord** on the panel, where Discord roles in the community's Discord server
+    give 1.18 permissions on chosen servers (and an admin can link their own account to Discord);
+    and **Who can see this page** on each join page: anyone with the link (today), anyone who signs
+    in, or signed in by permission, with sign-in by panel account or Discord, an optional "must be
+    in our Discord" with its invite link, and per account or Discord role ticks for **See how to
+    join**, **Start** and a new **Stop**. Works with no Discord set up. **How:** OAuth2
+    authorization code with `identify guilds.members.read`, the token thrown away after reading the
+    member, re-checks through the 1.27 bot when it's there; the same Discord application as the bot.
+    Plan: [discord-sign-in.md](discord-sign-in.md). **Size:** about two and a half weeks.
 
 ## Groundwork (do alongside, before promoting)
 
