@@ -705,7 +705,7 @@ class Gateway:
             except (Reconnect, Closed, OSError, ValueError) as e:
                 if self.stop.is_set():
                     break
-                _set_status(state="connecting", error=f"Reconnecting to Discord ({e}).")
+                _set_status(state="connecting", error=f"Reconnecting to Discord: {str(e).rstrip('.')}.")
                 if isinstance(e, Closed) and e.code in FRESH_CLOSE:
                     self.session_id = self.seq = None
                 self.stop.wait(backoff * (1 + random.random()))
