@@ -1,7 +1,7 @@
 # Whitelist by Discord role
 
-Status: **plan, waiting for Quentin's go** · Target: right after 1.28 (1.28.1 unless Quentin picks
-another slot) · Written 27 Nov 2026
+Status: **plan, waiting for Quentin's go to build** · Target: **1.28.1** (Quentin, 27 Nov 2026), right
+after 1.28 · Written 27 Nov 2026
 
 Asked for by Quentin on 27 Nov 2026 during the 1.28 test: a player adds their Minecraft name in
 Discord, a moderator gives them the **Member** role, and from then on they can join the server.
@@ -87,4 +87,4 @@ About a week.
 ## Decisions for Quentin
 
 1. **Command name:** `/minecraft` (recommended: says what it is) or `/link`.
-2. **Release:** 1.28.1 right after 1.28 (recommended), or in 1.28 itself.
+2. **Release:** decided 27 Nov 2026: 1.28.1, right after 1.28.
