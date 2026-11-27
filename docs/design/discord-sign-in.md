@@ -53,9 +53,9 @@ can't. Kick someone from Discord and they lose the join page too.
 - **Discord server** (one guild) whose membership and roles count.
 - **Role table**: each row is a Discord role → what it gives on this panel:
   - a permission preset or chosen permissions (1.18) on chosen servers or every server, or
-  - **Admin** (see the decision below).
+  Never **Admin** (decided below): an admin uses **Link Discord** on their own admin account.
   Nothing ticked means nobody can sign in with Discord. Several rows add up.
-- **Require Discord two-factor** (on by default for anyone given Admin): Discord's `identify`
+- **Require Discord two-factor** (off by default): Discord's `identify`
   scope says whether the account has 2FA on (`mfa_enabled`; confirm at build time), and an
   account without it is refused with "Turn on two-factor in Discord first".
 
@@ -94,8 +94,8 @@ secret, the browser never sees it):
 - **Two-factor**: a Discord-only account has no panel password, so no panel TOTP or recovery codes;
   its second step is Discord's own 2FA (above). A **linked** account keeps its panel 2FA: after
   Discord, the panel still asks for its code (or a passkey), so linking Discord never weakens an
-  account. "Require two-factor for admins" is met only by panel 2FA, a passkey or (if Discord admins
-  are allowed) Discord's 2FA.
+  account. "Require two-factor for admins" is met only by panel 2FA or a passkey, since a Discord
+  account is never an admin by itself.
 - **What a Discord-only account can't do**: SFTP (no password; it gets the same "use SSH keys"
   note as passkey-only accounts, if SFTP keys are added later), the terminal (admins only, as now),
   and API tokens are made by admins as today.
@@ -217,7 +217,7 @@ the join page for members, asking their Minecraft name once.
 - The join site's password form shares the panel's sign-in limits and refuses Windows and Linux
   accounts; it is off unless a page uses it.
 - A blocked Discord account stays blocked whatever its roles.
-- The role table can't give more than its rows say; Admin from a role only if Quentin chooses so
+- The role table can't give more than its rows say; no role ever gives Admin
   (below), and then only with Discord 2FA.
 
 ## Tests
@@ -244,13 +244,11 @@ the join page for members, asking their Minecraft name once.
 About two and a half weeks: the shared OAuth code and panel sign-in about a week, the join page access
 choices, panel account sign-in on the page, the permission table and Stop about a week and a half. One feature ("Sign in with Discord") for **1.28**, released after 1.27.
 
-## Decisions for Quentin
+## Decisions
 
-1. **Can a Discord role make someone a panel admin?** The panel runs as root (SYSTEM on Windows),
-   so an admin can do anything on the machine. Recommended: **no**; Discord roles give helper
-   permissions only, and an admin signs in with Discord by **linking** their own admin account
-   (which keeps its panel 2FA). The other choice: allow an Admin row, only for accounts with Discord
-   2FA on.
+1. **Can a Discord role make someone a panel admin?** **Decided 27 Nov 2026 (Quentin): no.**
+   The panel runs as root (SYSTEM on Windows). Discord roles give helper permissions only; an admin
+   signs in with Discord by **linking** their own admin account, which keeps its panel 2FA.
 2. **One release or two?** Recommended: both parts in 1.28, since they share the Discord sign-in
    code and the join page is the part communities will notice. The other choice: 1.28 panel sign-in,
    1.29 join pages.
