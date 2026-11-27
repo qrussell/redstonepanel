@@ -1,6 +1,6 @@
 # A world map in the panel
 
-Status: **plan, three decisions open, waiting for Quentin's go to build** · Target: 1.30 (after
+Status: **plan, all three decisions made, waiting for Quentin's go to build** · Target: 1.30 (after
 1.29 Cloudflare Tunnel) · Written 27 Nov 2026
 
 Asked for by Quentin on 27 Nov 2026: "How can you put a world map view in the panel?" He said yes
@@ -25,9 +25,9 @@ on the server's join page.
 - **Server → Map tab** (anyone who can **View** the server, 1.18). Before a map exists it says what
   the panel can do for this server type and offers one button:
   - Paper, Purpur, Fabric, Forge, NeoForge, Quilt: **Add a map** (installs BlueMap from Modrinth, or
-    squaremap if chosen, see decision 1), then **Restart now** or "from the next start".
+    squaremap, the light choice), then **Restart now** or "from the next start".
   - Vanilla Java: **Draw a map** (BlueMap's standalone renderer, run by the panel, see below).
-  - Bedrock: **Draw a map** (see decision 2).
+  - Bedrock: **Draw a map** (converted and drawn nightly, below).
 - Once there is a map, the tab shows it full width (full screen on a phone, with a **Open in a new
   tab ↗** link), with a line under it: "3D map by BlueMap · live" or "Drawn tonight at 3:00 ·
   next 3:00 tomorrow · **Draw now**".
@@ -121,7 +121,7 @@ Same rule as 1.29: the master serves join pages and only the master faces the in
   server costs nothing. Never at the same time as a backup, restore, move or type switch of the
   same server (it waits for them).
 
-## Drawing maps for Bedrock (decision 2)
+## Drawing maps for Bedrock
 
 No map tool reads Bedrock worlds well and stays maintained, except by converting first:
 
@@ -147,7 +147,7 @@ doesn't allow the panel to download it for people), bedrock-viz (behind on new v
 - Who can see it follows the page's 1.28 setting (anyone with the link / signed in / by
   permission). With "by permission", there's a new tick **See the map** beside See how to join,
   Start and Stop.
-- **Players on the public map** (decision 3). When off, the join site doesn't pass the map's live
+- **Players on the public map**: hidden by default, with a switch. When hidden, the join site doesn't pass the map's live
   player data (each tool's live path is in the `KNOWN` table) to join page visitors; the panel's
   own Map tab still shows them.
 - If the master's 1.29 tunnel is set up, the map is at `play.example.org/join/<link>/map/`.
@@ -157,7 +157,7 @@ doesn't allow the panel to download it for people), bedrock-viz (behind on new v
 - 3D drawing is heavy: BlueMap's first full drawing of a large world can take hours on a Pi 4 and a
   few GB of disk; later drawings only redo what changed. The Map tab says so before the first
   drawing on an ARM64 machine with 8 GB or less.
-- squaremap (if chosen in decision 1) is the light choice on a Pi: flat 2D, small files, little CPU.
+- squaremap is the light choice on a Pi: flat 2D, small files, little CPU.
   On a Pi, **Add a map** suggests it first.
 - Phones viewing a 3D map: BlueMap has a flat view toggle; the tab opens in flat view on phones.
 - Documented in README, install guide, wiki and man page, as every Pi note is.
@@ -226,11 +226,11 @@ about two weeks.
 
 ## Decisions for Quentin
 
-1. **Which map tools the panel installs with one click.** Recommended: **BlueMap and squaremap**.
-   BlueMap covers every Java server type, plugin or not, and is the 3D map people ask for; squaremap
-   is the light flat map for a Pi. Dynmap and Pl3xMap are recognised when installed by hand but not
-   installed by the panel. Other choices: BlueMap only (a day or two less), or all four.
-2. **Bedrock maps in 1.30, or in a later point release.** Recommended: **in 1.30**, so Bedrock
-   owners get a map from the start (about 2 days more). It is drawn nightly, not live.
-3. **Players on a map shown on a join page.** Recommended: **hidden by default**, with a switch.
-   Anyone with the join link would otherwise see where each player is right now.
+All three decided by Quentin on 27 Nov 2026 ("go with the recommendations"):
+
+1. ~~Which map tools the panel installs with one click.~~ Decided: **BlueMap and squaremap**.
+   BlueMap covers every Java server type, plugin or not; squaremap is the light flat map for a Pi.
+   Dynmap and Pl3xMap are recognised when installed by hand but not installed by the panel.
+2. ~~Bedrock maps in 1.30, or in a later point release.~~ Decided: **in 1.30**, drawn nightly
+   through Chunker, not live.
+3. ~~Players on a map shown on a join page.~~ Decided: **hidden by default**, with a switch.
