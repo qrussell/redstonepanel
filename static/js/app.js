@@ -7523,6 +7523,7 @@ const ServerApp = {
 	},
 
 	joinAccessHtml(key, id, p, signin) {
+		const esc = t => this.escapeHtml(String(t ?? ''));
 		this.joinRules = this.joinRules || {};
 		this.joinRules[key] = (p.rules || []).map(r => ({ ...r }));
 		this.joinSignin = signin;
@@ -7577,6 +7578,7 @@ const ServerApp = {
 	},
 
 	renderJoinRules(key) {
+		const esc = t => this.escapeHtml(String(t ?? ''));
 		const id = this.joinId(key), box = document.getElementById(`join-rules-${id}`);
 		if (!box) return;
 		const rows = this.joinRules[key] || [];
