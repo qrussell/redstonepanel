@@ -45,6 +45,9 @@ DISCORD_FILE = os.path.join(DATA_DIR, "discord.json")
 API = "https://discord.com/api/v10"
 GATEWAY_QUERY = "?v=10&encoding=json"
 INTENTS = 1                         # GUILDS: the names and roles of the Discord servers the bot is in
+INTENT_MEMBERS = 2                  # GUILD_MEMBERS (privileged, 1.28.1): role changes, joins and leaves
+INTENT_INVITES = 64                 # GUILD_INVITES (1.28.1): which invite a new member used
+WL_PERMISSIONS = 1024 + 2048 + 32 + 268435456   # view and send in channels, Manage Server (invites), Manage Roles
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_.\-]{50,100}$")
 ID_RE = re.compile(r"^[0-9]{15,22}$")
 START_COOLDOWN = 120                # seconds: one start per server from Discord in this time
@@ -60,7 +63,8 @@ FATAL_CLOSE = {4004: "Discord refused the bot token. Copy a new one from the Dev
                4011: "This bot is in too many Discord servers to connect without sharding.",
                4012: "Discord refused the gateway version.",
                4013: "Discord refused the gateway intents.",
-               4014: "Discord refused the gateway intents."}
+               4014: "Discord refused the Server Members Intent. Turn it on in the Developer Portal (Bot, "
+                     "Privileged Gateway Intents), or untick it under Whitelist by Discord."}
 FRESH_CLOSE = {4007, 4009}          # the session can't be resumed: identify again
 COMMANDS = [{
     "name": "start", "type": 1,
@@ -69,6 +73,15 @@ COMMANDS = [{
                  "autocomplete": True}],
     "contexts": [0], "integration_types": [0],
 }]
+MINECRAFT_COMMAND = {
+    "name": "minecraft", "type": 1,
+    "description": "Link your Minecraft name, to be let on this community's servers",
+    "options": [{"type": 3, "name": "java", "description": "Your Java Edition name", "required": False,
+                 "min_length": 3, "max_length": 16},
+                {"type": 3, "name": "bedrock", "description": "Your Bedrock (Xbox) gamertag", "required": False,
+                 "min_length": 1, "max_length": 16}],
+    "contexts": [0], "integration_types": [0],
+}
 EPHEMERAL = 64
 
 _lock = threading.RLock()
@@ -182,8 +195,10 @@ def public(cfg=None):
     with _lock:
         st = json.loads(json.dumps(_status))
     guilds = [dict(id=gid, **g) for gid, g in sorted(st["guilds"].items(), key=lambda x: x[1].get("name", "").lower())]
+    from core import discordwl
+    perms = WL_PERMISSIONS if discordwl.load()["enabled"] else 0
     invite = (f"https://discord.com/oauth2/authorize?client_id={st['app_id']}&scope=bot%20applications.commands"
-              f"&permissions=0") if st["app_id"] else None
+              f"&permissions={perms}") if st["app_id"] else None
     return {"enabled": cfg["enabled"], "has_token": bool(cfg["token"]), "token_hint": cfg["token"][-4:] if cfg["token"] else "",
             "servers": cfg["servers"], "guilds": cfg["guilds"], "roles": cfg["roles"],
             "updated": cfg["updated"], "updated_by": cfg["updated_by"],
@@ -543,8 +558,11 @@ def answer(d, cfg=None, now=None):
     cfg = cfg or load()
     now = time.time() if now is None else now
     data = d.get("data") or {}
+    if d.get("type") in (3, 5) or (d.get("type") == 2 and data.get("name") == "minecraft"):
+        from core import discordbot_wl
+        return discordbot_wl.answer(d, now)
     if data.get("name") != "start" or d.get("type") not in (2, 4):
-        return _reply("This panel only knows /start.", True), None
+        return _reply("This panel only knows /start and /minecraft.", True), None
     guild = str(d.get("guild_id") or "")
     if not guild:
         return _reply("Use /start in a Discord server, not in a direct message.", True), None
@@ -727,7 +745,7 @@ class Gateway:
             if self.session_id and self.seq is not None:
                 self._send({"op": 6, "d": {"token": self.token, "session_id": self.session_id, "seq": self.seq}})
             else:
-                self._send({"op": 2, "d": {"token": self.token, "intents": INTENTS,
+                self._send({"op": 2, "d": {"token": self.token, "intents": intents(),
                                            "properties": {"os": os.name, "browser": "redstonepanel",
                                                           "device": "redstonepanel"}}})
             next_beat = time.monotonic() + interval * random.random()
@@ -806,14 +824,38 @@ class Gateway:
                         g["roles"].append({"id": rid, "name": str(role.get("name"))[:100]})
         elif t == "INTERACTION_CREATE":
             self.on_interaction(d)
+        elif t in ("GUILD_MEMBER_ADD", "GUILD_MEMBER_UPDATE", "GUILD_MEMBER_REMOVE", "INVITE_CREATE", "INVITE_DELETE"):
+            from core import discordbot_wl
+            threading.Thread(target=discordbot_wl.event, args=(t, d, self.token), name="discord-members",
+                             daemon=True).start()
+        if t in ("READY", "GUILD_CREATE"):
+            from core import discordbot_wl
+            threading.Thread(target=discordbot_wl.ready, args=(self.token, str(d.get("id") or "") if t == "GUILD_CREATE"
+                             else None), name="discord-invites", daemon=True).start()
+
+
+def intents():
+    """GUILDS, and with Whitelist by Discord the members intent (when the admin turned it on in the
+    Developer Portal) and invites."""
+    from core import discordwl
+    wl = discordwl.load()
+    if not wl["enabled"]:
+        return INTENTS
+    return INTENTS | INTENT_INVITES | (INTENT_MEMBERS if wl["members_intent"] else 0)
+
+
+def commands():
+    from core import discordwl
+    return COMMANDS + ([MINECRAFT_COMMAND] if discordwl.load()["enabled"] else [])
 
 
 def register_commands(token, app_id):
-    """Puts /start in place for the bot (a bulk overwrite: running it again changes nothing)."""
+    """Puts /start (and /minecraft) in place for the bot (a bulk overwrite: running it again
+    changes nothing)."""
     if not app_id:
         return
     try:
-        api("PUT", f"/applications/{app_id}/commands", COMMANDS, token=token)
+        api("PUT", f"/applications/{app_id}/commands", commands(), token=token)
     except ApiError as e:
         _set_status(error=f"The /start command couldn't be registered: {e}")
         _log(f"[DISCORD] The /start command couldn't be registered: {e}")
@@ -822,6 +864,9 @@ def register_commands(token, app_id):
 def _run(token, stop):
     def mine():
         return _bot["stop"] is stop
+    from core import discordbot_wl
+    threading.Thread(target=discordbot_wl.recheck_loop, args=(token, stop), name="discord-recheck",
+                     daemon=True).start()
     try:
         Gateway(token, stop).run()
     except Fatal as e:

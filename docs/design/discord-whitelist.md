@@ -1,6 +1,6 @@
 # Whitelist by Discord role
 
-Status: **approach approved by Quentin 27 Nov 2026 21:34Z; building** · Target: **1.28.1** (Quentin, 27 Nov 2026), right
+Status: **approach approved by Quentin 27 Nov 2026 21:34Z; built, waiting for a real-Discord test** · Target: **1.28.1** (Quentin, 27 Nov 2026), right
 after 1.28 · Written 27 Nov 2026
 
 Asked for by Quentin on 27 Nov 2026 during the 1.28 test: a player adds their Minecraft name in
@@ -182,3 +182,22 @@ About two weeks (approval requests and Discord buttons add half a week, invite �
 
 1. **Command name:** `/minecraft` (recommended; Quentin can still rename it before release).
 2. **Release:** decided 27 Nov 2026: 1.28.1, right after 1.28.
+
+## As built (27 Nov 2026)
+
+- `core/discordwl.py` holds the rules and state (`DATA_DIR/discord-whitelist.json`, 0600);
+  `core/discordbot_wl.py` is the bot's side (button, form, `/minecraft`, Ask to join, Approve and
+  Deny, member and invite events, the role re-check). The `/start` bot carries it: one bot, one
+  gateway connection.
+- Per-server choice Off / Anyone in our Discord / These roles / Moderator approval, with an
+  **Every server** default and a server's own **Off** to keep it out of that default.
+- Trust: "a role is enough" or "a moderator approves each new person once"; trusted invites
+  (with a minimum account age) skip that, and an invite can give a role.
+- Per-person exceptions (always allow / keep off), Forget, Approve and Un-approve in Panel
+  Settings; requests show there and in the moderators' channel.
+- The panel only removes names it added. A name already on a whitelist by hand is never claimed.
+- On a master it keeps node servers' whitelists too (through the node API, like the Whitelist tab).
+- Without the Server Members Intent, linked people's roles are read every 5 minutes; with it,
+  changes arrive at once and a full re-read runs daily. A refused intent stops the bot with a
+  message saying how to fix it.
+- Tests: `tests/test_discordwl.py`.

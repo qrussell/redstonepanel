@@ -150,10 +150,11 @@ def forget_server(key):
                 users[name] = g
         if changed:
             _save(users)
-    from core import apitokens, discordauth, discordbot   # API tokens (1.25), Discord /start (1.27) and
+    from core import apitokens, discordauth, discordbot, discordwl   # API tokens (1.25), Discord /start (1.27),
     apitokens.forget_server(key)                          # Discord roles (1.28) lose it too
     discordbot.forget_server(key)
     discordauth.forget_server(key)
+    discordwl.forget_server(key)
 
 
 def rename_server(old_key, new_key):
@@ -170,10 +171,11 @@ def rename_server(old_key, new_key):
             users[name] = g
         if changed:
             _save(users)
-    from core import apitokens, discordauth, discordbot   # API tokens (1.25), Discord /start (1.27) and
+    from core import apitokens, discordauth, discordbot, discordwl   # API tokens (1.25), Discord /start (1.27),
     apitokens.rename_server(old_key, new_key)             # Discord roles (1.28) follow it too
     discordbot.rename_server(old_key, new_key)
     discordauth.rename_server(old_key, new_key)
+    discordwl.rename_server(old_key, new_key)
 
 
 def migrate_existing_users(usernames):

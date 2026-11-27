@@ -277,6 +277,9 @@ def set_blocked(did, blocked, actor="?"):
         _save(cfg)
         name = (acc or {}).get("name") or did
     _log(f"[AUTH] {actor} {'blocked' if blocked else 'unblocked'} the Discord account {name} ({did}).")
+    from core import discordwl                      # 1.28.1: a blocked account's whitelist entries go
+    if discordwl.load()["enabled"]:
+        discordwl._after_change()
 
 
 def forget_account(did, actor="?"):

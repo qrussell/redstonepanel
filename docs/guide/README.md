@@ -35,6 +35,7 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Let friends start a stopped server from its join page | [Join pages](#join-pages) (**Let visitors start the server**) |
 | Let only my Discord members, or chosen people, see a join page or start and stop the server | [Who can see a join page](#who-can-see-a-join-page) |
 | Sign in to the panel with Discord | [Sign in with Discord](#sign-in-with-discord) |
+| Let my Discord members onto the whitelist by themselves | [Whitelist by Discord](#whitelist-by-discord) |
 | Find out why a server lags | [Performance](#performance) |
 | Give a server more memory, or limit it | [Memory and limits](#memory-and-limits) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
@@ -2436,6 +2437,67 @@ them. Role sign-ins have no password to change. Sign-ins are in the
 panel log as `discord:NAME (Discord user id)`.
 
 **In a cluster**, each panel has its own sign-in settings and accounts, like its Users page.
+The panel needs to reach `discord.com` on port 443.
+
+### Whitelist by Discord *(1.28.1)*
+
+Players link their Minecraft name in your Discord server and the panel puts it on the whitelist
+(Bedrock: allowlist) of each server they may play on. When they lose the role, leave your
+Discord or are [blocked](#sign-in-with-discord), the panel takes the name off again. Names you add
+yourself on the [Whitelist & Access tab](#7-configuration-player-roles-and-the-whitelist) are never touched; the panel only removes names it
+added.
+
+**How players link their name:** a **Link your Minecraft name** button that the panel posts in
+a channel (it opens a small form for the Java name and, for Bedrock, the Xbox gamertag), or
+`/minecraft java:Steve` anywhere in your Discord. Java names are checked with Mojang. A name can
+belong to only one Discord account. The answer tells them which servers they can play on now and
+shows **Ask to join** buttons for servers that need a moderator.
+
+**Who may play on each server.** Each server has one choice, and **Every server** is the default
+for servers without their own:
+
+| Choice | Who gets on the whitelist |
+|---|---|
+| **Off** | Nobody: Discord never touches this server's whitelist (the default) |
+| **Anyone in our Discord** | Everyone in your Discord server who linked a name |
+| **These roles** | People with one of the roles you tick, for example **Peaceful** on one server and **Anarchy** on another |
+| **Moderator approval** | People a moderator approved for this server; roles you tick can skip that |
+
+**Is a role enough?** For a group of friends, yes: the right role lets someone play. For a public
+invite (say, on Reddit), choose **No: a moderator approves each new person once**. Their request
+then appears in your moderators' channel with **Approve** and **Deny** buttons (and in Panel
+Settings), and after approval their roles decide as above. **Approving someone also gives them** a
+role (for example **Member**) and can take one away (for example **Applicant**).
+
+**Invites.** The panel tells which invite each new member used. Mark the invite you give friends
+**Trusted** and the people who join through it don't need approving; an invite can also give a
+role. Anyone else, or anyone whose invite can't be told apart, needs approving.
+**Trusted invites only count for Discord accounts at least this many days old** stops brand-new
+throwaway accounts. Discord's own **Onboarding** questions can still hand out roles, but they
+can't ask for a Minecraft name; that's what the button is for.
+
+**Set it up:**
+
+1. Set up the [Discord /start](#discord-start) bot in your Discord server (Whitelist by Discord
+   uses the same bot).
+2. Recommended: in the [Discord Developer Portal](https://discord.com/developers/applications),
+   under **Bot**, turn on **Server Members Intent**, and tick **Server Members Intent is on** in
+   the panel. The panel then hears role changes, joins and leaves at once; without it, it reads
+   linked people's roles every 5 minutes.
+3. In **Panel Settings → Whitelist by Discord**, choose who may play on each server, whether a
+   role is enough, your moderators and their channel, tick **Turn on Whitelist by Discord** and
+   **Save whitelist settings**.
+4. Add the bot again with the link under **How to set it up**: it now needs to see and send
+   messages, **Manage Server** (to tell invites apart) and **Manage Roles** (to give roles). In
+   Discord's **Server Settings → Roles**, drag the bot's role above the roles it gives.
+5. Pick a channel new members see and press **Post the button**. Pin the message.
+
+**Linked accounts** lists everyone who linked a name, their servers and whether they're
+approved. **Exceptions for this person** can always allow them on a server, or keep them off one,
+whatever their roles say. **Forget** takes their names off the whitelists the panel added them to.
+Every link, request, approval and whitelist change is in the panel log as `[DISCORD]`.
+
+**In a cluster**, set it up on the master: it keeps the whitelists of servers on its nodes too.
 The panel needs to reach `discord.com` on port 443.
 
 ## 18. Clusters
