@@ -1,6 +1,6 @@
 # Whitelist by Discord role
 
-Status: **plan, waiting for Quentin's go to build** · Target: **1.28.1** (Quentin, 27 Nov 2026), right
+Status: **approach approved by Quentin 27 Nov 2026 21:34Z; building** · Target: **1.28.1** (Quentin, 27 Nov 2026), right
 after 1.28 · Written 27 Nov 2026
 
 Asked for by Quentin on 27 Nov 2026 during the 1.28 test: a player adds their Minecraft name in
@@ -180,5 +180,5 @@ About two weeks (approval requests and Discord buttons add half a week, invite �
 
 ## Decisions for Quentin
 
-1. **Command name:** `/minecraft` (recommended: says what it is) or `/link`.
+1. **Command name:** `/minecraft` (recommended; Quentin can still rename it before release).
 2. **Release:** decided 27 Nov 2026: 1.28.1, right after 1.28.
