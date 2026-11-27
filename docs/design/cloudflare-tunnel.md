@@ -64,16 +64,51 @@ optional hostname per node through the master's tunnel.
 - **Secrets** like the 1.27 bot token: a file under `DATA_DIR`, 0600 (Windows: the data folder's
   ACL), never sent back, last four characters shown.
 
-## Two ways a tunnel is managed, both supported
+## The two kinds of tunnel, and how the panel handles each
 
-Cloudflare has two kinds of tunnel, and the panel can tell which one is running:
+A tunnel has two parts: **cloudflared**, a small program on the machine that keeps a connection
+open to Cloudflare, and the **routes**, a list that says "visitors to this name go to this local
+address". The two kinds differ only in where that list of routes is kept, and so in how the
+panel changes it.
 
-1. **Managed in Cloudflare** (the dashboard's default, and what `cloudflared service install
-   <token>` sets up): the hostnames live in Cloudflare, and cloudflared fetches them. The panel
-   changes them through Cloudflare's API with a token the admin creates. No restart needed.
-2. **Managed in a file** (`config.yml`, set up with `cloudflared tunnel create`): the hostnames
-   live in the file on this machine. The panel edits its own block in the file and restarts
-   cloudflared.
+| | Managed in Cloudflare ("remote") | Managed in a file ("local") |
+|---|---|---|
+| How people usually make it | Cloudflare dashboard → Zero Trust → Networks → Tunnels → **Create**, then the one install command it shows (`cloudflared service install <token>`) | On the command line: `cloudflared tunnel login`, `cloudflared tunnel create`, then a `config.yml` they write |
+| Where the routes live | In Cloudflare's account; cloudflared downloads them | In `config.yml` on this machine |
+| What the panel needs | A Cloudflare API token the admin makes once | Permission to edit `config.yml` and restart cloudflared (the panel runs as root / SYSTEM, so it has it). An API token only for DNS names, optional |
+| How the panel changes routes | Calls Cloudflare's API; cloudflared picks up the change within seconds, no restart | Edits its own block in the file, checks it, restarts cloudflared (a few seconds of no web pages) |
+| DNS names | Made through the API | Through the API if there's a token, otherwise a command to copy |
+| If something goes wrong | The admin's other routes are never touched; Cloudflare refuses a bad list, so nothing breaks | The old file is put back and cloudflared restarted with it |
+| Works with cloudflared on another machine | Yes | No (the file is on that other machine); the panel shows the lines to paste, as 1.21.9 does |
+| Recommended | **Yes, for new setups**: what Cloudflare's dashboard makes by default, no restarts | Supported for people who already run one |
+
+### Walk-through: a tunnel managed in Cloudflare
+
+1. The admin creates the tunnel in Cloudflare's dashboard and runs the install command it shows
+   on the master. cloudflared now runs as a service (systemd on Linux, a Windows service).
+2. In the panel, **Panel Settings → Cloudflare Tunnel** says "cloudflared is running, tunnel
+   managed in Cloudflare". It found the service and read the tunnel's ID from its command line.
+3. The admin follows the card's link to make an API token (the card lists the permissions to tick),
+   pastes it, picks the domain, and checks the two names (`panel.example.org`, `play.example.org`).
+4. **Apply** shows what will change, then: reads the tunnel's current route list from Cloudflare,
+   adds the panel's two routes at the top, keeps everything else, writes it back, and adds the two
+   DNS names. A minute later both names open from anywhere with a real certificate.
+5. Later changes (the admin changes the join port, turns HTTPS on, renames a name, turns the panel
+   name off) are sent the same way, automatically. **Remove** takes out only what the panel added.
+
+### Walk-through: a tunnel managed in a file
+
+1. The admin already has cloudflared running with a `config.yml` they wrote.
+2. The card says "cloudflared is running, tunnel managed in the file `/etc/cloudflared/config.yml`".
+3. The admin picks the names (and pastes an API token if they want the panel to add the DNS names).
+4. **Apply** shows the lines it will add, then: saves a copy of the file, writes its routes between
+   `# BEGIN RedstonePanel` and `# END RedstonePanel` at the top of the route list, asks cloudflared
+   to check the file (`cloudflared tunnel ingress validate`), restarts cloudflared and waits for it
+   to say it's connected. If the check or the restart fails, the copy goes back and the card says
+   what failed.
+5. Anything outside the panel's block is never changed. If the file is laid out in a way the panel
+   can't safely edit (Python has no built-in YAML reader, so the panel edits plain lines), it
+   changes nothing and shows the lines to paste instead.
 
 ### Finding cloudflared (`core.platform.cloudflared()`)
 
@@ -101,18 +136,20 @@ Cloudflare has two kinds of tunnel, and the panel can tell which one is running:
    Cloudflare's token page with the permissions named:
    - Account → **Cloudflare Tunnel: Edit**
    - Zone → **DNS: Edit**, for the one domain
-   - optional: Account → **Access: Apps and Policies: Edit**, to put Access in front of the panel
+   - optional: Account → **Access: Apps and Policies: Edit**, to put Cloudflare Access in front
+     of the panel
    On save the panel checks the token (`/user/tokens/verify`, then one read per permission) and
    says which one is missing.
 3. **Domain** (a list of the token's zones) and the **names**:
-   - **Panel** (`panel.example.org`), off by default.
+   - **Panel** (`panel.example.org`), **on by default** (Quentin, 27 Nov 2026: the panel is
+     password protected), with a **Public access to the admin panel** switch to turn it off.
    - **Join pages** (`play.example.org`), on by default when join pages are on. Pages stay under
      `/join`, so the same name can't reach the panel.
    Each name must be inside the chosen domain and not already used by a DNS record the panel
    didn't make.
 4. **Apply**. The panel shows what it will change (rules and DNS records) before doing it.
 
-### What Apply does, for a tunnel managed in Cloudflare
+### Details: Apply, for a tunnel managed in Cloudflare
 
 - Reads the tunnel's configuration (`GET /accounts/{a}/cfd_tunnel/{t}/configurations`), keeps
   every rule it didn't make, puts its own rules first and the catch-all last, and writes it back
@@ -125,7 +162,7 @@ Cloudflare has two kinds of tunnel, and the panel can tell which one is running:
 - Saves which rules and records it made in `data/cloudflare-tunnel.json`. **Remove** takes away
   only those.
 
-### What Apply does, for a tunnel managed in a file
+### Details: Apply, for a tunnel managed in a file
 
 - Edits only a block between `# BEGIN RedstonePanel` and `# END RedstonePanel` at the top of the
   `ingress:` list. Python's standard library has no YAML parser, so the panel edits text lines:
@@ -156,16 +193,21 @@ Cloudflare has two kinds of tunnel, and the panel can tell which one is running:
 
 ## Keeping the admin panel safe
 
-Putting the panel on the internet is the risky part, so the card says so and defaults to safe:
+Quentin decided (27 Nov 2026) that once Cloudflare is set up, the admin panel is published by
+default, since it is password protected, with an option to turn public access off. So:
 
-- **Panel** is off until the admin turns it on; join pages alone need none of this.
-- Turning on **Panel** recommends **Require two-factor for admins** (1.16.7), with one click.
-- **Cloudflare Access in front of the panel** (recommended, on by default when the token allows
-  it): the panel makes an Access application for `panel.example.org` with a policy of the email
-  addresses the admin types, using Cloudflare's emailed one-time code. A visitor must pass Access
-  before they even see the sign-in page. Join pages never get Access (they're for players; 1.28
-  decides who sees what). Without the Access permission the card gives the steps instead.
-- The 1.28 Discord callback on the panel name works behind Access: the visitor already has the
+- **Public access to the admin panel** is on by default and has its own switch. Turning it off
+  takes the panel's route and DNS name away; the join pages stay public. The panel is then reached
+  only on the home network, as today.
+- Every sign-in through the tunnel has the usual protection: passwords, the 5-per-10-minutes limit
+  (now counted per real visitor), and two-factor. The card recommends **Require two-factor for
+  admins** (1.16.7) with one click, and the Needs attention list says so while it's off.
+- **Cloudflare Access** (recommended, off by default): with one click the panel puts Cloudflare's
+  own sign-in in front of `panel.example.org`, for the email addresses the admin types, with a
+  code emailed by Cloudflare. A stranger then can't even reach the panel's sign-in page. It needs
+  the optional Access permission on the token; without it the card gives the steps. Join pages
+  never get Access (they're for players; 1.28 decides who sees what).
+- The 1.28 Discord callback on the panel name also works behind Access: the visitor already has the
   Access cookie from opening the panel.
 - Trusted-LAN access is never given through the tunnel (already true, kept by a test).
 - **Passkeys** (Windows, 1.24) belong to the address they were made at, so a passkey made at
@@ -216,7 +258,7 @@ node is reached through it. Size: about three days. Not in 1.29 unless Quentin a
   internet, so on GitHub `release.yml` or Superman if the cloud can't reach it.
 - **For real, by Quentin**: a tunnel on his Cloudflare account and a throwaway name on his domain,
   on a test machine (not 10.0.0.193 without his OK), on Linux and on Superman with the Windows
-  service: Apply, both names load from a phone on mobile data, Access asks for the code, Remove
+  service: Apply, both names load from a phone on mobile data, turning public access off takes the panel name away, Access asks for the code when on, Remove
   leaves his own rules and records untouched, and a 1.28 Discord sign-in through the panel name.
 
 ## Size
@@ -229,5 +271,8 @@ sign-in limit through the tunnel (1 day), the card and docs (2 days), tests (2 d
 
 1. ~~Master serves every join page or each node its own.~~ Decided 27 Nov 2026: the master, and only
    the master is reachable from the internet.
-2. 1.29 with both tunnel kinds (recommended), or only tunnels managed in Cloudflare first.
-3. Access in front of the panel on by default when the token allows it (recommended).
+2. 1.29 with both tunnel kinds (recommended), or only tunnels managed in Cloudflare first. Quentin
+   asked for more detail first: see "The two kinds of tunnel" above.
+3. ~~Access on by default.~~ Decided 27 Nov 2026: the admin panel is public by default once
+   Cloudflare is set up, with a switch to turn public access off. Cloudflare Access stays a
+   recommended one-click option, off by default.

@@ -2505,8 +2505,9 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     In a cluster the master serves every join page, as it already does since 1.21.5, so only the
     master needs a tunnel and nodes stay private. Gives 1.28's Discord sign-in its public redirect
     addresses, a real certificate and no router forwards for the web ports; game ports still need
-    port forwarding. The panel name is off by default, with Cloudflare Access and two-factor for
-    admins recommended. Linux and Windows through `core.platform`. Plan:
+    port forwarding. In a cluster only the master is on the internet (Quentin's decision). The admin
+    panel is public by default (password protected) with a switch to turn that off; two-factor for
+    admins and Cloudflare Access are recommended. Linux and Windows through `core.platform`. Plan:
     [cloudflare-tunnel.md](cloudflare-tunnel.md). **Size:** about two weeks.
 
 ## Groundwork (do alongside, before promoting)
