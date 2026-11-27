@@ -2519,6 +2519,20 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     Public Key pasted as the client secret. **Tested:** `tests/test_discordwl.py` (34) and a real
     Discord community server (link, approve, whitelist by role, join in game).
 
+### 1.29: web addresses through Cloudflare Tunnel, set up by the panel *(planned, waiting for a go)*
+
+37. **Cloudflare Tunnel hostnames, set up by the panel.** Asked for by Quentin on 27 Nov 2026, to
+    simplify the many web pages a panel serves. Once cloudflared runs, the admin picks a domain and
+    names (`panel.example.org`, `play.example.org`) and the panel keeps the tunnel's rules and the
+    DNS records in step: through Cloudflare's API for a tunnel managed in Cloudflare, or its own
+    block in `config.yml` (checked, restarted, rolled back on failure) for one managed in a file.
+    In a cluster the master serves every join page, as it already does since 1.21.5, so only the
+    master needs a tunnel and nodes stay private. Gives 1.28's Discord sign-in its public redirect
+    addresses, a real certificate and no router forwards for the web ports; game ports still need
+    port forwarding. The panel name is off by default, with Cloudflare Access and two-factor for
+    admins recommended. Linux and Windows through `core.platform`. Plan:
+    [cloudflare-tunnel.md](cloudflare-tunnel.md). **Size:** about two weeks.
+
 ## Groundwork (do alongside, before promoting)
 
 - **Tests for `core/manager.py`.** Deploy, import, remove, restore and port allocation run as
