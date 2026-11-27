@@ -41,8 +41,12 @@ node server's player pack, and since 1.26 a page's **Start** goes from the maste
 - Players still connect their game to the node's own address and game port, which the page
   already shows (the address the admin typed).
 
-A node that isn't in a cluster, or a node whose admin wants its own pages, can still turn on its
-own join pages and its own tunnel; nothing here stops that. It's just not needed.
+**Decided by Quentin (27 Nov 2026):** "if there is a master, then join pages should be served by
+the master, only the master should be accessible from the internet." So on a node in a cluster the
+**Cloudflare Tunnel** card doesn't offer Apply; it says the node's pages and servers are published
+through the master. A panel that isn't in a cluster gets the card as usual. If a node already has
+its own tunnel when it joins, the panel leaves it alone but shows a Needs attention note that the
+node is reachable from the internet on its own.
 
 **Node dashboards** are the one thing the master doesn't serve today: 1.25's **Open dashboard ↗**
 opens the node's own address, which only works on the home network. Phase 2 below adds an
@@ -185,7 +189,8 @@ An optional name per node (`node-pc.example.org`) on the master's tunnel, pointi
 HTTPS address, with the cluster CA as cloudflared's `caPool` so the certificate is checked. 1.25's
 **Open dashboard ↗** then uses that name. The node must count the master's address as a proxy for
 its sign-in limit and see the public name as its own; a tunnel managed in a file needs the CA file
-on the master. Size: about three days. Not in 1.29 unless Quentin asks.
+on the master. This keeps Quentin's rule: only the master's tunnel faces the internet, and the
+node is reached through it. Size: about three days. Not in 1.29 unless Quentin asks.
 
 ## Not in this plan
 
@@ -222,6 +227,7 @@ sign-in limit through the tunnel (1 day), the card and docs (2 days), tests (2 d
 
 ## Decisions for Quentin
 
-1. Master serves every join page (recommended, already how it works) or each node its own.
+1. ~~Master serves every join page or each node its own.~~ Decided 27 Nov 2026: the master, and only
+   the master is reachable from the internet.
 2. 1.29 with both tunnel kinds (recommended), or only tunnels managed in Cloudflare first.
 3. Access in front of the panel on by default when the token allows it (recommended).
