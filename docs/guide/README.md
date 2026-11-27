@@ -685,8 +685,9 @@ who may press **Start** and **Stop**:
   press **Start the server** if **Let visitors start the server** is ticked.
 - **Signed in, by permission**: you choose, row by row, who may **See how to join**, **Start**
   and **Stop**. Rows add up. A row can be anyone who signs in, a panel account, panel accounts
-  by their permissions on this server (**View** lets them see, **Start/stop/restart** lets them
-  start and stop, as set on the [Users](#what-a-helper-may-do) page), anyone in your Discord
+  by their permissions on this server (**View** lets them see, **Start only** lets them start,
+  **Start/stop/restart** lets them start and stop, as set on the [Users](#what-a-helper-may-do)
+  page), anyone in your Discord
   server, or a Discord role. Panel admins can always do everything. For example: anyone in
   your Discord server sees the address and may start the server, the **Moderators** role may
   also stop it.
@@ -2127,6 +2128,7 @@ An admin account controls a service that runs as root, so treat it like `sudo` a
 | Tick | Lets them |
 | --- | --- |
 | **View** | See the server on the dashboard and in the list, its Overview, performance and logs. |
+| **Start only** *(1.28)* | Start it (and wake it from sleep mode), but not stop or restart it. |
 | **Console & chat** | Read the console, send commands and chat. |
 | **Start/stop/restart** | Start, stop and restart it, and dismiss a crash card. |
 | **Players** | Whitelist, operators, kick, ban, and the access log. |

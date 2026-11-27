@@ -152,7 +152,7 @@ class Api(Fresh):
     def test_a_token_does_what_its_grants_allow(self):
         t = self.make({"minecraft-2": ["power"]})["token"]
         listed = self.call(t, "GET", "/api/servers").json()
-        self.assertEqual([(s["name"], s["perms"]) for s in listed], [("minecraft-2", ["view", "power"])])
+        self.assertEqual([(s["name"], s["perms"]) for s in listed], [("minecraft-2", ["view", "start", "power"])])
         r = self.call(t, "POST", "/api/servers/minecraft-2/action", json={"action": "restart"})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertTrue(any(l.startswith("[API] token:bot: POST /api/servers/minecraft-2/action") for l in self.log))
@@ -222,7 +222,7 @@ class ThroughTheMaster(Api):
         r = self.call(t, "POST", self.url("/api/servers/minecraft-java-1/action"), json={"action": "restart"})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(self.calls, [{"path": "/api/servers/minecraft-java-1/action", "actor": "token:bot",
-                                       "role": "user", "perms": {"view", "power"}}])
+                                       "role": "user", "perms": {"view", "start", "power"}}])
         self.assertTrue(any("[API] token:bot: POST /api/cluster/nodes/n-abc123/proxy/api/servers/minecraft-java-1/action"
                             in l for l in self.log), self.log)
 

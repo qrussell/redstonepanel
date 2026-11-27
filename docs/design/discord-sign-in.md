@@ -268,6 +268,10 @@ choices, panel account sign-in on the page, the permission table and Stop about 
   (12 hours) in that case. Role sign-ins can't change a password. The callback answers with a
   short page that moves on, because the panel's Strict cookie isn't sent on Discord's redirect.
   The sign-in form on the join port checks that the Origin matches the Host.
+- **"Start only"** (asked for by Quentin during the real-Discord test, 27 Nov): a new per-server
+  permission next to **Start/stop/restart**, for Users page accounts, API tokens and Discord role
+  rows. The action routes need `start`; stop and restart also need `power`, which includes start.
+  A node older than 1.28 doesn't know `start`, so a start-only account is refused there (safe).
 - **Tests:** `tests/test_discordauth.py` (a Discord stand-in: settings, the flow, routes, join
   pages); `packaging/test/test-join-page.sh` section "1.28" (panel account sign-in on a page,
   See/Start/Stop by account, Stop and Start of a real server, cookie flags, forms from other sites).

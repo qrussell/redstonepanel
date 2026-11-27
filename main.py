@@ -1628,8 +1628,15 @@ def check_panel_update(request: Request):
 def start_panel_update(request: Request):
     return _update_call(request, selfupdate.start, actor=request.state.user["username"])
 
+def _may_power(request, action, server_name, member=None):
+    """The action routes need "start"; stopping and restarting need "power" (1.28)."""
+    user = request.state.user
+    if action != "start" and user["role"] != "admin" and not grants.can(user, "power", server_name, member):
+        raise HTTPException(status_code=403, detail=grants.refusal("power"))
+
 @app.post("/api/servers/{server_name}/action")
-def control_server(server_name: str, req: ServerActionRequest):
+def control_server(server_name: str, req: ServerActionRequest, request: Request):
+    _may_power(request, req.action, server_name)
     try:
         manager.control_server(server_name, req.action)
     except manager.ServerError as e:
@@ -3054,6 +3061,7 @@ def cluster_hosts_api(request: Request):
 @app.post("/api/cluster/nodes/{node_id}/servers/{server_name}/action")
 def cluster_node_action_api(node_id: str, server_name: str, req: ServerActionRequest, request: Request):
     _need_master()
+    _may_power(request, req.action, server_name, node_id)
     me = request.state.user["username"]
     if node_id == "local":
         try:

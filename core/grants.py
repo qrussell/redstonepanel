@@ -4,8 +4,9 @@ An admin is effectively root and can do everything. A `user` can do, on each ser
 an admin ticked for them under Users -> Servers:
 
     view      see the server, its status, performance and schedules
+    start     start it (and wake it from sleep), nothing else (1.28)
     console   Live Chat and console commands
-    power     start, stop, restart
+    power     start, stop, restart (includes start)
     players   player roles, whitelist, kick, ban, the access log
     files     the file manager and SFTP
     mods      mods, plugins and add-ons
@@ -34,12 +35,12 @@ from core.settings import DATA_DIR
 
 GRANTS_FILE = os.path.join(DATA_DIR, "grants.json")
 
-PERMS = ("view", "console", "power", "players", "files", "mods", "settings", "backups")
-PERM_LABELS = {"view": "View", "console": "Console & chat", "power": "Start/stop/restart",
+PERMS = ("view", "start", "console", "power", "players", "files", "mods", "settings", "backups")
+PERM_LABELS = {"view": "View", "start": "Start only", "console": "Console & chat", "power": "Start/stop/restart",
                "players": "Players", "files": "Files", "mods": "Mods & plugins", "settings": "Settings",
                "backups": "Backups"}
 PRESETS = {"moderator": ("view", "console", "players"),
-           "co-owner": PERMS}
+           "co-owner": tuple(p for p in PERMS if p != "start")}     # power includes start
 # What every `user` account could do to every server before 1.18 (files and mods were admin-only).
 # Accounts that existed before the update keep exactly this on every server; so do trusted-LAN
 # visitors and a cluster master older than 1.18 acting for one of its users.
@@ -96,6 +97,8 @@ def _clean(perms):
     perms = {p for p in perms or () if p in PERMS}
     if perms:
         perms.add("view")                    # anything else implies seeing the server
+    if "power" in perms:
+        perms.discard("start")               # power includes start; kept once
     return [p for p in PERMS if p in perms]
 
 
@@ -188,7 +191,15 @@ def migrate_existing_users(usernames):
 # What an identity may do
 # ---------------------------------------------------------------------------
 def perms_for(user, key):
-    """The set of permissions `user` (request.state.user) has on the server with this key."""
+    """The set of permissions `user` (request.state.user) has on the server with this key.
+    Whoever may stop and restart may also start (1.28: "start" alone is a permission too)."""
+    perms = _perms_for(user, key)
+    if "power" in perms:
+        perms.add("start")
+    return perms
+
+
+def _perms_for(user, key):
     if user.get("role") == "admin":
         return set(PERMS)
     src = user.get("source")
@@ -302,7 +313,7 @@ view     GET     {_S}/resources
 view     GET     {_S}/crash
 view     GET     {_S}/restarts
 view     GET     {_S}/updates
-power    POST    {_S}/action
+start    POST    {_S}/action
 power    DELETE  {_S}/crash
 console  GET     {_S}/chat
 console  POST    {_S}/chat
@@ -430,7 +441,7 @@ proxy            GET     /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 proxy            POST    /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 proxy            PUT     /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 proxy            DELETE  /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
-power@node_id    POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/action
+start@node_id    POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/action
 settings@node_id POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/template
 admin            POST    /api/cluster/nodes/{{node_id}}/templates
 admin            POST    /api/cluster/nodes/{{node_id}}/sign-in
@@ -494,5 +505,8 @@ def needs(rule):
 
 
 def refusal(perm):
+    if perm == "start":
+        return ("Your account doesn't have \"Start only\" or \"Start/stop/restart\" on this server. "
+                "An admin can change that under Users.")
     return (f"Your account doesn't have \"{PERM_LABELS[perm]}\" on this server. "
             "An admin can change that under Users.")

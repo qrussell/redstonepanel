@@ -116,7 +116,9 @@ const ServerApp = {
     applyPerms(srv) {
         const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
         const c = p => this.can(p, srv);
-        show('ws-power-controls', c('power'));
+        show('ws-power-controls', c('start') || c('power'));
+        show('ws-btn-restart', c('power'));               // 1.28: "Start only" shows just Start
+        show('ws-btn-stop', c('power'));
         show('tab-btn-chat', c('console'));
         show('tab-btn-properties', c('settings') || c('players'));
         show('tab-btn-maintenance', c('settings'));
@@ -6495,7 +6497,7 @@ const ServerApp = {
 			: ((guild && (guild.roles || []).find(x => x.id === r.role)) || {}).name || r.name || r.role;
 		const servers = [{ key: '*', label: 'Every server' }, ...(this.servers || []).map(s => ({ key: s.node ? `${s.node}/${s.name}` : s.name,
 			label: s.node ? `${s.name} (${s.nodeName || s.node})` : s.name }))];
-		const perms = [['view', 'View'], ['console', 'Console & chat'], ['power', 'Start/stop/restart'], ['players', 'Players'],
+		const perms = [['view', 'View'], ['start', 'Start only'], ['console', 'Console & chat'], ['power', 'Start/stop/restart'], ['players', 'Players'],
 			['files', 'Files'], ['mods', 'Mods'], ['settings', 'Settings'], ['backups', 'Backups']];
 		const rows = this.discordRows || [];
 		box.innerHTML = rows.length ? rows.map((r, i) => `<div class="rounded border border-gray-200 dark:border-gray-700 p-2 mb-2">
@@ -7553,7 +7555,7 @@ const ServerApp = {
 						<select id="join-rule-add-${id}" class="${field} min-w-0 max-w-full">${opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select>
 						<button type="button" onclick="ServerApp.joinRuleAdd('${esc(key)}')" class="px-3 py-2 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white">Add</button>
 					</div>
-					<p class="${note} mt-1">"By their permissions": <b>View</b> on this server lets them see how to join, <b>Start/stop/restart</b> lets them start and stop it (Users page).</p>
+					<p class="${note} mt-1">"By their permissions": <b>View</b> on this server lets them see how to join, <b>Start only</b> lets them start it, <b>Start/stop/restart</b> lets them start and stop it (Users page).</p>
 				</div>
 			</div>
 		</div>`;
@@ -9220,7 +9222,7 @@ const ServerApp = {
 			const open = perms.length || g.open[r.key];
 			const boxes = open ? `<div class="grid grid-cols-2 gap-x-3 mt-2">${g.perms.map(p => `
 				<label class="flex items-center gap-2 py-2 text-sm text-gray-800 dark:text-gray-200 cursor-pointer">
-					<input type="checkbox" ${perms.includes(p.id) ? 'checked' : ''} onchange="ServerApp.toggleGrant(${i}, '${p.id}', this.checked)"> ${esc(p.label)}</label>`).join('')}</div>` : '';
+					<input type="checkbox" ${perms.includes(p.id) || (p.id === 'start' && perms.includes('power')) ? 'checked' : ''} ${p.id === 'start' && perms.includes('power') ? 'disabled title="Start/stop/restart includes it"' : ''} onchange="ServerApp.toggleGrant(${i}, '${p.id}', this.checked)"> ${esc(p.label)}</label>`).join('')}</div>` : '';
 			return `
 			<div class="p-3 border border-gray-200 dark:border-gray-700 rounded mb-2">
 				<div class="flex items-center justify-between gap-2">
@@ -9256,7 +9258,7 @@ const ServerApp = {
 	toggleGrant(i, perm, on) {
 		const g = this.grantsEdit, key = g.rows[i].key;
 		let perms = new Set(g.grants[key] || []);
-		if (on) { perms.add(perm); perms.add('view'); }
+		if (on) { perms.add(perm); perms.add('view'); if (perm === 'power') perms.delete('start'); }   // power includes start
 		else if (perm === 'view') perms = new Set();          // nothing works without seeing the server
 		else perms.delete(perm);
 		g.open[key] = true;

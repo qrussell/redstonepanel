@@ -471,6 +471,15 @@ class JoinPages(Base):
             self.assertEqual(ok.status, 303)
             self.assertIn(b"play.example.org", self.req("/join/survival", cookie=self.cookie_of(ok)).body)
 
+    def test_start_only_on_the_users_page_starts_from_the_page_too(self):
+        grants.set_user("pat", {"minecraft-survival": ["view", "start"]})
+        self.page(access="permission", signin_panel=True,
+                  rules=[{"who": "panel_perms", "see": True, "start": True, "stop": True}])
+        pat = self.cookie_of(self.sign_in("pat", "pat-password"))
+        self.assertIn(b"play.example.org", self.req("/join/survival", cookie=pat).body)
+        self.assertNotIn(b'id="stop"', self.req("/join/survival", cookie=pat).body)
+        self.assertEqual(self.req("/join/survival/stop", "POST", cookie=pat, start="1").status, 403)
+
     def test_permissions_see_start_stop(self):
         grants.set_user("pat", {"minecraft-survival": ["view", "power"]})
         self.page(access="permission", signin_panel=True,

@@ -283,7 +283,7 @@ def _row_matches(who, visitor, key):
         if who == "panel_perms":
             from core import grants
             perms = grants.perms_for({"role": visitor["role"], "source": "panel", "username": visitor["name"]}, key)
-            return {"see": "view" in perms, "start": "power" in perms, "stop": "power" in perms}
+            return {"see": "view" in perms, "start": "start" in perms, "stop": "power" in perms}
         return None
     if who == "signed":
         return NOTHING_ALL
