@@ -27,6 +27,15 @@ server's role isn't offered there, and the bot's **Ask to join Anarchy** button 
 **Approve** gives that server's role. Removing the role (by the player or a moderator) removes the
 whitelist entry. Moderators manage everything with Discord roles and never need the panel.
 
+**Two layers:** *is this person trusted at all* (a trusted invite or a moderator's Approve) and
+*which servers* (their roles). On a "These roles" server a player is whitelisted only when both
+hold, so a self-picked Onboarding role never lets an unapproved player in. One role can open
+several servers (Staff), and one role on every server gives "link once, play everywhere".
+
+**Per-player exceptions** (rare, set on the person in the panel's Discord accounts list, logged):
+**Allow** on a server without the role (a guest builder), **Keep off** a server despite the role
+(banned from Anarchy only).
+
 A **Moderators** role list says who may approve (panel admins always can). Approval happens in the
 panel (Whitelist & Access tab, **Requests**) or in Discord: the bot posts "quickfire314 asks to join
 hardcore as Steve [Approve] [Deny]" in the moderators' channel, and checks the clicker's roles.
