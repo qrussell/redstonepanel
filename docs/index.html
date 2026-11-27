@@ -303,7 +303,7 @@
                             REDSTONE<span class="redstone-glow-text">PANEL</span>
                         </span>
                         <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-pixel bg-redstone/20 text-redstone-bright border border-redstone/50 rounded w-fit">
-                            v1.26.0
+                            v1.27.0
                         </span>
                     </div>
                 </a>
@@ -393,7 +393,7 @@
             <!-- Status Pill -->
             <div class="inline-flex items-center gap-2.5 mc-slot rounded-full px-4 py-1.5 mb-7">
                 <span class="w-2.5 h-2.5 rounded-sm redstone-lamp"></span>
-                <span class="text-xs font-mono text-gray-300">Ubuntu &bull; Debian &bull; Raspberry Pi &bull; Windows &bull; Release v1.26.0</span>
+                <span class="text-xs font-mono text-gray-300">Ubuntu &bull; Debian &bull; Raspberry Pi &bull; Windows &bull; Release v1.27.0</span>
             </div>
 
             <!-- Main Headline -->
@@ -835,13 +835,13 @@
                     <!-- Vertical Redstone Wire Rail -->
                     <div class="absolute left-3 sm:left-5 top-2 bottom-2 w-1.5 rounded-full redstone-rail transition-all duration-300"></div>
 
-                    <!-- v1.25: current release -->
+                    <!-- v1.27: current release -->
                     <div class="relative">
                         <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] redstone-lamp"></div>
 
                         <div class="mc-panel redstone-wire-border rounded-xl p-6">
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.26.0 — Current Release</h3>
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.27.0 — Current Release</h3>
                                 <span class="px-2.5 py-1 text-[10px] font-pixel bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded">
                                     SHIPPING NOW
                                 </span>
@@ -849,11 +849,23 @@
                             <ul class="space-y-2 text-sm text-gray-300">
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
-                                    <span><strong>Sleep mode (1.26):</strong> a server nobody plays on stops by itself and starts again when a player joins; Java shows &ldquo;Sleeping: join to start it&rdquo; in the server list.</span>
+                                    <span><strong>Discord /start (1.27):</strong> people in your Discord type <code class="font-mono text-xs text-white">/start</code>, pick a server, and the panel starts it (or wakes it from sleep mode), then says when it&rsquo;s online and where to join.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>The panel is the bot (1.27):</strong> paste a bot token in Panel Settings and choose the Discord servers, roles and game servers it may use. Nothing to forward, on Linux and Windows; it only ever starts servers.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Sleep mode (1.26):</strong> a server nobody plays on stops by itself to free memory and CPU, and starts again when a player joins, on Java and Bedrock; Java shows &ldquo;Sleeping: join to start it&rdquo; in the server list.</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
                                     <span><strong>Start from the join page (1.26):</strong> let visitors start a stopped server from its public join page, with a cooldown.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Fixed (1.26):</strong> no more false port alert (&ldquo;another program the system can't name&rdquo;) right after a server starts or wakes.</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
@@ -903,25 +915,53 @@
                         </div>
                     </div>
 
-                    <!-- v1.26 -->
+                    <!-- v1.28: next -->
                     <div class="relative">
                         <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] bg-[#2e3342]"></div>
 
                         <div class="mc-panel rounded-xl p-6">
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.26 — Sleep Mode</h3>
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.28 — Sign in with Discord</h3>
                                 <span class="px-2.5 py-1 text-[10px] font-pixel bg-[#2e3342] text-gray-300 border border-[#3a4052] rounded">
-                                    IN PROGRESS
+                                    COMING NEXT
                                 </span>
                             </div>
                             <ul class="space-y-2 text-sm text-gray-300">
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
-                                    <span><strong>Start when a player joins:</strong> a server nobody is playing on stops after a time you choose, the panel answers on its port (&ldquo;Sleeping: join to wake it&rdquo;), and the first player to join wakes it. Java and Bedrock, per server, off by default.</span>
+                                    <span><strong>Sign in with Discord</strong> on the panel. Roles in your Discord server give people permissions on chosen servers, so giving someone the Mod role is all it takes. Free, in the core panel.</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
-                                    <span><strong>A Start server button on join pages:</strong> players can start a stopped server from its join page, if you switch it on for that server.</span>
+                                    <span><strong>Join pages by permission:</strong> each join page can stay open to anyone, ask visitors to sign in (with a panel account or Discord), or go by permission: who may see how to join, who may <strong>Start</strong> the server and who may <strong>Stop</strong> it.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Join pages for your Discord members:</strong> a page can require joining your Discord first and show its invite link. Discord stays optional: everything works without it.</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- v1.29: planned -->
+                    <div class="relative">
+                        <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] bg-[#2e3342]"></div>
+
+                        <div class="mc-panel rounded-xl p-6">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.29 — Cloudflare Tunnel</h3>
+                                <span class="px-2.5 py-1 text-[10px] font-pixel bg-[#2e3342] text-gray-300 border border-[#3a4052] rounded">
+                                    PLANNED
+                                </span>
+                            </div>
+                            <ul class="space-y-2 text-sm text-gray-300">
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Web addresses set up for you:</strong> with cloudflared running, pick your domain and names (like <code class="font-mono text-xs text-white">panel.example.org</code> and <code class="font-mono text-xs text-white">play.example.org</code>) and the panel sets up the tunnel and DNS itself, with a real certificate and no router forwards for its web pages.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>One tunnel for a cluster:</strong> the master serves every join page, so only the master needs it. Game ports still need port forwarding.</span>
                                 </li>
                             </ul>
                         </div>
@@ -1494,7 +1534,7 @@
             syncSlidersToSelectedServer();
             renderServers();
             updateNodeGauges();
-            appendConsoleLog('RedstonePanel v1.26.0 Web Console initialized.', 'success');
+            appendConsoleLog('RedstonePanel v1.27.0 Web Console initialized.', 'success');
             appendConsoleLog('Connected to <strong>ubuntu-prod-01</strong> &bull; Type <strong>help</strong> or click a quick command.', 'info');
 
             setInterval(updateNodeGauges, 2800);

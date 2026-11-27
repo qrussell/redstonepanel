@@ -56,6 +56,8 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 
 | Version | What's new | Where |
 | --- | --- | --- |
+| 1.27.0 | **Discord /start**: people in your Discord start a server, or wake it from sleep mode, with a slash command. The panel is the bot. | [Discord /start](#discord-start) |
+| 1.26.0 | **Sleep mode**: a server nobody plays on stops and starts again when a player joins; a **Start the server** button on join pages. | [Sleep mode](#sleep-mode), [Join pages](#join-pages) |
 | 1.25.0 | **API tokens** for scripts and bots, a per-server **Start at boot** switch, and **Open dashboard** from the master signed in on a node. | [API tokens](#api-tokens), [Start at boot](#start-at-boot), [Accounts in a cluster](#accounts-in-a-cluster) |
 | 1.24.1 | A Windows PC that joins or creates a cluster opens its HTTPS port (8443) in the firewall; a server created on a node shows without a reload; a master's Dashboard and Cluster page load much faster. | [Clusters](#18-clusters) |
 | 1.24.0 | **Mixed Linux and Windows clusters**, SFTP on Windows, **Windows Hello** passkeys (or a phone), an easier first password on Windows, and **Remember this device** for 30 days. | [Clusters](#18-clusters), [Windows Hello](#windows-hello-passkeys), [Remember this device](#remember-this-device) |

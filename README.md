@@ -108,6 +108,10 @@ see them in the other theme:
 
 The [user manual](docs/guide/README.md) walks through every feature with screenshots.
 
+## What's new in 1.27
+
+**Discord /start** lets people in your Discord start a server, or wake it from sleep mode, by typing `/start`; the bot then says when it's online and where to join. The panel itself is the bot: paste a bot token in **Panel Settings → Discord** and choose the Discord servers, roles and game servers it may use. Nothing to forward, on Linux and Windows. See the [1.27.0 release notes](release-notes/v1.27.0.md).
+
 ## What's new in 1.26
 
 **Sleep mode** stops a server nobody is playing on and starts it again when a player joins: Java shows "Sleeping: join to start it" in the server list, and Bedrock starts on the first try to join. A join page can now have a **Start the server** button for a stopped server. See the [1.26.0 release notes](release-notes/v1.26.0.md).

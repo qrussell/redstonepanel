@@ -9,6 +9,20 @@ the dashboard.
 
 ---
 
+## 1.27.0: Discord /start *(November 2026)*
+
+- **/start in your Discord**: pick a server and the panel starts it, or wakes it from sleep
+  mode, then edits its answer to say when it's online and where to join.
+- **The panel is the bot**: in **Panel Settings → Discord**, paste a bot token and choose the
+  Discord servers and roles that may use it and the game servers it may start. Nothing to
+  forward, Linux and Windows.
+- It only ever starts servers, once every 2 minutes per server and 5 times an hour per person,
+  and logs who asked.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/discord-settings.png"><img src="../guide/images/discord-settings.png" alt="The Discord section of Panel Settings"></picture>
+
+[Release notes](../../release-notes/v1.27.0.md)
+
 ## 1.26.0: sleep mode, and Start on the join page *(November 2026)*
 
 - **Sleep mode** on each server's **Maintenance** tab: a server nobody plays on stops after the
