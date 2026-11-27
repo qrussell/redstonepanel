@@ -68,6 +68,38 @@ name to get on the servers".
   a record: server, name, Discord id, why).
 - The join page can say "Link your Minecraft name in our Discord with /minecraft" next to the invite.
 
+## Who was invited how: invite → role
+
+Quentin, 19:55Z: a public invite (for example on Reddit) needs a moderator to approve each new
+player; an invite from friends should go straight through (join, link, play). Discord has no
+built-in "role per invite", and an Onboarding answer like "a friend invited me" can be picked by
+anyone, so the panel's bot does it from the invite link itself:
+
+- **Settings → Invites:** a table of the Discord server's invites (read with the bot) → the role a
+  new member gets, for example `abc` (Reddit) → **Applicant**, `xyz` (friends) → **Member**.
+- On `GUILD_MEMBER_ADD` the bot compares invite use counts (kept in memory, refreshed on
+  `INVITE_CREATE`/`INVITE_DELETE`) to find the invite used and gives its role. If two invites changed
+  at once or the count can't be read, it gives nothing and notes it in the moderators' channel.
+- Needs the bot's **Manage Server** permission (to list invites), **Manage Roles** (its role above the
+  roles it gives) and the **Server Members Intent**.
+
+**Approve gives a role:** a moderator's **Approve** can also swap roles (for example Applicant →
+Member), so one approval opens every server where Member counts. **Deny** removes the request and,
+if ticked, kicks the person.
+
+**The two workflows:**
+
+| | Friends' invite | Public invite (Reddit) |
+| --- | --- | --- |
+| Joins Discord | Gets **Member** from the invite | Gets **Applicant** (sees #welcome, #apply) |
+| Links name | Button or `/minecraft` | Same |
+| Whitelist | At once on every "These roles: Member" server | Request in the moderators' channel |
+| Moderator | Nothing to do | **Approve** → Member → whitelisted everywhere Member counts |
+
+A server on **Moderator approval** still asks even for Members (hardcore, staff). Discord's own
+"Apply to join" (Server Settings → Access) is an alternative for a fully public server, but it
+applies to every invite, friends included.
+
 ## How it's built
 
 - **Bot (core/discordbot.py):** a **Post the link button** action in the settings (picks a
@@ -111,7 +143,7 @@ instead of using `/minecraft`; it writes the same link, so the same per-server c
 
 ## Size
 
-About a week and a half (approval requests and Discord buttons add about half a week).
+About two weeks (approval requests and Discord buttons add half a week, invite → role half a week).
 
 ## Decisions for Quentin
 
