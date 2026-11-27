@@ -6332,6 +6332,7 @@ const ServerApp = {
 		box.innerHTML = `
 			<p class="${note} mb-3">Lets people in your Discord start a server with <span class="font-mono">/start</span>, or wake it from Sleep Mode. The panel itself is the bot: it connects out to Discord, so nothing has to be forwarded. It can only start the servers you choose, and everything it does is logged as <span class="font-mono">discord:NAME</span>.</p>
 			<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">${state}</p>
+			${d.enabled && st.state === 'online' && !d.guilds.some(id => known.has(id)) ? `<p class="text-sm p-2 mb-3 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200">⚠️ ${guilds.length ? 'The bot answers /start nowhere yet: tick your Discord server under <b>Answer in these Discord servers</b> and click <b>Save Discord settings</b>.' : 'The bot isn\'t in a Discord server yet: use <b>Add the bot to your Discord server</b>, then click <b>Refresh</b> and tick it.'}</p>` : ''}
 			<details class="rounded border border-gray-200 dark:border-gray-700 p-3 mb-3" ${d.has_token ? '' : 'open'}>
 				<summary class="text-sm font-bold text-gray-900 dark:text-white cursor-pointer">How to make the bot</summary>
 				<ol class="${note} list-decimal ml-5 mt-2 space-y-1">
@@ -6346,7 +6347,7 @@ const ServerApp = {
 			${d.invite ? `<p class="mt-3"><a href="${esc(d.invite)}" target="_blank" rel="noopener" class="inline-block px-3 py-2 rounded text-sm font-bold text-white bg-theme hover-bg-theme">Add the bot to your Discord server ↗</a></p>` : ''}
 			<p class="${note} mt-3 mb-1">Answer in these Discord servers</p>
 			<div class="ml-1 grid grid-cols-1 sm:grid-cols-2 gap-1">
-				${guilds.map(g => `<label class="${check}"><input type="checkbox" class="discord-guild" value="${esc(g.id)}" ${d.guilds.includes(g.id) ? 'checked' : ''}> ${esc(g.name)}</label>`).join('')}
+				${guilds.map(g => `<label class="${check}"><input type="checkbox" class="discord-guild" value="${esc(g.id)}" ${d.guilds.includes(g.id) || (!d.guilds.length && guilds.length === 1) ? 'checked' : ''}> ${esc(g.name)}</label>`).join('')}
 				${gone.map(id => `<label class="${check}"><input type="checkbox" class="discord-guild" value="${esc(id)}" checked> <span class="font-mono">${esc(id)}</span> <span class="${note}">(the bot isn't in it now)</span></label>`).join('')}
 				${guilds.length || gone.length ? '' : `<p class="${note}">${d.enabled && st.state === 'online' ? 'The bot isn\'t in any Discord server yet. Add it, then this list fills in.' : 'Shown once the bot is connected.'}</p>`}
 			</div>
