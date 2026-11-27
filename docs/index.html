@@ -835,7 +835,7 @@
                     <!-- Vertical Redstone Wire Rail -->
                     <div class="absolute left-3 sm:left-5 top-2 bottom-2 w-1.5 rounded-full redstone-rail transition-all duration-300"></div>
 
-                    <!-- v1.25: current release -->
+                    <!-- v1.26: current release -->
                     <div class="relative">
                         <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] redstone-lamp"></div>
 
@@ -849,11 +849,15 @@
                             <ul class="space-y-2 text-sm text-gray-300">
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
-                                    <span><strong>Sleep mode (1.26):</strong> a server nobody plays on stops by itself and starts again when a player joins; Java shows &ldquo;Sleeping: join to start it&rdquo; in the server list.</span>
+                                    <span><strong>Sleep mode (1.26):</strong> a server nobody plays on stops by itself to free memory and CPU, and starts again when a player joins, on Java and Bedrock; Java shows &ldquo;Sleeping: join to start it&rdquo; in the server list.</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
                                     <span><strong>Start from the join page (1.26):</strong> let visitors start a stopped server from its public join page, with a cooldown.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Fixed (1.26):</strong> no more false port alert (&ldquo;another program the system can't name&rdquo;) right after a server starts or wakes.</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
@@ -903,25 +907,53 @@
                         </div>
                     </div>
 
-                    <!-- v1.26 -->
+                    <!-- v1.27: next -->
                     <div class="relative">
                         <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] bg-[#2e3342]"></div>
 
                         <div class="mc-panel rounded-xl p-6">
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.26 — Sleep Mode</h3>
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.27 — Discord /start</h3>
                                 <span class="px-2.5 py-1 text-[10px] font-pixel bg-[#2e3342] text-gray-300 border border-[#3a4052] rounded">
-                                    IN PROGRESS
+                                    COMING NEXT
                                 </span>
                             </div>
                             <ul class="space-y-2 text-sm text-gray-300">
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
-                                    <span><strong>Start when a player joins:</strong> a server nobody is playing on stops after a time you choose, the panel answers on its port (&ldquo;Sleeping: join to wake it&rdquo;), and the first player to join wakes it. Java and Bedrock, per server, off by default.</span>
+                                    <span><strong>Start a server from Discord:</strong> people in your Discord type <code class="font-mono text-xs text-white">/start</code>, pick a server, and the panel starts it (or wakes it from sleep mode), then says when it&rsquo;s online and where to join.</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
-                                    <span><strong>A Start server button on join pages:</strong> players can start a stopped server from its join page, if you switch it on for that server.</span>
+                                    <span><strong>The panel is the bot:</strong> paste a bot token in Panel Settings and choose the Discord servers and roles that may use it and the game servers it may start. Nothing to forward, on Linux and Windows.</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- v1.28: planned -->
+                    <div class="relative">
+                        <div class="absolute -left-[29px] sm:-left-[37px] top-5 w-5 h-5 rounded-sm border-2 border-[#090a0d] bg-[#2e3342]"></div>
+
+                        <div class="mc-panel rounded-xl p-6">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.28 — Sign in with Discord</h3>
+                                <span class="px-2.5 py-1 text-[10px] font-pixel bg-[#2e3342] text-gray-300 border border-[#3a4052] rounded">
+                                    PLANNED
+                                </span>
+                            </div>
+                            <ul class="space-y-2 text-sm text-gray-300">
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Sign in with Discord</strong> on the panel. Roles in your Discord server give people permissions on chosen servers, so giving someone the Mod role is all it takes. Free, in the core panel.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Join pages by permission:</strong> each join page can stay open to anyone, ask visitors to sign in (with a panel account or Discord), or go by permission: who may see how to join, who may <strong>Start</strong> the server and who may <strong>Stop</strong> it.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-amber-400 font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Join pages for your Discord members:</strong> a page can require joining your Discord first and show its invite link. Discord stays optional: everything works without it.</span>
                                 </li>
                             </ul>
                         </div>
