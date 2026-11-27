@@ -83,6 +83,12 @@ anyone, so the panel's bot does it from the invite link itself:
 - Needs the bot's **Manage Server** permission (to list invites), **Manage Roles** (its role above the
   roles it gives) and the **Server Members Intent**.
 
+- **Unknown or unclear joins need approval:** an invite not in the table, the vanity URL, a
+  Discovery join, or two invites used in the same moment all count as "needs approval" (never as
+  trusted). Optional extra check for automatic entry: the Discord account is at least N days old.
+- **Trusted links get passed on:** the guide tells admins to make friends' invites with a use limit
+  and an expiry (or one per friend).
+
 **Approve gives a role:** a moderator's **Approve** can also swap roles (for example Applicant →
 Member), so one approval opens every server where Member counts. **Deny** removes the request and,
 if ticked, kicks the person.
@@ -133,6 +139,16 @@ instead of using `/minecraft`; it writes the same link, so the same per-server c
 ## Not in this plan (later, if wanted)
 
 - Discord's Linked Roles (the panel as a Linked Roles app, "has linked a Minecraft name").
+
+## Building it in parts (all in 1.28.1 unless Quentin splits it)
+
+1. Link button and `/minecraft`, per-server choices, the moderators' approval queue (Discord buttons
+   and the panel list), removal on leave/ban/block, the log. This alone covers "moderators approve
+   everyone" (the Reddit case).
+2. Invite → role (and unclear joins needing approval), the account-age check. This adds the
+   friends' case: join, link, play.
+3. Approve that swaps roles, a reminder when requests wait longer than a few hours, a nightly
+   re-check for changes made while the panel was off.
 
 ## Tests
 
