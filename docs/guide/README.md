@@ -114,6 +114,7 @@ Every release's highlights are on the [What's New](../wiki/Whats-New.md) page.
    - [Off-site copies (SSH or S3 storage)](#off-site-copies-ssh-or-s3-storage)
    - [Scheduled restarts](#scheduled-restarts)
 10. [World & Maps](#10-world--maps)
+   - [World map](#world-map)
 11. [Files](#11-files)
 12. [Mods, plugins and add-ons](#12-mods-plugins-and-add-ons)
 13. [Console](#13-console)
@@ -214,6 +215,10 @@ system instead of 1 GB, so the default 1 GB heap still fits. Updates and moves k
 **Java.** Raspberry Pi OS (like Debian 13) packages Java 21 and 25, which run Minecraft 1.17 and
 newer. For older versions, which ask for Java 8, the panel says the Pi doesn't have it and
 offers Java 21, which some old versions and modpacks don't start on.
+
+**World maps.** For a plugin server use squaremap, which is light enough for a Pi; the panel
+suggests it there. Drawing a vanilla server's map works on a Pi 4 or 5 with 4 GB or more, but
+the first drawing can take hours (see [World map](#world-map)).
 
 **Cooling.** A Pi 5 needs its active cooler (or a case with a fan) to run a server all day
 without slowing itself down.
@@ -1740,6 +1745,48 @@ and the restart happens at the time you chose. Things to know:
 - **Rename World**: renames the world folder, updates `level-name` in `server.properties`, and
   restarts the server.
 
+### World map *(1.30)*
+
+The **Map** card at the top of World & Maps shows the server's world as a map you can drag and
+zoom, right in the panel.
+
+**Paper, Purpur, Fabric, Forge and NeoForge servers.** Press **Add BlueMap** (3D, the
+best looking) or **Add squaremap** (flat, very light; the panel suggests it on a Raspberry Pi). The panel installs it from Modrinth like any other plugin or mod, and the map
+appears after the next restart. BlueMap downloads Minecraft's textures from Mojang the first
+time; the panel asks you to agree to that first, because it's Mojang's rule.
+
+**A map you added yourself.** BlueMap, squaremap, Pl3xMap and Dynmap are found on their own.
+If its web map is reachable from the network, the card offers **Show it only through the
+panel**, which makes it listen on this machine only so its port no longer needs to be open or
+forwarded.
+
+**Vanilla and Bedrock servers.** These have no plugins, so after **Draw a map** the panel draws
+the map itself: every night at 03:00 by default, after each scheduled backup, or only when you press **Draw
+now** (**Map settings** has the time and which worlds to draw: Overworld, Nether, End). The
+first drawing of a big world can take an hour or more; later ones only redraw what changed,
+and nothing is drawn when nobody played. It runs at the lowest priority, so players don't
+notice. For Bedrock, the panel first converts a copy of the world with Chunker (it needs about
+three times the world's size in free disk space). Drawing needs Java 21 or newer, which the
+panel installs for Java servers anyway. **Output** shows the drawing's log.
+
+**Who can see it.** The map opens at the panel machine's join page address (port 8444 by
+default, the same as [join pages](#join-pages)), never at the panel's own address, so a map's
+web page can't touch your panel session. Anyone who can see the server in the panel can see
+its map. To show it to players, tick **Show the world map** on the server's join page; player
+positions are hidden there unless you also tick **Show where players are on that map**. On a join page by
+permission, the **See the map** tick in each row says who may open it. Opening a map never
+starts a sleeping server: a stopped server shows its last map.
+
+**Backups.** Map tiles are never put in backups: they can be drawn again, and they can be
+bigger than the world.
+
+**Clusters.** A node's map opens through the master like its other servers; the node's map
+stays private to the cluster.
+
+**On a Raspberry Pi.** Use squaremap for plugin servers. Drawing a vanilla map with BlueMap
+works on a Pi 4 or 5 with 4 GB or more, but the first drawing is slow; choose **Only when I
+press Draw now** or the nightly time.
+
 ## 11. Files
 
 **Files** (admins, and users given **Files** on the server) shows the server's folder in `/opt/minecraft-…`, so you can change
@@ -2679,6 +2726,7 @@ Everything below runs as root (`sudo`). `man redstonepanel` has the details.
 | `redstonepanel restore NAME` | Restore a removed server. |
 | `redstonepanel backup NAME` | Back up a server now. |
 | `redstonepanel restart-server NAME` | Warn players, then restart a server (what its restart timer runs). |
+| `redstonepanel map-draw NAME [--now]` | Draw a vanilla or Bedrock server's [world map](#world-map) (what its map timer runs; `--now` draws even when the world hasn't changed). |
 | `redstonepanel check-updates` | Look for newer server versions and update the Bedrock servers set to update automatically (what the update timer runs every 6 hours). |
 | `redstonepanel notify-test` | Send a test notification. |
 | `redstonepanel uninstall` | [Remove the panel safely](#removing-redstonepanel): choose what happens to each server first. |

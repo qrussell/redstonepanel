@@ -51,6 +51,10 @@ redstonepanel \- manage the RedstonePanel Minecraft server panel
 .B redstonepanel restart-server
 .I NAME
 .br
+.B redstonepanel map-draw
+.I NAME
+.RB [ \-\-now ]
+.br
 .B redstonepanel check-updates
 .br
 .B redstonepanel notify-test
@@ -237,6 +241,15 @@ warning time set in the panel's Maintenance tab, then restart the server. A stop
 left stopped, and the restart waits for a running backup of the same server. Each server's
 restart timer, \fBredstonepanel-restart@\fINAME\fB.timer\fR, runs this command; it fires the
 warning time before the restart time shown in the panel.
+.TP
+.BI "map-draw " NAME " \fR[\fB\-\-now\fR]"
+Draw the world map of a vanilla or Bedrock server (World & Maps \(-> Map). It uses the BlueMap
+command-line renderer, and for Bedrock first converts a copy of the world with Chunker; both are
+downloaded once from GitHub and checked by SHA-256. It runs at the lowest CPU and disk priority,
+as the game account, and waits for a running backup of the same server. Without
+\fB\-\-now\fR it does nothing when the world hasn't changed since the last drawing. Each
+server's map timer, \fBredstonepanel-map@\fINAME\fB.timer\fR, runs this command; the log is in
+\fI/var/lib/redstonepanel/map-draw/\fR.
 .TP
 .B check-updates
 Look for a newer release of every game server on this machine (Bedrock Dedicated Server,
