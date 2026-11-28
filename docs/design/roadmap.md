@@ -1,6 +1,6 @@
 # RedstonePanel roadmap
 
-Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.27.0 (27 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) removing the panel safely (1.23.2) and mixed Linux and Windows clusters with Windows Hello sign-in (1.24) with its Windows cluster fixes (1.24.1), API tokens, Start at boot and Open dashboard signed in (1.25), sleep mode with Start on the join page (1.26), and a Discord /start command (1.27) shipped; Sign in with Discord and join pages by permission (1.28) next, with proposed additions below · Author: Quentin Russell
+Status: planning · Written after 1.5.0 (17 Nov 2026), updated for 1.28.0 (28 Nov 2026), with the release order revised the same day: moving servers between cluster members, a first-run setup guide, kick and ban with the redstone branding, a folding server list, two-factor sign-in (1.16.7), backups on another node (1.16.8), newer Ubuntu, Debian, ARM64 and Raspberry Pi (1.16.9), a phone-friendly panel (1.16.10), backups off the machine without a cluster (1.16.11) Bedrock auto-updates and update alerts (1.16.12) pre-copy and LAN discovery (1.16.13) a port forwarding guide (1.16.14), performance (1.17), crash explanations (1.17.1), Advanced options on New server (1.17.2), per-server permissions and SFTP (1.18), changing a server's type or version (1.19) Forge, NeoForge, Quilt, Purpur and modpacks (1.20) the groundwork for Windows (1.21) a servers folder you choose (1.21.1), a one-click light/dark switch (1.21.2), finding servers set up outside the panel (1.21.3), quick commands in Live Chat (1.21.4), join pages (1.21.5), player packs (1.21.6) a Visual Editor for settings files (1.21.7) security fixes from code scanning (1.21.8) join pages through a proxy (1.21.9) a terminal in the panel (1.21.10) the Windows preview (1.22) the whole single machine on Windows (1.23) a port check (1.23.1) removing the panel safely (1.23.2) and mixed Linux and Windows clusters with Windows Hello sign-in (1.24) with its Windows cluster fixes (1.24.1), API tokens, Start at boot and Open dashboard signed in (1.25), sleep mode with Start on the join page (1.26), a Discord /start command (1.27), and Sign in with Discord, join pages by permission and Whitelist by Discord (1.28) shipped, with proposed additions below · Author: Quentin Russell
 
 The public summary of this plan is [docs/wiki/Roadmap.md](../wiki/Roadmap.md); keep the two in
 step when either changes.
@@ -2480,7 +2480,7 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     READY, roles, interactions, resume after a reconnect request, a refused token, a missed
     heartbeat, an invalid session and Discord asking for a heartbeat).
 
-### 1.28: Sign in with Discord, and who can see a join page *(next)*
+### 1.28: Sign in with Discord, who can see a join page, and Whitelist by Discord *(released 28 Nov 2026)*
 
 36. **Sign in with Discord, and join pages by permission.** Asked for by Quentin on 27 Nov 2026:
     communities that host their own servers already organise people in Discord. Discord sign-in
@@ -2494,8 +2494,30 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     authorization code with `identify guilds.members.read`, the token thrown away after reading the
     member, re-checks through the 1.27 bot when it's there; the same Discord application as the bot.
     Plan: [discord-sign-in.md](discord-sign-in.md). **Size:** about two and a half weeks.
-    **Built** 27 Nov 2026 on `feature/discord-sign-in` (see "As built" in the plan); released with
-    1.28.0.
+    **As built (1.28):** `core/discordauth.py` (settings in `discord-signin.json`, 0600; the OAuth2
+    code flow; role grants; linked accounts; member re-checks through the 1.27 bot every 10
+    minutes), `core/joinpage.py` and `core/joinsite.py` for the access choices, sign-in on the join
+    port and Stop. Added during the real-Discord test: a **Start only** permission (accounts, API
+    tokens, Discord roles; a node older than 1.28 refuses it, which is safe) and a **Visitors who
+    aren't signed in** row (see and Start, never Stop). See "As built" in the plan.
+
+37. **Whitelist by Discord.** Asked for by Quentin on 27 Nov 2026 during the 1.28 test: a player
+    links their Minecraft name in Discord and is whitelisted, and admins choose per server how
+    strict that is. Planned as 1.28.1; Quentin chose on 28 Nov to ship it in 1.28.0 with Sign in
+    with Discord. Plan: [discord-whitelist.md](discord-whitelist.md). **As built (1.28):**
+    `core/discordwl.py` (rules and state in `discord-whitelist.json`, 0600) and
+    `core/discordbot_wl.py` (the **Link your Minecraft name** button and form, `/minecraft`, **Ask
+    to join**, **Approve** and **Deny** in the moderators' channel, member and invite events, the
+    role re-check), carried by the /start bot. Per server Off, anyone in our Discord, these roles,
+    or moderator approval, with an **Every server** default; trust by role or by a moderator's
+    one-time approval, trusted invites (with a minimum account age) and invite roles; per-person
+    exceptions. The panel only removes names it added and never claims a hand-added name; a master
+    keeps its nodes' whitelists. With the Server Members Intent changes arrive at once (a full
+    re-read runs daily); without it linked people's roles are read every 5 minutes, and a refused
+    intent falls back instead of stopping the bot. Also: the Discord server's owner and
+    administrators may use `/start` without a listed role, and the panel refuses an application's
+    Public Key pasted as the client secret. **Tested:** `tests/test_discordwl.py` (34) and a real
+    Discord community server (link, approve, whitelist by role, join in game).
 
 ## Groundwork (do alongside, before promoting)
 

@@ -4,6 +4,16 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.28.0 (2026-11-28)
+
+Release notes: release-notes/v1.28.0.md
+
+- Sign in with Discord: a Sign in with Discord button on the sign-in page (Panel Settings > Sign in with Discord: client ID and secret of your Discord application, the redirect addresses, your Discord server). Admins and helpers link their own account and keep their two-factor; people without an account sign in on their Discord roles, each role giving chosen permissions on chosen servers, never admin. Roles are checked again every 10 minutes through the /start bot. Accounts can be blocked.
+- Join pages: Who can see this page. Anyone with the link (as before), anyone who signs in, or by permission: who may see how to join, Start and Stop, by panel account, permission, Discord membership or role, or visitors who aren't signed in (see and Start only). A page can require joining your Discord server and show its invite.
+- Whitelist by Discord: players link their Minecraft name with a button the bot posts or /minecraft, and the panel keeps each server's whitelist (Bedrock: allowlist): per server Off, anyone in your Discord, chosen roles, or moderator approval. Moderators approve new people in a Discord channel or the panel, which can also give a role; trusted invites skip that. Losing the role, leaving or being blocked takes the name off. Names added by hand are never touched. Clusters: the master keeps its nodes' whitelists.
+- Start only: a per-server permission to start a server but not stop it, for accounts, API tokens and Discord roles.
+- Discord /start: the Discord server's owner and administrators may use it without a listed role. If Discord refuses the Server Members Intent, the bot runs without it and the panel says what to turn on.
+
 ## 1.27.0 (2026-11-27)
 
 Release notes: release-notes/v1.27.0.md
