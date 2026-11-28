@@ -315,7 +315,8 @@ class WindowsCertificates(unittest.TestCase):
         back = wincerts.openssl(self.enc + ["-d"], made_there.stdout, env=self.env)
         self.assertEqual((back.returncode, back.stdout), (0, data))
         wrong = wincerts.openssl(self.enc + ["-d"], made_there.stdout, env=dict(self.env, RP_BACKUP_PASS="nope"))
-        self.assertNotEqual(wrong.returncode, 0)
+        # A wrong password passes the padding check about 1 time in 256: then the output is garbage
+        self.assertTrue(wrong.returncode != 0 or wrong.stdout != data)
         self.assertNotEqual(wincerts.openssl(self.enc + ["-d"], b"not a backup", env=self.env).returncode, 0)
 
     def test_a_cluster_made_on_windows_is_trusted_by_openssl(self):
