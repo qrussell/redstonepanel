@@ -213,7 +213,7 @@ def _node_servers(node, fresh=False):
     base = {"id": node["id"], "name": node["name"], "url": node["url"], "platform": node.get("platform"),
             "machine": node.get("machine"), "version": node.get("version"), "cert_expires": node.get("cert_expires"),
             "cluster_api": node.get("cluster_api"), "verify": cluster.node_verify(node),
-            "terminal": node.get("terminal")}
+            "terminal": node.get("terminal"), "master_sign_in": node.get("master_sign_in") is True}
     try:
         servers = call_node(node, "GET", "/api/servers")
         result = dict(base, state="ok", servers=servers if isinstance(servers, list) else [])
@@ -264,7 +264,8 @@ def _node_host(node, summarize):
         if hit and now - hit[0] < OVERVIEW_TTL:
             return hit[1]
         generation = _forgotten.get(node["id"], 0)
-    base = {"id": node["id"], "name": node["name"], "url": node["url"], "version": node.get("version")}
+    base = {"id": node["id"], "name": node["name"], "url": node["url"], "version": node.get("version"),
+            "cluster_api": node.get("cluster_api"), "master_sign_in": node.get("master_sign_in") is True}
     try:
         rep = call_node(node, "GET", "/api/host", timeout=15)
         result = dict(base, state="ok", summary=summarize(rep) if isinstance(rep, dict) else None)

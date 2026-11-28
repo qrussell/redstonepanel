@@ -201,3 +201,38 @@ class MasterApi(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClusterPageGetsTheFlag(unittest.TestCase):
+    """1.28.1: the Cluster page and the dashboard's node cards only offer the signed-in Open when the
+    master's lists say the node allows it. The lists left the flag out, so both always fell back to a
+    plain link to the node's sign-in page."""
+    NODE = {"id": "n-abc123", "name": "Basement", "url": "https://192.168.1.20:8443", "token": "rpn_" + "x" * 43,
+            "cluster_api": 10, "version": "1.28.0", "master_sign_in": True, "last_ok": 4102444800}
+
+    def setUp(self):
+        from core import cluster, cluster_client
+        self.cc = cluster_client
+        cluster_client.forget_cached()
+        self.addCleanup(cluster_client.forget_cached)
+        answers = {"/api/servers": [], "/api/host": {}}
+        for p in (mock.patch.object(cluster, "load_nodes", lambda: [dict(self.NODE)]),
+                  mock.patch.object(cluster, "state", lambda: {"role": "master", "name": "Redstone", "epoch": 1}),
+                  mock.patch.object(cluster_client, "call_node", lambda node, method, path, *a, **k: answers[path])):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_overview_and_hosts_carry_it(self):
+        node = self.cc.overview(lambda: [], fresh=True)["nodes"][1]
+        self.assertIs(node["master_sign_in"], True)
+        self.assertEqual(node["cluster_api"], 10)
+        node = self.cc.hosts(lambda: {}, lambda r: {})["nodes"][1]
+        self.assertIs(node["master_sign_in"], True)
+        self.assertEqual(node["cluster_api"], 10)
+
+    def test_off_or_unknown_is_false(self):
+        self.NODE = dict(self.NODE, master_sign_in=False)
+        self.assertIs(self.cc.overview(lambda: [], fresh=True)["nodes"][1]["master_sign_in"], False)
+        self.NODE = {k: v for k, v in self.NODE.items() if k != "master_sign_in"}
+        self.cc.forget_cached()
+        self.assertIs(self.cc.hosts(lambda: {}, lambda r: {})["nodes"][1]["master_sign_in"], False)
