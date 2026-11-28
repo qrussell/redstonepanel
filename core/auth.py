@@ -171,6 +171,8 @@ def delete_panel_user(username):
     twofactor.remove(twofactor.account_key("panel", username))
     passkeys.remove_all(twofactor.account_key("panel", username))
     devices.remove_all(twofactor.account_key("panel", username))
+    from core import discordauth                     # 1.28: its Discord link goes too
+    discordauth.forget_panel_account(twofactor.account_key("panel", username))
 
 def change_own_password(username, current, new):
     with _lock:
@@ -371,6 +373,27 @@ def passkey_identity(key):
     return {"u": name, "src": src, "v": v, "m": 1, "pk": 1}
 
 
+def linked_identity(key):
+    """1.28: the account a Discord account is linked to, signing in with Discord. Counts like a
+    password (one step): an account with two-factor on still has to give its code. Raises
+    AuthError if the account may not sign in any more."""
+    src, _, name = (key or "").partition(":")
+    if src not in ("panel", "linux") or account_role(src, name) is None:
+        raise AuthError("The account your Discord is linked to can't sign in to the panel any more.")
+    v = 0
+    if src == "panel":
+        with _lock:
+            users = _load_users()
+            u = _find(users, name)
+            v = u.get("session_version", 1)
+            u["last_login"] = int(time.time())
+            _save_users(users)
+    identity = {"u": name, "src": src, "v": v}
+    if twofactor.is_enabled(twofactor.account_key(src, name)):
+        return dict(identity, pending=True)
+    return identity
+
+
 def complete_two_factor(ticket, code, client_ip):
     """Second step of signing in. Returns the session identity, or raises AuthError."""
     identity = read_pending_token(ticket)
@@ -435,7 +458,8 @@ def _unsign(token, purpose):
     return payload
 
 def _identity_fields(identity):
-    return {k: identity[k] for k in ("u", "src", "v", "m", "pk", "e") if k in identity}
+    # dn, r, t (1.28): a Discord account's name, its roles at sign-in and when they were read
+    return {k: identity[k] for k in ("u", "src", "v", "m", "pk", "e", "dn", "r", "t") if k in identity}
 
 def make_session_token(identity, device=None):
     # n: each sign-in's cookie is its own, even two in the same second (signing one out, which
@@ -496,6 +520,10 @@ def read_session_token(token):
         # 1.25: an admin of the cluster's master, signed in here from the master's Open dashboard
         from core import mastersignin
         return mastersignin.session_user(payload)
+    if src == "discord":
+        # 1.28: a Discord account signed in on its roles alone (never an admin)
+        from core import discordauth
+        return discordauth.session_user(payload)
     if src == "linux":
         if not linux_user_allowed(username):
             return None

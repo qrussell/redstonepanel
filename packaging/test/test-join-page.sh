@@ -254,6 +254,43 @@ dx jp "systemctl restart redstonepanel"
 for _ in $(seq 1 40); do dx jp "curl -sf $URL/api/health" >/dev/null 2>&1 && break; sleep 1; done
 for _ in $(seq 1 20); do listening jp 8444 && break; sleep 1; done
 is "after the panel restarts the pages are back" 200 "$(pcode /join/survival)"
+echo "--- 1.28: a page that needs sign-in, with Start and Stop by permission"
+is "Sign in with Discord is off until an admin sets it up" False "$(dx jp "curl -s $URL/api/auth/discord/available" | json "d['panel']")"
+is "  its start sends people back to the sign-in page" 1 "$(dx jp "curl -s $URL/api/auth/discord/start" | grep -c 'discord=')"
+dx jp "echo 'join-test-pat-1' | redstonepanel add-user pat --role user" >/dev/null
+is "a page by permission needs a row" 400 "$(code admin PUT /api/join-pages/page "{\"server\":\"$J\",\"enabled\":true,\"access\":\"permission\",\"signin_panel\":true,\"rules\":[]}")"
+is "  Discord sign-in can't be ticked before it's set up" 400 "$(code admin PUT /api/join-pages/page "{\"server\":\"$J\",\"enabled\":true,\"access\":\"signed\",\"signin_discord\":true}")"
+is "  a page for pat (see) and alex (see, start, stop) is saved" 200 "$(code admin PUT /api/join-pages/page "{\"server\":\"$J\",\"enabled\":true,\"access\":\"permission\",\"signin_panel\":true,\"rules\":[{\"who\":\"panel:pat\",\"see\":true},{\"who\":\"panel:alex\",\"see\":true,\"start\":true,\"stop\":true}]}")"
+BODY=$(pub /join/survival)
+lacks "before sign-in the page hides the address" "play.example.org:25601" "$BODY"
+has "  and asks for a sign-in" 'action="/join/_signin"' "$BODY"
+is "  the refreshing part leaves out the players" None "$(pub /join/survival/status.json | json "str(d['players'])")"
+is "  a form from another site is refused" 400 "$(dx jp "curl -s -o /dev/null -w '%{http_code}' -H 'Origin: https://evil.example' -H 'Host: 127.0.0.1:8444' --data 'username=pat&password=join-test-pat-1&next=/join/survival' $PUB/join/_signin")"
+jsign(){ dx jp "rm -f /tmp/jj-$1; curl -s -o /dev/null -w '%{http_code}' -c /tmp/jj-$1 -H 'Origin: $PUB' --data 'username=$1&password=$2&next=/join/survival' $PUB/join/_signin"; }
+jpub(){ dx jp "curl -s -m 10 -b /tmp/jj-$1 ${3:+-X POST -H 'X-Join-Start: 1'} '$PUB$2'"; }
+is "  a wrong password is refused" 400 "$(jsign pat wrong-password)"
+is "  this computer's own account is refused there" 400 "$(jsign root whatever)"
+is "pat signs in on the page" 303 "$(jsign pat join-test-pat-1)"
+check "  the cookie is only for /join, and HttpOnly" dx jp "grep -q '#HttpOnly_127.0.0.1.*/join.*rp_join' /tmp/jj-pat"
+BODY=$(jpub pat /join/survival)
+has "  pat sees the address" "play.example.org:25601" "$BODY"
+lacks "  but has no Stop button" 'id="stop"' "$BODY"
+is "  and Stop is refused" 403 "$(dx jp "curl -s -o /dev/null -w '%{http_code}' -b /tmp/jj-pat -X POST -H 'X-Join-Start: 1' $PUB/join/survival/stop")"
+is "  the join cookie isn't a panel sign-in" 401 "$(dx jp "curl -s -o /dev/null -w '%{http_code}' -H \"Cookie: rp_session=\$(awk '/rp_join/ {print \$7}' /tmp/jj-pat)\" $URL/api/auth/me")"
+is "alex signs in on the page" 303 "$(jsign alex "$PW_ALEX")"
+has "  alex has Stop" 'id="stop"' "$(jpub alex /join/survival)"
+is "  alex stops the server from its page" stopping "$(jpub alex /join/survival/stop post | json "d['status']")"
+for _ in $(seq 1 45); do dx jp "systemctl is-active -q $J" || break; sleep 1; done
+check "  the server stopped" bash -c "! docker exec jp systemctl is-active -q $J"
+check "  the activity log names alex" dx jp "grep -q '\[JOIN\] alex (from .*) stopped $J from its join page' /var/log/redstonepanel/panel.log"
+is "  alex starts it again" starting "$(jpub alex /join/survival/start post | json "d['status']")"
+for _ in $(seq 1 45); do dx jp "systemctl is-active -q $J" && break; sleep 1; done
+check "  the server runs again" dx jp "systemctl is-active -q $J"
+dx jp "curl -s -o /dev/null -b /tmp/jj-pat -H 'Origin: $PUB' --data 'next=/join/survival' $PUB/join/_signout -c /tmp/jj-pat"
+lacks "signing out hides the address again" "play.example.org:25601" "$(jpub pat /join/survival)"
+page "{\"server\":\"$J\",\"enabled\":true,\"access\":\"anyone\",\"show_players\":true}" >/dev/null
+has "back to anyone: the address is public again" "play.example.org:25601" "$(pub /join/survival)"
+
 api admin PUT /api/settings/join '{"enabled":true,"port":8555,"index":true}' >/dev/null
 is "moving the port: the new one answers, the old one is closed" "200 000" "$(dx jp "curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8555/join/survival") $(pcode /join/survival)"
 api admin PUT /api/settings/join '{"enabled":false,"port":8555}' >/dev/null

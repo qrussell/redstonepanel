@@ -83,6 +83,15 @@ can), and Windows 10 installs with an end-of-support note. Windows on ARM comes 
   The panel itself is the bot: paste a bot token in Panel Settings, choose the Discord servers
   and roles that may use it and the servers it may start. Nothing to forward, Linux and Windows.
 
+### 1.28: Sign in with Discord, and who can see a join page *(planned)*
+
+- **Sign in with Discord** on the panel. Roles in your Discord server give people permissions on
+  chosen servers, so giving someone the Mod role is all it takes. Free, in the core panel.
+- **Join pages by permission.** Each join page can stay open to anyone, ask visitors to sign in
+  (with a panel account or Discord), or go by permission: who may see how to join, who may
+  **Start** the server and who may **Stop** it. A page can also require joining your Discord
+  first and show its invite link. Discord is optional.
+
 ## Ideas under consideration
 
 Suggested after 1.15 and not scheduled yet. Each one fits the panel's rules; the ones marked ⭐

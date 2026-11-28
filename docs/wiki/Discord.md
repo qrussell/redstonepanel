@@ -154,6 +154,32 @@ servers, only the ones you choose, and only in the Discord servers and for the r
 Set it up in **Panel Settings → Discord**; the steps are in the User Manual under
 [Discord /start](../guide/README.md#discord-start).
 
+### Sign in with Discord, and join pages for your members
+
+From 1.28 your roles can do more than show channels:
+
+- **Sign in with Discord** on the panel. Give someone the **Staff** role and a role row in
+  **Panel Settings → Sign in with Discord** lets them, say, use the console and players tabs on
+  your servers. A role never makes anyone a panel admin; admins link their own account.
+- **Join pages for members only.** A server's join page can ask visitors to sign in with Discord
+  and to be in your Discord server, and show your invite link to those who aren't yet. Roles
+  decide who sees the address, who may **Start** the server and who may **Stop** it, for example
+  **Survival** may start it and **Staff** may also stop it.
+
+The steps are in the User Manual under
+[Sign in with Discord](../guide/README.md#sign-in-with-discord) and
+[Who can see a join page](../guide/README.md#who-can-see-a-join-page).
+
+### Let members onto the whitelist by themselves
+
+From 1.28 players can link their Minecraft name in your Discord (a **Link your Minecraft name**
+button or `/minecraft`) and the panel puts it on the whitelist of each server their roles allow,
+and takes it off when they lose the role or leave. Each server can be open to anyone in your
+Discord, to chosen roles (a **Peaceful** role for one server, **Anarchy** for another), or need a
+moderator's **Approve**. Friends who join through a trusted invite can play straight away while
+people from a public invite wait for a moderator. The steps are in the User Manual under
+[Whitelist by Discord](../guide/README.md#whitelist-by-discord).
+
 ## 6. Let players pick their servers
 
 Players need the right roles to see a server's channels. Three ways to give them out:
@@ -164,6 +190,9 @@ Players need the right roles to see a server's channels. Three ways to give them
   answers later under **Channels & Roles** at the top of the channel list.
 - **By hand.** Right-click a member → **Roles**. Fine for a small group of friends, and the right
   choice for a whitelisted server: give the role when you add them to the whitelist in the panel.
+- **On approval.** With [Whitelist by Discord](../guide/README.md#whitelist-by-discord), a
+  moderator's **Approve** can give a role (for example **Member**) and take an **Applicant** role
+  away.
 - **Automatically, from the game.** A chat bridge plugin can link Discord accounts to Minecraft
   accounts and hand out roles to linked players (see step 7). Most work for Paper.
 

@@ -69,17 +69,17 @@ class Store(unittest.TestCase):
         G.set_user("alex", {"*": ["view"], "minecraft-2": ["power"]})
         self.assertEqual(G.perms_for(alex(), "minecraft-7"), {"view"})
         self.assertEqual(G.perms_for(alex(), "n-abc123/minecraft"), {"view"})
-        self.assertEqual(G.perms_for(alex(), "minecraft-2"), {"view", "power"})
+        self.assertEqual(G.perms_for(alex(), "minecraft-2"), {"view", "start", "power"})
 
     def test_other_identities(self):
         trusted = {"username": "local network", "role": "user", "source": "trusted"}
-        self.assertEqual(G.perms_for(trusted, "minecraft"), set(G.LEGACY))
+        self.assertEqual(G.perms_for(trusted, "minecraft"), set(G.LEGACY) | {"start"})
         self.assertNotIn("files", G.LEGACY)
         self.assertNotIn("mods", G.LEGACY)
         node_user = {"username": "alex@Main", "role": "user", "source": "cluster", "perms": {"view", "files"}}
         self.assertEqual(G.perms_for(node_user, "minecraft"), {"view", "files"})
         self.assertEqual(G.perms_for(dict(node_user, perms=set()), "minecraft"), set())
-        self.assertEqual(G.perms_for(dict(node_user, perms=None), "minecraft"), set(G.LEGACY), "a master before 1.18")
+        self.assertEqual(G.perms_for(dict(node_user, perms=None), "minecraft"), set(G.LEGACY) | {"start"}, "a master before 1.18")
         self.assertEqual(G.parse_header("view,files,root"), {"view", "files"})
         self.assertEqual(G.parse_header(""), set())
         self.assertIsNone(G.parse_header(None))
@@ -122,6 +122,19 @@ class Store(unittest.TestCase):
             f.write("{not json")
         self.assertEqual(G.get("alex"), {})
         self.assertEqual(G.perms_for(alex("admin"), "minecraft"), set(G.PERMS), "admins don't depend on it")
+
+
+class StartOnly(unittest.TestCase):
+    def test_power_includes_start_and_is_kept_once(self):
+        self.assertEqual(G._clean(["start", "power"]), ["view", "power"])
+        self.assertEqual(G._clean(["start"]), ["view", "start"])
+        self.assertNotIn("start", G.PRESETS["co-owner"])
+        u = {"role": "user", "source": "token", "grants": {"minecraft": ["view", "power"]}}
+        self.assertTrue(G.can(u, "start", "minecraft"))
+        u["grants"] = {"minecraft": ["view", "start"]}
+        self.assertTrue(G.can(u, "start", "minecraft"))
+        self.assertFalse(G.can(u, "power", "minecraft"))
+        self.assertIn("Start only", G.refusal("start"))
 
 
 class Report(unittest.TestCase):
@@ -191,7 +204,8 @@ class RouteCoverage(unittest.TestCase):
                 continue
             perm, param = need
             key = G.server_key("minecraft-x", "n-abc123" if param else None)
-            others = [x for x in G.PERMS if x != perm and (perm != "view" or x == "nothing")]
+            others = [x for x in G.PERMS if x != perm and (perm != "view" or x == "nothing")
+                      and not (perm == "start" and x == "power")]       # power includes start
             with mock.patch.object(G, "get", lambda name: {key: others} if others else {}):
                 self.assertIn("Users", self.refusal(alex(), m, p) or "", f"{m} {p} without {perm}")
             with mock.patch.object(G, "get", lambda name: {key: ["view", perm]}):
@@ -285,13 +299,26 @@ class Api(unittest.TestCase):
     def test_the_list_holds_only_granted_servers_and_says_what_is_allowed(self):
         self.give({"minecraft-2": ["power", "files"]})
         listed = self.client.get("/api/servers").json()
-        self.assertEqual([(s["name"], s["perms"]) for s in listed], [("minecraft-2", ["view", "power", "files"])])
+        self.assertEqual([(s["name"], s["perms"]) for s in listed], [("minecraft-2", ["view", "start", "power", "files"])])
         self.assertEqual(self.client.post("/api/servers/minecraft-2/action", json={"action": "restart"}).status_code, 200)
         self.assertEqual(self.client.post("/api/servers/minecraft/action", json={"action": "restart"}).status_code, 403)
         self.assertEqual(self.client.get("/api/servers/minecraft-2/files").status_code, 200)
         self.assertEqual(self.client.get("/api/servers/minecraft/files").status_code, 403)
         self.assertEqual(self.client.get("/api/servers/minecraft-2/chat").status_code, 403)
         self.assertEqual(self.client.get("/api/auth/me").json()["grants"], {"minecraft-2": ["view", "power", "files"]})
+
+    def test_start_only_starts_but_never_stops(self):
+        # 1.28: "Start only" lets a player start a server without stopping or restarting it
+        self.give({"minecraft-2": ["start"]})
+        listed = self.client.get("/api/servers").json()
+        self.assertEqual([(s["name"], s["perms"]) for s in listed], [("minecraft-2", ["view", "start"])])
+        self.assertEqual(self.client.post("/api/servers/minecraft-2/action", json={"action": "start"}).status_code, 200)
+        for action in ("stop", "restart"):
+            r = self.client.post("/api/servers/minecraft-2/action", json={"action": action})
+            self.assertEqual(r.status_code, 403, action)
+            self.assertIn("Start/stop/restart", r.json()["detail"])
+        self.assertEqual(self.client.post("/api/servers/minecraft/action", json={"action": "start"}).status_code, 403)
+        self.assertEqual(self.client.post("/api/servers/minecraft-2/sleep/now").status_code, 403)
 
     def test_admins_see_everything_unmarked(self):
         self.user["role"] = "admin"
@@ -423,6 +450,12 @@ class Cluster(unittest.TestCase):
                                           json={"action": "stop"}).status_code, 403)
         self.assertEqual(self.calls, [])
 
+    def test_start_only_on_a_node(self):
+        G.set_user("alex", {f"{NODE['id']}/minecraft-java-1": ["start"]})
+        url = f"/api/cluster/nodes/{NODE['id']}/servers/minecraft-java-1/action"
+        self.assertEqual(self.client.post(url, json={"action": "stop"}).status_code, 403)
+        self.assertEqual(self.calls, [])
+
     def test_admins_pass_as_admins(self):
         self.user["role"] = "admin"
         self.assertEqual(self.client.get(self.url("/api/servers/minecraft-java-1/files")).status_code, 200)
@@ -445,7 +478,7 @@ class Cluster(unittest.TestCase):
         with mock.patch.object(self.main.cluster_client, "overview", lambda fn, fresh=False: ov):
             got = self.client.get("/api/cluster/overview").json()["nodes"]
         self.assertEqual([[(s["name"], s["perms"]) for s in n["servers"]] for n in got],
-                         [[("minecraft", ["view", "power"])], [("minecraft-2", ["view"])]])
+                         [[("minecraft", ["view", "start", "power"])], [("minecraft-2", ["view"])]])
 
 
 @unittest.skipUnless(HAVE_FASTAPI, "needs fastapi")

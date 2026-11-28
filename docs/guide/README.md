@@ -33,6 +33,9 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Keep a server from starting when the machine starts | [Start at boot](#start-at-boot) |
 | Stop a server nobody plays on, and start it when someone joins | [Sleep mode](#sleep-mode) |
 | Let friends start a stopped server from its join page | [Join pages](#join-pages) (**Let visitors start the server**) |
+| Let only my Discord members, or chosen people, see a join page or start and stop the server | [Who can see a join page](#who-can-see-a-join-page) |
+| Sign in to the panel with Discord | [Sign in with Discord](#sign-in-with-discord) |
+| Let my Discord members onto the whitelist by themselves | [Whitelist by Discord](#whitelist-by-discord) |
 | Find out why a server lags | [Performance](#performance) |
 | Give a server more memory, or limit it | [Memory and limits](#memory-and-limits) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
@@ -333,6 +336,9 @@ There are two kinds of account:
   Forgot the password and no other admin can reset it under **Users**? Run
   `sudo redstonepanel reset-password NAME` on the server (in an administrator prompt on
   Windows, without `sudo`); it signs that account out everywhere.
+
+Once an admin sets it up, **Sign in with Discord** works too; see
+[Sign in with Discord](#sign-in-with-discord) *(1.28)*.
 
 On **Windows** the first kind is **Windows accounts** in **Administrators** or a local group named
 **RedstonePanel**, with their Windows password, and both kinds can add
@@ -637,8 +643,10 @@ Nothing is public until you turn it on, twice: the port, and then each server's 
     while the server is stopped or asleep, so a friend can start it without an account. The
     page then says **Starting** and turns **Online** when they can join. Anyone who can open
     the page can press it, so it's off by default: the panel starts a server at most once every
-    2 minutes from its page, and each visitor at most 3 times an hour. The page never stops a
-    server; pair it with [Sleep mode](#sleep-mode) so it stops by itself again when nobody plays.
+    2 minutes from its page, and each visitor at most 3 times an hour. On a page open to
+    anyone it never stops a server; pair it with [Sleep mode](#sleep-mode) so it stops by itself
+    again when nobody plays. To let only some people start it, or let moderators stop it, see
+    [Who can see a join page](#who-can-see-a-join-page).
   - **A note for players** and **a link of your own** (a Discord invite, a website) appear at
     the top of the page. Only `https://` links are accepted.
   - **Where players get the mods** (mod servers). A server made **From a modpack** on Modrinth
@@ -659,13 +667,62 @@ What a page shows depends on the server:
 <img src="images/phone-join-page.png" width="280" alt="A join page on a phone">
 
 A page never shows a LAN address, the machine's or a node's name, a folder, the panel's
-version, account names or the list of plugins. It sets no cookies and has no forms. The
-server is asked for its player count at most once every 30 seconds, however many people look.
+version, account names or the list of plugins. A page open to anyone sets no cookies and has
+no forms. The server is asked for its player count at most once every 30 seconds, however many
+people look.
 
 On a cluster master the list includes the servers on every node, and the master serves their
 pages; nodes open nothing. A node's own join pages belong to that node's admin and can't be
 turned on from the master. If a node can't be reached, its servers' pages stay up and say
 offline.
+
+#### Who can see a join page *(1.28)*
+
+**Who can see this page**, in a server's join page settings, decides who sees how to join and
+who may press **Start** and **Stop**:
+
+- **Anyone with the link**: as before, no sign-in.
+- **Anyone who signs in**: visitors sign in first. Everyone signed in sees how to join, and can
+  press **Start the server** if **Let visitors start the server** is ticked. Nobody gets **Stop**
+  in this mode, and role rows don't count.
+- **Signed in, by permission**: you choose, row by row, who may **See how to join**, **Start**
+  and **Stop**. Rows add up. A row can be anyone who signs in, a panel account, panel accounts
+  by their permissions on this server (**View** lets them see, **Start only** lets them start,
+  **Start/stop/restart** lets them start and stop, as set on the [Users](#what-a-helper-may-do)
+  page), anyone in your Discord
+  server, a Discord role, or **Visitors who aren't signed in**. That last row lets everyone with the
+  link see the page and press **Start** without signing in, while signing in adds what other rows
+  give (for example **Stop** for moderators); it can never give Stop. Panel admins can always do
+  everything. For example: anyone in
+  your Discord server sees the address and may start the server, the **Moderators** role may
+  also stop it.
+
+Visitors sign in **with a panel account** (from the Users page; a plain account with no server
+permissions is enough for a player), **with Discord** (once
+[Sign in with Discord](#sign-in-with-discord) is set up), or either. Discord is optional: a page
+that needs sign-in works with panel accounts alone. This computer's own Linux or Windows
+accounts can't sign in on a public page, and the page's sign-in is never a panel sign-in: it
+only opens join pages.
+
+**Must be in our Discord server** turns away Discord visitors who aren't in it. They see the
+**Discord invite link** you paste (shown as **Join our Discord**; make one that never expires)
+and can come back once they joined. Someone who signs in but may not see the page is told so,
+with the same invite.
+
+**Stop** asks first when people are playing. The page refuses to stop a server while a backup,
+a restore or an update runs, and stops it at most once every 2 minutes. Each signed-in visitor
+may press **Start** 5 times an hour. Starts and stops from a page are in the panel log with who
+pressed them, for example `[JOIN] discord:Steve (Discord user id) (from 203.0.113.7) stopped
+survival from its join page.`
+
+A page that needs sign-in uses a cookie that is only for the join pages and lasts 12 hours.
+Discord roles are checked again every 10 minutes through the [/start bot](#discord-start) when it
+is in your Discord server; without it, Discord visitors sign in again after 30 minutes. A Discord
+account that leaves your Discord server or loses its role loses what the role gave. The sign-in
+form only accepts posts from the page itself. Panel sign-in limits apply to it too, and panel accounts with
+two-factor sign-in on are asked for their code.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/join-access.png"><img src="images/join-access.png" alt="Who can see this page: signed in, by permission; anyone in our Discord server may see and start, the Moderators role and panel accounts by their permissions may also stop"></picture>
 
 #### Join pages through a proxy (HAProxy or Cloudflare) *(1.21.9)*
 
@@ -2076,6 +2133,7 @@ An admin account controls a service that runs as root, so treat it like `sudo` a
 | Tick | Lets them |
 | --- | --- |
 | **View** | See the server on the dashboard and in the list, its Overview, performance and logs. |
+| **Start only** *(1.28)* | Start it (and wake it from sleep mode), but not stop or restart it. |
 | **Console & chat** | Read the console, send commands and chat. |
 | **Start/stop/restart** | Start, stop and restart it, and dismiss a crash card. |
 | **Players** | Whitelist, operators, kick, ban, and the access log. |
@@ -2314,7 +2372,8 @@ Discord.
 3. Back in the panel, click **Refresh**, tick your Discord server under **Answer in these Discord
    servers** and save. The bot answers nowhere until you tick a Discord server.
 4. Choose who may use it (everyone in those Discord servers, or only people with the roles you
-   tick) and which servers it may start (every server, including later ones, or only some).
+   tick; the Discord server's owner and people with Administrator there always may) and which
+   servers it may start (every server, including later ones, or only some).
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/discord-settings.png"><img src="images/discord-settings.png" alt="The Discord section of Panel Settings: connected as Redstone Bot, one Discord server ticked, only the Players role may use it, every server"></picture>
 
@@ -2336,6 +2395,111 @@ bot of its own, but needs a different bot token (one token is one connection).
 **If it doesn't connect:** "Discord refused the bot token" means the token was reset or copied
 wrongly: reset it again and paste the new one. The panel needs to reach `discord.com` and
 `gateway.discord.gg` on port 443. **Remove the bot token** turns it off and forgets the token.
+
+### Sign in with Discord *(1.28)*
+
+Put a **Sign in with Discord** button on the panel's sign-in page and, if you like, on
+[join pages](#who-can-see-a-join-page). It is optional: nothing changes until you set it up.
+
+- **Admins and helpers** link their own account: **🔑 Password → Discord → Link Discord**. After
+  that, **Sign in with Discord** signs them in as that account, and their two-factor sign-in
+  still asks for its code. **Unlink Discord** undoes it.
+- **People without a panel account** can sign in on their Discord roles. Each row under **What
+  roles give on this panel** names a role (or anyone in your Discord server), the servers and what
+  it may do there, with the same ticks as the [Users](#what-a-helper-may-do) page. Rows add up.
+  A role never makes anyone a panel admin; leave the table empty to allow only linked accounts.
+
+**Set it up (about five minutes):**
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), open your
+   application. The [/start bot's](#discord-start) application is fine; a **New Application**
+   works too.
+2. Under **OAuth2**, copy the **Client ID** and the **Client Secret** (**Reset Secret**) into
+   **Panel Settings → Sign in with Discord**.
+3. Still under **OAuth2**, **Add Redirect** for each address the panel shows under **How to set
+   it up** (one for the panel, one for join pages) and **Save Changes**.
+4. Check **The address you open the panel at** (Discord sends people back there) and, for join
+   pages, **The join pages address** (for example `https://play.example.com:8444`).
+5. Pick **Your Discord server** (its roles count), add role rows if you want them, tick **Show
+   Sign in with Discord on the sign-in page** and **Save sign-in settings**.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/discord-signin-settings.png"><img src="images/discord-signin-settings.png" alt="Sign in with Discord in Panel Settings: client ID, redirect addresses, the Discord server, a Players and a Moderators role row, and the Discord accounts that signed in"></picture>
+
+The panel only asks Discord who someone is and which roles they have in your Discord server. It
+reads them once at sign-in and throws Discord's token away. When the /start bot is in your
+Discord server, roles are checked again every 10 minutes, so someone who leaves or loses a role
+loses access within 10 minutes; without it, roles count until the sign-in ends (12 hours).
+**Only Discord accounts with two-factor on** refuses role sign-ins from Discord accounts without
+it.
+
+Everyone who signed in with Discord is listed under **Discord accounts that signed in**.
+**Block** signs one out of the panel and join pages at once and keeps them out until you unblock
+them. Role sign-ins have no password to change. Sign-ins are in the
+panel log as `discord:NAME (Discord user id)`.
+
+**In a cluster**, each panel has its own sign-in settings and accounts, like its Users page.
+The panel needs to reach `discord.com` on port 443.
+
+### Whitelist by Discord *(1.28)*
+
+Players link their Minecraft name in your Discord server and the panel puts it on the whitelist
+(Bedrock: allowlist) of each server they may play on. When they lose the role, leave your
+Discord or are [blocked](#sign-in-with-discord), the panel takes the name off again. Names you add
+yourself on the [Whitelist & Access tab](#7-configuration-player-roles-and-the-whitelist) are never touched; the panel only removes names it
+added.
+
+**How players link their name:** a **Link your Minecraft name** button that the panel posts in
+a channel (it opens a small form for the Java name and, for Bedrock, the Xbox gamertag), or
+`/minecraft java:Steve` anywhere in your Discord. Java names are checked with Mojang. A name can
+belong to only one Discord account. The answer tells them which servers they can play on now and
+shows **Ask to join** buttons for servers that need a moderator.
+
+**Who may play on each server.** Each server has one choice, and **Every server** is the default
+for servers without their own:
+
+| Choice | Who gets on the whitelist |
+|---|---|
+| **Off** | Nobody: Discord never touches this server's whitelist (the default) |
+| **Anyone in our Discord** | Everyone in your Discord server who linked a name |
+| **These roles** | People with one of the roles you tick, for example **Peaceful** on one server and **Anarchy** on another |
+| **Moderator approval** | People a moderator approved for this server; roles you tick can skip that |
+
+**Is a role enough?** For a group of friends, yes: the right role lets someone play. For a public
+invite (say, on Reddit), choose **No: a moderator approves each new person once**. Their request
+then appears in your moderators' channel with **Approve** and **Deny** buttons (and in Panel
+Settings), and after approval their roles decide as above. **Approving someone also gives them** a
+role (for example **Member**) and can take one away (for example **Applicant**).
+
+**Invites.** The panel tells which invite each new member used. Mark the invite you give friends
+**Trusted** and the people who join through it don't need approving; an invite can also give a
+role. Anyone else, or anyone whose invite can't be told apart, needs approving.
+**Trusted invites only count for Discord accounts at least this many days old** stops brand-new
+throwaway accounts. Discord's own **Onboarding** questions can still hand out roles, but they
+can't ask for a Minecraft name; that's what the button is for.
+
+**Set it up:**
+
+1. Set up the [Discord /start](#discord-start) bot in your Discord server (Whitelist by Discord
+   uses the same bot).
+2. Recommended: in the [Discord Developer Portal](https://discord.com/developers/applications),
+   under **Bot**, turn on **Server Members Intent**, and tick **Server Members Intent is on** in
+   the panel. The panel then hears role changes, joins and leaves at once; without it, it reads
+   linked people's roles every 5 minutes.
+3. In **Panel Settings → Whitelist by Discord**, choose who may play on each server, whether a
+   role is enough, your moderators and their channel, tick **Turn on Whitelist by Discord** and
+   **Save whitelist settings**.
+4. Add the bot again with the link under **How to set it up**: it now needs to see and send
+   messages, **Manage Server** (to tell invites apart) and **Manage Roles** (to give roles). In
+   Discord's **Server Settings → Roles**, drag the bot's role above the roles it gives.
+5. Pick a channel new members see and press **Post the button**. Pin the message.
+
+**Linked accounts** lists everyone who linked a name, their servers and whether they're
+approved. **Exceptions for this person** can always allow them on a server, or keep them off one,
+whatever their roles say. **Forget** takes their names off the whitelists the panel added them to.
+Every link, request, approval and whitelist change is in the panel log as `[DISCORD]`.
+
+**In a cluster**, set it up on the master: it keeps the whitelists of servers on its nodes too.
+The panel needs to reach `discord.com` on port 443.
 
 ## 18. Clusters
 

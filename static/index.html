@@ -120,8 +120,8 @@
             <!-- Phones: three equal, large buttons across the top -->
             <div class="grid grid-cols-3 sm:flex gap-2 shrink-0" id="ws-power-controls">
                 <button onclick="ServerApp.sendPower('start')" class="bg-green-600 hover:bg-green-700 px-4 py-3 sm:py-2 rounded font-bold text-white transition">Start</button>
-                <button onclick="ServerApp.sendPower('restart')" class="bg-theme hover-bg-theme px-4 py-3 sm:py-2 rounded font-bold text-white transition">Restart</button>
-                <button onclick="ServerApp.sendPower('stop')" class="bg-white dark:bg-gray-800 border border-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 px-4 py-3 sm:py-2 rounded font-bold text-red-600 dark:text-red-400 transition">Stop</button>
+                <button id="ws-btn-restart" onclick="ServerApp.sendPower('restart')" class="bg-theme hover-bg-theme px-4 py-3 sm:py-2 rounded font-bold text-white transition">Restart</button>
+                <button id="ws-btn-stop" onclick="ServerApp.sendPower('stop')" class="bg-white dark:bg-gray-800 border border-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 px-4 py-3 sm:py-2 rounded font-bold text-red-600 dark:text-red-400 transition">Stop</button>
             </div>
         </header>
 

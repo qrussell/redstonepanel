@@ -4,8 +4,9 @@ An admin is effectively root and can do everything. A `user` can do, on each ser
 an admin ticked for them under Users -> Servers:
 
     view      see the server, its status, performance and schedules
+    start     start it (and wake it from sleep), nothing else (1.28)
     console   Live Chat and console commands
-    power     start, stop, restart
+    power     start, stop, restart (includes start)
     players   player roles, whitelist, kick, ban, the access log
     files     the file manager and SFTP
     mods      mods, plugins and add-ons
@@ -34,12 +35,12 @@ from core.settings import DATA_DIR
 
 GRANTS_FILE = os.path.join(DATA_DIR, "grants.json")
 
-PERMS = ("view", "console", "power", "players", "files", "mods", "settings", "backups")
-PERM_LABELS = {"view": "View", "console": "Console & chat", "power": "Start/stop/restart",
+PERMS = ("view", "start", "console", "power", "players", "files", "mods", "settings", "backups")
+PERM_LABELS = {"view": "View", "start": "Start only", "console": "Console & chat", "power": "Start/stop/restart",
                "players": "Players", "files": "Files", "mods": "Mods & plugins", "settings": "Settings",
                "backups": "Backups"}
 PRESETS = {"moderator": ("view", "console", "players"),
-           "co-owner": PERMS}
+           "co-owner": tuple(p for p in PERMS if p != "start")}     # power includes start
 # What every `user` account could do to every server before 1.18 (files and mods were admin-only).
 # Accounts that existed before the update keep exactly this on every server; so do trusted-LAN
 # visitors and a cluster master older than 1.18 acting for one of its users.
@@ -96,6 +97,8 @@ def _clean(perms):
     perms = {p for p in perms or () if p in PERMS}
     if perms:
         perms.add("view")                    # anything else implies seeing the server
+    if "power" in perms:
+        perms.discard("start")               # power includes start; kept once
     return [p for p in PERMS if p in perms]
 
 
@@ -147,9 +150,11 @@ def forget_server(key):
                 users[name] = g
         if changed:
             _save(users)
-    from core import apitokens, discordbot        # API tokens (1.25) and Discord /start (1.27) lose it too
-    apitokens.forget_server(key)
+    from core import apitokens, discordauth, discordbot, discordwl   # API tokens (1.25), Discord /start (1.27),
+    apitokens.forget_server(key)                          # Discord roles (1.28) lose it too
     discordbot.forget_server(key)
+    discordauth.forget_server(key)
+    discordwl.forget_server(key)
 
 
 def rename_server(old_key, new_key):
@@ -166,9 +171,11 @@ def rename_server(old_key, new_key):
             users[name] = g
         if changed:
             _save(users)
-    from core import apitokens, discordbot        # API tokens (1.25) and Discord /start (1.27) follow it too
-    apitokens.rename_server(old_key, new_key)
+    from core import apitokens, discordauth, discordbot, discordwl   # API tokens (1.25), Discord /start (1.27),
+    apitokens.rename_server(old_key, new_key)             # Discord roles (1.28) follow it too
     discordbot.rename_server(old_key, new_key)
+    discordauth.rename_server(old_key, new_key)
+    discordwl.rename_server(old_key, new_key)
 
 
 def migrate_existing_users(usernames):
@@ -186,14 +193,22 @@ def migrate_existing_users(usernames):
 # What an identity may do
 # ---------------------------------------------------------------------------
 def perms_for(user, key):
-    """The set of permissions `user` (request.state.user) has on the server with this key."""
+    """The set of permissions `user` (request.state.user) has on the server with this key.
+    Whoever may stop and restart may also start (1.28: "start" alone is a permission too)."""
+    perms = _perms_for(user, key)
+    if "power" in perms:
+        perms.add("start")
+    return perms
+
+
+def _perms_for(user, key):
     if user.get("role") == "admin":
         return set(PERMS)
     src = user.get("source")
     if src == "panel":
         g = get(user["username"])
         return set(g.get(ALL_SERVERS, ())) | set(g.get(key, ()))
-    if src == "token":                            # API tokens (1.25) carry their own
+    if src in ("token", "discord"):               # API tokens (1.25) and Discord roles (1.28) carry their own
         g = user.get("grants") or {}
         return set(g.get(ALL_SERVERS, ())) | set(g.get(key, ()))
     if src == "cluster":
@@ -213,7 +228,7 @@ def can(user, perm, server, member=None):
 
 def limited(user):
     """True for an account whose view is cut down to the servers it was granted."""
-    return user.get("role") != "admin" and user.get("source") in ("panel", "token")
+    return user.get("role") != "admin" and user.get("source") in ("panel", "token", "discord")
 
 
 def parse_header(value):
@@ -247,6 +262,9 @@ public   POST    /api/auth/first-sign-in/check
 public   POST    /api/auth/first-sign-in
 public   POST    /api/auth/logout
 public   GET     /api/auth/master-sign-in
+public   GET     /api/auth/discord/available
+public   GET     /api/auth/discord/start
+public   GET     /api/auth/discord/callback
 public   GET     /api/cluster/ca
 public   GET     /api/cluster/ca.crt
 public   POST    /api/cluster/join
@@ -265,6 +283,9 @@ signed   GET     /api/auth/devices
 signed   DELETE  /api/auth/devices
 signed   DELETE  /api/auth/devices/{{device_id}}
 signed   POST    /api/auth/password
+signed   GET     /api/auth/discord/link
+signed   POST    /api/auth/discord/link
+signed   DELETE  /api/auth/discord/link
 signed   GET     /api/auth/ssh-keys
 signed   POST    /api/auth/ssh-keys
 signed   DELETE  /api/auth/ssh-keys/{{fingerprint}}
@@ -294,7 +315,7 @@ view     GET     {_S}/resources
 view     GET     {_S}/crash
 view     GET     {_S}/restarts
 view     GET     {_S}/updates
-power    POST    {_S}/action
+start    POST    {_S}/action
 power    DELETE  {_S}/crash
 console  GET     {_S}/chat
 console  POST    {_S}/chat
@@ -422,7 +443,7 @@ proxy            GET     /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 proxy            POST    /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 proxy            PUT     /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 proxy            DELETE  /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
-power@node_id    POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/action
+start@node_id    POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/action
 settings@node_id POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/template
 admin            POST    /api/cluster/nodes/{{node_id}}/templates
 admin            POST    /api/cluster/nodes/{{node_id}}/sign-in
@@ -486,5 +507,8 @@ def needs(rule):
 
 
 def refusal(perm):
+    if perm == "start":
+        return ("Your account doesn't have \"Start only\" or \"Start/stop/restart\" on this server. "
+                "An admin can change that under Users.")
     return (f"Your account doesn't have \"{PERM_LABELS[perm]}\" on this server. "
             "An admin can change that under Users.")

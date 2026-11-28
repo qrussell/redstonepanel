@@ -8,11 +8,20 @@ It listens on its own port (Panel Settings > Join pages, 8444 by default) and an
     GET /join/<link>/icon.png       the server's icon
     GET /join/assets/join.css|js    the page's own stylesheet and script
     POST /join/<link>/start         start the server (1.26, only if the admin allowed it on that page)
+    POST /join/<link>/stop          stop it (1.28, only for a signed-in visitor whose permission gives Stop)
+    GET  /join/_signin              1.28: sign in with a panel account (a page that asks for sign-in)
+    POST /join/_signin[/code]       the password, then the two-factor code if the account has one
+    POST /join/_signout
+    GET  /join/_discord/start       1.28: sign in with Discord (core/discordauth.py)
+    GET  /join/_discord/callback    Discord sends the visitor back here
 
-Everything else is "Not found": there is no sign-in page, no API and none of the panel's files
-on this port, so forwarding it on the router shows the internet nothing but these pages. It
-sets no cookies, reads no request bodies and takes nothing from the visitor but the path (and,
-only from a reverse proxy the admin listed, X-Forwarded-For: see client_ip()).
+Everything else is "Not found": there is no API and none of the panel's files on this port, so
+forwarding it on the router shows the internet nothing but these pages. Before 1.28 it set no
+cookies and read no request bodies. Since 1.28 a page can ask visitors to sign in (a panel
+account or Discord); the visitor then gets the cookie `rp_join` (path /join, HttpOnly,
+SameSite=Lax), signed with a purpose of its own so it is never a panel session, and the sign-in
+forms are the only request bodies read (at most BODY_MAX bytes). The panel's own cookies are
+never set here, and a page's Start and Stop check the visitor's permission on every press.
 The one POST (1.26) is POST /join/<link>/start, the page's Start button, only where the admin
 allowed it; it needs the header X-Join-Start: 1, which a form on another site can't send.
 Pages are built here from joinpage.public_view(), with every value escaped.
@@ -22,15 +31,21 @@ per operating system; the port is opened in the firewall through the platform la
 """
 import base64
 import html
+import re
 import ipaddress
 import os
 import threading
 import time
 from collections import deque
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
+from urllib.parse import parse_qs
+
+from core import auth
 from core import cloudflare
+from core import discordauth
 from core import joinpage
+from core import twofactor
 from core import manager
 from core import settings as panel_settings
 
@@ -43,13 +58,23 @@ WEBSITE = "https://redstonepanel.cielocloud.org"
 
 SECURITY_HEADERS = {
     "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; "
-                               "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                               "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
+    # same-origin, not no-referrer (1.28): with no-referrer browsers send "Origin: null" on the
+    # sign-in and sign-out forms, which then can't be told from a form on another site. Other sites
+    # (Discord, Modrinth) still get no Referer.
+    "Referrer-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
     "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
 }
+
+VISITOR_COOKIE = "rp_join"          # 1.28: a signed-in visitor of the join pages
+CODE_COOKIE = "rp_jcode"            # password right, waiting for the two-factor code
+STATE_COOKIE = "rp_jstate"          # a Discord sign-in in progress
+VISITOR_SECONDS = 12 * 3600
+DISCORD_FRESH = 30 * 60             # without the 1.27 bot, a Discord visitor signs in again after this
+BODY_MAX = 4096
 
 _rate = {}
 _rate_lock = threading.Lock()
@@ -64,13 +89,28 @@ class Answer:
     def __init__(self, body=b"", status=200, content_type="text/plain; charset=utf-8", cache="no-store", extra=None):
         self.body = body if isinstance(body, bytes) else str(body).encode("utf-8")
         self.status, self.content_type, self.cache, self.extra = status, content_type, cache, extra or {}
+        self.cookies = []                 # 1.28: Set-Cookie values
 
     def headers(self):
         h = dict(SECURITY_HEADERS)
         h.update({"Content-Type": self.content_type, "Content-Length": str(len(self.body)),
                   "Cache-Control": self.cache})
         h.update(self.extra)
-        return [(k.lower().encode(), v.encode()) for k, v in h.items()]
+        return [(k.lower().encode(), v.encode()) for k, v in h.items()] + \
+               [(b"set-cookie", c.encode()) for c in self.cookies]
+
+    def cookie(self, name, value, path="/join", max_age=None, secure=False):
+        parts = [f"{name}={value}", f"Path={path}", "HttpOnly", "SameSite=Lax"]
+        if max_age is not None:
+            parts.append(f"Max-Age={int(max_age)}")
+        if secure:
+            parts.append("Secure")
+        self.cookies.append("; ".join(parts))
+        return self
+
+
+def redirect(location, status=303):
+    return Answer(f"See {location}\n", status, extra={"Location": location})
 
 
 def not_found():
@@ -136,7 +176,7 @@ def _asset_version():
 
 
 STATES = {"online": ("on", "Online"), "starting": ("starting", "Starting"), "sleeping": ("sleeping", "Asleep"),
-          "offline": ("off", "Offline")}
+          "offline": ("off", "Offline"), "stopping": ("starting", "Stopping")}
 
 
 def _status_pill(view):
@@ -145,17 +185,24 @@ def _status_pill(view):
 
 
 def _start_block(view):
-    """1.26: the Start button (where the admin allowed it) and what an asleep server does."""
+    """1.26: the Start button (where the admin allowed it) and what an asleep server does.
+    1.28: Stop, for a signed-in visitor whose permission gives it."""
     base = f'/join/{quote(view["path"], safe="")}'
     hide = "" if view["status"] != "online" else " hidden"
     note = {"sleeping": "The server is asleep to save power. It starts by itself when you join; then join again "
                         "in about 30 seconds.",
-            "starting": "The server is starting. This page shows Online when you can join."}.get(view["status"], "")
+            "starting": "The server is starting. This page shows Online when you can join.",
+            "stopping": "The server is stopping."}.get(view["status"], "")
     out = f'<div id="wake"{hide}><p id="wake-note" class="small">{e(note)}</p>'
-    if view.get("can_start"):
+    if view.get("can_start") or view.get("may_start"):
         out += (f'<p class="buttons"><button type="button" id="start" class="btn primary" data-start="{e(base)}/start"'
-                f'{" disabled" if view["status"] == "starting" else ""}>Start the server</button></p>')
-    return out + "</div>"
+                f'{" disabled" if view["status"] == "starting" else ""}'
+                f'{" hidden" if not view.get("can_start") else ""}>Start the server</button></p>')
+    out += "</div>"
+    if view.get("may_stop"):
+        out += (f'<p class="buttons stop-row"><button type="button" id="stop" class="btn" data-stop="{e(base)}/stop"'
+                f'{"" if view.get("can_stop") else " hidden"}>Stop the server</button></p>')
+    return out
 
 
 def _players_text(view):
@@ -316,17 +363,94 @@ def _howto_block(view):
     return out + ('<p class="small">The official Minecraft Launcher can\'t install modpacks by itself.</p></section>')
 
 
-def render_page(view):
+def _signed_in_line(ctx):
+    """1.28: who is signed in, and Sign out."""
+    v = ctx.get("visitor") if ctx else None
+    if not v:
+        return ""
+    name = e(v.get("display") or v["name"])
+    how = "with Discord" if v["kind"] == "discord" else ""
+    return (f'<form class="signedin small" method="post" action="/join/_signout">'
+            f'<input type="hidden" name="next" value="{e(ctx["next"])}">'
+            f'Signed in as <b>{name}</b> {how} <button type="submit" class="linkish">Sign out</button></form>')
+
+
+def _signin_options(ctx):
+    """The ways to sign in on this page: Discord's button and/or a panel account form."""
+    nxt = quote(ctx["next"], safe="/")
+    out = ""
+    if ctx.get("discord"):
+        out += (f'<p class="buttons"><a class="btn primary discord" href="/join/_discord/start?next={e(nxt)}">'
+                'Sign in with Discord</a></p>')
+    if ctx.get("panel"):
+        if ctx.get("discord"):
+            out += '<p class="small or">or with an account on this server\'s panel</p>'
+        out += (f'<form class="signin" method="post" action="/join/_signin">'
+                f'<input type="hidden" name="next" value="{e(ctx["next"])}">'
+                '<label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" '
+                'required maxlength="64"></label>'
+                '<label>Password<input name="password" type="password" autocomplete="current-password" required '
+                'maxlength="256"></label>'
+                f'<button type="submit" class="btn{"" if ctx.get("discord") else " primary"}">Sign in</button></form>')
+    return out
+
+
+def _invite(ctx):
+    if not ctx.get("invite"):
+        return ""
+    return (f'<p class="buttons"><a class="btn" href="{e(ctx["invite"])}" rel="noopener noreferrer">'
+            'Join our Discord</a></p>')
+
+
+def _gate_block(view, ctx):
+    """1.28: what a visitor who can't see the page yet is shown instead of how to join."""
+    gate = ctx.get("gate")
+    msg = f'<p class="warn">{e(ctx["error"])}</p>' if ctx.get("error") else ""
+    if gate == "signin":
+        again = ' Your sign-in ran out; sign in again.' if ctx.get("expired") else ""
+        body = (f'<section class="card gate"><h2>Sign in to join</h2>{msg}'
+                f'<p>Sign in to see how to join this server.{again}</p>')
+        if ctx.get("invite") and ctx.get("member"):
+            body += '<p class="small">You need to be in our Discord server. New here? Join it first:</p>' + _invite(ctx)
+        return body + _signin_options(ctx) + "</section>"
+    if gate == "member":
+        nxt = quote(ctx["next"], safe="/")
+        return (f'<section class="card gate"><h2>Join our Discord first</h2>{msg}'
+                '<p>You\'re signed in with Discord, but you\'re not in our Discord server yet. Join it, then '
+                'check again.</p>' + _invite(ctx)
+                + f'<p class="buttons"><a class="btn primary" href="/join/_discord/start?next={e(nxt)}">Check again</a></p>'
+                '</section>')
+    return (f'<section class="card gate"><h2>Almost there</h2>{msg}<p>Your account can\'t see how to join this '
+            'server yet. Ask whoever runs it to give you access.</p>' + _invite(ctx) + '</section>')
+
+
+def render_page(view, ctx=None):
+    """ctx (1.28): the visitor and the page's sign-in settings, for a page that isn't open to
+    anyone; None for an open page (as before)."""
     icon = (f'<img class="icon" src="/join/{e(quote(view["path"], safe=""))}/icon.png" alt="" width="64" height="64">'
             if view["has_icon"] else '<div class="icon blank" aria-hidden="true"></div>')
     kind = "Bedrock Edition" if view["edition"] == "Bedrock" else "Java Edition"
     sub = " · ".join(x for x in (kind, e(view["loader"]) if view["needs"] == "mods" else "",
                                  e(view["minecraft"])) if x)
+    see = view.get("can_see", True)
     head = (f'<header class="top">{icon}<div><h1>{e(view["title"])}</h1>'
             f'<p class="sub"><span id="version">{sub}</span></p>'
-            f'<p class="state">{_status_pill(view)} <span id="players">{e(_players_text(view))}</span></p>'
-            f'<p id="names" class="small">{_names_html(view)}</p>{_start_block(view)}</div></header>')
+            f'<p class="state">{_status_pill(view)} <span id="players">{e(_players_text(view)) if see else ""}</span></p>'
+            f'<p id="names" class="small">{_names_html(view) if see else ""}</p>{_start_block(view)}'
+            f'{_signed_in_line(ctx)}</div></header>')
     body = head
+    if ctx and ctx.get("error") and see:
+        body += f'<p class="warn">{e(ctx["error"])}</p>'
+    if not see:
+        return _shell(view["title"], body + _gate_block(view, ctx or {}),
+                      refresh_path=f'/join/{quote(view["path"], safe="")}/status.json')
+    if ctx and not ctx.get("visitor") and (ctx.get("panel") or ctx.get("discord")):
+        # 1.28: a page by permission that visitors may see without signing in; signing in adds more
+        body += ('<section class="card"><details class="signin-more"><summary>Sign in</summary>'
+                 '<p class="small">Signed-in members may be able to do more here, such as stop the server.</p>'
+                 + _signin_options(ctx) + '</details></section>')
+    if ctx and ctx.get("invite"):
+        body += f'<section class="card"><h2>Our Discord</h2>{_invite(ctx)}</section>'
     if view["note"] or view["link"]:
         body += '<section class="card note">'
         if view["note"]:
@@ -367,8 +491,14 @@ def render_index(views):
 # ---------------------------------------------------------------------------
 # Requests
 # ---------------------------------------------------------------------------
-def _view(key, cfg):
-    return joinpage.public_view(cfg, joinpage.summary(key), key=key)
+def _view(key, cfg, visitor=None):
+    can = joinpage.abilities(cfg, key, visitor)
+    view = joinpage.public_view(cfg, joinpage.summary(key), key=key, can=can)
+    if cfg.get("access", "anyone") != "anyone":
+        # 1.28: the buttons this visitor's permission gives, kept on the page while the server's
+        # state changes (status.json says which to show)
+        view.update(may_start=can["start"], may_stop=can["stop"])
+    return view
 
 
 def _ip(text):
@@ -410,13 +540,239 @@ def client_ip(peer, forwarded, proxies, cf_ip=None, use_cloudflare=False):
     return str(ip), True
 
 
-def handle(method, path, ip, forwarded=None, s=None, cf_ip=None, start_header=None):
-    """One request -> Answer. Only GET and HEAD, only under /join, and POST .../start (1.26).
-    `ip` is the address the connection came from; `forwarded` (X-Forwarded-For) and `cf_ip`
-    (CF-Connecting-IP) are used only from a proxy the admin named."""
+NEXT_RE = re.compile(r"^/join/[A-Za-z0-9_-]{1,64}$")
+
+
+def _next(value):
+    value = str(value or "")
+    return value if NEXT_RE.match(value) and not value.startswith("/join/_") else "/join"
+
+
+def _page_of(next_path):
+    """(key, settings) of the enabled page a sign-in is for, or None."""
+    return joinpage.find(next_path[len("/join/"):]) if next_path.startswith("/join/") else None
+
+
+def _cookies(header):
+    out = {}
+    for part in (header or "").split(";"):
+        k, sep, v = part.strip().partition("=")
+        if sep and k and k not in out:
+            out[k] = v.strip()
+    return out
+
+
+def _form(body):
+    try:
+        got = parse_qs((body or b"")[:BODY_MAX].decode("utf-8", "replace"), max_num_fields=10)
+    except ValueError:
+        return {}
+    return {k: v[0] for k, v in got.items() if v}
+
+
+def _same_site(origin, host):
+    """A form posted from these pages themselves: the browser's Origin (or Referer) names this host."""
+    if not origin or not host:
+        return False
+    try:
+        o = urlsplit(origin)
+    except ValueError:
+        return False
+    return bool(o.netloc) and o.netloc.lower() == host.strip().lower()
+
+
+def _secure():
+    with _state_lock:
+        return _state["scheme"] == "https"
+
+
+def make_visitor_cookie(payload):
+    return auth._sign(dict(payload, exp=int(time.time()) + VISITOR_SECONDS), "join visitor")
+
+
+def read_visitor(value, fresh=False):
+    """The signed-in visitor from the rp_join cookie, checked again now: (visitor or None, expired).
+    visitor: {"kind": "panel", "name", "role"} or {"kind": "discord", "id", "name", "display",
+    "member", "roles"}. expired: a Discord visitor whose roles are too old to trust without the bot."""
+    p = auth._unsign(value, "join visitor") if value else None
+    if not p:
+        return None, False
+    if p.get("k") == "panel":
+        name = str(p.get("u") or "")
+        role = auth.account_role("panel", name)
+        u = auth._find(auth._load_users(), name) if role else None
+        if not u or u.get("session_version", 1) != p.get("v"):
+            return None, False
+        return {"kind": "panel", "name": name, "role": role}, False
+    if p.get("k") == "discord":
+        did = str(p.get("u") or "")
+        dcfg = discordauth.load()
+        if not discordauth.configured(dcfg) or discordauth.blocked(did, dcfg) or p.get("v") != discordauth.version(did, dcfg):
+            return None, False
+        roles = discordauth.check_member(did, dcfg, fresh=fresh) if dcfg["guild"] else False
+        if roles is False:
+            if dcfg["guild"] and time.time() - (p.get("t") or 0) > DISCORD_FRESH:
+                return None, True
+            member, roles = bool(p.get("m")), list(p.get("r") or [])
+        else:
+            member, roles = roles is not None, list(roles or [])
+        return {"kind": "discord", "id": did, "name": str(p.get("n") or did), "display": str(p.get("d") or ""),
+                "member": member, "roles": roles}, False
+    return None, False
+
+
+def _ctx(cfg, visitor, next_path, expired=False, error=None):
+    dcfg = discordauth.load() if cfg.get("signin_discord") else None
+    return {"visitor": visitor, "next": next_path, "gate": joinpage.gate(cfg, visitor), "expired": expired,
+            "panel": cfg.get("signin_panel"), "error": error,
+            "discord": bool(cfg.get("signin_discord") and dcfg and discordauth.configured(dcfg)
+                            and discordauth.join_base(dcfg)),
+            "invite": cfg.get("discord_invite") or "", "member": cfg.get("discord_member")}
+
+
+def _code_page(next_path, error=None):
+    msg = f'<p class="warn">{e(error)}</p>' if error else ""
+    body = ('<header class="top"><div><h1>Two-factor code</h1></div></header>'
+            f'<section class="card">{msg}<form class="signin" method="post" action="/join/_signin/code">'
+            f'<input type="hidden" name="next" value="{e(next_path)}">'
+            '<label>Code from your authenticator app (or a recovery code)<input name="code" '
+            'autocomplete="one-time-code" autocapitalize="none" spellcheck="false" required maxlength="32" autofocus>'
+            '</label><button type="submit" class="btn primary">Verify</button></form></section>')
+    return Answer(_shell("Two-factor code", body), content_type="text/html; charset=utf-8")
+
+
+def _signed_in(next_path, payload):
+    return redirect(next_path).cookie(VISITOR_COOKIE, make_visitor_cookie(payload), max_age=VISITOR_SECONDS,
+                                      secure=_secure())
+
+
+def _back_with(next_path, cfg_hit, error, visitor=None):
+    """The page again, with an error in its sign-in box."""
+    if not cfg_hit:
+        return Answer(error + "\n", 400)
+    key, cfg = cfg_hit
+    try:
+        view = _view(key, cfg, visitor)
+    except Exception:
+        return Answer(error + "\n", 400)
+    return Answer(render_page(view, _ctx(cfg, visitor, next_path, error=error)), 400,
+                  content_type="text/html; charset=utf-8")
+
+
+def _signin(method, parts, ip, form, cookies, origin, host):
+    """/join/_signin (1.28): a panel account. Shares the panel's limit of failed sign-ins."""
+    if method != "POST":
+        return not_found()
+    if not _same_site(origin, host):
+        return Answer("Sign in from the page itself.\n", 400)
+    next_path = _next(form.get("next"))
+    hit = _page_of(next_path)
+    if not hit or hit[1].get("access", "anyone") == "anyone" or not hit[1].get("signin_panel"):
+        return not_found()
+    if len(parts) == 2 and parts[1] == "code":
+        ticket = auth._unsign(cookies.get(CODE_COOKIE), "join two-factor")
+        if not ticket:
+            return _back_with(next_path, hit, "The sign-in took too long. Enter your password again.")
+        name = str(ticket.get("u") or "")
+        keys = (f"user:{name.lower()}", f"ip:{ip}")
+        if auth.throttled(keys):
+            return _back_with(next_path, hit, "Too many failed sign-in attempts. Try again in a few minutes.")
+        if not twofactor.verify(twofactor.account_key("panel", name), str(form.get("code") or "")[:32]):
+            auth.record_fail(keys)
+            manager.write_log(f"[JOIN] Failed two-factor code for '{name[:64]}' on a join page from {ip}")
+            return _code_page(next_path, "That code is wrong or was already used.")
+        auth.clear_fails(keys)
+        manager.write_log(f"[JOIN] {name} signed in on a join page from {ip} with a two-factor code")
+        ans = _signed_in(next_path, {"k": "panel", "u": name, "v": ticket.get("v")})
+        return ans.cookie(CODE_COOKIE, "", max_age=0, secure=_secure())
+    if len(parts) != 1:
+        return not_found()
+    username, password = str(form.get("username") or "")[:64], str(form.get("password") or "")[:256]
+    found = auth.find_account(username)
+    keys = (f"user:{username.strip().lower()}", f"ip:{ip}")
+    if found and found[0] != "panel":
+        # This computer's own accounts are its admins: their passwords stay off public pages
+        if auth.throttled(keys):
+            return _back_with(next_path, hit, "Too many failed sign-in attempts. Try again in a few minutes.")
+        auth.record_fail(keys)
+        return _back_with(next_path, hit, "Sign in here with an account made on the panel's Users page.")
+    try:
+        identity = auth.login(username, password, ip)
+    except auth.AuthError as err:
+        manager.write_log(f"[JOIN] Failed sign-in for '{username[:64]}' on a join page from {ip}")
+        return _back_with(next_path, hit, str(err))
+    if identity["src"] != "panel":
+        return _back_with(next_path, hit, "Sign in here with an account made on the panel's Users page.")
+    if identity.get("pending"):
+        ticket = auth._sign({"u": identity["u"], "v": identity["v"], "exp": int(time.time()) + auth.PENDING_SECONDS},
+                            "join two-factor")
+        return _code_page(next_path).cookie(CODE_COOKIE, ticket, path="/join/_signin", max_age=auth.PENDING_SECONDS,
+                                            secure=_secure())
+    manager.write_log(f"[JOIN] {identity['u']} signed in on a join page from {ip}")
+    return _signed_in(next_path, {"k": "panel", "u": identity["u"], "v": identity["v"]})
+
+
+def _discord(method, parts, ip, query, cookies, host):
+    """/join/_discord/start and /callback (1.28)."""
+    if method not in ("GET", "HEAD") or len(parts) != 2:
+        return not_found()
+    q = {k: v[0] for k, v in parse_qs(query or "", max_num_fields=10).items() if v}
+    dcfg = discordauth.load()
+    base = discordauth.join_base(dcfg)
+    if not discordauth.configured(dcfg) or not base:
+        return not_found()
+    if parts[1] == "start":
+        next_path = _next(q.get("next"))
+        hit = _page_of(next_path)
+        if not hit or hit[1].get("access", "anyone") == "anyone" or not hit[1].get("signin_discord"):
+            return not_found()
+        if (host or "").strip().lower() != urlsplit(base).netloc.lower():
+            # Discord sends visitors back to the join pages address: start there, so the cookies match
+            return redirect(base + "/join/_discord/start?next=" + quote(next_path, safe="/"))
+        if auth.throttled((f"ip:{ip}",)):
+            return _back_with(next_path, hit, "Too many failed sign-in attempts. Try again in a few minutes.")
+        try:
+            state, url = discordauth.begin("join", base, next_path=next_path, cfg=dcfg)
+        except discordauth.DiscordAuthError as err:
+            return _back_with(next_path, hit, str(err))
+        return redirect(url, 302).cookie(STATE_COOKIE, state, path="/join/_discord", max_age=discordauth.STATE_SECONDS,
+                                         secure=base.startswith("https:"))
+    if parts[1] != "callback":
+        return not_found()
+    next_path, hit = "/join", None
+    try:
+        rec, who = discordauth.finish(q.get("state"), cookies.get(STATE_COOKIE), q.get("code"), q.get("error"), dcfg)
+        if rec["purpose"] != "join":
+            raise discordauth.DiscordAuthError("That Discord sign-in didn't start here. Try again.")
+        next_path = _next(rec.get("next"))
+        hit = _page_of(next_path)
+        if discordauth.blocked(who["id"], dcfg):
+            raise discordauth.DiscordAuthError("This Discord account can't sign in here.")
+        v = discordauth.remember(who)
+    except discordauth.DiscordAuthError as err:
+        auth.record_fail((f"ip:{ip}",))
+        manager.write_log(f"[JOIN] Discord sign-in on a join page refused from {ip}: {err}")
+        ans = _back_with(next_path, hit, str(err)) if hit else Answer(f"{err}\n", 400)
+        return ans.cookie(STATE_COOKIE, "", path="/join/_discord", max_age=0)
+    auth.clear_fails((f"ip:{ip}",))
+    manager.write_log(f"[JOIN] discord:{who['name']} ({who['id']}) signed in on a join page from {ip}"
+                      + ("" if not dcfg["guild"] else " (in the Discord server)" if who["member"]
+                         else " (not in the Discord server)"))
+    ans = _signed_in(next_path, {"k": "discord", "u": who["id"], "v": v, "n": who["name"], "d": who.get("display"),
+                                 "m": who["member"], "r": who["roles"], "t": int(time.time())})
+    return ans.cookie(STATE_COOKIE, "", path="/join/_discord", max_age=0)
+
+
+def handle(method, path, ip, forwarded=None, s=None, cf_ip=None, start_header=None, cookie=None, body=None,
+           origin=None, host=None, query=""):
+    """One request -> Answer. Only GET and HEAD, only under /join, POST .../start (1.26), and
+    since 1.28 POST .../stop and the sign-in forms. `ip` is the address the connection came from;
+    `forwarded` (X-Forwarded-For) and `cf_ip` (CF-Connecting-IP) are used only from a proxy the
+    admin named. cookie, body, origin (Origin or Referer), host and query: 1.28's sign-in."""
     if method not in ("GET", "HEAD", "POST") or len(path) > 200:
         return not_found()
-    if method == "POST" and not path.endswith("/start"):
+    if method == "POST" and not (path.endswith(("/start", "/stop")) or path in ("/join/_signin", "/join/_signin/code",
+                                                                              "/join/_signout")):
         return not_found()
     s = s or panel_settings.load()
     if s.get("join_cloudflare"):
@@ -434,6 +790,15 @@ def handle(method, path, ip, forwarded=None, s=None, cf_ip=None, start_header=No
         parts = parts[:-1]
     if not s["join_enabled"]:
         return not_found()
+    cookies = _cookies(cookie)
+    if parts and parts[0] == "_signin":
+        return _signin(method, parts, ip or "?", _form(body), cookies, origin, host)
+    if parts and parts[0] == "_signout":
+        if method != "POST" or len(parts) != 1 or not _same_site(origin, host):
+            return not_found()
+        return redirect(_next(_form(body).get("next"))).cookie(VISITOR_COOKIE, "", max_age=0, secure=_secure())
+    if parts and parts[0] == "_discord":
+        return _discord(method, parts, ip or "?", query, cookies, host)
     if not parts:
         if not s["join_index"]:
             return not_found()
@@ -458,14 +823,20 @@ def handle(method, path, ip, forwarded=None, s=None, cf_ip=None, start_header=No
     if not hit:
         return not_found()
     key, cfg = hit
-    if method == "POST" or (len(parts) == 2 and parts[1] == "start"):
-        return _start(method, key, cfg, ip, start_header, len(parts))
+    gated = cfg.get("access", "anyone") != "anyone"
+    visitor, expired = read_visitor(cookies.get(VISITOR_COOKIE), fresh=method == "POST") if gated else (None, False)
+    if method == "POST" or (len(parts) == 2 and parts[1] in ("start", "stop")):
+        if len(parts) == 2 and parts[1] == "stop":
+            return _stop(method, key, cfg, ip, start_header, visitor if gated else None)
+        return _start(method, key, cfg, ip, start_header, len(parts), visitor if gated else None)
     try:
         if len(parts) == 1:
-            return Answer(render_page(_view(key, cfg)), content_type="text/html; charset=utf-8")
+            ctx = _ctx(cfg, visitor, "/join/" + parts[0], expired) if gated else None
+            return Answer(render_page(_view(key, cfg, visitor), ctx), content_type="text/html; charset=utf-8",
+                          extra={"Vary": "Cookie"} if gated else None)
         if parts[1] == "status.json":
             import json
-            return Answer(json.dumps(joinpage.public_status(_view(key, cfg))),
+            return Answer(json.dumps(joinpage.public_status(_view(key, cfg, visitor))),
                           content_type="application/json; charset=utf-8")
         if parts[1] == "icon.png":
             icon = joinpage.summary(key).get("icon")
@@ -475,6 +846,8 @@ def handle(method, path, ip, forwarded=None, s=None, cf_ip=None, start_header=No
             return Answer(data, content_type="image/png", cache="public, max-age=300")
         if parts[1] == "pack.mrpack" or parts[1] == "packwiz":
             from core import playerpack
+            if gated and not joinpage.abilities(cfg, key, visitor)["see"]:
+                return not_found()
             p, title, data = joinpage.player_pack(key)
             if not p or not p["mods"]:
                 return not_found()
@@ -495,21 +868,54 @@ def handle(method, path, ip, forwarded=None, s=None, cf_ip=None, start_header=No
     return not_found()
 
 
-def _start(method, key, cfg, ip, start_header, n):
+def _start(method, key, cfg, ip, start_header, n, visitor=None):
     import json
-    if method != "POST" or n != 2 or not cfg.get("allow_start"):
+    gated = cfg.get("access", "anyone") != "anyone"
+    if method != "POST" or n != 2 or (not gated and not cfg.get("allow_start")):
         return not_found()
     if start_header != "1":
         return Answer("Use the page's Start button.\n", 400)
     try:
-        state = joinpage.start_from_page(key, ip or "?")
-    except joinpage.JoinError as e:
-        return Answer(json.dumps({"error": str(e)}), 429, content_type="application/json; charset=utf-8")
+        state = joinpage.start_from_page(key, ip or "?", visitor=visitor)
+    except joinpage.JoinError as err:
+        return Answer(json.dumps({"error": str(err)}), 403 if gated else 429, content_type="application/json; charset=utf-8")
     except Exception:
         return Answer(json.dumps({"error": "The server can't be started right now."}), 503,
                       content_type="application/json; charset=utf-8")
     return Answer(json.dumps({"status": state}), 202 if state == "starting" else 200,
                   content_type="application/json; charset=utf-8")
+
+
+def _stop(method, key, cfg, ip, start_header, visitor):
+    """1.28: POST /join/<link>/stop, for a signed-in visitor whose permission gives Stop."""
+    import json
+    if method != "POST" or cfg.get("access", "anyone") == "anyone":
+        return not_found()
+    if start_header != "1":
+        return Answer("Use the page's Stop button.\n", 400)
+    try:
+        state = joinpage.stop_from_page(key, ip or "?", visitor)
+    except joinpage.JoinError as err:
+        return Answer(json.dumps({"error": str(err)}), 403, content_type="application/json; charset=utf-8")
+    except Exception:
+        return Answer(json.dumps({"error": "The server can't be stopped right now."}), 503,
+                      content_type="application/json; charset=utf-8")
+    return Answer(json.dumps({"status": state}), 202 if state == "stopping" else 200,
+                  content_type="application/json; charset=utf-8")
+
+
+def _origin_of(head):
+    """Where a form was posted from: Origin, else Referer. An "Origin: null" (an older page with
+    no-referrer, a privacy setting) counts as this site only when the browser itself says so in
+    Sec-Fetch-Site, which a page can't set."""
+    origin = head(b"origin")
+    if origin and origin != "null":
+        return origin
+    if head(b"referer"):
+        return head(b"referer")
+    if head(b"sec-fetch-site") == "same-origin" and head(b"host"):
+        return "//" + head(b"host")
+    return None
 
 
 async def app(scope, receive, send):
@@ -519,11 +925,21 @@ async def app(scope, receive, send):
     from starlette.concurrency import run_in_threadpool
     client = scope.get("client") or (None, None)
     headers = scope.get("headers") or []
+    head = lambda name: next((v.decode("latin-1") for k, v in headers if k == name), None)
     forwarded = ",".join(v.decode("latin-1") for k, v in headers if k == b"x-forwarded-for")
-    cf_ip = next((v.decode("latin-1") for k, v in headers if k == b"cf-connecting-ip"), None)
-    start_header = next((v.decode("latin-1") for k, v in headers if k == b"x-join-start"), None)
-    answer = await run_in_threadpool(handle, scope.get("method", ""), scope.get("path", ""), client[0], forwarded,
-                                     None, cf_ip, start_header)
+    body = b""
+    path = scope.get("path", "")
+    if scope.get("method") == "POST" and path.startswith(("/join/_signin", "/join/_signout")):
+        # 1.28: the sign-in forms, the only bodies read here (BODY_MAX bytes at most)
+        more = True
+        while more and len(body) <= BODY_MAX:
+            msg = await receive()
+            body += msg.get("body", b"")
+            more = msg.get("more_body", False)
+    answer = await run_in_threadpool(handle, scope.get("method", ""), path, client[0], forwarded,
+                                     None, head(b"cf-connecting-ip"), head(b"x-join-start"), head(b"cookie"),
+                                     body[:BODY_MAX], _origin_of(head), head(b"host"),
+                                     (scope.get("query_string") or b"").decode("latin-1"))
     await send({"type": "http.response.start", "status": answer.status, "headers": answer.headers()})
     await send({"type": "http.response.body", "body": b"" if scope.get("method") == "HEAD" else answer.body})
 
