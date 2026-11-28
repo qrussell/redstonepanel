@@ -554,6 +554,15 @@ def _ready(s):
         or not s.get("port")
 
 
+def _discord_admin(d):
+    """The Discord server's owner and anyone with Administrator there (Discord sends the member's
+    resolved permissions with each interaction) may use /start without a listed role (1.28.1)."""
+    try:
+        return bool(int((d.get("member") or {}).get("permissions") or 0) & 8)
+    except (TypeError, ValueError):
+        return False
+
+
 def answer(d, cfg=None, now=None):
     """An INTERACTION_CREATE -> (the response to send, a function to run afterwards or None)."""
     cfg = cfg or load()
@@ -573,7 +582,7 @@ def answer(d, cfg=None, now=None):
         return _reply("This Discord server isn't allowed to start servers on this panel yet. An admin can allow it "
                       "under Panel Settings, Discord.", True), None
     roles = set((d.get("member") or {}).get("roles") or ())
-    if cfg["roles"] and not roles & set(cfg["roles"]):
+    if cfg["roles"] and not roles & set(cfg["roles"]) and not _discord_admin(d):
         if d.get("type") == 4:
             return {"type": 8, "data": {"choices": []}}, None
         return _reply("You don't have a role that may start servers here.", True), None

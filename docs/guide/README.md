@@ -2372,7 +2372,8 @@ Discord.
 3. Back in the panel, click **Refresh**, tick your Discord server under **Answer in these Discord
    servers** and save. The bot answers nowhere until you tick a Discord server.
 4. Choose who may use it (everyone in those Discord servers, or only people with the roles you
-   tick) and which servers it may start (every server, including later ones, or only some).
+   tick; the Discord server's owner and people with Administrator there always may) and which
+   servers it may start (every server, including later ones, or only some).
 
 <picture><source media="(prefers-color-scheme: light)" srcset="images/light/discord-settings.png"><img src="images/discord-settings.png" alt="The Discord section of Panel Settings: connected as Redstone Bot, one Discord server ticked, only the Players role may use it, every server"></picture>
 

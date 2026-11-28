@@ -202,6 +202,12 @@ class Answers(Fresh):
         self.assertIn("don't have a role", self.text(resp))
         resp, after = D.answer(command("minecraft", roles=[ROLE]))
         self.assertIsNotNone(after)
+        owner = command("minecraft")                     # 1.28.1: the owner / Discord Administrator may
+        owner["member"]["permissions"] = str(8 | 1024)
+        resp, after = D.answer(owner, now=time.time() + D.START_COOLDOWN + 1)   # after the first start's cooldown
+        self.assertIsNotNone(after)
+        owner["member"]["permissions"] = "1024"
+        self.assertIn("don't have a role", self.text(D.answer(owner)[0]))
 
     def test_autocomplete_lists_allowed_servers(self):
         resp, after = D.answer(command("mod", kind=4))
