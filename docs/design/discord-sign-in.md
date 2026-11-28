@@ -1,6 +1,6 @@
 # Sign in with Discord, and who can see a join page
 
-Status: **built for 1.28** (go from Quentin 27 Nov 2026), not yet released · Written 27 Nov 2026
+Status: **released in 1.28.0** (28 Nov 2026; go from Quentin 27 Nov 2026) · Written 27 Nov 2026
 
 Asked for by Quentin on 27 Nov 2026: "communities that selfhost would find this a useful feature".
 Discord sign-in moves into the free core. Microsoft, Google, GitHub, Apple and Steam sign-in stay in

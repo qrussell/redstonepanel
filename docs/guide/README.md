@@ -33,9 +33,9 @@ command-line option, run `man redstonepanel`. This manual is also published as t
 | Keep a server from starting when the machine starts | [Start at boot](#start-at-boot) |
 | Stop a server nobody plays on, and start it when someone joins | [Sleep mode](#sleep-mode) |
 | Let friends start a stopped server from its join page | [Join pages](#join-pages) (**Let visitors start the server**) |
-| Let only my Discord members, or chosen people, see a join page or start and stop the server | [Who can see a join page](#who-can-see-a-join-page) |
-| Sign in to the panel with Discord | [Sign in with Discord](#sign-in-with-discord) |
-| Let my Discord members onto the whitelist by themselves | [Whitelist by Discord](#whitelist-by-discord) |
+| Let only my Discord members, or chosen people, see a join page or start and stop the server | [Who can see a join page](#who-can-see-a-join-page-128) |
+| Sign in to the panel with Discord | [Sign in with Discord](#sign-in-with-discord-128) |
+| Let my Discord members onto the whitelist by themselves | [Whitelist by Discord](#whitelist-by-discord-128) |
 | Find out why a server lags | [Performance](#performance) |
 | Give a server more memory, or limit it | [Memory and limits](#memory-and-limits) |
 | Update a server to a newer Minecraft version | [Maintenance](#8-maintenance-templates-export-update-uninstall) |
@@ -338,7 +338,7 @@ There are two kinds of account:
   Windows, without `sudo`); it signs that account out everywhere.
 
 Once an admin sets it up, **Sign in with Discord** works too; see
-[Sign in with Discord](#sign-in-with-discord) *(1.28)*.
+[Sign in with Discord](#sign-in-with-discord-128) *(1.28)*.
 
 On **Windows** the first kind is **Windows accounts** in **Administrators** or a local group named
 **RedstonePanel**, with their Windows password, and both kinds can add
@@ -646,7 +646,7 @@ Nothing is public until you turn it on, twice: the port, and then each server's 
     2 minutes from its page, and each visitor at most 3 times an hour. On a page open to
     anyone it never stops a server; pair it with [Sleep mode](#sleep-mode) so it stops by itself
     again when nobody plays. To let only some people start it, or let moderators stop it, see
-    [Who can see a join page](#who-can-see-a-join-page).
+    [Who can see a join page](#who-can-see-a-join-page-128).
   - **A note for players** and **a link of your own** (a Discord invite, a website) appear at
     the top of the page. Only `https://` links are accepted.
   - **Where players get the mods** (mod servers). A server made **From a modpack** on Modrinth
@@ -699,7 +699,7 @@ who may press **Start** and **Stop**:
 
 Visitors sign in **with a panel account** (from the Users page; a plain account with no server
 permissions is enough for a player), **with Discord** (once
-[Sign in with Discord](#sign-in-with-discord) is set up), or either. Discord is optional: a page
+[Sign in with Discord](#sign-in-with-discord-128) is set up), or either. Discord is optional: a page
 that needs sign-in works with panel accounts alone. This computer's own Linux or Windows
 accounts can't sign in on a public page, and the page's sign-in is never a panel sign-in: it
 only opens join pages.
@@ -2399,7 +2399,7 @@ wrongly: reset it again and paste the new one. The panel needs to reach `discord
 ### Sign in with Discord *(1.28)*
 
 Put a **Sign in with Discord** button on the panel's sign-in page and, if you like, on
-[join pages](#who-can-see-a-join-page). It is optional: nothing changes until you set it up.
+[join pages](#who-can-see-a-join-page-128). It is optional: nothing changes until you set it up.
 
 - **Admins and helpers** link their own account: **🔑 Password → Discord → Link Discord**. After
   that, **Sign in with Discord** signs them in as that account, and their two-factor sign-in
@@ -2444,7 +2444,7 @@ The panel needs to reach `discord.com` on port 443.
 
 Players link their Minecraft name in your Discord server and the panel puts it on the whitelist
 (Bedrock: allowlist) of each server they may play on. When they lose the role, leave your
-Discord or are [blocked](#sign-in-with-discord), the panel takes the name off again. Names you add
+Discord or are [blocked](#sign-in-with-discord-128), the panel takes the name off again. Names you add
 yourself on the [Whitelist & Access tab](#7-configuration-player-roles-and-the-whitelist) are never touched; the panel only removes names it
 added.
 
@@ -2492,6 +2492,8 @@ can't ask for a Minecraft name; that's what the button is for.
    messages, **Manage Server** (to tell invites apart) and **Manage Roles** (to give roles). In
    Discord's **Server Settings → Roles**, drag the bot's role above the roles it gives.
 5. Pick a channel new members see and press **Post the button**. Pin the message.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/light/discord-whitelist.png"><img src="images/discord-whitelist.png" alt="Whitelist by Discord in Panel Settings: a choice per server, a moderator approves each new person, the moderators' channel, a trusted and a needs-approval invite, a request waiting and the linked accounts"></picture>
 
 **Linked accounts** lists everyone who linked a name, their servers and whether they're
 approved. **Exceptions for this person** can always allow them on a server, or keep them off one,

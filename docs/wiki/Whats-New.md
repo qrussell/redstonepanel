@@ -9,6 +9,22 @@ the dashboard.
 
 ---
 
+## 1.28.0: Discord for your community *(November 2026)*
+
+- **Sign in with Discord** on the panel: admins and helpers link their own account, and roles in
+  your Discord server give people permissions on chosen servers (never admin).
+- **Who can see a join page**: anyone with the link, anyone who signs in, or by permission, with
+  ticks for **See how to join**, **Start** and a new **Stop**. A page can require joining your
+  Discord first.
+- **Whitelist by Discord**: players link their Minecraft name in Discord and the panel keeps each
+  server's whitelist, per server by role, for anyone in your Discord, or after a moderator's
+  **Approve**. Trusted invites skip approval. Names added by hand are never touched.
+- **Start only**: a permission to start a server but not stop it.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="../guide/images/light/discord-whitelist.png"><img src="../guide/images/discord-whitelist.png" alt="Whitelist by Discord in Panel Settings"></picture>
+
+[Release notes](../../release-notes/v1.28.0.md)
+
 ## 1.27.0: Discord /start *(November 2026)*
 
 - **/start in your Discord**: pick a server and the panel starts it, or wakes it from sleep
