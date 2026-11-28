@@ -303,7 +303,7 @@
                             REDSTONE<span class="redstone-glow-text">PANEL</span>
                         </span>
                         <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-pixel bg-redstone/20 text-redstone-bright border border-redstone/50 rounded w-fit">
-                            v1.28.0
+                            v1.28.1
                         </span>
                     </div>
                 </a>
@@ -393,7 +393,7 @@
             <!-- Status Pill -->
             <div class="inline-flex items-center gap-2.5 mc-slot rounded-full px-4 py-1.5 mb-7">
                 <span class="w-2.5 h-2.5 rounded-sm redstone-lamp"></span>
-                <span class="text-xs font-mono text-gray-300">Ubuntu &bull; Debian &bull; Raspberry Pi &bull; Windows &bull; Release v1.28.0</span>
+                <span class="text-xs font-mono text-gray-300">Ubuntu &bull; Debian &bull; Raspberry Pi &bull; Windows &bull; Release v1.28.1</span>
             </div>
 
             <!-- Main Headline -->
@@ -841,7 +841,7 @@
 
                         <div class="mc-panel redstone-wire-border rounded-xl p-6">
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.28.0 — Current Release</h3>
+                                <h3 class="font-pixel text-lg sm:text-xl text-white">v1.28.1 — Current Release</h3>
                                 <span class="px-2.5 py-1 text-[10px] font-pixel bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded">
                                     SHIPPING NOW
                                 </span>
@@ -858,6 +858,10 @@
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
                                     <span><strong>Whitelist by Discord (1.28):</strong> players link their Minecraft name in your Discord and the panel keeps each server&rsquo;s whitelist, by role or after a moderator&rsquo;s approval. Names you add by hand are never touched.</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
+                                    <span><strong>Fixed (1.28.1):</strong> <strong>Open dashboard</strong> on a cluster master signs you in to a node again instead of asking for its password.</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
                                     <span class="text-redstone-bright font-mono mt-0.5">&#9632;</span>
@@ -1518,7 +1522,7 @@
             syncSlidersToSelectedServer();
             renderServers();
             updateNodeGauges();
-            appendConsoleLog('RedstonePanel v1.28.0 Web Console initialized.', 'success');
+            appendConsoleLog('RedstonePanel v1.28.1 Web Console initialized.', 'success');
             appendConsoleLog('Connected to <strong>ubuntu-prod-01</strong> &bull; Type <strong>help</strong> or click a quick command.', 'info');
 
             setInterval(updateNodeGauges, 2800);
