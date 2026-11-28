@@ -14,6 +14,8 @@ It listens on its own port (Panel Settings > Join pages, 8444 by default) and an
     POST /join/_signout
     GET  /join/_discord/start       1.28: sign in with Discord (core/discordauth.py)
     GET  /join/_discord/callback    Discord sends the visitor back here
+    GET  /join/<link>/map/...       1.30: the server's world map, on a page that shows it
+    GET  /map/<member>/<server>/... 1.30: a map for the panel's Map tab (core/mapsite.py)
 
 Everything else is "Not found": there is no API and none of the panel's files on this port, so
 forwarding it on the router shows the internet nothing but these pages. Before 1.28 it set no
@@ -78,7 +80,7 @@ BODY_MAX = 4096
 
 _rate = {}
 _rate_lock = threading.Lock()
-_state = {"server": None, "thread": None, "port": None, "scheme": None, "error": None}
+_state = {"server": None, "thread": None, "port": None, "scheme": None, "error": None, "opened": None}
 _state_lock = threading.RLock()
 
 
@@ -451,6 +453,9 @@ def render_page(view, ctx=None):
                  + _signin_options(ctx) + '</details></section>')
     if ctx and ctx.get("invite"):
         body += f'<section class="card"><h2>Our Discord</h2>{_invite(ctx)}</section>'
+    if view.get("map"):
+        body += (f'<section class="card"><h2>World map</h2><p>See the world from above.</p><p><a class="btn" '
+                 f'href="/join/{e(quote(view["path"], safe=""))}/map/">Open the map</a></p></section>')
     if view["note"] or view["link"]:
         body += '<section class="card note">'
         if view["note"]:
@@ -494,6 +499,7 @@ def render_index(views):
 def _view(key, cfg, visitor=None):
     can = joinpage.abilities(cfg, key, visitor)
     view = joinpage.public_view(cfg, joinpage.summary(key), key=key, can=can)
+    view["map"] = bool(can.get("map"))            # 1.30: a Map button
     if cfg.get("access", "anyone") != "anyone":
         # 1.28: the buttons this visitor's permission gives, kept on the page while the server's
         # state changes (status.json says which to show)
@@ -929,6 +935,10 @@ async def app(scope, receive, send):
     forwarded = ",".join(v.decode("latin-1") for k, v in headers if k == b"x-forwarded-for")
     body = b""
     path = scope.get("path", "")
+    from core import mapsite
+    if mapsite.is_map_path(path):
+        await _map_request(scope, send, path, client, head, forwarded)
+        return
     if scope.get("method") == "POST" and path.startswith(("/join/_signin", "/join/_signout")):
         # 1.28: the sign-in forms, the only bodies read here (BODY_MAX bytes at most)
         more = True
@@ -944,9 +954,60 @@ async def app(scope, receive, send):
     await send({"type": "http.response.body", "body": b"" if scope.get("method") == "HEAD" else answer.body})
 
 
+async def _map_request(scope, send, path, client, head, forwarded):
+    """1.30: a world map request (core/mapsite.py), streamed: map tiles can be large."""
+    from starlette.concurrency import run_in_threadpool
+    from core import mapsite
+    s = panel_settings.load()
+    if s.get("join_cloudflare"):
+        cloudflare.refresh_if_old()
+    ip, via_proxy = client_ip(client[0], forwarded, s.get("join_proxies") or [], head(b"cf-connecting-ip"),
+                              bool(s.get("join_cloudflare")))
+    headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
+    method = scope.get("method", "")
+    if s.get("join_proxy_only") and not via_proxy:
+        from core import worldmap
+        reply = mapsite._finish(worldmap.Reply(404, {"Content-Type": "text/plain; charset=utf-8"}, b"Not found\n"))
+    else:
+        reply = await run_in_threadpool(mapsite.handle, method, path,
+                                        (scope.get("query_string") or b"").decode("latin-1"), ip,
+                                        head(b"cookie"), headers, _secure(), s)
+    hdrs = [(k.lower().encode("latin-1"), str(v).encode("latin-1")) for k, v in reply.headers.items()]
+    if reply.chunks is None and "content-length" not in {k for k, _ in hdrs} and reply.status not in (204, 304):
+        hdrs.append((b"content-length", str(len(reply.body or b"")).encode()))
+    try:
+        await send({"type": "http.response.start", "status": reply.status, "headers": hdrs})
+        if reply.chunks is None or method == "HEAD":
+            await send({"type": "http.response.body", "body": b"" if method == "HEAD" else (reply.body or b"")})
+            return
+        it = iter(reply.chunks)
+        while True:
+            chunk = await run_in_threadpool(next, it, None)
+            if chunk is None:
+                break
+            await send({"type": "http.response.body", "body": chunk, "more_body": True})
+        await send({"type": "http.response.body", "body": b""})
+    finally:
+        await run_in_threadpool(reply.close)
+
+
 # ---------------------------------------------------------------------------
 # The listener
 # ---------------------------------------------------------------------------
+def _maps_wanted():
+    """1.30: the listener also runs while any server has a world map, for the Map tab."""
+    try:
+        from core import worldmap
+        return worldmap.wanted()
+    except Exception:
+        return False
+
+
+def wanted(s, maps=None):
+    """True when the listener should run: join pages on, or a world map to show (1.30)."""
+    return bool(s.get("join_enabled")) or bool(_maps_wanted() if maps is None else maps)
+
+
 def status(s=None):
     s = s or panel_settings.load()
     with _state_lock:
@@ -1047,14 +1108,14 @@ def cloudflared_config(s=None):
 
 
 def firewall_rules(s=None):
-    """The firewall rule the join pages need while they're on."""
+    """The firewall rule the join pages (or, since 1.30, the world maps) need while they're on."""
     s = s or panel_settings.load()
-    return {(str(s["join_port"]), "tcp")} if s["join_enabled"] else set()
+    return {(str(s["join_port"]), "tcp")} if wanted(s) else set()
 
 
 def check_can_enable(s, old):
     """Raises JoinError if the pages can't be turned on (or moved) with these settings."""
-    if not s["join_enabled"]:
+    if not wanted(s):
         return
     with _state_lock:
         serving = _state["port"] if _state["thread"] and _state["thread"].is_alive() else None
@@ -1064,28 +1125,46 @@ def check_can_enable(s, old):
 
 def apply(new, old=None, actor="the panel"):
     """Makes the listener match the settings: starts, moves or stops it, and opens or closes
-    its port in the firewall. Called when the setting changes and when the panel starts."""
+    its port in the firewall. Called when the setting changes, when the panel starts, and (1.30)
+    when a world map is added or removed: the listener runs while join pages are on or any
+    server has a map."""
     port, old_port = new["join_port"], (old or {}).get("join_port")
-    was_on = bool((old or {}).get("join_enabled"))
-    if new["join_enabled"]:
+    maps = _maps_wanted()
+    on = wanted(new, maps)
+    was_on = bool((old or {}).get("join_enabled")) or (old is not None and maps)
+    joined_changed = old is not None and bool(old.get("join_enabled")) != bool(new["join_enabled"])
+    if on:
         error = None
         with _state_lock:
             serving = _state["port"] if _state["thread"] and _state["thread"].is_alive() else None
         if serving != port:
             error = start(port)
-        if was_on and old_port and old_port != port:
+        if (was_on or serving) and old_port and old_port != port:
             manager.close_firewall_rules({(str(old_port), "tcp")})
+        if serving and serving not in (port, old_port):
+            manager.close_firewall_rules({(str(serving), "tcp")})
         if not error:
             manager.open_firewall(port, "tcp")
-        if old is not None:
+            with _state_lock:
+                _state["opened"] = port
+        if old is not None and (joined_changed or old_port != port) and new["join_enabled"]:
             manager.write_log(f"[JOIN] {actor} turned the join pages on, port {port}."
                               + (f" They couldn't start: {error}" if error else ""))
+        elif joined_changed:
+            manager.write_log(f"[JOIN] {actor} turned the join pages off; port {port} stays open for the "
+                              f"world maps (Map tab).")
         elif error:
             manager.write_log(f"[JOIN] {error}")
     else:
+        with _state_lock:
+            serving = _state["port"] if _state["thread"] and _state["thread"].is_alive() else None
+            opened = _state.get("opened")
         stop()
         with _state_lock:
             _state["error"] = None
-        if was_on:
-            manager.close_firewall_rules({(str(old_port or port), "tcp")})
+            _state["opened"] = None
+        close = {str(p) for p in (old_port if was_on else None, serving, opened) if p}
+        if close:
+            manager.close_firewall_rules({(p, "tcp") for p in close})
+        if joined_changed:
             manager.write_log(f"[JOIN] {actor} turned the join pages off.")

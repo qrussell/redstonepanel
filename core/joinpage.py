@@ -103,7 +103,10 @@ def defaults(server):
             # 1.28: who can see the page (anyone / signed / permission), how visitors sign in, and
             # what each signed-in visitor may do (rules)
             "access": "anyone", "signin_panel": True, "signin_discord": False, "discord_member": False,
-            "discord_invite": "", "rules": []}
+            "discord_invite": "", "rules": [],
+            # 1.30: a Map button on the page (the server's world map, core/worldmap.py), and
+            # whether that map shows where players are
+            "show_map": False, "map_players": False}
 
 
 def page(key, pages=None):
@@ -170,6 +173,9 @@ def save_page(member, server, new, actor="?"):
         cfg["unlisted"] = bool(new.get("unlisted"))
         cfg["show_players"] = bool(new.get("show_players"))
         cfg["allow_start"] = bool(new.get("allow_start"))        # 1.26: a Start button for visitors
+        if "show_map" in new:                                     # 1.30; older forms leave it as it was
+            cfg["show_map"] = bool(new.get("show_map"))
+            cfg["map_players"] = bool(new.get("map_players"))
         slug = str(new.get("slug") or "").strip().lower() or default_slug(server)
         if not SLUG_RE.match(slug) or slug in RESERVED_SLUGS:
             raise JoinError("The link name can use small letters, numbers and dashes, up to 40 characters "
@@ -204,7 +210,7 @@ ACCESS_LABELS = {"anyone": "open to anyone with the link", "signed": "for visito
                  "permission": "by permission"}
 RULES_MAX = 50
 INVITE_RE = re.compile(r"^https://(?:discord\.gg|(?:www\.)?discord(?:app)?\.com/invite)/[A-Za-z0-9-]{2,32}/?$")
-NOTHING = {"see": False, "start": False, "stop": False}
+NOTHING = {"see": False, "start": False, "stop": False, "map": False}
 ANYONE = "anyone"     # 1.28 row: visitors who aren't signed in (see and Start, never Stop)
 
 
@@ -232,7 +238,7 @@ def _clean_rule(r):
     elif who not in ("signed", "panel_perms", "discord_member", ANYONE):
         raise JoinError("Unknown kind of permission row.")
     row = {"who": who, "see": bool(r.get("see")), "start": bool(r.get("start")), "stop": bool(r.get("stop")),
-           "name": " ".join(str(r.get("name") or "").split())[:100]}
+           "map": bool(r.get("map")), "name": " ".join(str(r.get("name") or "").split())[:100]}
     if who == ANYONE:
         row["stop"] = False                  # stopping always needs a sign-in
         row["see"] = row["see"] or row["start"]
@@ -274,7 +280,7 @@ def _clean_access(cfg, new):
         needs_guild = cfg["discord_member"] or any(r["who"].startswith("discord_") for r in rows)
         if needs_guild and not dcfg["guild"]:
             raise JoinError("Choose your Discord server under Panel Settings, Discord, to check who's a member.")
-    if access == "permission" and not any(r["see"] or r["start"] or r["stop"] for r in rows):
+    if access == "permission" and not any(r["see"] or r["start"] or r["stop"] or r["map"] for r in rows):
         raise JoinError("Add at least one row that gives something, or choose another option.")
 
 
@@ -289,7 +295,7 @@ def _row_matches(who, visitor, key):
         if who == "panel_perms":
             from core import grants
             perms = grants.perms_for({"role": visitor["role"], "source": "panel", "username": visitor["name"]}, key)
-            return {"see": "view" in perms, "start": "start" in perms, "stop": "power" in perms}
+            return {"see": "view" in perms, "start": "start" in perms, "stop": "power" in perms, "map": "view" in perms}
         return None
     if who == "signed":
         return NOTHING_ALL
@@ -300,7 +306,7 @@ def _row_matches(who, visitor, key):
     return None
 
 
-NOTHING_ALL = {"see": True, "start": True, "stop": True}       # the row's own ticks apply
+NOTHING_ALL = {"see": True, "start": True, "stop": True, "map": True}       # the row's own ticks apply
 
 
 def _anonymous(cfg):
@@ -310,7 +316,8 @@ def _anonymous(cfg):
     out = dict(NOTHING)
     for row in cfg.get("rules") or []:
         if row["who"] == ANYONE:
-            out = {"see": row["see"] or row["start"], "start": row["start"], "stop": False}
+            out = {"see": row["see"] or row["start"], "start": row["start"], "stop": False,
+                   "map": bool(row.get("map"))}
     return out
 
 
@@ -337,22 +344,29 @@ def _gate(cfg, visitor):
 
 
 def abilities(cfg, key, visitor):
-    """{"see", "start", "stop"} for this visitor (None = not signed in) on the page of `key`."""
+    """{"see", "start", "stop", "map"} for this visitor (None = not signed in) on the page of
+    `key`. "map" (1.30) is never more than the page's own Show the map switch."""
+    out = _abilities(cfg, key, visitor)
+    out["map"] = bool(out.get("map") and cfg.get("show_map"))
+    return out
+
+
+def _abilities(cfg, key, visitor):
     access = cfg.get("access", "anyone")
     if access == "anyone":
-        return {"see": True, "start": bool(cfg.get("allow_start")), "stop": False}
+        return {"see": True, "start": bool(cfg.get("allow_start")), "stop": False, "map": True}
     if _gate(cfg, visitor):
         return _anonymous(cfg)               # not signed in (or not in a way this page takes)
     if access == "signed":
-        return {"see": True, "start": bool(cfg.get("allow_start")), "stop": False}
+        return {"see": True, "start": bool(cfg.get("allow_start")), "stop": False, "map": True}
     if visitor["kind"] == "panel" and visitor.get("role") == "admin":
-        return {"see": True, "start": True, "stop": True}
+        return {"see": True, "start": True, "stop": True, "map": True}
     out = dict(NOTHING)
     for row in cfg.get("rules") or []:
         got = _row_matches(row["who"], visitor, key)
         if got:
             for k in out:
-                out[k] = out[k] or (got[k] and row[k])
+                out[k] = out[k] or bool(got[k] and row.get(k))
     return out
 
 

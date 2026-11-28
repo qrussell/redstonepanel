@@ -77,6 +77,11 @@ SKIP_PACK_PREFIXES = ("behavior_packs/vanilla", "resource_packs/vanilla", "behav
                       "definitions")
 
 # 1.19: the first member of every archive says what wrote the world in it (never restored)
+# 1.30: web map tiles can be drawn again, and can be gigabytes: left out of backups (the panel's own
+# drawings are in .redstonepanel-map, which SKIP_TOP_PREFIXES already leaves out)
+SKIP_MAP_PREFIXES = ("bluemap/web/maps/", "plugins/BlueMap/web/maps/", "plugins/dynmap/web/tiles/",
+                     "dynmap/web/tiles/", "plugins/squaremap/web/tiles/", "config/squaremap/web/tiles/",
+                     "plugins/Pl3xMap/web/tiles/", "config/pl3xmap/web/tiles/")
 MANIFEST = ".redstonepanel-backup.json"
 
 BEDROCK_READY = "Data saved. Files are now ready to be copied."
@@ -239,6 +244,8 @@ def _skipped(rel, full=False):
     if top in SKIP_TOP or top.startswith(SKIP_TOP_PREFIXES):
         return True
     if rel == top and LOADER_JAR_RE.match(top):
+        return True
+    if any(rel == p.rstrip("/") or rel.startswith(p) for p in SKIP_MAP_PREFIXES):
         return True
     return any(rel == p or rel.startswith(p) for p in SKIP_PACK_PREFIXES)
 

@@ -399,6 +399,11 @@ def firewall_watcher(every=120, first=20):
     def loop():
         time.sleep(first)
         while True:
+            try:                               # 1.30: map tools on 127.0.0.1, the join site for maps
+                from core import worldmap
+                worldmap.tick()
+            except Exception as e:
+                write_log(f"[MAP] Checking the world maps failed: {e}")
             try:
                 sync_firewall()
             except Exception as e:             # never let this take the panel down
@@ -1365,6 +1370,11 @@ def remove_server(server_name, keep_world, note=None):
         bootstart.forget(server_name)               # Start at boot (1.25): the same
     restarts.on_server_removed(server_name, purged=not keep_world)
     updates.on_server_removed(server_name, purged=not keep_world)
+    try:
+        from core import mapdraw                # 1.30: its world map's timer (and settings, when purged)
+        mapdraw.on_server_removed(server_name, purged=not keep_world)
+    except Exception as e:
+        write_log(f"[MAP] Couldn't remove the map schedule of {server_name}: {e}")
     from core import convert
     convert.forget(server_name)
     from core import perf
@@ -1584,6 +1594,11 @@ def restore_server(name, same_version=False):
         from core import backups, restarts
         backups.on_server_restored(name)          # its backup and restart schedules, if it had them
         restarts.on_server_restored(name)
+        try:
+            from core import mapdraw
+            mapdraw.on_server_restored(name)    # 1.30: its map's schedule
+        except Exception as e:
+            write_log(f"[MAP] Couldn't put back the map schedule of {name}: {e}")
         from core import perf
         perf.on_server_restored(name)       # its memory and CPU limits, if it had them
         write_log(f"[RESTORE] Restored {name} (port {port}).")

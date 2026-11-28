@@ -116,6 +116,14 @@ def remove_files(folder, names, wrap=None):
     return done()
 
 
+def run_map_tool(server, argv, cwd, log_path, readable=(), writable=(), env=None, timeout=None):
+    """1.30: tests run the map tool (a stand-in) directly."""
+    import subprocess
+    with open(log_path, "ab") as out:
+        return subprocess.run(list(argv), cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=out,
+                              stderr=subprocess.STDOUT, timeout=timeout)
+
+
 def can_run_as_game_account():
     return True
 

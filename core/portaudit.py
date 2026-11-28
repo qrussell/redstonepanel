@@ -112,9 +112,10 @@ def panel_claims():
         web = panel_settings.RUNTIME.get("port") or (st["https_port"] if scheme == "https" else st["http_port"])
         out.append({"server": None, "kind": "panel", "key": "web", "port": int(web), "proto": "tcp",
                     "label": "the panel's web page"})
-        if st.get("join_enabled") and str(st.get("join_port") or "").isdigit():
+        from core import joinsite
+        if joinsite.wanted(st) and str(st.get("join_port") or "").isdigit():
             out.append({"server": None, "kind": "panel", "key": "join", "port": int(st["join_port"]), "proto": "tcp",
-                        "label": "join pages"})
+                        "label": "join pages" if st.get("join_enabled") else "world maps"})
         if st.get("sftp_enabled") and str(st.get("sftp_port") or "").isdigit():
             out.append({"server": None, "kind": "panel", "key": "sftp", "port": int(st["sftp_port"]), "proto": "tcp",
                         "label": "SFTP"})

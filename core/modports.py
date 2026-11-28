@@ -48,6 +48,14 @@ KNOWN = {
                 "hocon", ("port",), "tcp", 8100, "optional", "Only if players should open the web map from outside."),
     "dynmap": ("Dynmap web map", ("plugins/dynmap/configuration.txt", "dynmap/configuration.txt"),
                "yaml", ("webserver-port",), "tcp", 8123, "optional", "Only if players should open the web map from outside."),
+    # 1.30: the other web maps the panel knows (core/worldmap.py binds them to 127.0.0.1 and shows them
+    # through the join site, so their port never needs opening or forwarding)
+    "squaremap": ("squaremap web map", ("plugins/squaremap/config.yml", "config/squaremap/config.yml"),
+                  "yaml", ("settings", "internal-webserver", "port"), "tcp", 8080, "optional",
+                  "Only if players should open the web map from outside."),
+    "pl3xmap": ("Pl3xMap web map", ("plugins/Pl3xMap/config.yml", "config/pl3xmap/config.yml"),
+                "yaml", ("settings", "internal-webserver", "port"), "tcp", 8080, "optional",
+                "Only if players should open the web map from outside."),
     "plan": ("Plan web page", ("plugins/Plan/config.yml",),
              "yaml", ("Webserver", "Port"), "tcp", 8804, "optional", "Only if the statistics page should be reachable from outside."),
     "votifier": ("NuVotifier", ("plugins/nuvotifier/config.yml", "plugins/Votifier/config.yml"),
@@ -132,14 +140,26 @@ def server_ports(server):
             if not _skip(mod, f["content"], val):
                 port = int(val) if (val or "").isdigit() else default
                 out.append({"mod": mod, "name": name, "path": p, "port": port, "proto": proto,
-                            "kind": kind, "note": note})
+                            "kind": kind, "note": note, "local": _local_only(server, mod, f["content"])})
             break
     return out
 
 
+def _local_only(server, mod, text):
+    """1.30: True for a web map that listens only on this machine (127.0.0.1), as the panel sets
+    them: the panel shows it through the join site, so its port is never opened in the firewall
+    or listed for port forwarding."""
+    try:
+        from core import worldmap
+        return worldmap.listens_locally(mod, text, server)
+    except Exception:
+        return False
+
+
 def firewall_rules(server):
-    """The (port, proto) rules the server's mods need, as manager.firewall_rules gives them."""
-    return {(str(c["port"]), c["proto"]) for c in server_ports(server)}
+    """The (port, proto) rules the server's mods need, as manager.firewall_rules gives them.
+    Web maps that listen only on this machine (1.30) need none."""
+    return {(str(c["port"]), c["proto"]) for c in server_ports(server) if not c.get("local")}
 
 
 def _servers():

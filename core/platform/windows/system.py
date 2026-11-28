@@ -172,6 +172,17 @@ def as_game_account(cmd):
     return [AS_SERVER] + list(cmd)
 
 
+def run_map_tool(server, argv, cwd, log_path, readable=(), writable=(), env=None, timeout=None):
+    """1.30: a map renderer or converter as an account of its own (services.run_as_helper), at
+    Below normal priority, while the game server keeps running; its output is added to log_path."""
+    from core.platform.windows import services as _services
+    r = _services.run_as_helper(f"rpmap-{server}", list(argv), cwd, readable=readable, writable=writable,
+                                env=_changed_env(env), timeout=timeout)
+    with open(log_path, "a", encoding="utf-8") as out:
+        out.write((r.stdout or "") + (r.stderr or ""))
+    return subprocess.CompletedProcess(argv, r.returncode, "", "")
+
+
 def can_run_as_game_account():
     return True
 

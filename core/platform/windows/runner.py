@@ -614,7 +614,8 @@ class TaskService(Service):
             with open(out_path, "wb") as out:
                 p = subprocess.Popen(_win.resolve_program(task["argv"]), cwd=task["cwd"], env=env,
                                      stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
-                                     creationflags=_win.CREATE_NO_WINDOW)
+                                     creationflags=_win.CREATE_NO_WINDOW
+                                     | (BELOW_NORMAL_PRIORITY_CLASS if task.get("low") else 0))
                 try:
                     job.add(p)
                 except OSError:

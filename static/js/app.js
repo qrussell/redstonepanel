@@ -123,7 +123,7 @@ const ServerApp = {
         show('tab-btn-properties', c('settings') || c('players'));
         show('tab-btn-maintenance', c('settings'));
         show('tab-btn-backups', c('backups'));
-        show('tab-btn-world', c('settings') || c('backups'));
+        show('tab-btn-world', c('view'));                  // 1.30: the world map is for anyone who can view
         show('tab-btn-files', c('files'));
         ['visual', 'raw'].forEach(t => show(`subtab-${t}`, c('settings')));
         ['players', 'access', 'permissions'].forEach(t => show(`subtab-${t}`, c('players')));
@@ -692,7 +692,7 @@ const ServerApp = {
         
         if (tabId === 'properties') this.switchConfigSubTab(this.firstConfigSubTab());
         if (tabId === 'maintenance') { this.refreshApplyTemplates(); this.loadBoot(); this.loadSleep(); this.loadRestarts(); this.loadUpdateOptions().then(() => this.loadModpack()); this.loadAutoUpdate(); this.loadConvert(); this.loadJavaChoice(); this.loadResources(); }
-        if (tabId === 'world') this.loadWorldName();
+        if (tabId === 'world') { this.loadWorldName(); this.loadMap(); } else this.stopMapPolling();
         if (tabId === 'backups') this.loadBackups();
         if (tabId === 'files') this.loadFiles(this.filesServer === this.serverKey(this.activeServer) ? this.filesPath : '');
         if (tabId === 'addons') this.loadAddons();
@@ -5863,6 +5863,215 @@ const ServerApp = {
 
 	currentWorldName: null,
 
+	// --- 1.30: the world map (World & Maps tab) ---
+	// The map itself never runs at the panel's address: it is an iframe of the join site's own
+	// port, opened with a one-minute ticket from the panel (core/mapsite.py).
+	mapData: null,
+	mapTimer: null,
+	mapFrameKey: null,
+
+	stopMapPolling() {
+		if (this.mapTimer) { clearTimeout(this.mapTimer); this.mapTimer = null; }
+	},
+
+	async loadMap(keepFrame) {
+		const box = document.getElementById('world-map-body');
+		if (!box || !this.activeServer) return;
+		const srv = this.activeServer, key = this.serverKey(srv);
+		this.stopMapPolling();
+		let d;
+		try {
+			const res = await api(`/api/servers/${encodeURIComponent(srv.name)}/map`);
+			if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+			d = await res.json();
+		} catch (e) {
+			box.innerHTML = '<p class="text-sm text-red-500">The map settings couldn\'t be loaded.</p>';
+			return;
+		}
+		if (this.serverKey(this.activeServer) !== key) return;
+		this.mapData = d;
+		this.renderMap(d, keepFrame && this.mapFrameKey === key);
+		if (d.draw && d.draw.state === 'drawing') this.mapTimer = setTimeout(() => this.loadMap(true), 10000);
+	},
+
+	mapOrigin(site) {
+		// The join site's address as this browser reaches the panel; its public address when the
+		// panel is opened from the internet by name and the join pages have one (1.21.9, 1.29)
+		const here = location.hostname;
+		const local = /^(localhost|[0-9.]+|\[?[0-9a-f:]+\]?)$/i.test(here) || here.endsWith('.local') || here.endsWith('.lan');
+		if (site.join_url && !local) {
+			try { const u = new URL(site.join_url); if (u.hostname !== here) return u.origin; } catch (e) {}
+		}
+		const host = here.includes(':') ? `[${here}]` : here;
+		return `${site.scheme || 'http'}://${host}:${site.port}`;
+	},
+
+	async openMapFrame(newTab) {
+		const srv = this.activeServer;
+		if (!srv) return;
+		const url = srv.node ? `/api/cluster/nodes/${encodeURIComponent(srv.node)}/servers/${encodeURIComponent(srv.name)}/map-ticket`
+			: `/api/servers/${encodeURIComponent(srv.name)}/map/ticket`;
+		const res = await fetch(url, { method: 'POST' });
+		if (!res.ok) return alert(await this.apiError(res));
+		const t = await res.json();
+		const full = this.mapOrigin(t) + t.path;
+		if (newTab) return window.open(full, '_blank', 'noopener');
+		const frame = document.getElementById('world-map-frame');
+		if (frame) { frame.src = full; this.mapFrameKey = this.serverKey(srv); }
+	},
+
+	mapSize(n) {
+		if (n == null) return '';
+		return n > 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : n > 1048576 ? `${(n / 1048576).toFixed(0)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+	},
+
+	renderMap(d, keepFrame) {
+		const box = document.getElementById('world-map-body');
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const note = 'text-sm text-gray-600 dark:text-gray-300';
+		const small = 'text-xs text-gray-500 dark:text-gray-400';
+		const btn = 'px-4 py-2 rounded font-bold text-white bg-theme hover-bg-theme min-h-[44px] md:min-h-0';
+		const grey = 'px-3 py-2 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white min-h-[44px] md:min-h-0';
+		const admin = this.isAdmin(), settings = this.can('settings');
+		const m = d.map, s = d.settings, small_machine = d.machine && (d.machine.arm || (d.machine.memory && d.machine.memory <= 8 * 1073741824));
+		const agree = id => `<label class="flex items-start gap-2 text-sm cursor-pointer"><input type="checkbox" id="${id}" class="mt-1"><span>BlueMap may download Minecraft's block textures from Mojang<br><span class="${small}">BlueMap draws the world with Minecraft's own textures, which it downloads once from Mojang (its <span class="font-mono">accept-download</span> setting).</span></span></label>`;
+		if (!m) {
+			if (!admin) { box.innerHTML = `<p class="${note}">This server has no map yet. An admin can add one here.</p>`; return; }
+			if (d.can_draw) {
+				box.innerHTML = `<p class="${note} mb-3">${d.kind === 'bedrock' ? 'Bedrock servers can\'t run map add-ons, so the panel draws the map itself: it copies the world, converts the copy to a Java world with Chunker and draws it with BlueMap.' : 'Vanilla servers can\'t run map plugins, so the panel draws the map itself with BlueMap\'s standalone renderer.'} It's drawn every night at 3:00 (you can change that), only when the world changed, at low priority so the game never waits. You see it here and, if you like, on the join page, with nothing to forward on the router.</p>
+					${small_machine ? `<p class="${small} mb-3">On a Raspberry Pi or a small machine the first drawing of a big world can take hours; later ones only redo what changed${d.kind === 'bedrock' ? ' (Bedrock maps are drawn whole each time)' : ''}.</p>` : ''}
+					${agree('map-agree')}
+					<button onclick="ServerApp.addMap(null, this)" class="${btn} mt-3">Draw a map</button>
+					<p id="map-msg" class="${small} mt-2"></p>`;
+				return;
+			}
+			if (d.can_add.length) {
+				const order = small_machine ? [...d.can_add].sort((a, b) => (a.id === 'squaremap' ? -1 : 0) - (b.id === 'squaremap' ? -1 : 0)) : d.can_add;
+				box.innerHTML = `<p class="${note} mb-3">Add a map and players can see the world from above. It opens here and, if you like, on the join page, with nothing to forward on the router.</p>
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${order.map(t => `<div class="rounded border border-gray-200 dark:border-gray-700 p-3">
+						<p class="font-bold text-gray-900 dark:text-white">${esc(t.name)}${small_machine && t.id === 'squaremap' ? ' <span class="text-xs font-normal text-theme">suggested for this machine</span>' : ''}</p>
+						<p class="${small} mb-2">${t.id === 'bluemap' ? 'A 3D map you can fly around. Drawing it takes more CPU and disk.' : 'A flat map from above, like a paper map. Small and light, good on a Raspberry Pi.'}</p>
+						${t.id === 'bluemap' ? agree('map-agree') : ''}
+						<button onclick="ServerApp.addMap('${esc(t.id)}', this)" class="${btn} mt-2">Add ${esc(t.name)}</button></div>`).join('')}</div>
+					<p class="${small} mt-2">From Modrinth. The server needs a restart to start the map.</p><p id="map-msg" class="${small} mt-2"></p>`;
+				return;
+			}
+			box.innerHTML = `<p class="${note}">This kind of server can't show a map.</p>`;
+			return;
+		}
+		let status = '';
+		if (m.drawn) {
+			const st = d.draw || {};
+			status = st.state === 'drawing' ? `Drawing now (started ${new Date(st.started * 1000).toLocaleTimeString()})…`
+				: st.state === 'failed' ? `<span class="text-red-500">The last drawing failed: ${esc(st.error)}</span>`
+				: st.finished ? `Drawn ${new Date(st.finished * 1000).toLocaleString()}` : 'Not drawn yet';
+			if (st.next) status += ` · next ${new Date(st.next * 1000).toLocaleString()}`;
+			else if (s.schedule === 'backup') status += ' · next after the next scheduled backup';
+		} else {
+			status = d.running ? 'live' : 'server stopped: showing the map as last drawn' + (m.id === 'dynmap' ? ' (Dynmap needs the server running)' : '');
+		}
+		const drawnOnce = !m.drawn || (d.draw && (d.draw.finished || d.draw.state === 'drawing'));
+		let warn = '';
+		if (d.needs_restart) warn += `<p class="text-sm text-yellow-600 dark:text-yellow-400 mb-2">${esc(m.name)} is installed. Restart the server to start it; the map fills in as it draws.</p>`;
+		if (d.accept_needed && !m.drawn && admin) warn += `<div class="rounded border border-yellow-400 p-3 mb-2"><p class="text-sm mb-2">BlueMap is waiting for permission to download Minecraft's textures, so it isn't drawing yet.</p><button onclick="ServerApp.saveMap({accept_download: true}, this)" class="${grey}">Allow it to download them</button></div>`;
+		const frame = drawnOnce ? `<div class="relative w-full rounded overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-900" style="height: min(70vh, 720px)"><iframe id="world-map-frame" title="World map" class="w-full h-full" referrerpolicy="same-origin" allow="fullscreen"></iframe></div>` : `<p class="${note}">The first drawing hasn't run yet.</p>`;
+		const worlds = [['overworld', 'Overworld'], ['nether', 'Nether'], ['end', 'The End']];
+		const sched = m.drawn && settings ? `<div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+				<label class="${small}">When to draw<select id="map-schedule" class="w-full mt-1 p-2 rounded bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-base md:text-sm">${Object.entries(d.schedules).map(([k, v]) => `<option value="${k}" ${s.schedule === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+				<label class="${small}">At<input id="map-time" type="time" value="${esc(s.time)}" class="w-full mt-1 p-2 rounded bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-base md:text-sm"></label>
+				<div class="${small}">Worlds<div class="flex flex-wrap gap-3 mt-1">${worlds.map(([k, v]) => `<label class="inline-flex items-center gap-1 text-sm min-h-[44px] md:min-h-0"><input type="checkbox" id="map-world-${k}" ${s.worlds.includes(k) ? 'checked' : ''}> ${v}</label>`).join('')}</div></div>
+			</div>` : '';
+		if (!m.drawn && admin && !m.local && !s.local_only) warn += `<div class="rounded border border-gray-300 dark:border-gray-600 p-3 mb-2"><p class="text-sm mb-2">${esc(m.name)}'s own web server can be reached from the network on port ${esc(m.port)}. The panel can keep it on this machine only and show it through the panel instead, so the port needn't be open or forwarded.</p><button onclick="ServerApp.saveMap({local_only: true}, this)" class="${grey}">Show it only through the panel</button></div>`;
+		const local = !m.drawn && admin ? `<label class="flex items-start gap-2 text-sm cursor-pointer"><input type="checkbox" id="map-local" ${s.local_only ? 'checked' : ''} class="mt-1"><span>Only through the panel<br><span class="${small}">${esc(m.name)}'s own web server listens on this machine only (port ${esc(m.port)}), so nothing needs opening or forwarding. Untick to reach it directly as before.</span></span></label>` : '';
+		const settingsBox = (sched || local) ? `<details class="mt-3"><summary class="cursor-pointer text-sm font-bold text-gray-900 dark:text-white min-h-[44px] md:min-h-0">Map settings</summary><div class="space-y-3 mt-3">${sched}${local}
+				<button onclick="ServerApp.saveMapForm(this)" class="${grey}">Save</button></div></details>` : '';
+		box.innerHTML = `${warn}${frame}
+			<div class="flex flex-wrap items-center justify-between gap-2 mt-2">
+				<p class="${small}">${esc(m.name)}${m.drawn ? ' (drawn by the panel)' : ''} · ${status}${d.size ? ` · ${this.mapSize(d.size)}` : ''}</p>
+				<div class="flex flex-wrap gap-2">
+					${drawnOnce ? `<button onclick="ServerApp.openMapFrame(true)" class="${grey}">Open in a new tab ↗</button>` : ''}
+					${m.drawn && settings ? `<button onclick="ServerApp.drawMap(this)" class="${grey}" ${d.draw && d.draw.state === 'drawing' ? 'disabled' : ''}>Draw now</button>` : ''}
+					${m.drawn ? `<button onclick="ServerApp.showMapLog()" class="${grey}">Output</button>` : ''}
+				</div>
+			</div>
+			<p class="${small} mt-1">Map blank? Open it in a new tab once: with the panel's own certificate the browser asks once for the join pages' port too. ${admin ? 'To show it on the join page, tick <b>Show the world map</b> under Join pages.' : ''}</p>
+			${settingsBox}
+			${admin && (m.drawn || d.size) ? `<div class="flex flex-wrap gap-2 mt-3">${d.size ? `<button onclick="ServerApp.deleteMapFiles(this)" class="${grey}">Delete the map</button>` : ''}${m.drawn ? `<button onclick="ServerApp.mapOff(this)" class="${grey}">Turn the map off</button>` : ''}</div>` : ''}
+			<p id="map-msg" class="${small} mt-2"></p>`;
+		// Re-rendering makes a new iframe; it gets a fresh ticket (a ticket works for one minute)
+		if (drawnOnce) this.openMapFrame(false);
+	},
+
+	mapMsg(text, ok) {
+		const el = document.getElementById('map-msg');
+		if (el) { el.className = `text-sm mt-2 ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`; el.innerText = text; }
+	},
+
+	async addMap(tool, button) {
+		const agree = document.getElementById('map-agree');
+		if ((!tool || tool === 'bluemap') && agree && !agree.checked) return this.mapMsg('Tick the box to let BlueMap download Minecraft\'s textures first.');
+		button.disabled = true;
+		this.mapMsg(tool ? 'Installing from Modrinth…' : 'Getting the map tools ready…', true);
+		const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/map/add`, { method: 'POST',
+			headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tool, accept_download: !!(agree && agree.checked) }) });
+		if (!res.ok) { button.disabled = false; return this.mapMsg(await this.apiError(res)); }
+		const d = await res.json();
+		this.loadMap();
+		if (d.restart && confirm('The map is installed. Restart the server now to start it?')) this.sendPower('restart');
+	},
+
+	async saveMap(body, button) {
+		if (button) button.disabled = true;
+		const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/map`, { method: 'PUT',
+			headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+		if (!res.ok) { if (button) button.disabled = false; return this.mapMsg(await this.apiError(res)); }
+		this.loadMap(true);
+	},
+
+	saveMapForm(button) {
+		const el = id => document.getElementById(id), body = {};
+		if (el('map-schedule')) {
+			body.schedule = el('map-schedule').value;
+			body.time = el('map-time').value;
+			body.worlds = ['overworld', 'nether', 'end'].filter(w => el(`map-world-${w}`).checked);
+		}
+		if (el('map-local')) body.local_only = el('map-local').checked;
+		this.saveMap(body, button);
+	},
+
+	async drawMap(button) {
+		button.disabled = true;
+		const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/map/draw`, { method: 'POST' });
+		if (!res.ok) { button.disabled = false; return this.mapMsg(await this.apiError(res)); }
+		this.loadMap(true);
+	},
+
+	async showMapLog() {
+		const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/map/log`);
+		const d = res.ok ? await res.json() : { content: await this.apiError(res) };
+		this.modalWide(true);
+		document.getElementById('modal-content').innerHTML = `<h3 class="text-lg font-bold mb-2 text-gray-900 dark:text-white">The last drawing's output</h3>
+			<pre class="text-xs bg-gray-900 text-green-400 p-3 rounded max-h-[60vh] overflow-auto whitespace-pre-wrap">${this.escapeHtml(d.content || 'Nothing yet.')}</pre>
+			<button onclick="ServerApp.closeModal()" class="mt-4 w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-gray-900 dark:text-white font-bold">Close</button>`;
+		document.getElementById('modal-overlay').classList.remove('hidden');
+	},
+
+	async deleteMapFiles(button) {
+		if (!confirm('Delete the map\'s files? The map tool and its settings stay; the next drawing starts from scratch.')) return;
+		button.disabled = true;
+		const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/map/files`, { method: 'DELETE' });
+		if (!res.ok) { button.disabled = false; return this.mapMsg(await this.apiError(res)); }
+		this.loadMap();
+	},
+
+	async mapOff(button) {
+		if (!confirm('Stop drawing this server\'s map? Its files stay until you delete them.')) return;
+		button.disabled = true;
+		const res = await api(`/api/servers/${encodeURIComponent(this.activeServer.name)}/map/off`, { method: 'POST' });
+		if (!res.ok) { button.disabled = false; return this.mapMsg(await this.apiError(res)); }
+		this.loadMap();
+	},
+
 	// Shows the active world (level-name in server.properties) above the rename box
 	async loadWorldName() {
 		const label = document.getElementById('current-world-name');
@@ -7704,7 +7913,8 @@ const ServerApp = {
 				unlisted: id('unlisted').checked, new_link: !!newLink, address: id('address').value.trim(),
 				note: id('note').value, link_url: id('link-url').value.trim(), link_label: id('link-label').value.trim(),
 				pack_url: id('pack-url') ? id('pack-url').value.trim() : '', show_players: id('players').checked,
-				allow_start: id('start').checked, ...this.joinAccessValues(key) }) });
+				allow_start: id('start').checked, show_map: id('map').checked, map_players: id('map-players').checked,
+				...this.joinAccessValues(key) }) });
 		if (!res.ok) {
 			button.disabled = false;
 			const note = id('msg');
@@ -7781,7 +7991,7 @@ const ServerApp = {
 	joinRulesSync(key) {
 		const id = this.joinId(key);
 		(this.joinRules[key] || []).forEach((r, i) => {
-			['see', 'start', 'stop'].forEach(k => {
+			['see', 'start', 'stop', 'map'].forEach(k => {
 				const box = document.getElementById(`join-rule-${k}-${id}-${i}`);
 				if (box) r[k] = box.checked;
 			});
@@ -7796,7 +8006,7 @@ const ServerApp = {
 		const tick = (r, i, k, label) => `<label class="inline-flex items-center gap-1 text-sm cursor-pointer min-h-[44px] md:min-h-0"><input type="checkbox" id="join-rule-${k}-${id}-${i}" ${r[k] ? 'checked' : ''}> ${label}</label>`;
 		box.innerHTML = rows.length ? rows.map((r, i) => `<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 border-b border-gray-100 dark:border-gray-700/60">
 				<span class="text-sm font-bold text-gray-900 dark:text-white break-words min-w-0">${esc(this.joinRuleLabel(r.who, this.joinSignin || {}, r))}</span>
-				<span class="flex flex-wrap items-center gap-3">${tick(r, i, 'see', 'See how to join')}${tick(r, i, 'start', 'Start')}${r.who === 'anyone' ? '<span class="text-xs text-gray-500 dark:text-gray-400">Stop needs a sign-in</span>' : tick(r, i, 'stop', 'Stop')}
+				<span class="flex flex-wrap items-center gap-3">${tick(r, i, 'see', 'See how to join')}${tick(r, i, 'map', 'See the map')}${tick(r, i, 'start', 'Start')}${r.who === 'anyone' ? '<span class="text-xs text-gray-500 dark:text-gray-400">Stop needs a sign-in</span>' : tick(r, i, 'stop', 'Stop')}
 				<button type="button" onclick="ServerApp.joinRuleRemove('${esc(key)}', ${i})" class="text-sm underline text-red-600 dark:text-red-400 min-h-[44px] md:min-h-0">Remove</button></span>
 			</div>`).join('') : '<p class="text-sm text-gray-500 dark:text-gray-400">No rows yet: nobody signed in can see the page.</p>';
 	},
@@ -7808,7 +8018,7 @@ const ServerApp = {
 		if (!rows.some(r => r.who === sel.value)) {
 			const role = sel.value.startsWith('discord_role:') ? (sel.options[sel.selectedIndex].text || '').replace(/^Discord role: /, '') : '';
 			const all = sel.value === 'panel_perms';      // its ticks only cap what the account's permissions give
-			rows.push({ who: sel.value, see: true, start: all, stop: all, name: role });
+			rows.push({ who: sel.value, see: true, map: true, start: all, stop: all, name: role });
 		}
 		this.renderJoinRules(key);
 	},
@@ -7943,6 +8153,14 @@ const ServerApp = {
 				<label class="flex items-start gap-2 text-sm cursor-pointer">
 					<input type="checkbox" id="join-start-${id}" ${p.allow_start ? 'checked' : ''} class="mt-1">
 					<span><b class="text-gray-900 dark:text-white">Let visitors start the server</b><br><span class="${note}">Shows <b>Start the server</b> on the page while it is stopped, so a friend can start it and join. Anyone who can open the page can press it: one start every 2 minutes per server, and 3 an hour per visitor. On a page open to anyone it never stops a server (for Stop, see Who can see this page below)${s.sleep ? '' : '; with Sleep mode (Maintenance tab) it stops by itself again when nobody plays'}.</span></span>
+				</label>
+				<label class="flex items-start gap-2 text-sm cursor-pointer">
+					<input type="checkbox" id="join-map-${id}" ${p.show_map ? 'checked' : ''} class="mt-1">
+					<span><b class="text-gray-900 dark:text-white">Show the world map</b><br><span class="${note}">Adds <b>Open the map</b> to the page, for the map in the server's World &amp; Maps tab (add one there first). With Who can see this page set to by permission, the <b>See the map</b> tick says who may open it.</span></span>
+				</label>
+				<label class="flex items-start gap-2 text-sm cursor-pointer ml-6">
+					<input type="checkbox" id="join-map-players-${id}" ${p.map_players ? 'checked' : ''} class="mt-1">
+					<span>Show where players are on that map<br><span class="${note}">Off: visitors see the world, never where anyone is right now.</span></span>
 				</label>
 				${this.joinAccessHtml(key, id, p, d.signin || {})}
 				<label class="${note} block">A note for players (rules, when you play)<textarea id="join-note-${id}" rows="3" maxlength="600" class="${field} w-full mt-1">${esc(p.note)}</textarea></label>

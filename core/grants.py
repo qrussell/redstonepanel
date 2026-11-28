@@ -343,6 +343,14 @@ settings PUT     {_S}/restarts
 view     GET     {_S}/boot
 settings PUT     {_S}/boot
 view     GET     {_S}/sleep
+view     GET     {_S}/map
+settings PUT     {_S}/map
+admin    POST    {_S}/map/add
+settings POST    {_S}/map/draw
+admin    POST    {_S}/map/off
+admin    DELETE  {_S}/map/files
+view     GET     {_S}/map/log
+view     POST    {_S}/map/ticket
 settings PUT     {_S}/sleep
 power    POST    {_S}/sleep/now
 settings PUT     {_S}/updates
@@ -444,6 +452,7 @@ proxy            POST    /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 proxy            PUT     /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 proxy            DELETE  /api/cluster/nodes/{{node_id}}/proxy/{{path:path}}
 start@node_id    POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/action
+view@node_id     POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/map-ticket
 settings@node_id POST    /api/cluster/nodes/{{node_id}}/servers/{{server_name}}/template
 admin            POST    /api/cluster/nodes/{{node_id}}/templates
 admin            POST    /api/cluster/nodes/{{node_id}}/sign-in
@@ -476,6 +485,7 @@ node     POST    /api/cluster/transfers/{{tid}}/confirm
 node     DELETE  /api/cluster/transfers/{{tid}}
 node     DELETE  /api/cluster/transfers/moved/{{server_name}}
 node     GET     /api/cluster/held-backups
+node     GET     /api/cluster/maps/{{server_name}}/{{path:path}}
 node     GET     /api/cluster/held-backups/{{panel}}/{{server_name}}/{{filename}}
 node     GET     /api/cluster/held-backups/{{panel}}/{{server_name}}/{{filename}}/sha256
 node     PUT     /api/cluster/held-backups/into/{{server_name}}/{{filename}}

@@ -29,6 +29,8 @@ RUN_DIR = "/run/redstonepanel"                       # cleared at boot
 PANEL_CMD = "/usr/sbin/redstonepanel"                # the `redstonepanel` command
 PYTHON = "/usr/bin/python3"                         # runs the panel's own services
 PHANTOM_DIR = os.environ.get("RP_PHANTOM_DIR") or "/usr/local/lib/redstonepanel/phantom"
+# 1.30: the map tools the panel runs (BlueMap's standalone renderer, Chunker), readable by the game account
+MAPTOOLS_DIR = os.environ.get("RP_MAPTOOLS_DIR") or "/usr/local/lib/redstonepanel/maptools"
 
 # Game servers and their backups
 SERVERS_ROOT = "/opt"                                # each server is SERVERS_ROOT/minecraft-<name>
@@ -96,6 +98,7 @@ def windows_layout(home, app_dir=APP_DIR, environ=os.environ, python=None):
         "PANEL_CMD": "redstonepanel",                 # the runner and the layer know what this word starts
         "PYTHON": "python",                           # likewise: the Python the panel itself runs on
         "PHANTOM_DIR": environ.get("RP_PHANTOM_DIR") or j(home, "phantom"),
+        "MAPTOOLS_DIR": environ.get("RP_MAPTOOLS_DIR") or j(home, "maptools"),
         "SERVERS_ROOT": j(home, "servers"),
         "BACKUP_ROOT": environ.get("RP_BACKUP_DIR") or j(home, "backups"),
         "UNIT_DIR": j(home, "services"),              # the same unit files; the runner reads them

@@ -237,6 +237,8 @@ def java_extras(server, props):
     except Exception:
         claimed = []
     for c in claimed:
+        if c.get("local"):
+            continue                    # 1.30: a web map shown through the join site, never forwarded
         if c["mod"] not in ("geyser", "voicechat"):           # those two are read below, as before
             rows.append(_row(str(c["port"]), c["proto"], c["kind"], c["name"], c["note"], check=None))
     geyser_jar = any(n.lower().startswith("geyser") and n.endswith(".jar")

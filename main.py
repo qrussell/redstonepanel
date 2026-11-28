@@ -46,6 +46,8 @@ import core.perf as perf
 import core.crashes as crashes
 import core.bootstart as bootstart
 import core.sleep as sleep
+import core.worldmap as worldmap
+import core.mapdraw as mapdraw
 import core.apitokens as apitokens
 import core.discordbot as discordbot
 import core.discordauth as discordauth
@@ -137,7 +139,7 @@ ADMIN_API = ("/api/users", "/api/settings")
 # What an API token (1.25) never reaches, whatever its grants: the account routes and the terminal
 TOKEN_REFUSED_API = ("/api/auth/", "/api/terminal")
 NODE_ONLY_API = ("/api/cluster/hello", "/api/cluster/membership", "/api/cluster/cert", "/api/cluster/templates",
-                 "/api/cluster/transfers", "/api/cluster/held-backups", "/api/cluster/sign-in")
+                 "/api/cluster/transfers", "/api/cluster/held-backups", "/api/cluster/sign-in", "/api/cluster/maps/")
 CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster/nodes/", "/api/cluster/moves",
                     "/api/cluster/moved/", "/api/cluster/backup-copies")
 STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
@@ -1257,6 +1259,110 @@ def sleep_now(request: Request, server_name: str):
     _boot_server(server_name)
     _sleep_call(sleep.sleep_now, server_name, actor=request.state.user["username"])
     return sleep.info(server_name)
+
+# --- 1.30: world maps (core/worldmap.py, core/mapdraw.py; shown by the join site, core/mapsite.py)
+class MapUpdate(BaseModel):
+    local_only: Optional[bool] = None
+    accept_download: Optional[bool] = None
+    schedule: Optional[str] = None
+    time: Optional[str] = None
+    worlds: Optional[List[str]] = None
+
+class MapAdd(BaseModel):
+    tool: Optional[str] = None
+    accept_download: bool = False
+
+def _map_call(fn, *args, **kw):
+    try:
+        return fn(*args, **kw)
+    except (worldmap.MapError, mapdraw.DrawError) as e:
+        raise HTTPException(status_code=getattr(e, "status", 400), detail=str(e))
+    except manager.ServerError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except files.FileError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+@app.get("/api/servers/{server_name}/map")
+def get_map(server_name: str):
+    return _map_call(worldmap.view, server_name)
+
+@app.put("/api/servers/{server_name}/map")
+def set_map(request: Request, server_name: str, req: MapUpdate):
+    new = {k: v for k, v in req.dict().items() if v is not None}
+    _map_call(worldmap.update, server_name, new, actor=request.state.user["username"])
+    return _map_call(worldmap.view, server_name)
+
+@app.post("/api/servers/{server_name}/map/add")
+def add_map(request: Request, server_name: str, req: MapAdd):
+    res = _map_call(worldmap.add, server_name, req.tool, accept_download=req.accept_download,
+                    actor=request.state.user["username"])
+    if worldmap.settings(server_name)["drawn"]:
+        try:
+            mapdraw.start(server_name, actor=request.state.user["username"])
+            res["started"] = True
+        except mapdraw.DrawError as e:
+            res["note"] = str(e)
+    return {**res, "map": _map_call(worldmap.view, server_name)}
+
+@app.post("/api/servers/{server_name}/map/draw")
+def draw_map(request: Request, server_name: str):
+    _map_call(mapdraw.start, server_name, actor=request.state.user["username"])
+    return _map_call(worldmap.view, server_name)
+
+@app.post("/api/servers/{server_name}/map/off")
+def map_off(request: Request, server_name: str):
+    _map_call(worldmap.turn_off_drawing, server_name, actor=request.state.user["username"])
+    return _map_call(worldmap.view, server_name)
+
+@app.delete("/api/servers/{server_name}/map/files")
+def delete_map_files(request: Request, server_name: str):
+    _map_call(worldmap.delete_files, server_name, actor=request.state.user["username"])
+    return _map_call(worldmap.view, server_name)
+
+@app.get("/api/servers/{server_name}/map/log")
+def map_log(server_name: str):
+    manager._check_server(server_name)
+    text, _ = manager.system.tail(mapdraw.log_path(server_name), 400) if os.path.exists(mapdraw.log_path(server_name)) else ("", "")
+    return {"content": text}
+
+def _map_ticket(user, member, server_name):
+    return {"path": f"/map/{member}/{urllib.parse.quote(server_name, safe='')}/?t="
+                    + urllib.parse.quote(worldmap.make_ticket(member, server_name, user), safe=""),
+            **_map_site()}
+
+def _map_site():
+    s = panel_settings.load()
+    st = joinsite.status(s)
+    return {"port": s["join_port"], "scheme": st["scheme"], "running": st["running"], "join_url": s.get("join_url") or ""}
+
+@app.post("/api/servers/{server_name}/map/ticket")
+def map_ticket(request: Request, server_name: str):
+    _map_call(manager._check_server, server_name)
+    return _map_ticket(request.state.user, "local", server_name)
+
+@app.post("/api/cluster/nodes/{node_id}/servers/{server_name}/map-ticket")
+def node_map_ticket(request: Request, node_id: str, server_name: str):
+    _proxy_node(node_id)
+    if not manager.SERVICE_NAME_RE.fullmatch(server_name):
+        raise HTTPException(status_code=404, detail="No such server.")
+    return _map_ticket(request.state.user, node_id, server_name)
+
+@app.get("/api/cluster/maps/{server_name}/{path:path}")
+def map_raw(request: Request, server_name: str, path: str, players: int = 1):
+    """A map's files for the cluster's master, which shows them on its join site. Only the
+    master's node token reaches this (grants rule "node", NODE_ONLY_API), never a browser: a map never runs at
+    the panel's own address, and the sandbox header below keeps it that way if one tried."""
+    if request.state.user.get("source") != "cluster":
+        raise HTTPException(status_code=403, detail="Open maps from the Map tab.")
+    reply = worldmap.serve_local(server_name, path, request.method, dict(request.headers),
+                                 query="", players=bool(players))
+    headers = dict(reply.headers)
+    headers["Content-Security-Policy"] = "sandbox"
+    headers["X-Content-Type-Options"] = "nosniff"
+    if reply.chunks is None:
+        return Response(reply.body or b"", status_code=reply.status, headers=headers)
+    return StreamingResponse(reply.chunks, status_code=reply.status, headers=headers,
+                             background=BackgroundTask(reply.close))
 
 # --- 1.17.1: why did it crash? (core/crashes.py)
 class CrashFix(BaseModel):

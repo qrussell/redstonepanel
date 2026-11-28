@@ -550,7 +550,7 @@ class JoinPages(Base):
                          {"who": "panel_perms", "see": True, "start": True, "stop": True}])
         cfg = J.page(J.page_key("local", "minecraft-survival"))
         self.assertFalse(cfg["rules"][0]["stop"])
-        self.assertEqual(J._anonymous(cfg), {"see": True, "start": True, "stop": False})
+        self.assertEqual(J._anonymous(cfg), {"see": True, "start": True, "stop": False, "map": False})
         page = self.req("/join/survival").body
         self.assertIn(b"play.example.org", page)                 # no sign-in needed to see it
         self.assertIn(b"signin-more", page)                      # but one is offered

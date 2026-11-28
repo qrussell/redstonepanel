@@ -476,8 +476,12 @@ def path_allowed(method, path):
     return any(re.fullmatch(m, method) and re.fullmatch(p, path) for m, p in NODE_ROUTES)
 
 
+
+
 def proxy_allowed(method, path):
-    """A master user's request the proxy may pass on to a node."""
+    """A master user's request the proxy may pass on to a node. Never the cluster's own plumbing,
+    which includes a map's files (/api/cluster/maps/, 1.30): those are shown by the master's join
+    site, at its own address, never the panel's."""
     return path_allowed(method, path) and not path.startswith(CLUSTER_PLUMBING)
 
 

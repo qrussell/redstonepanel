@@ -32,6 +32,8 @@
     redstonepanel offsite-key         show this panel's SSH public key for backup storage
     redstonepanel restart-server NAME warn players, then restart a game server (its restart timer
                                       runs this)
+    redstonepanel map-draw NAME [--now]  draw a vanilla or Bedrock server's world map (its map timer
+                                      runs this; --now draws even when the world hasn't changed)
     redstonepanel check-updates       look for newer server versions and update the Bedrock servers
                                       set to update automatically (its timer runs this every 6 hours)
     redstonepanel notify-test         send a test message to the notification webhook
@@ -617,6 +619,12 @@ def backup_cmd(name):
             print("Copying it to backup storage (see the panel log).")
     except Exception as e:
         print(f"Couldn't start copying to backup storage: {e}", file=sys.stderr)
+    if kind == "scheduled":                     # 1.30: a world map drawn after each scheduled backup
+        from core import mapdraw
+        try:
+            mapdraw.after_backup(name)
+        except Exception as e:
+            print(f"Couldn't start drawing the world map: {e}", file=sys.stderr)
 
 
 def offsite_copy_cmd(name):
@@ -651,6 +659,18 @@ def restart_server_cmd(name):
     except restarts.RestartError as e:
         sys.exit(str(e))
     print(f"{name}: {result}.")
+
+
+def map_draw_cmd(name, now=False):
+    """1.30: draw a server's world map (its map timer runs this; Draw now adds --now)."""
+    from core import mapdraw, manager
+    try:
+        st = mapdraw.run(name, now=now)
+    except (mapdraw.DrawError, manager.ServerError) as e:
+        sys.exit(str(e))
+    print(f"{name}: {mapdraw.describe(st)}.")
+    if st.get("state") == "failed":
+        sys.exit(1)
 
 
 def ports_cmd():
@@ -851,6 +871,8 @@ if __name__ == "__main__":
         offsite_key_cmd()
     elif cmd == "restart-server" and len(rest) == 1:
         restart_server_cmd(rest[0])
+    elif cmd == "map-draw" and len(rest) in (1, 2) and (len(rest) == 1 or rest[1] == "--now"):
+        map_draw_cmd(rest[0], now=len(rest) == 2)
     elif cmd == "check-updates" and not rest:
         check_updates_cmd()
     elif cmd == "ports" and not rest:

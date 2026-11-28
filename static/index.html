@@ -403,6 +403,11 @@
 			</div>
 			<!-- WORLD TAB -->
 			<div id="tab-world" class="hidden-tab space-y-6">
+				<!-- 1.30: the world map (core/worldmap.py), shown from the join site's own address; filled by ServerApp.renderMap -->
+				<div id="world-map-card">
+					<h3 class="text-lg font-bold mb-2 text-theme">World map</h3>
+					<div id="world-map-body" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-4 md:p-5 shadow-sm"><p class="text-sm text-gray-500">Loading…</p></div>
+				</div>
 				<div id="world-export-card">
 					<h3 class="text-lg font-bold mb-2 text-theme">Export Active World</h3>
 					<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-5 max-w-xl flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center shadow-sm">

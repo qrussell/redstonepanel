@@ -763,6 +763,71 @@ def run_as_server(server, argv, cwd, env=None, timeout=None):
     return subprocess.CompletedProcess(argv, code, output, "")
 
 
+def run_as_helper(name, argv, cwd, readable=(), writable=(), env=None, timeout=None, low_priority=True):
+    """1.30: runs argv (a map renderer or converter: other people's code) as an account of its own,
+    NT SERVICE\\<name>, through a service made for the one run and removed after it, and waits.
+    The account gets read rights on `readable` (the world, Java, the tool) and change rights on
+    `writable` (where the map goes), nothing else; unlike run_as_server() the game server can keep
+    running. Returns a CompletedProcess with the output; raises subprocess.TimeoutExpired."""
+    unit_name = name + SUFFIX
+    state, _pid = _win.service_status(name)
+    if state not in (None, "stopped"):
+        return _done(1, stderr=f"{name} is already running.")
+    if state is not None and not _win.is_ours(_win.service_config(name)):
+        return _done(1, stderr=f"Windows has a service named {name} that RedstonePanel didn't make.")
+    journal = paths.journal_dir(unit_name)
+    os.makedirs(journal, exist_ok=True)
+    out_path, result_path = os.path.join(journal, "task-output.log"), os.path.join(journal, "task-result.json")
+    for f in (out_path, result_path):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    temp = os.path.join(writable[0] if writable else cwd, ".redstonepanel-temp")
+    os.makedirs(temp, exist_ok=True)
+    env = dict(env or {}, TEMP=temp, TMP=temp)
+    task = {"argv": [str(a) for a in argv], "cwd": cwd, "env": env, "timeout": timeout, "low": bool(low_priority)}
+    _win.ensure_service(name, task_command(unit_name, task), f"RedstonePanel: {name}",
+                        "Draws a world map once. Managed by RedstonePanel.", _win.service_account(name))
+    sid = _win.service_sid(name)
+    _win.grant(journal, sid)
+    for p in readable:
+        if os.path.exists(p):
+            _win.grant(p, sid, "RX")
+    for p in writable:
+        os.makedirs(p, exist_ok=True)
+        _win.grant(p, sid, "M")
+    timed_out = False
+    try:
+        _win.start_service(name, wait=60)
+        deadline = time.time() + (timeout or 3600) + 30
+        while _win.service_status(name)[0] not in ("stopped", None):
+            if time.time() > deadline:
+                timed_out = True
+                _win.stop_service(name, wait=60)
+                break
+            time.sleep(1)
+    finally:
+        try:
+            _win.delete_service(name)
+        except OSError as e:
+            _log(f"[WARNING] Couldn't remove the service {name} after its run: {e}")
+        shutil.rmtree(temp, ignore_errors=True)
+    try:
+        with open(out_path, encoding="utf-8", errors="replace") as f:
+            output = f.read()
+    except OSError:
+        output = ""
+    if timed_out:
+        raise subprocess.TimeoutExpired(argv, timeout or 0, output)
+    try:
+        with open(result_path, encoding="utf-8") as f:
+            code = int(json.load(f).get("code"))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return _done(1, stdout=output, stderr="The task didn't say how it ended.")
+    return subprocess.CompletedProcess(argv, code, output, "")
+
+
 # ---------------------------------------------------------------------------
 # Limits
 # ---------------------------------------------------------------------------

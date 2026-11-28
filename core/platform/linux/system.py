@@ -7,6 +7,7 @@ import ctypes.util
 import fcntl
 import grp
 import os
+import shutil
 import pwd
 import subprocess
 import threading
@@ -234,6 +235,17 @@ def remove_files(folder, names, wrap=None):
     """Deletes files (paths relative to folder); ones that aren't there are skipped."""
     cmd = ["rm", "-f", "--"] + list(names)
     return quiet(wrap(cmd) if wrap else cmd, cwd=folder)
+
+
+def run_map_tool(server, argv, cwd, log_path, readable=(), writable=(), env=None, timeout=None):
+    """1.30: a map renderer or converter (other people's code) as the game account, at the lowest
+    CPU and disk priority so the game never waits for it; its output is added to log_path.
+    readable/writable are what it needs (Windows gives an account of its own just those).
+    Returns the CompletedProcess (no output in it); raises TimeoutExpired."""
+    cmd = ["nice", "-n", "19"] + (["ionice", "-c", "3"] if shutil.which("ionice") else []) + list(argv)
+    with open(log_path, "ab") as out:
+        return subprocess.run(as_game_account(cmd), cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=out,
+                              stderr=subprocess.STDOUT, timeout=timeout)
 
 
 def can_run_as_game_account():
