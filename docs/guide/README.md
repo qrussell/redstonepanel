@@ -787,6 +787,57 @@ router to the panel's port 8444, set the **Address players open** to
 
 On a cluster, point the proxy at the master only. It serves the pages of every node's servers.
 
+#### Cloudflare Tunnel, set up by the panel *(1.29)*
+
+With `cloudflared` running, the panel can set up the tunnel itself, for the join pages and for
+the panel: **🛡️ Settings → Cloudflare Tunnel**. You pick a domain and two names, like
+`play.example.org` for the join pages and `panel.example.org` for the panel, and the panel adds
+the tunnel's routes and the DNS names, and keeps them in step when its ports or HTTPS change.
+Players and you then open them from anywhere with a real certificate, and nothing needs
+forwarding on the router for them. Game ports still do (see Port forwarding): a tunnel carries
+web pages only. SFTP stays a forwarded port too.
+
+The panel never installs `cloudflared`. Make the tunnel once with Cloudflare's own steps
+(Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel**, then run the install
+command it shows on this machine: `sudo cloudflared service install <token>` on Linux, or
+`cloudflared.exe service install <token>` in an administrator terminal on Windows). The card says
+what it found:
+
+- **Tunnel managed in Cloudflare** (what the dashboard makes): the panel changes the tunnel's
+  routes through Cloudflare's API. It needs an **API token**: Cloudflare → **My Profile → API
+  Tokens → Create Token → Custom token**, with **Account · Cloudflare Tunnel · Edit** and
+  **Zone · DNS · Edit** for your domain (and **Account · Access: Apps and Policies · Edit** for
+  Cloudflare Access below). cloudflared picks up a change within seconds, without a restart.
+- **Tunnel managed in a file** (`config.yml`, made with `cloudflared tunnel create`): the panel
+  writes its routes between two marked lines at the top of the file's `ingress:` list, has
+  cloudflared check the file, and restarts cloudflared (a few seconds without web pages). If the
+  check or the restart fails, the old file goes back. The token is optional here: with one the
+  panel also adds the DNS names, without one it shows the `cloudflared tunnel route dns` commands
+  to run.
+- **On another machine** (a Pi, a router, a container): choose it, enter that machine's address
+  and this panel's address as it reaches it, and pick the tunnel from **Load my tunnels**. This
+  works for tunnels managed in Cloudflare.
+
+Then **Apply**. The card lists what it will add first. Only what the panel made is ever changed
+or removed: your own routes, DNS records and Access applications stay as they are, and a name that
+already points somewhere else is refused rather than taken over. **Remove** takes the panel's
+names off again. **Check from outside** opens each name the way a visitor does and shows the
+tunnel's health.
+
+- **Public access to the admin panel** is on, since the panel asks everyone to sign in. Turn it
+  off to publish only the join pages; the panel is then reached on your own network as before.
+  While it's on, tick **Require two-factor for admins** under Sign-in.
+- **Cloudflare Access in front of the panel** (recommended, optional): visitors must enter a code
+  Cloudflare emails to one of the addresses you list before they even see the sign-in page.
+  The join pages never get it, so give them their own name.
+- The join pages' address and **The proxy's address** above follow by themselves, and Sign in
+  with Discord's panel address becomes the panel's new name (add its redirect in Discord's
+  Developer Portal). Each visitor keeps their own sign-in limit through the tunnel.
+- Windows passkeys belong to the address they were made at: add one again at the new name.
+- **In a cluster only the master is on the internet.** The master serves every server's join
+  page, so only it needs a tunnel; a node's card says so, and a node that runs `cloudflared`
+  itself shows a Needs attention note.
+
 On the right is the selected server. **Start**, **Restart** and **Stop** are always at the top
 (**Stop** is the outlined red one), with six tabs underneath. Admins also get **Files** and, on Fabric, Paper and Bedrock servers,
 **Mods**, **Plugins** or **Add-ons**.

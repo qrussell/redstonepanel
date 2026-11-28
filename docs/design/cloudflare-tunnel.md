@@ -1,6 +1,6 @@
 # Web addresses through Cloudflare Tunnel, set up by the panel
 
-Status: **plan, all three decisions made, waiting for Quentin's go to build** · Target: 1.29 (after 1.28 Sign in with Discord) ·
+Status: **built (Quentin's go 28 Nov 2026), not released**; what changed from this plan is in the roadmap's As built · Target: 1.29 (after 1.28 Sign in with Discord) ·
 Written 27 Nov 2026
 
 Asked for by Quentin on 27 Nov 2026: once `cloudflared` runs on the machine, the panel should set

@@ -626,6 +626,12 @@ def _needs_attention(rep, failed, phantoms):
         if s["problems"]:
             out.append(_attention("warn", f"Players may not be able to connect to {s['name']}: see its Overview.",
                                   server=s["name"]))
+    try:                                        # 1.29: Cloudflare Tunnel
+        from core import cftunnel
+        for text in cftunnel.attention():
+            out.append(_attention("warn", text, where="tunnel"))
+    except Exception:
+        pass
     try:                                        # 1.23.1: the Port check (other programs, clashes)
         from core import portaudit
         for level, text, server in portaudit.attention():

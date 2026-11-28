@@ -254,6 +254,12 @@ def main():
         joinsite.apply(s)
     except Exception as e:
         manager.write_log(f"[JOIN] Couldn't start the join pages: {e}")
+    # 1.29: Cloudflare Tunnel routes follow the panel's ports and HTTPS after a restart
+    try:
+        from core import cftunnel
+        cftunnel.sync_soon()
+    except Exception as e:
+        manager.write_log(f"[TUNNEL] Couldn't check the tunnel's routes: {e}")
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_graceful_shutdown=5, **ssl_args)
 
 

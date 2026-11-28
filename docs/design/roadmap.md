@@ -2519,9 +2519,9 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     Public Key pasted as the client secret. **Tested:** `tests/test_discordwl.py` (34) and a real
     Discord community server (link, approve, whitelist by role, join in game).
 
-### 1.29: web addresses through Cloudflare Tunnel, set up by the panel *(planned, waiting for a go)*
+### 1.29: web addresses through Cloudflare Tunnel, set up by the panel *(built, not released)*
 
-37. **Cloudflare Tunnel hostnames, set up by the panel.** Asked for by Quentin on 27 Nov 2026, to
+38. **Cloudflare Tunnel hostnames, set up by the panel.** Asked for by Quentin on 27 Nov 2026, to
     simplify the many web pages a panel serves. Once cloudflared runs, the admin picks a domain and
     names (`panel.example.org`, `play.example.org`) and the panel keeps the tunnel's rules and the
     DNS records in step: through Cloudflare's API for a tunnel managed in Cloudflare, or its own
@@ -2533,6 +2533,47 @@ for servers and hosts at the same time and draw members first. Tests: `tests/tes
     panel is public by default (password protected) with a switch to turn that off; two-factor for
     admins and Cloudflare Access are recommended. Linux and Windows through `core.platform`. Plan:
     [cloudflare-tunnel.md](cloudflare-tunnel.md). **Size:** about two weeks.
+
+    **As built.** Quentin's go on 28 Nov 2026. `core/cftunnel.py` holds the settings
+    (`data/cloudflare-tunnel.json`, 0600, with the API token, which is never sent back or logged)
+    and does Apply, Remove, the outside check and the visitor's address. A new platform area,
+    `core.platform.tunnel` (Linux: the `cloudflared*` systemd units; Windows: the `Cloudflared`
+    service), finds cloudflared and its command line, restarts it and runs
+    `cloudflared tunnel ingress validate`. From the command line the panel reads the tunnel and
+    account IDs in the tunnel token and drops its secret; `--token-file` and `--config` (or the
+    default file) are read too. A tunnel managed in Cloudflare gets its routes through the API
+    (`cfd_tunnel/{id}/configurations`): the panel's routes first, every other route and setting
+    kept, the catch-all last; someone else's route for the same name is refused unless it already
+    goes to the panel's port (the 1.21.9 copy box made those, so they're taken over). A tunnel
+    managed in a file gets a block between `# BEGIN RedstonePanel` and `# END RedstonePanel` at the
+    top of its `ingress:` list, written by plain text editing (no YAML library), checked by
+    cloudflared on a copy first, then cloudflared is restarted; when it doesn't come back (its
+    `/ready` page, or the service's own state when it has none) the old file goes back. Files laid
+    out unusually (tabs, `url:`, a one-line list) are left alone with the lines shown to paste.
+    DNS names are proxied CNAMEs to `<tunnel>.cfargotunnel.com` with the comment "Made by
+    RedstonePanel"; a record the panel didn't make is never changed or deleted, and without a
+    token the card shows `cloudflared tunnel route dns` commands. **Public access to the admin
+    panel** is on by default with its switch; **Cloudflare Access** (one click, the admin's email
+    addresses, Cloudflare's emailed code) is offered, off by default, and refused when the join
+    pages share the panel's name. After Apply the join pages' address and proxies follow (only
+    what the panel set is undone by Remove), Discord's panel address follows when none was typed,
+    the sign-in limit and activity log name the visitor from `CF-Connecting-IP` only when the
+    request comes from the local cloudflared (or the named machine), trusted-LAN access also
+    refuses `CF-Connecting-IP`, and the routes follow a new join port or HTTPS setting by
+    themselves (and at every start). A node refuses (Quentin: only the master is on the
+    internet), and a node running cloudflared gets a Needs attention note. Tested:
+    `tests/test_cftunnel.py` (43 tests, Cloudflare's API as a stand-in: merging, taking over,
+    refusals, DNS, Access, Remove leaving the admin's routes and records, a token without
+    permissions, the token never in a reply or the log, config.yml edits and roll back, the
+    visitor's address, clusters, Discord) and `packaging/test/test-cloudflare-tunnel.sh` (42
+    checks in a systemd container with Cloudflare's real cloudflared package: the panel finds the
+    service and its file, the real cloudflared checks it and then routes
+    `play.example.org/join/...` to the join port, `panel.example.org` to the panel and the
+    admin's own route as before; a new join port followed; public access off; a failed restart
+    rolled back; per-visitor sign-in limits through the tunnel and a forged header from elsewhere
+    ignored; Remove leaving `config.yml` byte for byte as it was). Not tested yet: Cloudflare's
+    real API and a real tunnel (api.cloudflare.com isn't reachable from the cloud test machine),
+    and cloudflared as a Windows service.
 
 ## Groundwork (do alongside, before promoting)
 

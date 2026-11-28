@@ -379,6 +379,13 @@ def sync_panel_firewall(s=None):
 def panel_url(s, host):
     """The address the panel will be reachable at with settings s, for a browser that used `host`."""
     name = host_only(host) or "localhost"
+    try:                                    # 1.29: opened through Cloudflare Tunnel, which has no port
+        from core import cftunnel
+        public = cftunnel.public_panel_url()
+        if public and urlsplit(public).hostname == name:
+            return public
+    except Exception:
+        pass
     if ":" in name:
         name = f"[{name}]"
     if s["https_mode"] != "off":
@@ -436,7 +443,8 @@ def trusted_network_user(client_ip, headers, method):
     s = load()
     if s["login_mode"] != "trusted_networks" or not client_ip:
         return None
-    if headers.get("x-forwarded-for") or headers.get("forwarded") or headers.get("x-real-ip"):
+    if headers.get("x-forwarded-for") or headers.get("forwarded") or headers.get("x-real-ip") \
+            or headers.get("cf-connecting-ip"):          # 1.29: never through Cloudflare Tunnel either
         return None
     try:
         ip = ipaddress.ip_address(client_ip)

@@ -13,6 +13,7 @@ import core.runtimes as runtimes
 import core.selfupdate as selfupdate
 import core.phantom as phantom
 import core.host as host
+import core.cftunnel as cftunnel
 import urllib.parse
 import html as html_text
 import core.javaservers as javaservers
@@ -143,6 +144,13 @@ CLUSTER_USER_API = ("/api/cluster/overview", "/api/cluster/hosts", "/api/cluster
 STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 # An admin who must set up two-factor (Panel Settings > Sign-in) can reach only these until they do
 TWO_FACTOR_SETUP_API = ("/api/auth/me", "/api/auth/2fa", "/api/auth/logout")
+
+def _visitor_ip(request: Request, default=None):
+    """Who is asking: the connection's address, or through Cloudflare Tunnel (1.29) the visitor's
+    own address that the local cloudflared passes on (cftunnel.visitor_ip). For sign-in limits and
+    the activity log; trusted-LAN access always goes by the connection itself."""
+    peer = request.client.host if request.client else None
+    return cftunnel.visitor_ip(peer, request.headers) if peer else default
 
 @app.middleware("http")
 async def access_control(request: Request, call_next):
@@ -340,7 +348,7 @@ def _set_session_cookie(request: Request, response: Response, identity, remember
         # Remember this device (1.24): a 30-day sign-in that Forget (or signing out here) ends
         device = devices.add(twofactor.account_key(identity["src"], identity["u"]),
                              devices.describe(request.headers.get("user-agent")),
-                             request.client.host if request.client else "")
+                             _visitor_ip(request, ""))
     token = auth.make_session_token(identity, device)
     response.set_cookie(auth.SESSION_COOKIE, token, max_age=auth.session_seconds(token),
                         httponly=True, samesite="strict", secure=request.url.scheme == "https", path="/")
@@ -351,7 +359,7 @@ def _remembered(remember):
 
 @app.post("/api/auth/login")
 def login_api(req: LoginRequest, request: Request, response: Response):
-    ip = request.client.host if request.client else "unknown"
+    ip = _visitor_ip(request, "unknown")
     try:
         identity = auth.login(req.username, req.password, ip)
     except auth.AuthError as e:
@@ -371,7 +379,7 @@ class CodeRequest(BaseModel):
 
 @app.post("/api/auth/login/code")
 def login_code_api(req: CodeRequest, request: Request, response: Response):
-    ip = request.client.host if request.client else "unknown"
+    ip = _visitor_ip(request, "unknown")
     ticket = request.cookies.get(auth.PENDING_COOKIE)
     who = (auth.read_pending_token(ticket) or {}).get("u", "?")
     try:
@@ -407,7 +415,7 @@ def _tf_account(request: Request):
 
 def _tf_check_code(user, key, code, request: Request):
     """A current code (or recovery code) before changing two-factor; wrong ones count as failed sign-ins."""
-    ip = request.client.host if request.client else "unknown"
+    ip = _visitor_ip(request, "unknown")
     keys = (f"user:{user['username'].lower()}", f"ip:{ip}")
     if auth._throttled(keys):
         raise HTTPException(status_code=429, detail="Too many wrong codes. Try again in a few minutes.")
@@ -477,7 +485,7 @@ class FirstSignInRequest(BaseModel):
     password: Optional[str] = None
 
 def _first_throttle(request: Request):
-    ip = request.client.host if request.client else "unknown"
+    ip = _visitor_ip(request, "unknown")
     keys = (f"ip:{ip}",)
     if auth._throttled(keys):
         raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.")
@@ -536,7 +544,7 @@ def passkeys_available_api(request: Request):
 @app.post("/api/auth/passkey/options")
 def passkey_login_options_api(request: Request):
     rp_id, origin = _pk_site(request)
-    ip = request.client.host if request.client else "unknown"
+    ip = _visitor_ip(request, "unknown")
     if auth._throttled((f"ip:{ip}",)):
         raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.")
     try:
@@ -555,7 +563,7 @@ class PasskeyLoginRequest(BaseModel):
 @app.post("/api/auth/passkey/login")
 def passkey_login_api(req: PasskeyLoginRequest, request: Request, response: Response):
     rp_id, origin = _pk_site(request)
-    ip = request.client.host if request.client else "unknown"
+    ip = _visitor_ip(request, "unknown")
     keys = (f"ip:{ip}",)
     if auth._throttled(keys):
         raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.")
@@ -628,7 +636,7 @@ def passkey_add_options_api(req: PasskeyAddOptionsRequest, request: Request):
     """Adding a passkey asks for the account's password again: a passkey outlives the session."""
     rp_id, origin = _pk_site(request)
     user, key = _pk_account(request)
-    ip = request.client.host if request.client else "unknown"
+    ip = _visitor_ip(request, "unknown")
     keys = (f"user:{user['username'].lower()}", f"ip:{ip}")
     if auth._throttled(keys):
         raise HTTPException(status_code=429, detail="Too many wrong passwords. Try again in a few minutes.")
@@ -704,7 +712,7 @@ def discord_start_api(request: Request):
         # Discord sends people back to the panel's address set under Panel Settings: start there,
         # so the state cookie is on the same site as the way back
         return RedirectResponse(cfg["panel_url"] + "/api/auth/discord/start", status_code=303)
-    ip = request.client.host if request.client else "unknown"
+    ip = _visitor_ip(request, "unknown")
     if auth.throttled((f"ip:{ip}",)):
         return _bounce(_discord_back("login", "Too many failed sign-in attempts. Try again in a few minutes."))
     try:
@@ -718,7 +726,7 @@ def discord_start_api(request: Request):
 
 @app.get("/api/auth/discord/callback")
 def discord_callback_api(request: Request, state: str = "", code: str = "", error: str = ""):
-    ip = request.client.host if request.client else "unknown"
+    ip = _visitor_ip(request, "unknown")
     cookie = request.cookies.get(DISCORD_STATE_COOKIE)
     where = "login"
     try:
@@ -892,6 +900,51 @@ def set_sftp_api(req: SftpSettings, request: Request):
     sftp.apply(s, old, actor=request.state.user["username"])
     return _sftp_view(request)
 
+# --- 1.29: Panel Settings -> Cloudflare Tunnel (admins only: everything under /api/settings) ---
+def _tunnel_call(fn, *args, **kw):
+    try:
+        return fn(*args, **kw)
+    except cftunnel.TunnelError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/settings/tunnel")
+def tunnel_api():
+    return cftunnel.public()
+
+@app.put("/api/settings/tunnel")
+def set_tunnel_api(request: Request, body: dict = Body(...)):
+    keys = ("token", "forget_token", "zone_id", "panel_host", "join_host", "panel_public", "where",
+            "cloudflared_ip", "origin_host", "tunnel_id", "access", "access_emails")
+    new = {k: body[k] for k in keys if k in body}
+    if "access" in new:
+        new["access"] = bool(new["access"])
+    actor = request.state.user["username"]
+    out = _tunnel_call(cftunnel.save_settings, {k: v for k, v in new.items() if k != "access"}, actor)
+    if "access" in new:
+        out = _tunnel_call(cftunnel.set_access, new["access"], actor)
+    return out
+
+@app.post("/api/settings/tunnel/detect")
+def tunnel_detect_api():
+    cftunnel.detect(fresh=True)
+    return cftunnel.public()
+
+@app.get("/api/settings/tunnel/tunnels")
+def tunnel_list_api():
+    return {"tunnels": _tunnel_call(cftunnel.list_tunnels)}
+
+@app.post("/api/settings/tunnel/apply")
+def tunnel_apply_api(request: Request):
+    return _tunnel_call(cftunnel.apply, request.state.user["username"])
+
+@app.post("/api/settings/tunnel/remove")
+def tunnel_remove_api(request: Request):
+    return _tunnel_call(cftunnel.remove, request.state.user["username"])
+
+@app.post("/api/settings/tunnel/check")
+def tunnel_check_api(request: Request):
+    return _tunnel_call(cftunnel.check, request.state.user["username"])
+
 # --- Panel Settings: where new game servers are kept (1.21.1; admins only) ---
 def _folder_view(folder, current):
     servers = sum(1 for n in (os.listdir(folder) if os.path.isdir(folder) else [])
@@ -955,7 +1008,7 @@ def _settings_view(request: Request):
         "runtime": dict(panel_settings.RUNTIME),
         "managed_restart": panel_settings.RUNTIME.get("scheme") is not None,
         "self_signed": tls.cert_info(tls.CA_CRT) if os.path.exists(tls.META) else None,
-        "your_ip": request.client.host if request.client else None,
+        "your_ip": _visitor_ip(request),
     }
 
 @app.get("/api/settings")
@@ -2742,7 +2795,7 @@ _SIGN_IN_PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="
 def master_sign_in_api(request: Request, ticket: str = ""):
     """Node side: the link the master gave its admin's browser. Signs in and goes to the dashboard
     (through a page of its own, so the strict cookie is sent from then on)."""
-    ip = request.client.host if request.client else "unknown"
+    ip = _visitor_ip(request, "unknown")
     keys = (f"ip:{ip}",)
     if auth._throttled(keys):
         return HTMLResponse(_SIGN_IN_PAGE.format(to="/static/login.html", text="Too many failed sign-ins. Try again "
@@ -2977,6 +3030,7 @@ def set_join_settings_api(req: JoinSettings, request: Request):
         raise HTTPException(status_code=400, detail=str(e))
     panel_settings.save(s)
     joinsite.apply(s, old, actor=request.state.user["username"])
+    cftunnel.sync_soon(request.state.user["username"])     # 1.29: the tunnel's join route follows
     return _join_view(request)
 
 @app.put("/api/join-pages/page")

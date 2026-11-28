@@ -51,6 +51,10 @@ def reset():
     state.docker_ps = ""                # what `docker ps --format "{{.Names}}\t{{.Ports}}"` prints
     state.unbindable = set()            # {(port, proto)} a bind is refused on (WSL mirrored, Docker iptables)
     state.boot_time = 1000000000.0      # when the machine started (Unix time), for system.boot_time()
+    state.tunnel_services = []          # [{"service", "running", "argv"}] cloudflared services (1.29)
+    state.tunnel_validate = True        # what `cloudflared tunnel ingress validate` says (or fn(config))
+    state.tunnel_restart_ok = True      # cloudflared comes back after a restart
+    state.tunnel_configs = []           # the files cloudflared reads when its service names none
     return state
 
 

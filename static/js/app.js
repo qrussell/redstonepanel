@@ -5978,6 +5978,168 @@ const ServerApp = {
 		this.loadSftpSettings(d.enabled ? `SFTP is on, port ${d.port}.` : 'SFTP is off.', true);
 	},
 
+	// --- 1.29: Panel Settings → Cloudflare Tunnel. With cloudflared running, the panel puts its own
+	// names (the panel, the join pages) on the tunnel and in DNS, and keeps them in step.
+	async loadTunnelSettings(message, ok, extra) {
+		const box = document.getElementById('set-tunnel');
+		if (!box) return;
+		const res = await fetch('/api/settings/tunnel');
+		if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = this.tunnelInfo = await res.json(), esc = t => this.escapeHtml(String(t ?? ''));
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-sm text-gray-900 dark:text-white';
+		const grey = 'px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-sm text-gray-900 dark:text-white disabled:opacity-50';
+		const main = 'px-4 py-2 bg-theme hover-bg-theme rounded text-white font-bold text-sm disabled:opacity-50';
+		if (d.cluster_role === 'node') {
+			box.innerHTML = `<p class="${note}">This panel is a cluster node. In a cluster only the master is reachable from the internet: set up Cloudflare Tunnel on the master. It serves the join pages of every server, this node's too.${d.found.running ? ' <b class="text-yellow-700 dark:text-yellow-300">cloudflared is running on this node</b>, so it may be reachable from the internet by itself.' : ''}</p>`;
+			return;
+		}
+		const f = d.found || {};
+		const kind = d.where === 'elsewhere' ? 'on another machine (a tunnel managed in Cloudflare)'
+			: !f.installed ? null
+			: f.mode === 'remote' ? `on this machine, tunnel managed in Cloudflare${f.tunnel_id ? ` (<span class="font-mono">${esc(f.tunnel_id.slice(0, 8))}…</span>)` : ''}`
+			: f.mode === 'local' ? `on this machine, tunnel managed in the file <span class="font-mono break-all">${esc(f.config)}</span>`
+			: 'on this machine, but its tunnel wasn\'t found (no token and no config file)';
+		const found = kind
+			? `<p class="text-sm mb-2">${f.running || d.where === 'elsewhere' ? '<span class="text-green-600 dark:text-green-400 font-bold">cloudflared</span>' : '<span class="text-red-500 font-bold">cloudflared isn\'t running</span>'} ${kind}. <button onclick="ServerApp.tunnelDetect(this)" class="underline text-theme">Look again</button></p>`
+			: `<p class="text-sm text-yellow-700 dark:text-yellow-300 mb-2">cloudflared isn't installed on this machine. ${esc(d.install_hint)} <button onclick="ServerApp.tunnelDetect(this)" class="underline text-theme">Look again</button></p>`;
+		const zones = d.zones.map(z => `<option value="${esc(z.id)}" ${z.id === d.zone_id ? 'selected' : ''}>${esc(z.name)}</option>`).join('');
+		const applied = d.applied;
+		const links = applied ? (applied.rules || []).map(r => {
+			const url = `https://${r.hostname}${r.path ? '/join' : ''}`;
+			return `<a href="${esc(url)}" target="_blank" rel="noopener" class="underline text-theme font-mono">${esc(url)} ↗</a>`;
+		}).join(' · ') : '';
+		const pv = d.preview || {};
+		const last = d.last || {};
+		const signInNote = !(this.settingsData || {}).require_2fa_admins && d.panel_public && d.panel_host
+			? `<p class="text-xs text-yellow-700 dark:text-yellow-300 mt-1">Recommended while the panel is public: tick <b>Require two-factor for admins</b> under Sign-in below.</p>` : '';
+		box.innerHTML = `
+			<p class="${note} mb-2">Reach the panel and the join pages from anywhere at your own names, like <span class="font-mono">panel.example.org</span> and <span class="font-mono">play.example.org</span>, with a real certificate and nothing to forward on the router for them. The panel sets up the tunnel's routes and the DNS names itself, and keeps them in step when its ports or HTTPS change. Game ports still need forwarding (Port forwarding): a tunnel carries web pages only.</p>
+			${found}
+			<div class="flex flex-wrap gap-4 mb-2 text-sm">
+				<label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="tunnel-where" value="here" ${d.where === 'here' ? 'checked' : ''} onchange="ServerApp.tunnelWhere()"> cloudflared runs on this machine</label>
+				<label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="tunnel-where" value="elsewhere" ${d.where === 'elsewhere' ? 'checked' : ''} onchange="ServerApp.tunnelWhere()"> on another machine</label>
+			</div>
+			<div id="tunnel-elsewhere" class="${d.where === 'elsewhere' ? '' : 'hidden'} grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+				<label class="${note}">That machine's address<input id="tunnel-cf-ip" value="${esc(d.cloudflared_ip)}" placeholder="10.0.0.2" class="${field} mt-1 font-mono"></label>
+				<label class="${note}">This panel's address, as that machine reaches it<input id="tunnel-origin" value="${esc(d.origin_host)}" placeholder="this machine's address" class="${field} mt-1 font-mono"></label>
+				<label class="${note} sm:col-span-2">Tunnel<span class="flex gap-2 mt-1"><select id="tunnel-id" class="${field}"><option value="${esc(d.tunnel_id)}">${d.tunnel_id ? esc(d.tunnel_id) : 'Choose after saving the token'}</option></select><button onclick="ServerApp.tunnelList(this)" class="${grey} whitespace-nowrap">Load my tunnels</button></span></label>
+			</div>
+			<label class="${note} block mb-1">Cloudflare API token ${d.has_token ? `(saved, ends <span class="font-mono">${esc(d.token_hint)}</span>)` : ''}
+				<input id="tunnel-token" type="password" autocomplete="off" placeholder="${d.has_token ? 'Paste a new token to replace it' : 'Paste the API token'}" class="${field} mt-1 font-mono"></label>
+			<p class="${note} mb-2">Make it at <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener" class="underline text-theme">Cloudflare → My Profile → API Tokens ↗</a> → Create Token → Custom token, with <b>Account · Cloudflare Tunnel · Edit</b>, <b>Zone · DNS · Edit</b> (for your domain) and, for Access, <b>Account · Access: Apps and Policies · Edit</b>. ${f.mode === 'local' && d.where === 'here' ? 'For a tunnel managed in a file the token is optional: it only adds the DNS names.' : ''} Kept on this machine, never shown again.${d.has_token ? ` <button onclick="ServerApp.saveTunnel(this, { forget_token: true })" class="underline text-red-600">Forget the token</button>` : ''}</p>
+			<label class="${note} block mb-2">Domain<select id="tunnel-zone" class="${field} mt-1" ${d.zones.length ? '' : 'disabled'}>${d.zones.length ? `<option value="">Choose…</option>${zones}` : '<option>Save a token first</option>'}</select></label>
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+				<label class="${note}">Panel's name<input id="tunnel-panel" value="${esc(d.panel_host)}" placeholder="panel${d.zone ? '.' + esc(d.zone) : '.example.org'}" class="${field} mt-1 font-mono"></label>
+				<label class="${note}">Join pages' name<input id="tunnel-join" value="${esc(d.join_host)}" placeholder="play${d.zone ? '.' + esc(d.zone) : '.example.org'}" class="${field} mt-1 font-mono"></label>
+			</div>
+			<label class="flex items-start gap-2 mb-1 text-sm cursor-pointer"><input type="checkbox" id="tunnel-panel-public" ${d.panel_public ? 'checked' : ''} class="mt-1"><span><b class="text-gray-900 dark:text-white">Public access to the admin panel</b><br><span class="${note}">On: the panel opens at its name from anywhere, behind its sign-in. Off: only the join pages are public, and the panel is reached on your own network as today.</span></span></label>
+			${signInNote}
+			<label class="flex items-start gap-2 mt-2 mb-1 text-sm cursor-pointer"><input type="checkbox" id="tunnel-access" ${d.access ? 'checked' : ''} class="mt-1"><span><b class="text-gray-900 dark:text-white">Cloudflare Access in front of the panel</b> (recommended, optional)<br><span class="${note}">Before even seeing the panel's sign-in page, visitors enter a code Cloudflare emails them. Only these addresses get one:</span></span></label>
+			<textarea id="tunnel-emails" rows="2" placeholder="you@example.org" class="${field} font-mono mb-2">${esc((d.access_emails || []).join('\n'))}</textarea>
+			${d.system === 'windows' ? `<p class="${note} mb-2">Passkeys belong to the address they were made at: add one again after signing in at the panel's new name.</p>` : ''}
+			<div class="flex flex-wrap gap-2 mb-2">
+				<button onclick="ServerApp.saveTunnel(this)" class="${grey}">Save</button>
+				<button onclick="ServerApp.applyTunnel(this)" class="${main}">${applied ? 'Apply changes' : 'Apply'}</button>
+				${applied ? `<button onclick="ServerApp.checkTunnel(this)" class="${grey}">Check from outside</button>
+				<button onclick="ServerApp.removeTunnel(this)" class="${grey}">Remove</button>` : ''}
+			</div>
+			<p id="tunnel-msg" class="${message ? '' : 'hidden'} text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-1 whitespace-pre-line">${esc(message || '')}</p>
+			${extra || ''}
+			${applied ? `<p class="text-sm mb-1">In place since ${esc(new Date(applied.at * 1000).toLocaleString())}: ${links || 'no names'}</p>` : ''}
+			${last.ok === false ? `<p class="text-sm text-red-500 mb-1">The last update failed: ${esc(last.error)}</p>` : ''}
+			${(last.commands || []).length ? `<p class="${note} mt-1">Without a token, add the DNS names yourself on the machine cloudflared runs on:</p><pre class="mt-1 p-2 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-mono whitespace-pre overflow-x-auto">${esc(last.commands.join('\n'))}</pre>` : ''}
+			${pv.error ? `<p class="${note} mt-1">${esc(pv.error)}</p>` : (pv.changes || []).length ? `<p class="${note} mt-2">${applied ? 'With these settings the tunnel has' : 'Apply will add'}:</p><ul class="${note} list-disc ml-5">${pv.changes.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+			${pv.block && !d.has_token && f.mode !== 'local' ? `<p class="${note} mt-2">Or paste these lines into cloudflared's config.yml yourself, at the top of its ingress list:</p><pre class="mt-1 p-2 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-mono whitespace-pre overflow-x-auto">${esc(pv.block)}</pre>` : ''}`;
+	},
+
+	tunnelWhere() {
+		const v = (document.querySelector('input[name="tunnel-where"]:checked') || {}).value;
+		document.getElementById('tunnel-elsewhere').classList.toggle('hidden', v !== 'elsewhere');
+	},
+
+	tunnelForm() {
+		const val = id => (document.getElementById(id) || {}).value || '';
+		const body = {
+			where: (document.querySelector('input[name="tunnel-where"]:checked') || {}).value || 'here',
+			panel_host: val('tunnel-panel').trim(), join_host: val('tunnel-join').trim(),
+			panel_public: document.getElementById('tunnel-panel-public').checked,
+			access: document.getElementById('tunnel-access').checked,
+			access_emails: val('tunnel-emails'),
+		};
+		if (body.where === 'elsewhere') Object.assign(body, { cloudflared_ip: val('tunnel-cf-ip').trim(), origin_host: val('tunnel-origin').trim(), tunnel_id: val('tunnel-id') });
+		const token = val('tunnel-token').trim();
+		if (token) body.token = token;
+		const zone = document.getElementById('tunnel-zone');
+		if (zone && !zone.disabled) body.zone_id = zone.value;
+		return body;
+	},
+
+	async saveTunnel(button, only) {
+		button.disabled = true;
+		let body = only || this.tunnelForm();
+		if (!only && body.token && !body.zone_id) delete body.zone_id;
+		const res = await fetch('/api/settings/tunnel', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+		if (!res.ok) { const msg = await this.apiError(res); button.disabled = false; this.tunnelMessage(msg, false); return false; }
+		if (!only || only.forget_token) this.loadTunnelSettings(only ? 'The token was forgotten.' : 'Saved.', true);
+		return true;
+	},
+
+	tunnelMessage(text, ok) {
+		const el = document.getElementById('tunnel-msg');
+		if (!el) return;
+		el.textContent = text;
+		el.className = `text-sm ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'} mb-1 whitespace-pre-line`;
+	},
+
+	async applyTunnel(button) {
+		button.disabled = true;
+		const res0 = await fetch('/api/settings/tunnel', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.tunnelForm()) });
+		if (!res0.ok) { button.disabled = false; return this.tunnelMessage(await this.apiError(res0), false); }
+		this.tunnelMessage('Applying… (a tunnel managed in a file restarts cloudflared, a few seconds)', true);
+		const res = await fetch('/api/settings/tunnel/apply', { method: 'POST' });
+		if (!res.ok) return this.loadTunnelSettings(await this.apiError(res), false);
+		const d = await res.json();
+		this.loadTunnelSettings((d.done || []).join('\n') || 'Done.', true);
+	},
+
+	async removeTunnel(button) {
+		if (!confirm('Take the panel\'s names off the tunnel and out of DNS? Your own routes and records stay as they are.')) return;
+		button.disabled = true;
+		const res = await fetch('/api/settings/tunnel/remove', { method: 'POST' });
+		if (!res.ok) return this.loadTunnelSettings(await this.apiError(res), false);
+		const d = await res.json();
+		this.loadTunnelSettings((d.done || []).join('\n') || 'Removed.', true);
+	},
+
+	async checkTunnel(button) {
+		button.disabled = true;
+		this.tunnelMessage('Checking each name from outside…', true);
+		const res = await fetch('/api/settings/tunnel/check', { method: 'POST' });
+		button.disabled = false;
+		if (!res.ok) return this.tunnelMessage(await this.apiError(res), false);
+		const d = await res.json(), esc = t => this.escapeHtml(String(t ?? ''));
+		const rows = (d.names || []).map(n => `<li class="${n.ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}">${n.ok ? '✓' : '✗'} ${esc(n.name)}: ${esc(n.text)}</li>`).join('');
+		const t = d.tunnel ? `<li>Tunnel: ${esc(d.tunnel.status)}${d.tunnel.connections != null ? `, ${d.tunnel.connections} connection${d.tunnel.connections === 1 ? '' : 's'} to Cloudflare` : ''}${d.tunnel.error ? ` (${esc(d.tunnel.error)})` : ''}</li>` : '';
+		this.loadTunnelSettings('', true, `<ul class="text-sm mb-2">${rows}${t}</ul>`);
+	},
+
+	async tunnelDetect(button) {
+		button.disabled = true;
+		await fetch('/api/settings/tunnel/detect', { method: 'POST' });
+		this.loadTunnelSettings();
+	},
+
+	async tunnelList(button) {
+		button.disabled = true;
+		const res = await fetch('/api/settings/tunnel/tunnels');
+		button.disabled = false;
+		if (!res.ok) return this.tunnelMessage(await this.apiError(res), false);
+		const d = await res.json(), esc = t => this.escapeHtml(String(t ?? ''));
+		const sel = document.getElementById('tunnel-id'), cur = (this.tunnelInfo || {}).tunnel_id;
+		sel.innerHTML = '<option value="">Choose…</option>' + d.tunnels.map(t => `<option value="${esc(t.id)}" ${t.id === cur ? 'selected' : ''}>${esc(t.name)} (${esc(t.status)})</option>`).join('');
+	},
+
 	// --- 1.21.10: Panel Settings → Terminal (its own switch; saving never restarts the panel) ---
 	async loadTerminalSettings(message, ok) {
 		const box = document.getElementById('set-terminal');
@@ -6144,6 +6306,9 @@ const ServerApp = {
 			<h4 id="set-section-discord-whitelist" class="font-bold text-gray-900 dark:text-white mb-2">Whitelist by Discord</h4>
 			<div id="set-discord-whitelist" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
+			<h4 id="set-section-tunnel" class="font-bold text-gray-900 dark:text-white mb-2">Cloudflare Tunnel</h4>
+			<div id="set-tunnel" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+
 			<div id="set-terminal-wrap" class="hidden">
 			<h4 id="set-section-terminal" class="font-bold text-gray-900 dark:text-white mb-2">Terminal</h4>
 			<div id="set-terminal" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
@@ -6181,7 +6346,7 @@ const ServerApp = {
 				${ss ? `CA certificate: expires ${esc(ss.expires || '?')} · SHA-256 <span class="font-mono break-all">${esc(ss.sha256 || '?')}</span> · <a href="/api/settings/ca.crt" class="underline text-theme">Download to import on your devices</a>`
 				     : 'A certificate is created automatically when you save.'}
 			</div>
-			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">Publishing the panel on the internet? Put a reverse proxy (e.g. Caddy or nginx with a real domain) in front of it instead of forwarding the panel's port directly.</p>
+			<p class="text-xs text-gray-500 dark:text-gray-400 mb-6">Publishing the panel on the internet? Use <button onclick="document.getElementById('set-section-tunnel').scrollIntoView({ block: 'start' })" class="underline text-theme">Cloudflare Tunnel</button> above, or put a reverse proxy (e.g. Caddy or nginx with a real domain) in front of it, instead of forwarding the panel's port directly.</p>
 
 			<h4 class="font-bold text-gray-900 dark:text-white mb-2">Sign-in</h4>
 			<div class="space-y-2 mb-3">
@@ -6219,6 +6384,7 @@ const ServerApp = {
 		this.loadApiTokens();
 		this.loadDiscordSettings().then(() => { this.loadDiscordSignin(); this.loadDiscordWhitelist(); });   // both use the bot's Discord servers
 		this.loadServersFolder();
+		this.loadTunnelSettings();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
 	},
@@ -7212,7 +7378,8 @@ const ServerApp = {
 					const tab = a.where === 'backups' ? 'backups' : a.where === 'access' ? 'access' : '';
 					const link = (a.server ? ` <button onclick="ServerApp.openServerByName(${this.jsArg(a.server)}, ${this.jsArg(tab)})" class="underline text-theme whitespace-nowrap">Open ${esc(a.server)}</button>`
 						: a.where === 'update' && this.isAdmin() ? ` <button onclick="ServerApp.startPanelUpdate()" class="underline text-theme whitespace-nowrap">Update now</button>` : '')
-						+ (a.where === 'ports' && this.isAdmin() ? ` <button onclick="ServerApp.openPorts()" class="underline text-theme whitespace-nowrap">Port check</button>` : '');
+						+ (a.where === 'ports' && this.isAdmin() ? ` <button onclick="ServerApp.openPorts()" class="underline text-theme whitespace-nowrap">Port check</button>` : '')
+						+ (a.where === 'tunnel' && this.isAdmin() ? ` <button onclick="ServerApp.openPanelSettings('tunnel')" class="underline text-theme whitespace-nowrap">Cloudflare Tunnel</button>` : '');
 					return `<div class="text-sm p-2 rounded border ${tone[a.level] || tone.warn} text-gray-900 dark:text-gray-100">${icon[a.level] || '⚠️'} ${esc(a.text)}${link}</div>`;
 				}).join('')}</div>
 			</section>` : `

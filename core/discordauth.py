@@ -203,6 +203,27 @@ def save_settings(new, actor="?"):
     return public()
 
 
+def adopt_panel_url(new_url, old_url, actor="the panel"):
+    """1.29: the panel's public name from Cloudflare Tunnel becomes Discord's panel address when
+    none was typed, or when the one there was the tunnel's own earlier name. Returns True if changed."""
+    with _lock:
+        cfg = load()
+        if cfg["panel_url"] and cfg["panel_url"] != old_url:
+            return False
+        new_url = clean_base(new_url, "panel address") if new_url else ""
+        if cfg["panel_url"] == new_url:
+            return False
+        if not new_url and cfg["enabled"]:
+            return False                       # keep the old name rather than turn Discord sign-in off
+        cfg["panel_url"] = new_url
+        _save(cfg)
+    _member_cache.clear()
+    _log(f"[DISCORD] The panel address for Sign in with Discord is now {new_url or 'not set'} (Cloudflare Tunnel, "
+         f"{actor}). Add {new_url + PANEL_CALLBACK if new_url else 'the new address'} to the redirects in Discord's "
+         "Developer Portal.")
+    return True
+
+
 def client_id(cfg=None):
     """The application's client ID: typed in, or the 1.27 bot's own application."""
     cfg = cfg or load()
