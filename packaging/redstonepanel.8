@@ -246,7 +246,7 @@ warning time before the restart time shown in the panel.
 Draw the world map of a vanilla or Bedrock server (World & Maps \(-> Map). It uses the BlueMap
 command-line renderer, and for Bedrock first converts a copy of the world with Chunker; both are
 downloaded once from GitHub and checked by SHA-256. It runs at the lowest CPU and disk priority,
-as the game account, and waits for a running backup of the same server. Without
+as the game account, with Java 25 or newer, and waits for a running backup of the same server. Without
 \fB\-\-now\fR it does nothing when the world hasn't changed since the last drawing. Each
 server's map timer, \fBredstonepanel-map@\fINAME\fB.timer\fR, runs this command; the log is in
 \fI/var/lib/redstonepanel/map-draw/\fR.

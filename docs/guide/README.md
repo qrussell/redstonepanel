@@ -1766,8 +1766,10 @@ now** (**Map settings** has the time and which worlds to draw: Overworld, Nether
 first drawing of a big world can take an hour or more; later ones only redraw what changed,
 and nothing is drawn when nobody played. It runs at the lowest priority, so players don't
 notice. For Bedrock, the panel first converts a copy of the world with Chunker (it needs about
-three times the world's size in free disk space). Drawing needs Java 21 or newer, which the
-panel installs for Java servers anyway. **Output** shows the drawing's log.
+three times the world's size in free disk space); Bedrock maps are drawn evenly lit, without
+night-time shadows, because converted worlds carry no light. Drawing needs Java 25 or newer
+(for BlueMap); if the machine doesn't have it, the card offers **Install Java 25**. A world
+nobody has explored yet has nothing to draw: the map fills in as players walk around. **Output** shows the drawing's log.
 
 **Who can see it.** The map opens at the panel machine's join page address (port 8444 by
 default, the same as [join pages](#join-pages)), never at the panel's own address, so a map's

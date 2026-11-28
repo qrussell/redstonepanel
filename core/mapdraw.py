@@ -15,7 +15,12 @@ How a drawing runs:
 - The tools are pinned releases, downloaded from GitHub over HTTPS and checked against the SHA-256
   below, into MAPTOOLS_DIR (root-owned, readable by the game account).
 - They run as the game account (Linux) or an account of their own (Windows), at the lowest
-  priority, with the server's Java when it is 21 or newer, else the newest Java that is.
+  priority, with the server's Java when it is new enough for BlueMap (25), else the newest Java
+  that is.
+- Bedrock: a copy of the world (made like a backup's) is converted by Chunker, which writes no
+  light data, so those maps are drawn evenly lit (BEDROCK_MAP_EXTRA).
+- A world nobody has walked around in has no finished chunks, and BlueMap draws nothing from it
+  without complaint; the status says so (hires_tiles).
 - A drawing is skipped when the world hasn't changed since the last one, and waits for a backup,
   restore, move or type change of the same server (the backup lock).
 - Everything is in DRAWN_DIR in the server folder (left out of backups, rebuilt if lost); the
@@ -46,14 +51,21 @@ CONVERT_TIMEOUT = 6 * 3600
 SETUP_TIMEOUT = 600
 TAIL = 40
 
-# Pinned releases (checked on Superman, 28 Nov 2026). "args": the command line after the jar.
-BLUEMAP = {"version": "5.15", "file": "bluemap-5.15-cli.jar",
-           "url": "https://github.com/BlueMap-Minecraft/BlueMap/releases/download/v5.15/bluemap-5.15-cli.jar",
-           "sha256": ""}
-CHUNKER = {"version": "1.13.0", "file": "chunker-cli-1.13.0.jar",
-           "url": "https://github.com/HiveGamesOSS/Chunker/releases/download/1.13.0/chunker-cli-1.13.0.jar",
-           "sha256": ""}
-CHUNKER_FORMAT = "JAVA_1_21_5"          # the Java world format Chunker writes (BlueMap reads it)
+# Pinned releases, checked on Superman on 28 Nov 2026 (SHA-256 = GitHub's own digest). BlueMap 5.29
+# reads Minecraft 26.x worlds (world/dimensions/minecraft/...) and older ones, and needs Java 25;
+# Chunker needs Java 17 and writes the newest Java world layout, which BlueMap reads.
+BLUEMAP = {"version": "5.29", "file": "bluemap-5.29-cli.jar", "java": 25,
+           "url": "https://github.com/BlueMap-Minecraft/BlueMap/releases/download/v5.29/bluemap-5.29-cli.jar",
+           "sha256": "e830767fa6364b52b9310fb598508ebde7eec5ebe8360a989e240d991af89a3a"}
+CHUNKER = {"version": "1.21.0", "file": "chunker-cli-1.21.0.jar", "java": 17,
+           "url": "https://github.com/HiveGamesOSS/Chunker/releases/download/1.21.0/chunker-cli-1.21.0.jar",
+           "sha256": "63148e587f5ee5a2ca7ebae1079b235c82ae4d1eff8f7a8a8a3398332513dda6"}
+CHUNKER_FORMAT = "JAVA_26_3"            # the Java world format Chunker writes (BlueMap reads it)
+# A converted Bedrock world has no light data: BlueMap would skip it (or draw it black), and its
+# cave removal (which goes by sky light) would cut holes. So: drawn evenly lit, caves kept.
+BEDROCK_MAP_EXTRA = ("ignore-missing-light-data: true\n"
+                     "ambient-light: 1.0\n"
+                     "remove-caves-below-y: -10000\n")
 DIMENSIONS = {"overworld": ("Overworld", "minecraft:overworld", 0),
               "nether": ("Nether", "minecraft:the_nether", 1),
               "end": ("The End", "minecraft:the_end", 2)}
@@ -311,9 +323,10 @@ def _rm(path):
         pass
 
 
-def choose_java(server):
-    """The java for BlueMap and Chunker (both need 21 or newer): the server's own when it is,
+def choose_java(server, need=None):
+    """The java for BlueMap (25 or newer) and Chunker: the server's own when it is new enough,
     else the newest installed one that is."""
+    need = need or BLUEMAP["java"]
     from core import javaservers
     javas = javaservers.installed_javas()
     own = None
@@ -323,11 +336,11 @@ def choose_java(server):
     except Exception:
         own = None
     for major, path in javas.items():
-        if own and os.path.realpath(path) == os.path.realpath(own) and major >= 21:
+        if own and os.path.realpath(path) == os.path.realpath(own) and major >= need:
             return path
-    fits = sorted(m for m in javas if m >= 21)
+    fits = sorted(m for m in javas if m >= need)
     if not fits:
-        raise DrawError("Drawing a map needs Java 21 or newer on this machine. Install it under "
+        raise DrawError(f"Drawing a map needs Java {need} or newer on this machine. Install it under "
                         "Panel Settings, Java, then press Draw now.")
     return javas[fits[-1]]
 
@@ -372,18 +385,19 @@ def _read_text(path):
         return None
 
 
-def map_config(world_dir, world, minecraft_layout=True):
-    """One map's .conf for BlueMap: the world folder and its dimension."""
+def map_config(world_dir, world, converted=False):
+    """One map's .conf for BlueMap: the world folder and its dimension (converted: a Bedrock world
+    Chunker converted, which has no light data)."""
     name, dim, order = DIMENSIONS[world]
     return (f'# Written by RedstonePanel (1.30). The Map tab sets what is drawn.\n'
             f'world: "{_fwd(world_dir)}"\n'
             f'dimension: "{dim}"\n'
             f'name: "{name}"\n'
             f'sorting: {order}\n'
-            f'storage: "file"\n')
+            f'storage: "file"\n' + (BEDROCK_MAP_EXTRA if converted else ""))
 
 
-def prepare_config(server, d, world_dirs, java, jar, worlds, run=None):
+def prepare_config(server, d, world_dirs, java, jar, worlds, run=None, converted=False):
     """Makes DRAWN/config: BlueMap's own defaults (it writes them on its first run), with the
     panel's choices on top: textures agreed to, files in DRAWN, no web server, one map per world."""
     base = os.path.join(d, DRAWN)
@@ -423,7 +437,7 @@ def prepare_config(server, d, world_dirs, java, jar, worlds, run=None):
     for w in worlds:
         wd = world_dirs.get(w)
         if wd:
-            _write_text(os.path.join(maps, f"{w}.conf"), map_config(wd, w))
+            _write_text(os.path.join(maps, f"{w}.conf"), map_config(wd, w, converted))
     return conf
 
 
@@ -621,7 +635,7 @@ def _draw(server, d, s, now, run_tool):
             if r.returncode != 0 or not os.path.isfile(os.path.join(converted, "level.dat")):
                 raise DrawError("Chunker couldn't convert the world; see the drawing's output.")
             worlds = {"overworld": converted, "nether": converted, "end": converted}
-            conf = prepare_config(server, d, worlds, java, jar, s["worlds"], run=run_tool)
+            conf = prepare_config(server, d, worlds, java, jar, s["worlds"], run=run_tool, converted=True)
             r = run_tool(server, [java, _heap(), "-jar", jar, "-c", conf, "-r", "-g"],
                          cwd=base, writable=(base,), readable=readable, timeout=DRAW_TIMEOUT)
         finally:
@@ -645,7 +659,24 @@ def _draw(server, d, s, now, run_tool):
         raise DrawError("BlueMap stopped with an error; see the drawing's output.")
     if not os.path.isfile(os.path.join(base, "web", "index.html")):
         raise DrawError("BlueMap finished but wrote no map; see the drawing's output.")
-    return {"stamp": stamp}
+    return {"stamp": stamp, "tiles": hires_tiles(base)}
+
+
+def hires_tiles(base, limit=1000):
+    """How many detailed tiles the drawing has (up to limit). BlueMap finishes happily with none
+    when the world has no fully made chunks yet, which is a world nobody has walked around in."""
+    n = 0
+    maps = os.path.join(base, "web", "maps")
+    try:
+        names = os.listdir(maps)
+    except OSError:
+        return 0
+    for m in names:
+        for root, dirs, files in os.walk(os.path.join(maps, m, "tiles", "0")):
+            n += sum(1 for f in files if f.startswith("z"))
+            if n >= limit:
+                return n
+    return n
 
 
 def describe(st):
@@ -655,7 +686,10 @@ def describe(st):
     if st.get("state") == "failed":
         return f"The last drawing failed: {st.get('error')}"
     if st.get("finished"):
-        return "Drawn " + time.strftime("%Y-%m-%d %H:%M", time.localtime(st["finished"]))
+        when = "Drawn " + time.strftime("%Y-%m-%d %H:%M", time.localtime(st["finished"]))
+        if st.get("tiles") == 0:
+            return when + ", but there's nothing to show yet: the map shows the places players have explored"
+        return when
     return "Not drawn yet"
 
 

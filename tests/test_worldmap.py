@@ -331,9 +331,35 @@ class Drawing(Base):
         text = D._timer_unit("minecraft-java", "03:15")
         self.assertIn("*-*-* 03:15:00", text)
 
+    def test_bedrock_maps_are_lit_evenly(self):
+        self.assertNotIn("ambient-light", D.map_config("/w", "overworld"))
+        conf = D.map_config("/w", "nether", converted=True)
+        self.assertIn('dimension: "minecraft:the_nether"', conf)
+        self.assertIn("ignore-missing-light-data: true", conf)
+        self.assertIn("ambient-light: 1.0", conf)
+
+    def test_an_unexplored_world_says_so(self):
+        base = os.path.join(self.server, W.DRAWN_DIR)
+        self.assertEqual(D.hires_tiles(base), 0)
+        self.assertIn("nothing to show yet", D.describe({"state": "done", "finished": 1, "tiles": 0}))
+        self.put(W.DRAWN_DIR + "/web/maps/overworld/tiles/0/x0/z0.prbm.gz", b"x")
+        self.put(W.DRAWN_DIR + "/web/maps/overworld/tiles/1/x0/z0.png", b"x")
+        self.assertEqual(D.hires_tiles(base), 1)
+
+    def test_java_25_for_bluemap(self):
+        with mock.patch("core.javaservers.installed_javas", lambda: {21: "/j21/bin/java"}), \
+                mock.patch.object(M, "_is_java", lambda s: False):
+            with self.assertRaises(D.DrawError):
+                D.choose_java("minecraft-java")
+        with mock.patch("core.javaservers.installed_javas", lambda: {21: "/j21/bin/java", 25: "/j25/bin/java"}), \
+                mock.patch.object(M, "_is_java", lambda s: False):
+            self.assertEqual(D.choose_java("minecraft-java"), "/j25/bin/java")
+
     def test_pins_are_checked(self):
         for tool in (D.BLUEMAP, D.CHUNKER):
             self.assertTrue(tool["url"].startswith("https://github.com/"), tool)
+            self.assertRegex(tool["sha256"], r"^[0-9a-f]{64}$")
+            self.assertIn(tool["version"], tool["file"])
 
 
 if __name__ == "__main__":

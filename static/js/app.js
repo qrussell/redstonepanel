@@ -5974,6 +5974,7 @@ const ServerApp = {
 		let warn = '';
 		if (d.needs_restart) warn += `<p class="text-sm text-yellow-600 dark:text-yellow-400 mb-2">${esc(m.name)} is installed. Restart the server to start it; the map fills in as it draws.</p>`;
 		if (d.accept_needed && !m.drawn && admin) warn += `<div class="rounded border border-yellow-400 p-3 mb-2"><p class="text-sm mb-2">BlueMap is waiting for permission to download Minecraft's textures, so it isn't drawing yet.</p><button onclick="ServerApp.saveMap({accept_download: true}, this)" class="${grey}">Allow it to download them</button></div>`;
+		if (d.java_needed && m.drawn) warn += `<div class="rounded border border-yellow-400 p-3 mb-2"><p class="text-sm ${admin ? 'mb-2' : ''}">Drawing the map needs Java ${esc(d.java_needed)} or newer on this machine, for BlueMap. ${admin ? 'Install it, then press Draw now.' : 'An admin can install it.'}</p>${admin ? `<button onclick="ServerApp.installMapJava(${Number(d.java_needed)})" class="${grey}">Install Java ${esc(d.java_needed)}</button>` : ''}</div>`;
 		const frame = drawnOnce ? `<div class="relative w-full rounded overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-900" style="height: min(70vh, 720px)"><iframe id="world-map-frame" title="World map" class="w-full h-full" referrerpolicy="same-origin" allow="fullscreen"></iframe></div>` : `<p class="${note}">The first drawing hasn't run yet.</p>`;
 		const worlds = [['overworld', 'Overworld'], ['nether', 'Nether'], ['end', 'The End']];
 		const sched = m.drawn && settings ? `<div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
@@ -6037,6 +6038,10 @@ const ServerApp = {
 		}
 		if (el('map-local')) body.local_only = el('map-local').checked;
 		this.saveMap(body, button);
+	},
+
+	async installMapJava(major) {
+		if (await this.installJava(major, 'BlueMap, which draws the map, needs it.')) this.loadMap();
 	},
 
 	async drawMap(button) {
