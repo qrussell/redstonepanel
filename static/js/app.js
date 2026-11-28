@@ -7564,7 +7564,9 @@ const ServerApp = {
 					<p class="font-bold text-gray-900 dark:text-white truncate"><span class="${n.state === 'ok' ? 'text-green-500' : 'text-yellow-500'}">●</span> ${esc(n.name)}${n.local ? ` <span class="${note} font-normal">(this panel)</span>` : ''}</p>
 					<p class="${note}">${s ? `RedstonePanel ${esc(s.version || '?')} · up ${this.fmtDuration(s.uptime)}` : esc(n.url || '')}</p>
 				</div>
-				${n.local ? '' : `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-xs underline text-theme whitespace-nowrap">Open ↗</a>`}
+				${n.local ? '' : this.canSignInToNode(n)
+					? `<button onclick="ServerApp.openNodeSignedIn(${this.jsArg(n.id)}, this)" title="Opens ${esc(n.name)}'s own panel, signed in as you" class="text-xs underline text-theme whitespace-nowrap">Open ↗</button>`
+					: `<a href="${esc(n.url)}/" target="_blank" rel="noopener" class="text-xs underline text-theme whitespace-nowrap">Open ↗</a>`}
 			</div>`;
 		if (!s) {
 			return `<div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow p-4 text-sm">${head}
