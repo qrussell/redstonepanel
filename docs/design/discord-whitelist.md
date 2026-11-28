@@ -1,7 +1,7 @@
 # Whitelist by Discord role
 
-Status: **built and tested with real Discord (28 Nov 2026)** · Target: **1.28.0**, together with Sign in with Discord (Quentin, 28 Nov 2026; first planned as 1.28.1 right
-after 1.28 · Written 27 Nov 2026
+Status: **built and tested with real Discord (28 Nov 2026)** · Target: **1.28.0**, together with Sign in with Discord (Quentin, 28 Nov 2026; first planned as 1.28.1,
+right after 1.28) · Written 27 Nov 2026
 
 Asked for by Quentin on 27 Nov 2026 during the 1.28 test: a player adds their Minecraft name in
 Discord and is whitelisted. Admins choose **per server** how strict that is, so one community can
