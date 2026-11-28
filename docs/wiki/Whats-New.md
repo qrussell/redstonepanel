@@ -9,6 +9,13 @@ the dashboard.
 
 ---
 
+## 1.28.1: Open dashboard signs in again *(November 2026)*
+
+- **Open dashboard ↗** on the master's Cluster page signs you in to a node again (broken since
+  1.25.0), and the **Open ↗** link on the Dashboard's node cards signs in too. Update the master.
+
+[Release notes](../../release-notes/v1.28.1.md)
+
 ## 1.28.0: Discord for your community *(November 2026)*
 
 - **Sign in with Discord** on the panel: admins and helpers link their own account, and roles in

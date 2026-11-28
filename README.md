@@ -110,7 +110,9 @@ The [user manual](docs/guide/README.md) walks through every feature with screens
 
 ## What's new in 1.28
 
-**Discord for your community.** **Sign in with Discord** lets admins and helpers sign in with their Discord account, and Discord roles give people permissions on chosen servers. Each join page can stay open, ask visitors to sign in, or go by permission: who may see how to join, **Start** and **Stop**. **Whitelist by Discord** puts the Minecraft name players link in your Discord on the whitelist of each server their roles (or a moderator's approval) allow, and takes it off when they lose the role. See the [1.28.0 release notes](release-notes/v1.28.0.md).
+**1.28.1** fixes **Open dashboard** on a cluster master, which asked for a node's password instead of signing you in.
+
+**Discord for your community.** **Sign in with Discord** lets admins and helpers sign in with their Discord account, and Discord roles give people permissions on chosen servers. Each join page can stay open, ask visitors to sign in, or go by permission: who may see how to join, **Start** and **Stop**. **Whitelist by Discord** puts the Minecraft name players link in your Discord on the whitelist of each server their roles (or a moderator's approval) allow, and takes it off when they lose the role. See the [1.28.0](release-notes/v1.28.0.md) and [1.28.1](release-notes/v1.28.1.md) release notes.
 
 ## What's new in 1.27
 

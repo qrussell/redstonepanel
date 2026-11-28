@@ -4,6 +4,12 @@ Every RedstonePanel release, newest first. This file is generated from `debian/c
 `packaging/changelog.py`; edit that instead. The highlights of each release, with how to install
 it, are in `release-notes/` and on the releases page: https://github.com/qrussell/redstonepanel/releases
 
+## 1.28.1 (2026-11-28)
+
+Release notes: release-notes/v1.28.1.md
+
+- Cluster: Open dashboard on the master's Cluster page opened a node's sign-in page instead of signing in, since 1.25.0: the master never passed on that the node allows it. It signs in again, and the Dashboard's Open link on a node's card now signs in too. Only the master needs the update.
+
 ## 1.28.0 (2026-11-28)
 
 Release notes: release-notes/v1.28.0.md

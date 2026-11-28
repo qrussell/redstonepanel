@@ -1,3 +1,13 @@
+redstonepanel (1.28.1) noble; urgency=medium
+
+  * Cluster: Open dashboard on the master's Cluster page opened a node's
+    sign-in page instead of signing in, since 1.25.0: the master never
+    passed on that the node allows it. It signs in again, and the
+    Dashboard's Open link on a node's card now signs in too. Only the
+    master needs the update.
+
+ -- Quentin Russell <quentin.russell@cielocloud.org>  Sat, 28 Nov 2026 06:30:00 +0000
+
 redstonepanel (1.28.0) noble; urgency=medium
 
   * Sign in with Discord: a Sign in with Discord button on the sign-in page
