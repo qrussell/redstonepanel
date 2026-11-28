@@ -1,4 +1,4 @@
-"""Whitelist by Discord (1.28.1).
+"""Whitelist by Discord (1.28).
 
 Players link their Minecraft name in the community's Discord (a "Link your Minecraft name" button
 that opens a form, or /minecraft), and the panel keeps each server's whitelist (Bedrock: allowlist)

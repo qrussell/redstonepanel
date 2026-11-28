@@ -1,6 +1,6 @@
 # Whitelist by Discord role
 
-Status: **approach approved by Quentin 27 Nov 2026 21:34Z; built, waiting for a real-Discord test** · Target: **1.28.1** (Quentin, 27 Nov 2026), right
+Status: **built and tested with real Discord (28 Nov 2026)** · Target: **1.28.0**, together with Sign in with Discord (Quentin, 28 Nov 2026; first planned as 1.28.1 right
 after 1.28 · Written 27 Nov 2026
 
 Asked for by Quentin on 27 Nov 2026 during the 1.28 test: a player adds their Minecraft name in
@@ -157,7 +157,7 @@ instead of using `/minecraft`; it writes the same link, so the same per-server c
 
 - Discord's Linked Roles (the panel as a Linked Roles app, "has linked a Minecraft name").
 
-## Building it in parts (all in 1.28.1 unless Quentin splits it)
+## Building it in parts (all shipped in 1.28.0)
 
 1. Link button and `/minecraft`, per-server choices, the moderators' approval queue (Discord buttons
    and the panel list), removal on leave/ban/block, the log. This alone covers "moderators approve
@@ -181,7 +181,7 @@ About two weeks (approval requests and Discord buttons add half a week, invite �
 ## Decisions for Quentin
 
 1. **Command name:** `/minecraft` (recommended; Quentin can still rename it before release).
-2. **Release:** decided 27 Nov 2026: 1.28.1, right after 1.28.
+2. **Release:** decided 27 Nov 2026: 1.28.1, right after 1.28; on 28 Nov Quentin chose one release, 1.28.0, for both.
 
 ## As built (27 Nov 2026)
 

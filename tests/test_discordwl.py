@@ -1,4 +1,4 @@
-"""1.28.1: Whitelist by Discord (core/discordwl.py and the bot's side, core/discordbot_wl.py).
+"""1.28: Whitelist by Discord (core/discordwl.py and the bot's side, core/discordbot_wl.py).
 Run: python -m unittest discover -s tests
 
 Who may play where (off, anyone, roles, moderator approval, trust, exceptions, blocked, left),

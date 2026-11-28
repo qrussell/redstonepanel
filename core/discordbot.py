@@ -45,8 +45,8 @@ DISCORD_FILE = os.path.join(DATA_DIR, "discord.json")
 API = "https://discord.com/api/v10"
 GATEWAY_QUERY = "?v=10&encoding=json"
 INTENTS = 1                         # GUILDS: the names and roles of the Discord servers the bot is in
-INTENT_MEMBERS = 2                  # GUILD_MEMBERS (privileged, 1.28.1): role changes, joins and leaves
-INTENT_INVITES = 64                 # GUILD_INVITES (1.28.1): which invite a new member used
+INTENT_MEMBERS = 2                  # GUILD_MEMBERS (privileged, 1.28): role changes, joins and leaves
+INTENT_INVITES = 64                 # GUILD_INVITES (1.28): which invite a new member used
 WL_PERMISSIONS = 1024 + 2048 + 32 + 268435456   # view and send in channels, Manage Server (invites), Manage Roles
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_.\-]{50,100}$")
 ID_RE = re.compile(r"^[0-9]{15,22}$")
@@ -87,7 +87,7 @@ EPHEMERAL = 64
 _lock = threading.RLock()
 _bot = {"thread": None, "stop": None, "ws": None}
 _status = {"state": "off", "error": None, "user": None, "app_id": None, "guilds": {}, "since": None, "warning": None}
-_members_refused = threading.Event()  # 1.28.1: Discord refused the members intent; run without it until the next save
+_members_refused = threading.Event()  # 1.28: Discord refused the members intent; run without it until the next save
 _starts = {}                        # server key -> time of the last /start
 _starts_by_user = {}                # Discord user id -> [times]
 _servers_cache = {"at": 0, "list": []}
@@ -556,7 +556,7 @@ def _ready(s):
 
 def _discord_admin(d):
     """The Discord server's owner and anyone with Administrator there (Discord sends the member's
-    resolved permissions with each interaction) may use /start without a listed role (1.28.1)."""
+    resolved permissions with each interaction) may use /start without a listed role (1.28)."""
     try:
         return bool(int((d.get("member") or {}).get("permissions") or 0) & 8)
     except (TypeError, ValueError):

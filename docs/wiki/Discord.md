@@ -172,7 +172,7 @@ The steps are in the User Manual under
 
 ### Let members onto the whitelist by themselves
 
-From 1.28.1 players can link their Minecraft name in your Discord (a **Link your Minecraft name**
+From 1.28 players can link their Minecraft name in your Discord (a **Link your Minecraft name**
 button or `/minecraft`) and the panel puts it on the whitelist of each server their roles allow,
 and takes it off when they lose the role or leave. Each server can be open to anyone in your
 Discord, to chosen roles (a **Peaceful** role for one server, **Anarchy** for another), or need a

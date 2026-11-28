@@ -3650,7 +3650,7 @@ def discord_account_forget_api(request: Request, discord_id: str):
         raise HTTPException(status_code=400, detail=str(e))
     return discordauth.public()
 
-# 1.28.1: Whitelist by Discord (core/discordwl.py, the bot's side in core/discordbot_wl.py)
+# 1.28: Whitelist by Discord (core/discordwl.py, the bot's side in core/discordbot_wl.py)
 @app.get("/api/settings/discord-whitelist")
 def discord_whitelist_settings_api():
     from core import discordbot_wl

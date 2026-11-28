@@ -2440,7 +2440,7 @@ panel log as `discord:NAME (Discord user id)`.
 **In a cluster**, each panel has its own sign-in settings and accounts, like its Users page.
 The panel needs to reach `discord.com` on port 443.
 
-### Whitelist by Discord *(1.28.1)*
+### Whitelist by Discord *(1.28)*
 
 Players link their Minecraft name in your Discord server and the panel puts it on the whitelist
 (Bedrock: allowlist) of each server they may play on. When they lose the role, leave your

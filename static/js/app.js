@@ -6562,7 +6562,7 @@ const ServerApp = {
 		this.loadDiscordSignin();
 	},
 
-	// --- 1.28.1: Whitelist by Discord (core/discordwl.py, the bot's side in core/discordbot_wl.py) ---
+	// --- 1.28: Whitelist by Discord (core/discordwl.py, the bot's side in core/discordbot_wl.py) ---
 	async loadDiscordWhitelist() {
 		const box = document.getElementById('set-discord-whitelist');
 		if (!box) return;

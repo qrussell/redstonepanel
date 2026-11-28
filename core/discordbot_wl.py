@@ -1,4 +1,4 @@
-"""The bot's side of Whitelist by Discord (1.28.1): the link button and its form, /minecraft, the
+"""The bot's side of Whitelist by Discord (1.28): the link button and its form, /minecraft, the
 "Ask to join" buttons, the moderators' Approve and Deny, member events, invites and the re-check.
 
 Rules and state live in core/discordwl.py; this module only talks to Discord. Interactions that
