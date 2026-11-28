@@ -173,6 +173,9 @@ class Settings(Base):
                 self.configure(**bad)
         with self.assertRaises(D.DiscordAuthError):
             D.save_settings({"enabled": True}, "alex")                     # nothing set up
+        with self.assertRaises(D.DiscordAuthError) as e:                    # 1.28: the Public Key, pasted by mistake
+            self.configure(secret="ab" * 32)
+        self.assertIn("Public Key", str(e.exception))
         with self.assertRaises(D.DiscordAuthError):
             self.configure(guild="")                                         # roles need the Discord server
         self.assertEqual(D.clean_base("Panel.Example.org:8443/", "x"), "https://panel.example.org:8443")

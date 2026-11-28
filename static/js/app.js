@@ -6141,6 +6141,8 @@ const ServerApp = {
 			<div id="set-discord" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 			<h4 id="set-section-discord-signin" class="font-bold text-gray-900 dark:text-white mb-2">Sign in with Discord</h4>
 			<div id="set-discord-signin" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
+			<h4 id="set-section-discord-whitelist" class="font-bold text-gray-900 dark:text-white mb-2">Whitelist by Discord</h4>
+			<div id="set-discord-whitelist" class="mb-6"><p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p></div>
 
 			<div id="set-terminal-wrap" class="hidden">
 			<h4 id="set-section-terminal" class="font-bold text-gray-900 dark:text-white mb-2">Terminal</h4>
@@ -6215,7 +6217,7 @@ const ServerApp = {
 		this.loadSftpSettings();
 		this.loadTerminalSettings();
 		this.loadApiTokens();
-		this.loadDiscordSettings().then(() => this.loadDiscordSignin());   // the sign-in part uses the bot's Discord servers
+		this.loadDiscordSettings().then(() => { this.loadDiscordSignin(); this.loadDiscordWhitelist(); });   // both use the bot's Discord servers
 		this.loadServersFolder();
 		const target = section && document.getElementById(`set-section-${section}`);
 		if (target) target.scrollIntoView({ block: 'start' });
@@ -6558,6 +6560,210 @@ const ServerApp = {
 		button.disabled = false;
 		if (!res.ok) { alert(await this.apiError(res)); return; }
 		this.loadDiscordSignin();
+	},
+
+	// --- 1.28: Whitelist by Discord (core/discordwl.py, the bot's side in core/discordbot_wl.py) ---
+	async loadDiscordWhitelist() {
+		const box = document.getElementById('set-discord-whitelist');
+		if (!box) return;
+		const res = await fetch('/api/settings/discord-whitelist');
+		if (!res.ok) { box.innerHTML = `<p class="text-sm text-red-500">${this.escapeHtml(await this.apiError(res))}</p>`; return; }
+		const d = await res.json(), esc = t => this.escapeHtml(String(t ?? ''));
+		this.wl = d;
+		this.wlServers = JSON.parse(JSON.stringify(d.servers || {}));
+		const note = 'text-xs text-gray-500 dark:text-gray-400';
+		const field = 'w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-base md:text-sm text-gray-900 dark:text-white';
+		const check = 'flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300';
+		const grey = 'px-3 py-2 rounded text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white';
+		const guilds = (d.bot && d.bot.guilds) || [];
+		const guild = guilds.find(g => g.id === d.guild_used);
+		const roles = (guild && guild.roles || []).filter(r => r.name !== '@everyone');
+		const roleSelect = (id, value, none) => roles.length
+			? `<select id="${id}" class="${field} mt-1"><option value="">${none}</option>${roles.map(r => `<option value="${esc(r.id)}" ${r.id === value ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>`
+			: `<input id="${id}" inputmode="numeric" value="${esc(value)}" placeholder="Role ID" class="${field} mt-1 font-mono">`;
+		const channelSelect = (id, value) => (d.channels || []).length
+			? `<select id="${id}" class="${field} mt-1"><option value="">None</option>${d.channels.map(c => `<option value="${esc(c.id)}" ${c.id === value ? 'selected' : ''}>#${esc(c.name)}</option>`).join('')}</select>`
+			: `<input id="${id}" inputmode="numeric" value="${esc(value)}" placeholder="Channel ID" class="${field} mt-1 font-mono">`;
+		const roleChecks = (cls, chosen) => roles.length
+			? `<div class="flex flex-wrap gap-x-3">${roles.map(r => `<label class="inline-flex items-center gap-1 text-sm min-h-[44px] md:min-h-0"><input type="checkbox" class="${cls}" value="${esc(r.id)}" ${(chosen || []).includes(r.id) ? 'checked' : ''}> ${esc(r.name)}</label>`).join('')}</div>`
+			: `<input class="${cls} ${field} font-mono" data-ids="1" value="${esc((chosen || []).join(', '))}" placeholder="Role IDs, separated by commas">`;
+		this.wlRoleChecks = roleChecks;
+		const invites = {};
+		(d.invite_list || []).forEach(i => { invites[i.code] = { ...i, ...(d.invites[i.code] || { trust: 'approval', role: '' }) }; });
+		Object.entries(d.invites || {}).forEach(([code, i]) => { if (!invites[code]) invites[code] = { code, gone: true, ...i }; });
+		const waiting = (d.accounts || []).filter(a => a.requests.length);
+		const serverName = k => k === '*' ? 'the servers' : k.split('/').pop();
+		const botNote = !d.bot_on ? 'Set up the bot under <b>Discord</b> above first: it answers the button and <code>/minecraft</code>.'
+			: d.bot.state !== 'online' ? `The bot isn't connected (${esc(d.bot.error || d.bot.state)}).`
+			: d.bot.warning ? `<b class="text-amber-600 dark:text-amber-400">${esc(d.bot.warning)}</b>` : '';
+		box.innerHTML = `
+			<p class="${note} mb-3">People link their Minecraft name in your Discord server (a <b>Link your Minecraft name</b> button, or <code>/minecraft</code>), and the panel adds it to the whitelist of each server they may play on, and takes it off when they lose the role, leave or are blocked. You choose per server who may play: anyone in your Discord, chosen roles, or only people a moderator approved. Names you add by hand on the Whitelist tab are never touched.</p>
+			<p class="text-sm text-gray-700 dark:text-gray-300 mb-3">${d.enabled ? '<span class="text-green-600 dark:text-green-400 font-bold">● On</span>' : 'Off.'} ${d.accounts.length} linked account${d.accounts.length === 1 ? '' : 's'}${d.waiting ? `, <b>${d.waiting} waiting for a moderator</b>` : ''}. ${botNote}</p>
+			<details class="rounded border border-gray-200 dark:border-gray-700 p-3 mb-3" ${d.enabled ? '' : 'open'}>
+				<summary class="text-sm font-bold text-gray-900 dark:text-white cursor-pointer">How to set it up</summary>
+				<ol class="${note} list-decimal ml-5 mt-2 space-y-1">
+					<li>Set up the bot under <b>Discord</b> above, in your community's Discord server.</li>
+					<li>Recommended: in the <a href="https://discord.com/developers/applications" target="_blank" rel="noopener" class="underline text-theme">Developer Portal</a>, under <b>Bot</b>, turn on <b>Server Members Intent</b>, then tick it below. The panel then hears role changes, joins and leaves at once; without it, it reads linked people's roles every 5 minutes.</li>
+					<li>Choose who may play on each server below, tick <b>Turn on Whitelist by Discord</b> and save.</li>
+					<li>Add the bot again with the extra permissions it now needs (see and send messages, Manage Server to tell invites apart, Manage Roles to give roles): ${d.bot_invite ? `<a href="${esc(d.bot_invite)}" target="_blank" rel="noopener" class="underline text-theme">add the bot again ↗</a>` : 'the link appears once the bot is set up'}. In Discord's <b>Roles</b> settings, drag the bot's role above the roles it gives.</li>
+					<li>Post the <b>Link your Minecraft name</b> button in a channel new members see.</li>
+				</ol>
+			</details>
+			${guilds.length > 1 ? `<label class="${note} block mb-3">Your community's Discord server<select id="dwl-guild" class="${field} mt-1"><option value="">The one chosen for Sign in with Discord</option>${guilds.map(g => `<option value="${esc(g.id)}" ${g.id === d.guild ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></label>`
+				: `<input type="hidden" id="dwl-guild" value="${esc(d.guild)}">`}
+			<p class="text-sm font-bold text-gray-900 dark:text-white mt-2 mb-1">Who may play on each server</p>
+			<p class="${note} mb-2"><b>Every server</b> is the default for servers without their own row.</p>
+			<div id="dwl-servers"></div>
+			<p class="text-sm font-bold text-gray-900 dark:text-white mt-4 mb-1">Is a role enough?</p>
+			<label class="${check}"><input type="radio" name="dwl-trust" value="roles" ${d.trust !== 'approve' ? 'checked' : ''} class="mt-1"> <span>Yes: the right role lets someone play<br><span class="${note}">For a private community where only friends get in.</span></span></label>
+			<label class="${check} mt-2"><input type="radio" name="dwl-trust" value="approve" ${d.trust === 'approve' ? 'checked' : ''} class="mt-1"> <span>No: a moderator approves each new person once (or they came through a trusted invite)<br><span class="${note}">For a public invite, for example on Reddit. After that, roles decide as above.</span></span></label>
+			<p class="text-sm font-bold text-gray-900 dark:text-white mt-4 mb-1">Moderators</p>
+			<p class="${note} mb-1">Who may press Approve (people with Administrator in Discord always may; panel admins approve here)</p>
+			${roleChecks('dwl-approvers', d.approvers)}
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+				<label class="${note} block">Channel where requests appear, with Approve and Deny${channelSelect('dwl-mod-channel', d.mod_channel)}</label>
+				<label class="${note} block">Approving someone also gives them${roleSelect('dwl-approve-role', d.approve_role, 'No role')}</label>
+			</div>
+			<p class="${note} mt-2 mb-1">and takes away (for example an Applicant role)</p>
+			${roleChecks('dwl-remove-roles', d.remove_roles)}
+			<p class="text-sm font-bold text-gray-900 dark:text-white mt-4 mb-1">Invites</p>
+			<p class="${note} mb-2">The panel tells which invite each new member used. Members who came through a <b>trusted</b> invite (one you gave friends) don't need approving, and an invite can give a role. Anyone else, or anyone whose invite can't be told, needs approving when approval is on.</p>
+			<div id="dwl-invites" class="divide-y divide-gray-100 dark:divide-gray-700/60">${Object.keys(invites).length ? Object.values(invites).map(i => `<div class="dwl-invite flex flex-wrap items-center gap-2 py-2" data-code="${esc(i.code)}">
+				<code class="text-sm font-mono">${esc(i.code)}</code><span class="${note} flex-1 min-w-[8rem]">${i.gone ? 'no longer in Discord' : `${esc(i.inviter || '')} · used ${i.uses}${i.max_uses ? ' of ' + i.max_uses : ''} times${i.expires ? ' · expires ' + new Date(i.expires).toLocaleDateString() : ''}`}</span>
+				<select class="dwl-inv-trust ${field} md:w-auto"><option value="approval" ${i.trust !== 'trusted' ? 'selected' : ''}>Needs approval</option><option value="trusted" ${i.trust === 'trusted' ? 'selected' : ''}>Trusted</option></select>
+				${roles.length ? `<select class="dwl-inv-role ${field} md:w-auto"><option value="">Gives no role</option>${roles.map(r => `<option value="${esc(r.id)}" ${r.id === i.role ? 'selected' : ''}>Gives ${esc(r.name)}</option>`).join('')}</select>` : `<input class="dwl-inv-role ${field} md:w-48 font-mono" value="${esc(i.role || '')}" placeholder="Role ID it gives">`}
+			</div>`).join('') : `<p class="${note}">${d.bot_on ? 'No invites to show (the bot needs Manage Server to read them).' : 'Invites appear once the bot is set up.'}</p>`}</div>
+			<label class="${note} block mt-3 md:w-64">Trusted invites only count for Discord accounts at least this many days old<input id="dwl-min-age" type="number" min="0" max="365" value="${esc(d.min_age_days)}" class="${field} mt-1"></label>
+			<label class="${check} mt-3"><input type="checkbox" id="dwl-intent" ${d.members_intent ? 'checked' : ''} class="mt-1"> <span>Server Members Intent is on in the Developer Portal<br><span class="${note}">Leave this off unless you turned it on there: Discord refuses the bot otherwise.</span></span></label>
+			<label class="${check} mt-2"><input type="checkbox" id="dwl-enabled" ${d.enabled ? 'checked' : ''} class="mt-1"> <b>Turn on Whitelist by Discord</b></label>
+			<p id="dwl-error" class="hidden text-sm text-red-500 mt-2"></p>
+			<button onclick="ServerApp.saveDiscordWhitelist(this)" class="mt-3 px-4 py-2 rounded text-sm bg-theme hover-bg-theme text-white font-bold">Save whitelist settings</button>
+			${d.enabled ? `<p class="text-sm font-bold text-gray-900 dark:text-white mt-5 mb-1">The Link your Minecraft name button</p>
+			<div class="flex flex-wrap items-end gap-2"><label class="${note} block flex-1 min-w-[12rem]">Channel${channelSelect('dwl-link-channel', d.link_channel)}</label>
+				<button onclick="ServerApp.postWhitelistButton(this)" class="${grey}">Post the button</button></div>
+			<p id="dwl-button-note" class="${note} mt-1"></p>` : ''}
+			${waiting.length ? `<p class="text-sm font-bold text-gray-900 dark:text-white mt-5 mb-1">Waiting for a moderator</p>
+			<div class="divide-y divide-gray-100 dark:divide-gray-700/60">${waiting.map(a => a.requests.map(k => `<div class="flex flex-wrap items-center justify-between gap-2 py-2">
+				<span class="text-sm min-w-0 break-words"><b class="text-gray-900 dark:text-white">${esc(a.name)}</b> <span class="${note}">${esc([a.java, a.bedrock].filter(Boolean).join(', '))} · asks to join ${esc(serverName(k))}${a.via ? ' · invite ' + esc(a.via) : ''}</span></span>
+				<span class="flex gap-2"><button onclick="ServerApp.whitelistDecide('${esc(a.id)}', '${esc(k)}', true, this)" class="px-3 py-2 rounded text-sm bg-theme hover-bg-theme text-white font-bold">Approve</button><button onclick="ServerApp.whitelistDecide('${esc(a.id)}', '${esc(k)}', false, this)" class="${grey}">Turn down</button></span>
+			</div>`).join('')).join('')}</div>` : ''}
+			${d.accounts.length ? `<p class="text-sm font-bold text-gray-900 dark:text-white mt-5 mb-1">Linked accounts</p>
+			<div class="divide-y divide-gray-100 dark:divide-gray-700/60">${d.accounts.map(a => `<div class="py-2">
+				<div class="flex flex-wrap items-center justify-between gap-2">
+				<span class="text-sm min-w-0 break-words"><b class="text-gray-900 dark:text-white">${esc(a.name)}</b> <span class="${note}">${esc([a.java && 'Java ' + a.java, a.bedrock && 'Bedrock ' + a.bedrock].filter(Boolean).join(' · '))}${a.member ? '' : ' · <b class="text-red-500">left the Discord server</b>'}${d.trust === 'approve' ? (a.approved ? ` · approved${a.approved_by ? ' by ' + esc(a.approved_by) : ''}` : ' · not approved') : ''} · on ${a.servers.length ? esc(a.servers.map(serverName).join(', ')) : 'no server'}</span></span>
+				<span class="flex flex-wrap gap-2">${d.trust === 'approve' ? `<button onclick="ServerApp.whitelistAccount('${esc(a.id)}', { approved: ${!a.approved} }, this)" class="${grey}">${a.approved ? 'Un-approve' : 'Approve'}</button>` : ''}
+					<button onclick="ServerApp.whitelistAccount('${esc(a.id)}', { forget: true }, this)" class="${grey}">Forget</button></span></div>
+				<details class="mt-1"><summary class="${note} cursor-pointer">Exceptions for this person</summary>
+					<div class="flex flex-wrap gap-2 mt-1">${this.wlServerList().map(s => `<label class="${note} inline-flex items-center gap-1">${esc(s.label)} <select class="dwl-exc-${esc(a.id)} ${field} w-auto" data-key="${esc(s.key)}"><option value="">As the rules say</option><option value="allow" ${a.exceptions[s.key] === 'allow' ? 'selected' : ''}>Always allow</option><option value="deny" ${a.exceptions[s.key] === 'deny' ? 'selected' : ''}>Keep off</option></select></label>`).join('')}
+					<button onclick="ServerApp.whitelistExceptions('${esc(a.id)}', this)" class="${grey}">Save exceptions</button></div>
+				</details>
+			</div>`).join('')}</div>` : ''}`;
+		this.renderWhitelistServers();
+	},
+
+	wlServerList() {
+		return (this.servers || []).map(s => ({ key: s.node ? `${s.node}/${s.name}` : s.name,
+			label: s.node ? `${s.name} (${s.nodeName || s.node})` : s.name }));
+	},
+
+	renderWhitelistServers() {
+		const box = document.getElementById('dwl-servers');
+		if (!box) return;
+		const esc = t => this.escapeHtml(String(t ?? ''));
+		const field = 'bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded p-2 text-base md:text-sm text-gray-900 dark:text-white';
+		const labels = (this.wl && this.wl.mode_labels) || {};
+		const rows = [{ key: '*', label: 'Every server' }, ...this.wlServerList()];
+		box.innerHTML = rows.map(s => {
+			const r = this.wlServers[s.key] || { mode: s.key === '*' ? 'off' : '', roles: [], skip: [] };
+			const opts = (s.key === '*' ? [] : [['', 'Same as every server']]).concat(Object.entries(labels));
+			return `<div class="rounded border border-gray-200 dark:border-gray-700 p-2 mb-2" data-key="${esc(s.key)}">
+				<div class="flex flex-wrap items-center justify-between gap-2"><b class="text-sm text-gray-900 dark:text-white break-words">${esc(s.label)}</b>
+				<select class="dwl-mode ${field}" onchange="ServerApp.whitelistMode('${esc(s.key)}', this.value)">${opts.map(([v, l]) => `<option value="${v}" ${(r.mode || '') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+				${r.mode === 'roles' ? `<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">People with any of these roles</p>${this.wlRoleChecks('dwl-roles', r.roles)}` : ''}
+				${r.mode === 'approval' ? `<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">These roles skip approval (optional)</p>${this.wlRoleChecks('dwl-skip', r.skip)}` : ''}
+			</div>`;
+		}).join('');
+	},
+
+	wlPicked(scope, cls) {
+		const els = [...scope.querySelectorAll(`.${cls}`)];
+		if (els.length === 1 && els[0].dataset.ids) return els[0].value.split(/[\s,]+/).filter(Boolean);
+		return els.filter(b => b.checked).map(b => b.value);
+	},
+
+	whitelistSyncServers() {
+		document.querySelectorAll('#dwl-servers [data-key]').forEach(div => {
+			const r = this.wlServers[div.dataset.key];
+			if (!r) return;
+			if (r.mode === 'roles') r.roles = this.wlPicked(div, 'dwl-roles');
+			if (r.mode === 'approval') r.skip = this.wlPicked(div, 'dwl-skip');
+		});
+	},
+
+	whitelistMode(key, mode) {
+		this.whitelistSyncServers();
+		if (!mode) delete this.wlServers[key];
+		else this.wlServers[key] = { roles: [], skip: [], ...(this.wlServers[key] || {}), mode };
+		this.renderWhitelistServers();
+	},
+
+	async saveDiscordWhitelist(button) {
+		const err = document.getElementById('dwl-error');
+		err.classList.add('hidden');
+		this.whitelistSyncServers();
+		const servers = this.wlServers;
+		const invites = {};
+		document.querySelectorAll('#dwl-invites .dwl-invite').forEach(div => {
+			const trust = div.querySelector('.dwl-inv-trust').value, role = div.querySelector('.dwl-inv-role').value.trim();
+			if (trust === 'trusted' || role) invites[div.dataset.code] = { trust, role };
+		});
+		const v = id => (document.getElementById(id) || { value: '' }).value.trim();
+		const box = document.getElementById('set-discord-whitelist');
+		const body = { enabled: document.getElementById('dwl-enabled').checked, guild: v('dwl-guild'),
+			trust: (document.querySelector('input[name="dwl-trust"]:checked') || {}).value || 'roles',
+			members_intent: document.getElementById('dwl-intent').checked, servers, invites,
+			approvers: this.wlPicked(box, 'dwl-approvers'), remove_roles: this.wlPicked(box, 'dwl-remove-roles'),
+			mod_channel: v('dwl-mod-channel'), approve_role: v('dwl-approve-role'), min_age_days: parseInt(v('dwl-min-age') || '0', 10) || 0 };
+		button.disabled = true;
+		const res = await fetch('/api/settings/discord-whitelist', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+		button.disabled = false;
+		if (!res.ok) { err.textContent = await this.apiError(res); err.classList.remove('hidden'); return; }
+		await this.loadDiscordSettings();
+		this.loadDiscordWhitelist();
+	},
+
+	async postWhitelistButton(button) {
+		const channel = (document.getElementById('dwl-link-channel').value || '').trim();
+		const out = document.getElementById('dwl-button-note');
+		button.disabled = true;
+		const res = await fetch('/api/settings/discord-whitelist/link-button', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel }) });
+		button.disabled = false;
+		out.textContent = res.ok ? 'Posted. Pin it so new members find it.' : await this.apiError(res);
+	},
+
+	async whitelistDecide(id, server, approve, button) {
+		button.disabled = true;
+		const res = await fetch(`/api/settings/discord-whitelist/accounts/${encodeURIComponent(id)}/decide`, { method: 'POST',
+			headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server, approve }) });
+		button.disabled = false;
+		if (!res.ok) { alert(await this.apiError(res)); return; }
+		this.loadDiscordWhitelist();
+	},
+
+	async whitelistAccount(id, change, button) {
+		if (change.forget && !confirm('Forget this person\'s linked names? The panel takes them off the whitelists it added them to. They can link again in Discord.')) return;
+		button.disabled = true;
+		const res = await fetch(`/api/settings/discord-whitelist/accounts/${encodeURIComponent(id)}`, { method: 'PUT',
+			headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
+		button.disabled = false;
+		if (!res.ok) { alert(await this.apiError(res)); return; }
+		this.loadDiscordWhitelist();
+	},
+
+	whitelistExceptions(id, button) {
+		const exceptions = {};
+		document.querySelectorAll(`.dwl-exc-${CSS.escape(id)}`).forEach(s => { if (s.value) exceptions[s.dataset.key] = s.value; });
+		this.whitelistAccount(id, { exceptions }, button);
 	},
 
 	async loadSetupSettings() {

@@ -49,6 +49,7 @@ import core.sleep as sleep
 import core.apitokens as apitokens
 import core.discordbot as discordbot
 import core.discordauth as discordauth
+import core.discordwl as discordwl
 import core.mastersignin as mastersignin
 import core.grants as grants
 import core.sshkeys as sshkeys
@@ -3648,6 +3649,90 @@ def discord_account_forget_api(request: Request, discord_id: str):
     except discordauth.DiscordAuthError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return discordauth.public()
+
+# 1.28: Whitelist by Discord (core/discordwl.py, the bot's side in core/discordbot_wl.py)
+@app.get("/api/settings/discord-whitelist")
+def discord_whitelist_settings_api():
+    from core import discordbot_wl
+    out = discordwl.public()
+    g = out["guild_used"]
+    out["channels"] = discordbot_wl.channels(g) if g else []
+    out["invite_list"] = discordbot_wl.invites(g) if g else []
+    bot = discordbot.public()
+    out["bot"], out["bot_invite"], out["bot_on"] = bot["status"], bot["invite"], bot["enabled"] and bot["has_token"]
+    return out
+
+def _given(req):
+    """The fields a request set (pydantic 1 on older Debian has .dict(), 2 has .model_dump())."""
+    data = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+    return {k: v for k, v in data.items() if v is not None}
+
+class DiscordWhitelistUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    guild: Optional[str] = None
+    trust: Optional[str] = None
+    members_intent: Optional[bool] = None
+    mod_channel: Optional[str] = None
+    link_channel: Optional[str] = None
+    approve_role: Optional[str] = None
+    approvers: Optional[list] = None
+    remove_roles: Optional[list] = None
+    min_age_days: Optional[int] = None
+    servers: Optional[dict] = None
+    invites: Optional[dict] = None
+
+@app.put("/api/settings/discord-whitelist")
+def discord_whitelist_save_api(request: Request, req: DiscordWhitelistUpdate):
+    new = _given(req)
+    try:
+        discordwl.save_settings(new, actor=request.state.user["username"])
+    except discordwl.WhitelistError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return discord_whitelist_settings_api()
+
+class DiscordLinkButton(BaseModel):
+    channel: str
+
+@app.post("/api/settings/discord-whitelist/link-button")
+def discord_whitelist_button_api(request: Request, req: DiscordLinkButton):
+    from core import discordbot_wl
+    try:
+        mid = discordbot_wl.post_link_button(req.channel)
+        discordwl.save_settings({"link_channel": req.channel}, actor=request.state.user["username"])
+    except discordwl.WhitelistError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    manager.write_log(f"[DISCORD] {request.state.user['username']} posted the Link your Minecraft name button.")
+    return {"message_id": mid}
+
+class DiscordWhitelistAccount(BaseModel):
+    approved: Optional[bool] = None
+    approvals: Optional[list] = None
+    exceptions: Optional[dict] = None
+    forget: Optional[bool] = None
+
+@app.put("/api/settings/discord-whitelist/accounts/{discord_id}")
+def discord_whitelist_account_api(request: Request, discord_id: str, req: DiscordWhitelistAccount):
+    try:
+        discordwl.set_account(discord_id, _given(req),
+                              actor=request.state.user["username"])
+    except discordwl.WhitelistError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return discordwl.public()
+
+class DiscordWhitelistDecision(BaseModel):
+    server: str = "*"
+    approve: bool
+
+@app.post("/api/settings/discord-whitelist/accounts/{discord_id}/decide")
+def discord_whitelist_decide_api(request: Request, discord_id: str, req: DiscordWhitelistDecision):
+    try:
+        discordwl.decide(discord_id, req.server, req.approve, request.state.user["username"])
+    except discordwl.WhitelistError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if req.approve and req.server == "*":
+        from core import discordbot_wl
+        threading.Thread(target=discordbot_wl._approve_roles, args=(discord_id, discordwl.load()), daemon=True).start()
+    return discordwl.public()
 
 @app.get("/api/settings/cluster")
 def cluster_settings_api(request: Request):

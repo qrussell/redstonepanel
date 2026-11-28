@@ -166,6 +166,9 @@ def save_settings(new, actor="?"):
             cfg["secret"], cfg["enabled"] = "", False
         secret = str(new.get("secret") or "").strip()
         if secret and not new.get("forget_secret"):
+            if len(secret) == 64 and all(c in "0123456789abcdefABCDEF" for c in secret):
+                raise DiscordAuthError("That's the application's Public Key (General Information). The client secret is "
+                                       "under OAuth2, Client Secret (Reset Secret), about 32 characters.")
             if not SECRET_MIN <= len(secret) <= SECRET_MAX or not all(c.isalnum() or c in "-_" for c in secret):
                 raise DiscordAuthError("That doesn't look like a client secret. Copy it from the Developer Portal: "
                                        "your application, OAuth2, Client Secret (Reset Secret).")
@@ -277,6 +280,9 @@ def set_blocked(did, blocked, actor="?"):
         _save(cfg)
         name = (acc or {}).get("name") or did
     _log(f"[AUTH] {actor} {'blocked' if blocked else 'unblocked'} the Discord account {name} ({did}).")
+    from core import discordwl                      # 1.28: a blocked account's whitelist entries go
+    if discordwl.load()["enabled"]:
+        discordwl._after_change()
 
 
 def forget_account(did, actor="?"):
